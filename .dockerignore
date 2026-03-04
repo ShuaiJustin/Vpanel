@@ -1,0 +1,61 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+build/
+
+# Dependencies
+node_modules/
+vendor/
+
+# Logs
+*.log
+logs/
+
+# Data
+data/*.db
+data/*.db-*
+*.sqlite
+*.sqlite3
+
+# Config
+*.env
+.env.local
+configs/*.yaml
+!configs/*.example
+
+# Documentation
+*.md
+!README.md
+Docs/
+.reports/
+
+# Test
+*_test.go
+test/
+coverage.txt
+*.test
+
+# Temporary
+tmp/
+temp/
+*.tmp

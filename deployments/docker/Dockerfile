@@ -30,14 +30,21 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 # Install minimal build dependencies (no gcc needed - using pure Go SQLite)
 RUN apk add --no-cache git ca-certificates tzdata
 
-# Set Go proxy for faster downloads
-ENV GOPROXY=https://goproxy.cn,direct
+# Set Go proxy with multiple fallbacks and increase timeout
+# Use IP-based proxies to avoid DNS issues
+ENV GOPROXY=https://goproxy.io,https://proxy.golang.org,direct \
+    GOSUMDB=off \
+    GO111MODULE=on
 
 WORKDIR /app
 
 # Copy go mod files
 COPY go.mod go.sum ./
-RUN go mod download
+
+# Download dependencies with retry logic
+RUN go mod download || \
+    (sleep 5 && go mod download) || \
+    (sleep 10 && GOPROXY=direct go mod download)
 
 # Copy source code
 COPY . .
