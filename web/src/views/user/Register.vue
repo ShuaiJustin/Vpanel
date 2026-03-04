@@ -291,12 +291,12 @@ function goToLogin() {
 
 // 显示服务条款
 function showTerms() {
-  ElMessage.info('服务条款功能开发中')
+  router.push('/user/terms')
 }
 
 // 显示隐私政策
 function showPrivacy() {
-  ElMessage.info('隐私政策功能开发中')
+  router.push('/user/privacy')
 }
 </script>
 

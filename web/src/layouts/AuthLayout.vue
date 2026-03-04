@@ -68,11 +68,11 @@ const toggleTheme = () => {
 }
 
 const showTerms = () => {
-  ElMessage.info('服务条款页面开发中')
+  router.push('/user/terms')
 }
 
 const showPrivacy = () => {
-  ElMessage.info('隐私政策页面开发中')
+  router.push('/user/privacy')
 }
 
 onMounted(() => {

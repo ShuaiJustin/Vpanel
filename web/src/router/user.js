@@ -29,6 +29,8 @@ const TicketCreate = () => import(/* webpackChunkName: "user-extra" */ '../views
 const UserStats = () => import(/* webpackChunkName: "user-extra" */ '../views/user/Stats.vue')
 const HelpCenter = () => import(/* webpackChunkName: "user-extra" */ '../views/user/HelpCenter.vue')
 const HelpArticle = () => import(/* webpackChunkName: "user-extra" */ '../views/user/HelpArticle.vue')
+const Terms = () => import(/* webpackChunkName: "user-extra" */ '../views/user/Terms.vue')
+const Privacy = () => import(/* webpackChunkName: "user-extra" */ '../views/user/Privacy.vue')
 
 // 商业化页面
 const Plans = () => import(/* webpackChunkName: "user-commercial" */ '../views/user/Plans.vue')
@@ -242,6 +244,22 @@ export const userRoutes = [
         meta: {
           title: '礼品卡',
           requiresUserAuth: true
+        }
+      },
+      {
+        path: 'terms',
+        name: 'user-terms',
+        component: Terms,
+        meta: {
+          title: '服务条款'
+        }
+      },
+      {
+        path: 'privacy',
+        name: 'user-privacy',
+        component: Privacy,
+        meta: {
+          title: '隐私政策'
         }
       }
     ]

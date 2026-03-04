@@ -258,7 +258,7 @@ const handleLogout = () => {
 }
 
 const showTerms = () => {
-  ElMessage.info('服务条款页面开发中')
+  router.push('/user/terms')
 }
 
 const showContact = () => {

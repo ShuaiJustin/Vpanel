@@ -48,6 +48,10 @@ const AdminTrials = () => import(/* webpackChunkName: "commercial-admin" */ '../
 // 节点管理 - 按需加载
 const AdminNodes = () => import(/* webpackChunkName: "node-admin" */ '../views/AdminNodes.vue')
 const NodeDetail = () => import(/* webpackChunkName: "node-admin" */ '../views/NodeDetail.vue')
+
+// 法律文档 - 按需加载
+const Terms = () => import(/* webpackChunkName: "legal" */ '../views/legal/Terms.vue')
+const Privacy = () => import(/* webpackChunkName: "legal" */ '../views/legal/Privacy.vue')
 const NodeForm = () => import(/* webpackChunkName: "node-admin" */ '../views/NodeForm.vue')
 const AdminNodeGroups = () => import(/* webpackChunkName: "node-admin" */ '../views/AdminNodeGroups.vue')
 const NodeDashboard = () => import(/* webpackChunkName: "node-admin" */ '../views/NodeDashboard.vue')
@@ -389,6 +393,20 @@ const routes = [
         }
       }
     ]
+  },
+  
+  // 法律文档路由（无需认证）
+  {
+    path: '/legal/terms',
+    name: 'Terms',
+    component: Terms,
+    meta: { title: '服务条款' }
+  },
+  {
+    path: '/legal/privacy',
+    name: 'Privacy',
+    component: Privacy,
+    meta: { title: '隐私政策' }
   },
   
   // 404 页面
