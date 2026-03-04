@@ -77,6 +77,7 @@ func (s *Server) Start() error {
 		s.proxyManager,
 		s.repos,
 		s.logService,
+		s.certificateService,
 	)
 	s.router.Setup()
 

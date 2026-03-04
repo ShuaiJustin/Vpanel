@@ -12,6 +12,7 @@ import (
 	"v/internal/api/handlers"
 	"v/internal/api/middleware"
 	"v/internal/auth"
+	"v/internal/certificate"
 	"v/internal/commercial/balance"
 	"v/internal/commercial/commission"
 	"v/internal/commercial/coupon"
@@ -46,16 +47,23 @@ import (
 
 // Router manages API routes.
 type Router struct {
-	engine            *gin.Engine
-	config            *config.Config
-	logger            logger.Logger
-	authService       *auth.Service
-	proxyManager      proxy.Manager
-	repos             *repository.Repositories
-	settingsService   *settings.Service
-	xrayManager       xray.Manager
-	logService        *logservice.Service
-	nodeHealthChecker *node.HealthChecker
+	engine              *gin.Engine
+	config              *config.Config
+	logger              logger.Logger
+	authService         *auth.Service
+	proxyManager        proxy.Manager
+	repos               *repository.Repositories
+	settingsService     *settings.Service
+	xrayManager         xray.Manager
+	logService          *logservice.Service
+	certificateService  CertificateService
+	nodeHealthChecker   *node.HealthChecker
+}
+
+// CertificateService defines the interface for certificate operations.
+type CertificateService interface {
+	Apply(ctx context.Context, req *certificate.ApplyRequest) (*repository.Certificate, error)
+	Renew(ctx context.Context, certID int64) error
 }
 
 // NewRouter creates a new API router.
@@ -66,6 +74,7 @@ func NewRouter(
 	proxyManager proxy.Manager,
 	repos *repository.Repositories,
 	logService *logservice.Service,
+	certService CertificateService,
 ) *Router {
 	// Set Gin mode based on config
 	if cfg.Server.Mode == "release" {
@@ -85,16 +94,17 @@ func NewRouter(
 	}, log)
 
 	return &Router{
-		engine:          engine,
-		config:          cfg,
-		logger:          log,
-		authService:     authService,
-		proxyManager:    proxyManager,
-		repos:           repos,
-		settingsService: settingsService,
-		xrayManager:     xrayManager,
-		logService:      logService,
-		nodeHealthChecker: nil, // 将在 Setup() 中初始化
+		engine:             engine,
+		config:             cfg,
+		logger:             log,
+		authService:        authService,
+		proxyManager:       proxyManager,
+		repos:              repos,
+		settingsService:    settingsService,
+		xrayManager:        xrayManager,
+		logService:         logService,
+		certificateService: certService,
+		nodeHealthChecker:  nil, // 将在 Setup() 中初始化
 	}
 }
 
@@ -119,7 +129,7 @@ func (r *Router) Setup() {
 	statsHandler := handlers.NewStatsHandler(r.logger, r.repos, nil)
 	settingsHandler := handlers.NewSettingsHandler(r.logger, r.settingsService)
 	xrayHandler := handlers.NewXrayHandler(r.xrayManager, r.logger)
-	certificateHandler := handlers.NewCertificateHandler(r.repos.Certificate, r.repos.Node, r.logger)
+	certificateHandler := handlers.NewCertificateHandler(r.repos.Certificate, r.repos.Node, r.certificateService, r.logger)
 	logHandler := handlers.NewLogHandler(r.logService, r.logger)
 
 	// Create IP restriction service and handler
@@ -803,8 +813,12 @@ func (r *Router) Setup() {
 	if r.config.Server.StaticPath != "" {
 		// Serve static assets (js, css, images, etc.)
 		r.engine.Static("/assets", r.config.Server.StaticPath+"/assets")
+		// Serve documentation files
+		r.engine.Static("/docs", "Docs")
 		// Serve favicon
 		r.engine.StaticFile("/favicon.ico", r.config.Server.StaticPath+"/favicon.ico")
+		// Serve documentation files
+		r.engine.Static("/docs", "./Docs")
 		// SPA fallback - serve index.html for all other routes (except API routes)
 		r.engine.NoRoute(func(c *gin.Context) {
 			// Don't serve index.html for API routes

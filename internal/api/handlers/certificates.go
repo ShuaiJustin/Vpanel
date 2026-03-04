@@ -2,12 +2,14 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"v/internal/certificate"
 	"v/internal/database/repository"
 	"v/internal/logger"
 	"v/pkg/errors"
@@ -17,14 +19,22 @@ import (
 type CertificateHandler struct {
 	certRepo repository.CertificateRepository
 	nodeRepo repository.NodeRepository
+	certSvc  CertificateService
 	logger   logger.Logger
 }
 
+// CertificateService defines the interface for certificate operations.
+type CertificateService interface {
+	Apply(ctx context.Context, req *certificate.ApplyRequest) (*repository.Certificate, error)
+	Renew(ctx context.Context, certID int64) error
+}
+
 // NewCertificateHandler creates a new certificate handler.
-func NewCertificateHandler(certRepo repository.CertificateRepository, nodeRepo repository.NodeRepository, log logger.Logger) *CertificateHandler {
+func NewCertificateHandler(certRepo repository.CertificateRepository, nodeRepo repository.NodeRepository, certSvc CertificateService, log logger.Logger) *CertificateHandler {
 	return &CertificateHandler{
 		certRepo: certRepo,
 		nodeRepo: nodeRepo,
+		certSvc:  certSvc,
 		logger:   log,
 	}
 }
@@ -58,9 +68,14 @@ type UpdateCertificateRequest struct {
 
 // ApplyCertificateRequest represents a request to apply for a certificate using ACME.
 type ApplyCertificateRequest struct {
-	Domain    string `json:"domain" binding:"required"`
-	Email     string `json:"email" binding:"required,email"`
-	AutoRenew bool   `json:"auto_renew"`
+	Domain      string            `json:"domain" binding:"required"`
+	Email       string            `json:"email" binding:"required,email"`
+	Provider    string            `json:"provider"`                // "letsencrypt" or "zerossl", default: "letsencrypt"
+	Method      string            `json:"method"`                  // "http" or "dns", default: "http"
+	DNSProvider string            `json:"dns_provider"`            // DNS provider for dns method, e.g., "dns_cf"
+	Webroot     string            `json:"webroot"`                 // Webroot path for http method, default: "/var/www/html"
+	DNSEnv      map[string]string `json:"dns_env"`                 // DNS API credentials
+	AutoRenew   bool              `json:"auto_renew"`              // Auto renew certificate
 }
 
 // toCertificateResponse converts a certificate to API response format.
@@ -281,18 +296,36 @@ func (h *CertificateHandler) Apply(c *gin.Context) {
 		return
 	}
 
-	// TODO: 实现 ACME 证书申请逻辑
-	// 1. 使用 acme.sh 或 lego 库申请证书
-	// 2. 验证域名所有权（HTTP-01 或 DNS-01 challenge）
-	// 3. 保存证书到数据库
+	// 转换为 service 层的请求
+	applyReq := &certificate.ApplyRequest{
+		Domain:      req.Domain,
+		Email:       req.Email,
+		Provider:    req.Provider,
+		Method:      req.Method,
+		DNSProvider: req.DNSProvider,
+		Webroot:     req.Webroot,
+		DNSEnv:      req.DNSEnv,
+	}
 
-	h.logger.Info("Certificate application requested",
+	// 调用 service 层申请证书
+	cert, err := h.certSvc.Apply(c.Request.Context(), applyReq)
+	if err != nil {
+		h.logger.Error("证书申请失败",
+			logger.F("domain", req.Domain),
+			logger.Err(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	h.logger.Info("证书申请已提交",
 		logger.F("domain", req.Domain),
-		logger.F("email", req.Email))
+		logger.F("cert_id", cert.ID))
 
 	c.JSON(http.StatusAccepted, gin.H{
-		"message": "证书申请已提交，请稍后查看结果",
+		"message": "证书申请已提交，正在后台处理",
 		"domain":  req.Domain,
+		"cert_id": cert.ID,
+		"status":  cert.Status,
 	})
 }
 
