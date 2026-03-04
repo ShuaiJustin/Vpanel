@@ -66,12 +66,14 @@
           />
         </el-form-item>
 
-        <el-form-item prop="agreement">
+        <el-form-item prop="agreement" class="agreement-item">
           <el-checkbox v-model="registerForm.agreement">
-            我已阅读并同意
-            <a href="#" class="agreement-link" @click.prevent="showTerms">服务条款</a>
-            和
-            <a href="#" class="agreement-link" @click.prevent="showPrivacy">隐私政策</a>
+            <span class="agreement-text">
+              我已阅读并同意
+              <a href="#" class="agreement-link" @click.prevent="showTerms">服务条款</a>
+              和
+              <a href="#" class="agreement-link" @click.prevent="showPrivacy">隐私政策</a>
+            </span>
           </el-checkbox>
         </el-form-item>
 
@@ -344,6 +346,27 @@ function showPrivacy() {
   font-size: 16px;
 }
 
+.agreement-item {
+  margin-bottom: 22px;
+}
+
+.agreement-item :deep(.el-checkbox) {
+  display: flex;
+  align-items: flex-start;
+  white-space: normal;
+}
+
+.agreement-item :deep(.el-checkbox__label) {
+  white-space: normal;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.agreement-text {
+  display: inline;
+  line-height: 1.5;
+}
+
 .agreement-link {
   color: #409eff;
   text-decoration: none;
@@ -351,6 +374,19 @@ function showPrivacy() {
 
 .agreement-link:hover {
   text-decoration: underline;
+}
+
+/* 协议勾选框样式 */
+:deep(.el-form-item) {
+  .el-checkbox {
+    white-space: normal;
+    line-height: 1.5;
+  }
+  
+  .el-checkbox__label {
+    white-space: normal;
+    line-height: 1.5;
+  }
 }
 
 /* 密码强度指示器 */

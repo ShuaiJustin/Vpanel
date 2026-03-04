@@ -302,13 +302,16 @@ case "${1:-start}" in
         echo ""
         echo -e "${GREEN}启动 V Panel...${NC}"
         if $COMPOSE_CMD up -d --build; then
+            # 读取实际的管理员密码
+            local admin_pass=$(read_env_var "V_ADMIN_PASS" ".env")
+            
             echo ""
             echo -e "${GREEN}========================================${NC}"
             echo -e "${GREEN}V Panel 启动成功！${NC}"
             echo -e "${GREEN}========================================${NC}"
             echo -e "访问地址: ${YELLOW}http://localhost:${V_SERVER_PORT}${NC}"
             echo -e "用户名:   ${YELLOW}admin${NC}"
-            echo -e "密码:     ${YELLOW}查看 .env 文件中的 V_ADMIN_PASS${NC}"
+            echo -e "密码:     ${YELLOW}${admin_pass}${NC}"
             echo -e "模式:     ${YELLOW}${V_SERVER_MODE}${NC}"
             echo ""
         else
