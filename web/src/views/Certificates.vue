@@ -527,13 +527,17 @@ onMounted(async () => {
   try {
     const response = await certificatesApi.list()
     // 处理响应格式
+    let data = []
     if (response && response.data) {
-      certificates.value = response.data
+      data = response.data
     } else if (Array.isArray(response)) {
-      certificates.value = response
-    } else {
-      certificates.value = []
+      data = response
     }
+    // 确保每个证书对象都有 autoRenew 字段
+    certificates.value = data.map(cert => ({
+      ...cert,
+      autoRenew: cert.autoRenew ?? false
+    }))
   } catch (error) {
     console.error('Failed to fetch certificates:', error)
     ElMessage.error('获取证书列表失败')
@@ -549,13 +553,17 @@ const fetchCertificates = async () => {
   try {
     const response = await certificatesApi.list()
     // 处理响应格式
+    let data = []
     if (response && response.data) {
-      certificates.value = response.data
+      data = response.data
     } else if (Array.isArray(response)) {
-      certificates.value = response
-    } else {
-      certificates.value = []
+      data = response
     }
+    // 确保每个证书对象都有 autoRenew 字段
+    certificates.value = data.map(cert => ({
+      ...cert,
+      autoRenew: cert.autoRenew ?? false
+    }))
   } catch (error) {
     console.error('Failed to fetch certificates:', error)
     ElMessage.error('获取证书列表失败')
