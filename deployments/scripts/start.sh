@@ -303,7 +303,7 @@ case "${1:-start}" in
         echo -e "${GREEN}启动 V Panel...${NC}"
         if $COMPOSE_CMD up -d --build; then
             # 读取实际的管理员密码
-            local admin_pass=$(read_env_var "V_ADMIN_PASS" ".env")
+            admin_pass=$(read_env_var "V_ADMIN_PASS" ".env")
             
             echo ""
             echo -e "${GREEN}========================================${NC}"
