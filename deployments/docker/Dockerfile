@@ -99,6 +99,9 @@ COPY --from=backend-builder /app/bin /app/bin
 # Copy frontend build
 COPY --from=frontend-builder /app/web/dist /app/web/dist
 
+# Copy documentation files
+COPY Docs /app/Docs
+
 # Copy configuration templates
 COPY configs/config.yaml.example /app/configs/config.yaml.example
 COPY configs/xray.json.example /app/configs/xray.json.example
