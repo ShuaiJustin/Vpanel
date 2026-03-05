@@ -46,7 +46,6 @@ configs/*.yaml
 # Documentation
 *.md
 !README.md
-Docs/
 .reports/
 
 # Test
