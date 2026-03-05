@@ -732,12 +732,17 @@ func (r *Router) Setup() {
 				healthChecker.PUT("/config", nodeHealthHandler.UpdateCheckerConfig)
 			}
 
-			// User node traffic routes (admin only)
-			adminUserTraffic := protected.Group("/admin/users")
-			adminUserTraffic.Use(authMiddleware.RequireRole("admin"))
+			// Admin user routes (node traffic and IP management)
+			adminUsers := protected.Group("/admin/users")
+			adminUsers.Use(authMiddleware.RequireRole("admin"))
 			{
-				adminUserTraffic.GET("/:id/node-traffic", nodeStatsHandler.GetTrafficByUser)
-				adminUserTraffic.GET("/:id/node-traffic/breakdown", nodeStatsHandler.GetUserTrafficBreakdown)
+				// Node traffic routes
+				adminUsers.GET("/:id/node-traffic", nodeStatsHandler.GetTrafficByUser)
+				adminUsers.GET("/:id/node-traffic/breakdown", nodeStatsHandler.GetUserTrafficBreakdown)
+				
+				// IP management routes
+				adminUsers.GET("/:id/online-ips", ipRestrictionHandler.GetUserOnlineIPs)
+				adminUsers.POST("/:id/kick-ip", ipRestrictionHandler.KickUserIP)
 			}
 
 			// Admin IP restriction routes
@@ -773,14 +778,6 @@ func (r *Router) Setup() {
 				adminIPSettings.PUT("/ip-restriction", ipRestrictionHandler.UpdateIPRestrictionSettings)
 			}
 
-			// Admin user IP routes
-			adminUsers := protected.Group("/admin/users")
-			adminUsers.Use(authMiddleware.RequireRole("admin"))
-			{
-				adminUsers.GET("/:id/online-ips", ipRestrictionHandler.GetUserOnlineIPs)
-				adminUsers.POST("/:id/kick-ip", ipRestrictionHandler.KickUserIP)
-			}
-
 			// User IP routes
 			userDevices := protected.Group("/user/devices")
 			{
@@ -813,12 +810,13 @@ func (r *Router) Setup() {
 	if r.config.Server.StaticPath != "" {
 		// Serve static assets (js, css, images, etc.)
 		r.engine.Static("/assets", r.config.Server.StaticPath+"/assets")
-		// Serve documentation files
-		r.engine.Static("/docs", "Docs")
+		
 		// Serve favicon
 		r.engine.StaticFile("/favicon.ico", r.config.Server.StaticPath+"/favicon.ico")
+		
 		// Serve documentation files
-		r.engine.Static("/docs", "./Docs")
+		r.engine.Static("/docs", "Docs")
+		
 		// SPA fallback - serve index.html for all other routes (except API routes)
 		r.engine.NoRoute(func(c *gin.Context) {
 			// Don't serve index.html for API routes
