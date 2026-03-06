@@ -250,14 +250,27 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 
 // isAcmeInstalled checks if acme.sh is installed.
 func (s *Service) isAcmeInstalled() bool {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return false
+	// 尝试多个可能的路径
+	possiblePaths := []string{
+		"/root/.acme.sh/acme.sh",
+		"/home/app/.acme.sh/acme.sh",
 	}
 	
-	acmePath := filepath.Join(homeDir, ".acme.sh", "acme.sh")
-	_, err = os.Stat(acmePath)
-	return err == nil
+	// 也尝试从用户主目录获取
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		possiblePaths = append(possiblePaths, filepath.Join(homeDir, ".acme.sh", "acme.sh"))
+	}
+	
+	// 检查所有可能的路径
+	for _, path := range possiblePaths {
+		if _, err := os.Stat(path); err == nil {
+			s.logger.Info("找到 acme.sh", logger.F("path", path))
+			return true
+		}
+	}
+	
+	s.logger.Warn("未找到 acme.sh，尝试的路径", logger.F("paths", possiblePaths))
+	return false
 }
 
 // installAcme automatically installs acme.sh.
@@ -465,12 +478,29 @@ func (s *Service) issueWithAcmeTest(ctx context.Context, req *ApplyRequest, cert
 
 // issueWithAcme issues a certificate using acme.sh.
 func (s *Service) issueWithAcme(ctx context.Context, req *ApplyRequest, cert *repository.Certificate) error {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("获取用户目录失败: %w", err)
+	// 查找 acme.sh 路径
+	acmePath := ""
+	possiblePaths := []string{
+		"/root/.acme.sh/acme.sh",
+		"/home/app/.acme.sh/acme.sh",
 	}
-
-	acmePath := filepath.Join(homeDir, ".acme.sh", "acme.sh")
+	
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		possiblePaths = append(possiblePaths, filepath.Join(homeDir, ".acme.sh", "acme.sh"))
+	}
+	
+	for _, path := range possiblePaths {
+		if _, err := os.Stat(path); err == nil {
+			acmePath = path
+			break
+		}
+	}
+	
+	if acmePath == "" {
+		return fmt.Errorf("未找到 acme.sh，请确保已正确安装")
+	}
+	
+	s.logger.Info("使用 acme.sh", logger.F("path", acmePath))
 
 	// 构建申请命令参数
 	args := []string{
