@@ -217,8 +217,8 @@ func (s *Service) isAcmeInstalled() bool {
 func (s *Service) installAcme(ctx context.Context) error {
 	s.logger.Info("开始安装 acme.sh")
 	
-	// 下载并安装 acme.sh
-	cmd := exec.CommandContext(ctx, "sh", "-c", "curl -s https://get.acme.sh | sh -s email=my@example.com")
+	// 下载并安装 acme.sh（使用通用邮箱）
+	cmd := exec.CommandContext(ctx, "sh", "-c", "curl -s https://get.acme.sh | sh -s email=admin@localhost")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		s.logger.Error("acme.sh 安装失败", 
