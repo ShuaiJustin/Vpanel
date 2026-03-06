@@ -38,6 +38,9 @@ type Service struct {
 	renewCtx    context.Context
 	renewCancel context.CancelFunc
 	renewWg     sync.WaitGroup
+	
+	// acme.sh 安装锁
+	installMu sync.Mutex
 }
 
 // NewService creates a new certificate service.
@@ -78,10 +81,20 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 	// 检查 acme.sh 是否安装，如果未安装则自动安装
 	if !s.isAcmeInstalled() {
 		s.logger.Info("acme.sh 未安装，开始自动安装")
-		if err := s.installAcme(ctx); err != nil {
-			return nil, fmt.Errorf("acme.sh 自动安装失败: %w，请手动安装: curl https://get.acme.sh | sh", err)
+		
+		// 使用锁防止并发安装
+		s.installMu.Lock()
+		// 再次检查，可能其他 goroutine 已经安装了
+		if !s.isAcmeInstalled() {
+			if err := s.installAcme(ctx); err != nil {
+				s.installMu.Unlock()
+				return nil, fmt.Errorf("acme.sh 自动安装失败: %w，请手动安装: curl https://get.acme.sh | sh", err)
+			}
+			s.logger.Info("acme.sh 安装成功")
+		} else {
+			s.logger.Info("acme.sh 已被其他进程安装")
 		}
-		s.logger.Info("acme.sh 安装成功")
+		s.installMu.Unlock()
 	}
 
 	// 如果提供了邮箱，更新 acme.sh 账户邮箱
