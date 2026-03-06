@@ -171,15 +171,8 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 		applyCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 
-		// 先测试申请（测试失败不阻止正式申请）
-		if err := s.issueWithAcmeTest(applyCtx, req, cert); err != nil {
-			s.logger.Warn("测试证书申请失败，将直接进行正式申请",
-				logger.F("domain", req.Domain),
-				logger.F("error", err.Error()))
-			// 不返回，继续正式申请
-		} else {
-			s.logger.Info("测试证书申请成功，开始正式申请", logger.F("domain", req.Domain))
-		}
+		// 跳过测试阶段，直接正式申请
+		s.logger.Info("开始正式申请证书（跳过测试阶段）", logger.F("domain", req.Domain))
 
 		// 正式申请（带重试）
 		var lastErr error
@@ -427,27 +420,22 @@ func (s *Service) issueWithAcme(ctx context.Context, req *ApplyRequest, cert *re
 
 	acmePath := filepath.Join(homeDir, ".acme.sh", "acme.sh")
 
-	// 如果提供了邮箱，先尝试注册/更新账户
+	// 如果提供了邮箱，先尝试注册/更新账户（失败不阻止申请）
 	if req.Email != "" {
 		registerArgs := []string{
 			"--register-account",
 			"--server", req.Provider,
 			"--accountemail", req.Email,
 		}
-		s.logger.Info("注册/更新生产账户", logger.F("email", req.Email))
+		s.logger.Info("尝试注册/更新账户", logger.F("email", req.Email))
 		registerCmd := exec.CommandContext(ctx, acmePath, registerArgs...)
 		registerOutput, registerErr := registerCmd.CombinedOutput()
 		if registerErr != nil {
-			outputStr := string(registerOutput)
-			// 如果是邮箱相关错误，直接返回
-			if strings.Contains(outputStr, "forbidden domain") || strings.Contains(outputStr, "invalidContact") {
-				return fmt.Errorf("邮箱地址无效或被拒绝: %s，请使用真实的邮箱地址", req.Email)
-			}
-			s.logger.Warn("注册生产账户失败，继续申请", 
+			s.logger.Warn("账户注册失败，将使用默认账户继续申请", 
 				logger.F("error", registerErr.Error()),
-				logger.F("output", outputStr))
+				logger.F("output", string(registerOutput)))
 		} else {
-			s.logger.Info("生产账户注册成功")
+			s.logger.Info("账户注册成功")
 		}
 	}
 
