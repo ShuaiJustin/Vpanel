@@ -84,6 +84,13 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 		s.logger.Info("acme.sh 安装成功")
 	}
 
+	// 如果提供了邮箱，更新 acme.sh 账户邮箱
+	if req.Email != "" {
+		if err := s.updateAcmeAccount(ctx, req.Email); err != nil {
+			s.logger.Warn("更新账户邮箱失败，继续申请", logger.F("error", err.Error()))
+		}
+	}
+
 	// 设置默认值
 	if req.Provider == "" {
 		req.Provider = "letsencrypt"
@@ -237,6 +244,34 @@ func (s *Service) installAcme(ctx context.Context) error {
 	return nil
 }
 
+// updateAcmeAccount updates the acme.sh account email.
+func (s *Service) updateAcmeAccount(ctx context.Context, email string) error {
+	if email == "" {
+		return nil // 如果没有提供邮箱，跳过更新
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("获取用户目录失败: %w", err)
+	}
+
+	acmePath := filepath.Join(homeDir, ".acme.sh", "acme.sh")
+
+	// 更新账户邮箱
+	cmd := exec.CommandContext(ctx, acmePath, "--update-account", "--accountemail", email)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		s.logger.Warn("更新 acme.sh 账户邮箱失败", 
+			logger.F("error", err.Error()),
+			logger.F("output", string(output)))
+		// 不返回错误，因为可能账户还未注册
+		return nil
+	}
+	
+	s.logger.Info("acme.sh 账户邮箱已更新", logger.F("email", email))
+	return nil
+}
+
 // isValidDomain validates domain name format.
 func (s *Service) isValidDomain(domain string) bool {
 	// 域名正则表达式
@@ -307,6 +342,25 @@ func (s *Service) issueWithAcmeTest(ctx context.Context, req *ApplyRequest, cert
 
 	acmePath := filepath.Join(homeDir, ".acme.sh", "acme.sh")
 
+	// 如果提供了邮箱，先尝试注册/更新账户
+	if req.Email != "" {
+		registerArgs := []string{
+			"--register-account",
+			"--server", "letsencrypt_test",
+			"--accountemail", req.Email,
+		}
+		s.logger.Info("注册/更新测试账户", logger.F("email", req.Email))
+		registerCmd := exec.CommandContext(ctx, acmePath, registerArgs...)
+		registerOutput, registerErr := registerCmd.CombinedOutput()
+		if registerErr != nil {
+			s.logger.Warn("注册测试账户失败，继续申请", 
+				logger.F("error", registerErr.Error()),
+				logger.F("output", string(registerOutput)))
+		} else {
+			s.logger.Info("测试账户注册成功")
+		}
+	}
+
 	// 构建测试命令参数
 	args := []string{
 		"--issue",
@@ -358,6 +412,25 @@ func (s *Service) issueWithAcme(ctx context.Context, req *ApplyRequest, cert *re
 	}
 
 	acmePath := filepath.Join(homeDir, ".acme.sh", "acme.sh")
+
+	// 如果提供了邮箱，先尝试注册/更新账户
+	if req.Email != "" {
+		registerArgs := []string{
+			"--register-account",
+			"--server", req.Provider,
+			"--accountemail", req.Email,
+		}
+		s.logger.Info("注册/更新生产账户", logger.F("email", req.Email))
+		registerCmd := exec.CommandContext(ctx, acmePath, registerArgs...)
+		registerOutput, registerErr := registerCmd.CombinedOutput()
+		if registerErr != nil {
+			s.logger.Warn("注册生产账户失败，继续申请", 
+				logger.F("error", registerErr.Error()),
+				logger.F("output", string(registerOutput)))
+		} else {
+			s.logger.Info("生产账户注册成功")
+		}
+	}
 
 	// 设置默认 CA
 	setCAArgs := []string{"--set-default-ca", "--server", req.Provider}
