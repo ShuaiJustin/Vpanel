@@ -102,9 +102,14 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 		if req.Webroot == "" {
 			req.Webroot = "/var/www/html" // 默认 webroot
 		}
-		// 检查 webroot 目录是否存在
+		// 检查 webroot 目录是否存在，如果不存在则创建
 		if _, err := os.Stat(req.Webroot); os.IsNotExist(err) {
-			return nil, fmt.Errorf("webroot 目录不存在: %s", req.Webroot)
+			s.logger.Warn("webroot 目录不存在，尝试创建",
+				logger.F("webroot", req.Webroot))
+			if err := os.MkdirAll(req.Webroot, 0755); err != nil {
+				return nil, fmt.Errorf("创建 webroot 目录失败: %s, 错误: %w", req.Webroot, err)
+			}
+			s.logger.Info("webroot 目录创建成功", logger.F("webroot", req.Webroot))
 		}
 	}
 

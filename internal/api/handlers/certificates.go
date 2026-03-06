@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"v/internal/api/middleware"
 	"v/internal/certificate"
 	"v/internal/database/repository"
 	"v/internal/logger"
@@ -110,14 +111,14 @@ func (h *CertificateHandler) List(c *gin.Context) {
 	certs, err := h.certRepo.List(c.Request.Context(), limit, offset)
 	if err != nil {
 		h.logger.Error("Failed to list certificates", logger.Err(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取证书列表失败"})
+		middleware.HandleInternalError(c, "获取证书列表失败", err)
 		return
 	}
 
 	total, err := h.certRepo.Count(c.Request.Context())
 	if err != nil {
 		h.logger.Error("Failed to count certificates", logger.Err(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取证书数量失败"})
+		middleware.HandleInternalError(c, "获取证书数量失败", err)
 		return
 	}
 
@@ -292,7 +293,14 @@ func (h *CertificateHandler) Delete(c *gin.Context) {
 func (h *CertificateHandler) Apply(c *gin.Context) {
 	var req ApplyCertificateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
+		middleware.HandleBadRequest(c, errors.MsgInvalidRequest)
+		return
+	}
+
+	// 检查 service 是否初始化
+	if h.certSvc == nil {
+		h.logger.Error("证书服务未初始化")
+		middleware.HandleInternalError(c, "证书服务未初始化，请联系管理员", nil)
 		return
 	}
 
@@ -313,7 +321,7 @@ func (h *CertificateHandler) Apply(c *gin.Context) {
 		h.logger.Error("证书申请失败",
 			logger.F("domain", req.Domain),
 			logger.Err(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		middleware.HandleInternalError(c, err.Error(), err)
 		return
 	}
 
