@@ -34,6 +34,7 @@ type AppError struct {
 	Code       ErrorCode      `json:"code"`
 	Message    string         `json:"message"`
 	Details    any            `json:"details,omitempty"`
+	Suggestion string         `json:"suggestion,omitempty"` // 用户友好的建议
 	Context    map[string]any `json:"context,omitempty"`
 	Cause      error          `json:"-"`
 	Operation  string         `json:"-"` // The operation that failed
@@ -45,11 +46,18 @@ type AppError struct {
 // ErrorResponse represents the standardized API error response format.
 // This is the structure returned to API clients.
 type ErrorResponse struct {
-	Code      string         `json:"code"`
-	Message   string         `json:"message"`
-	Details   any            `json:"details,omitempty"`
+	Success   bool           `json:"success"`
+	Error     *ErrorDetail   `json:"error"`
 	RequestID string         `json:"request_id,omitempty"`
 	Timestamp string         `json:"timestamp"`
+}
+
+// ErrorDetail contains detailed error information.
+type ErrorDetail struct {
+	Code       string         `json:"code"`
+	Message    string         `json:"message"`
+	Details    any            `json:"details,omitempty"`
+	Suggestion string         `json:"suggestion,omitempty"` // 用户友好的建议
 }
 
 // FieldError represents a validation error for a specific field.
@@ -125,12 +133,48 @@ func (e *AppError) HTTPStatus() int {
 // ToResponse converts AppError to ErrorResponse for API responses.
 func (e *AppError) ToResponse(requestID string) *ErrorResponse {
 	return &ErrorResponse{
-		Code:      string(e.Code),
-		Message:   e.Message,
-		Details:   e.Details,
+		Success: false,
+		Error: &ErrorDetail{
+			Code:       string(e.Code),
+			Message:    e.Message,
+			Details:    e.Details,
+			Suggestion: e.getSuggestion(),
+		},
 		RequestID: requestID,
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 	}
+}
+
+// getSuggestion returns a user-friendly suggestion based on the error code.
+func (e *AppError) getSuggestion() string {
+	if e.Suggestion != "" {
+		return e.Suggestion
+	}
+	
+	switch e.Code {
+	case ErrCodeUnauthorized:
+		return "请重新登录后再试"
+	case ErrCodeForbidden:
+		return "您没有权限执行此操作，请联系管理员"
+	case ErrCodeNotFound:
+		return "请检查资源是否存在"
+	case ErrCodeValidation, ErrCodeBadRequest:
+		return "请检查输入的参数是否正确"
+	case ErrCodeConflict:
+		return "资源已存在，请使用其他名称"
+	case ErrCodeRateLimit:
+		return "请求过于频繁，请稍后再试"
+	case ErrCodeInternal, ErrCodeDatabase:
+		return "服务器遇到问题，请稍后重试或联系管理员"
+	default:
+		return "请稍后重试，如问题持续请联系管理员"
+	}
+}
+
+// WithSuggestion sets a custom suggestion message.
+func (e *AppError) WithSuggestion(suggestion string) *AppError {
+	e.Suggestion = suggestion
+	return e
 }
 
 // WithHTTPStatus sets a custom HTTP status code.
@@ -404,8 +448,12 @@ func ToErrorResponse(err error, requestID string) *ErrorResponse {
 	}
 	// For non-AppError, return a sanitized internal error
 	return &ErrorResponse{
-		Code:      string(ErrCodeInternal),
-		Message:   "An internal error occurred",
+		Success: false,
+		Error: &ErrorDetail{
+			Code:       string(ErrCodeInternal),
+			Message:    "服务器内部错误",
+			Suggestion: "请稍后重试，如问题持续请联系管理员",
+		},
 		RequestID: requestID,
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 	}

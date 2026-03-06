@@ -82,11 +82,23 @@ RUN apk add --no-cache \
     tzdata \
     sqlite \
     wget \
+    curl \
+    bash \
+    openssl \
+    socat \
     && rm -rf /var/cache/apk/*
 
 # Create non-root user
 RUN addgroup -g 1000 vpanel && \
     adduser -u 1000 -G vpanel -s /bin/sh -D vpanel
+
+# Install acme.sh as vpanel user
+USER vpanel
+RUN curl https://get.acme.sh | sh -s email=admin@example.com && \
+    ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
+
+# Switch back to root for remaining setup
+USER root
 
 WORKDIR /app
 

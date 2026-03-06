@@ -75,9 +75,13 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 		logger.F("provider", req.Provider),
 		logger.F("method", req.Method))
 
-	// 检查 acme.sh 是否安装
+	// 检查 acme.sh 是否安装，如果未安装则自动安装
 	if !s.isAcmeInstalled() {
-		return nil, fmt.Errorf("acme.sh 未安装，请先安装: curl https://get.acme.sh | sh")
+		s.logger.Info("acme.sh 未安装，开始自动安装")
+		if err := s.installAcme(ctx); err != nil {
+			return nil, fmt.Errorf("acme.sh 自动安装失败: %w，请手动安装: curl https://get.acme.sh | sh", err)
+		}
+		s.logger.Info("acme.sh 安装成功")
 	}
 
 	// 设置默认值
@@ -206,6 +210,30 @@ func (s *Service) isAcmeInstalled() bool {
 	acmePath := filepath.Join(homeDir, ".acme.sh", "acme.sh")
 	_, err = os.Stat(acmePath)
 	return err == nil
+}
+
+// installAcme automatically installs acme.sh.
+func (s *Service) installAcme(ctx context.Context) error {
+	s.logger.Info("开始安装 acme.sh")
+	
+	// 下载并安装 acme.sh
+	cmd := exec.CommandContext(ctx, "sh", "-c", "curl -s https://get.acme.sh | sh -s email=my@example.com")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		s.logger.Error("acme.sh 安装失败", 
+			logger.F("error", err.Error()),
+			logger.F("output", string(output)))
+		return fmt.Errorf("安装失败: %w", err)
+	}
+	
+	s.logger.Info("acme.sh 安装完成", logger.F("output", string(output)))
+	
+	// 验证安装
+	if !s.isAcmeInstalled() {
+		return fmt.Errorf("安装完成但无法找到 acme.sh")
+	}
+	
+	return nil
 }
 
 // isValidDomain validates domain name format.
