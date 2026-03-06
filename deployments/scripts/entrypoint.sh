@@ -5,6 +5,18 @@ set -e
 
 echo "Starting V Panel..."
 
+# 安装 acme.sh（如果未安装）
+if [ ! -f "$HOME/.acme.sh/acme.sh" ]; then
+    echo "Installing acme.sh..."
+    if curl -s https://get.acme.sh | sh -s email=admin@example.com; then
+        echo "✓ acme.sh installed successfully"
+        # 设置默认 CA
+        $HOME/.acme.sh/acme.sh --set-default-ca --server letsencrypt 2>/dev/null || true
+    else
+        echo "⚠ acme.sh installation failed, will retry on first certificate request"
+    fi
+fi
+
 # 生产环境安全检查
 if [ "${V_SERVER_MODE}" = "release" ]; then
     echo "Production mode detected, performing security checks..."
