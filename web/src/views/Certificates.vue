@@ -152,7 +152,7 @@
           </el-alert>
 
           <el-form-item label="Webroot 路径" prop="webroot">
-            <el-input v-model="applyForm.webroot" placeholder="/var/www/html">
+            <el-input v-model="applyForm.webroot" placeholder="/app/data/webroot">
               <template #append>
                 <el-tooltip content="网站根目录，用于存放验证文件" placement="top">
                   <el-icon><QuestionFilled /></el-icon>
@@ -458,7 +458,7 @@ const applyForm = ref({
   email: '',
   provider: 'letsencrypt',
   validationMethod: 'http',
-  webroot: '/var/www/html',
+  webroot: '/app/data/webroot',
   dnsProvider: '',
   cfToken: '',
   cfAccountId: '',
@@ -580,7 +580,7 @@ const handleApply = () => {
     email: '',
     provider: 'letsencrypt',
     validationMethod: 'http',
-    webroot: '/var/www/html',
+    webroot: '/app/data/webroot',
     dnsProvider: '',
     cfToken: '',
     cfAccountId: '',
@@ -605,7 +605,7 @@ const handleMethodChange = (method) => {
     applyForm.value.webroot = ''
   } else {
     // 如果切换到 HTTP 验证，设置默认 webroot
-    applyForm.value.webroot = '/var/www/html'
+    applyForm.value.webroot = '/app/data/webroot'
     applyForm.value.dnsProvider = ''
   }
 }
