@@ -293,9 +293,18 @@ func (h *CertificateHandler) Delete(c *gin.Context) {
 func (h *CertificateHandler) Apply(c *gin.Context) {
 	var req ApplyCertificateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Error("解析证书申请请求失败", logger.Err(err))
 		middleware.HandleBadRequest(c, errors.MsgInvalidRequest)
 		return
 	}
+
+	h.logger.Info("收到证书申请请求",
+		logger.F("domain", req.Domain),
+		logger.F("email", req.Email),
+		logger.F("provider", req.Provider),
+		logger.F("method", req.Method),
+		logger.F("dns_provider", req.DNSProvider),
+		logger.F("webroot", req.Webroot))
 
 	// 检查 service 是否初始化
 	if h.certSvc == nil {
@@ -321,7 +330,14 @@ func (h *CertificateHandler) Apply(c *gin.Context) {
 		h.logger.Error("证书申请失败",
 			logger.F("domain", req.Domain),
 			logger.Err(err))
-		middleware.HandleInternalError(c, err.Error(), err)
+		// 返回更详细的错误信息给前端
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "CERTIFICATE_APPLY_FAILED",
+				"message": err.Error(),
+			},
+		})
 		return
 	}
 
