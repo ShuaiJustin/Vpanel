@@ -98,13 +98,6 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 		s.installMu.Unlock()
 	}
 
-	// 如果提供了邮箱，更新 acme.sh 账户邮箱
-	if req.Email != "" {
-		if err := s.updateAcmeAccount(ctx, req.Email); err != nil {
-			s.logger.Warn("更新账户邮箱失败，继续申请", logger.F("error", err.Error()))
-		}
-	}
-
 	// 设置默认值
 	if req.Provider == "" {
 		req.Provider = "letsencrypt"
@@ -277,8 +270,8 @@ func (s *Service) isAcmeInstalled() bool {
 func (s *Service) installAcme(ctx context.Context) error {
 	s.logger.Info("开始安装 acme.sh")
 	
-	// 使用国内镜像加速（如果在中国）
-	installCmd := "curl -s https://get.acme.sh | sh -s email=admin@localhost"
+	// 不指定邮箱，让用户在申请证书时提供
+	installCmd := "curl -s https://get.acme.sh | sh"
 	
 	// 下载并安装 acme.sh
 	cmd := exec.CommandContext(ctx, "sh", "-c", installCmd)
@@ -296,12 +289,6 @@ func (s *Service) installAcme(ctx context.Context) error {
 	if !s.isAcmeInstalled() {
 		return fmt.Errorf("安装完成但无法找到 acme.sh")
 	}
-	
-	// 设置默认 CA 为 Let's Encrypt
-	homeDir, _ := os.UserHomeDir()
-	acmePath := filepath.Join(homeDir, ".acme.sh", "acme.sh")
-	setCACmd := exec.CommandContext(ctx, acmePath, "--set-default-ca", "--server", "letsencrypt")
-	setCACmd.Run() // 忽略错误
 	
 	return nil
 }
