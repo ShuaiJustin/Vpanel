@@ -111,8 +111,8 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 	}
 	if req.Method == "http" {
 		if req.Webroot == "" {
-			// 使用项目目录下的 webroot，避免权限问题
-			req.Webroot = "./data/webroot"
+			// 使用绝对路径，与前端保持一致
+			req.Webroot = "/app/data/webroot"
 		}
 		// 检查 webroot 目录是否存在，如果不存在则创建
 		if _, err := os.Stat(req.Webroot); os.IsNotExist(err) {
@@ -128,6 +128,19 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 	// 验证域名格式
 	if !s.isValidDomain(req.Domain) {
 		return nil, fmt.Errorf("无效的域名格式: %s", req.Domain)
+	}
+
+	// 检查域名是否已存在证书
+	existingCert, err := s.certRepo.GetByDomain(ctx, req.Domain)
+	if err == nil && existingCert != nil {
+		// 如果证书状态是 pending，不允许重复申请
+		if existingCert.Status == "pending" {
+			return nil, fmt.Errorf("该域名的证书正在申请中，请稍后再试")
+		}
+		// 如果证书状态是 active，提示用户
+		if existingCert.Status == "active" {
+			s.logger.Warn("域名已有有效证书，将覆盖", logger.F("domain", req.Domain))
+		}
 	}
 
 	// HTTP 验证方式需要检查域名解析
@@ -158,19 +171,15 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 		applyCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 
-		// 先测试申请
+		// 先测试申请（测试失败不阻止正式申请）
 		if err := s.issueWithAcmeTest(applyCtx, req, cert); err != nil {
-			s.logger.Error("测试证书申请失败",
+			s.logger.Warn("测试证书申请失败，将直接进行正式申请",
 				logger.F("domain", req.Domain),
 				logger.F("error", err.Error()))
-			
-			cert.Status = "failed"
-			cert.ErrorMessage = s.parseAcmeError(err)
-			s.certRepo.Update(context.Background(), cert)
-			return
+			// 不返回，继续正式申请
+		} else {
+			s.logger.Info("测试证书申请成功，开始正式申请", logger.F("domain", req.Domain))
 		}
-
-		s.logger.Info("测试证书申请成功，开始正式申请", logger.F("domain", req.Domain))
 
 		// 正式申请（带重试）
 		var lastErr error
@@ -353,9 +362,14 @@ func (s *Service) issueWithAcmeTest(ctx context.Context, req *ApplyRequest, cert
 		registerCmd := exec.CommandContext(ctx, acmePath, registerArgs...)
 		registerOutput, registerErr := registerCmd.CombinedOutput()
 		if registerErr != nil {
+			outputStr := string(registerOutput)
+			// 如果是邮箱相关错误，直接返回
+			if strings.Contains(outputStr, "forbidden domain") || strings.Contains(outputStr, "invalidContact") {
+				return fmt.Errorf("邮箱地址无效或被拒绝: %s，请使用真实的邮箱地址", req.Email)
+			}
 			s.logger.Warn("注册测试账户失败，继续申请", 
 				logger.F("error", registerErr.Error()),
-				logger.F("output", string(registerOutput)))
+				logger.F("output", outputStr))
 		} else {
 			s.logger.Info("测试账户注册成功")
 		}
@@ -424,9 +438,14 @@ func (s *Service) issueWithAcme(ctx context.Context, req *ApplyRequest, cert *re
 		registerCmd := exec.CommandContext(ctx, acmePath, registerArgs...)
 		registerOutput, registerErr := registerCmd.CombinedOutput()
 		if registerErr != nil {
+			outputStr := string(registerOutput)
+			// 如果是邮箱相关错误，直接返回
+			if strings.Contains(outputStr, "forbidden domain") || strings.Contains(outputStr, "invalidContact") {
+				return fmt.Errorf("邮箱地址无效或被拒绝: %s，请使用真实的邮箱地址", req.Email)
+			}
 			s.logger.Warn("注册生产账户失败，继续申请", 
 				logger.F("error", registerErr.Error()),
-				logger.F("output", string(registerOutput)))
+				logger.F("output", outputStr))
 		} else {
 			s.logger.Info("生产账户注册成功")
 		}
