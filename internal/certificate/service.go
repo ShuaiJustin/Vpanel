@@ -69,6 +69,7 @@ type ApplyRequest struct {
 	DNSProvider string            // DNS provider for dns method, e.g., "dns_cf" for Cloudflare
 	Webroot     string            // Webroot path for http method
 	DNSEnv      map[string]string // DNS API credentials (e.g., CF_Token, CF_Account_ID)
+	Wildcard    bool              // 是否申请泛域名证书
 }
 
 // Apply applies for a new certificate using acme.sh.
@@ -112,6 +113,26 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 		req.Method = "http"
 	}
 
+	// 检查通配符域名
+	if strings.HasPrefix(req.Domain, "*.") {
+		s.logger.Info("检测到通配符域名，将使用 DNS 验证", logger.F("domain", req.Domain))
+		req.Wildcard = true
+		// 通配符域名必须使用 DNS 验证
+		if req.Method != "dns" {
+			return nil, fmt.Errorf("通配符域名（%s）只能使用 DNS 验证方式", req.Domain)
+		}
+	} else if req.Wildcard {
+		// 如果用户勾选了泛域名选项，但域名不是 *. 开头，自动添加
+		if !strings.HasPrefix(req.Domain, "*.") {
+			req.Domain = "*." + req.Domain
+			s.logger.Info("自动转换为泛域名", logger.F("domain", req.Domain))
+		}
+		// 泛域名必须使用 DNS 验证
+		if req.Method != "dns" {
+			return nil, fmt.Errorf("泛域名证书只能使用 DNS 验证方式")
+		}
+	}
+	
 	// 验证请求参数
 	if req.Method == "dns" {
 		if req.DNSProvider == "" {
@@ -123,6 +144,10 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 		}
 	}
 	if req.Method == "http" {
+		// 通配符域名只能使用 DNS 验证
+		if strings.HasPrefix(req.Domain, "*.") || req.Wildcard {
+			return nil, fmt.Errorf("通配符域名（%s）只能使用 DNS 验证方式", req.Domain)
+		}
 		if req.Webroot == "" {
 			// 使用绝对路径，与前端保持一致
 			req.Webroot = "/app/data/webroot"
@@ -239,8 +264,11 @@ func (s *Service) isAcmeInstalled() bool {
 func (s *Service) installAcme(ctx context.Context) error {
 	s.logger.Info("开始安装 acme.sh")
 	
-	// 下载并安装 acme.sh（使用通用邮箱）
-	cmd := exec.CommandContext(ctx, "sh", "-c", "curl -s https://get.acme.sh | sh -s email=admin@localhost")
+	// 使用国内镜像加速（如果在中国）
+	installCmd := "curl -s https://get.acme.sh | sh -s email=admin@localhost"
+	
+	// 下载并安装 acme.sh
+	cmd := exec.CommandContext(ctx, "sh", "-c", installCmd)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		s.logger.Error("acme.sh 安装失败", 
@@ -249,12 +277,18 @@ func (s *Service) installAcme(ctx context.Context) error {
 		return fmt.Errorf("安装失败: %w", err)
 	}
 	
-	s.logger.Info("acme.sh 安装完成", logger.F("output", string(output)))
+	s.logger.Info("acme.sh 安装完成")
 	
 	// 验证安装
 	if !s.isAcmeInstalled() {
 		return fmt.Errorf("安装完成但无法找到 acme.sh")
 	}
+	
+	// 设置默认 CA 为 Let's Encrypt
+	homeDir, _ := os.UserHomeDir()
+	acmePath := filepath.Join(homeDir, ".acme.sh", "acme.sh")
+	setCACmd := exec.CommandContext(ctx, acmePath, "--set-default-ca", "--server", "letsencrypt")
+	setCACmd.Run() // 忽略错误
 	
 	return nil
 }
@@ -289,6 +323,11 @@ func (s *Service) updateAcmeAccount(ctx context.Context, email string) error {
 
 // isValidDomain validates domain name format.
 func (s *Service) isValidDomain(domain string) bool {
+	// 支持通配符域名
+	if strings.HasPrefix(domain, "*.") {
+		domain = domain[2:] // 移除 *. 前缀
+	}
+	
 	// 域名正则表达式
 	domainRegex := regexp.MustCompile(`^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$`)
 	return domainRegex.MatchString(domain)
@@ -433,73 +472,62 @@ func (s *Service) issueWithAcme(ctx context.Context, req *ApplyRequest, cert *re
 
 	acmePath := filepath.Join(homeDir, ".acme.sh", "acme.sh")
 
-	// 如果提供了邮箱，先尝试注册/更新账户（失败不阻止申请）
-	if req.Email != "" {
-		registerArgs := []string{
-			"--register-account",
-			"--server", req.Provider,
-			"--accountemail", req.Email,
-		}
-		s.logger.Info("尝试注册/更新账户", logger.F("email", req.Email))
-		registerCmd := exec.CommandContext(ctx, acmePath, registerArgs...)
-		registerOutput, registerErr := registerCmd.CombinedOutput()
-		if registerErr != nil {
-			s.logger.Warn("账户注册失败，将使用默认账户继续申请", 
-				logger.F("error", registerErr.Error()),
-				logger.F("output", string(registerOutput)))
-		} else {
-			s.logger.Info("账户注册成功")
-		}
-	}
-
-	// 设置默认 CA
-	setCAArgs := []string{"--set-default-ca", "--server", req.Provider}
-	cmd := exec.CommandContext(ctx, acmePath, setCAArgs...)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		s.logger.Warn("设置默认 CA 失败", 
-			logger.F("error", err.Error()),
-			logger.F("output", string(output)))
-	}
-
-	// 构建正式申请命令参数
+	// 构建申请命令参数
 	args := []string{
 		"--issue",
 		"-d", req.Domain,
-		"--keylength", "ec-256", // 使用 ECC 证书
-		"--force",               // 强制更新（覆盖测试证书）
+		"--keylength", "ec-256",
+		"--force", // 强制申请，覆盖已存在的证书
 	}
 
-	// 添加 Email（如果提供）
+	// 添加邮箱（如果提供）
 	if req.Email != "" {
 		args = append(args, "--accountemail", req.Email)
 	}
 
 	// 设置验证方式
 	if req.Method == "dns" {
+		if req.DNSProvider == "" {
+			return fmt.Errorf("DNS 验证需要指定 DNS 提供商")
+		}
 		args = append(args, "--dns", req.DNSProvider)
 	} else {
 		// HTTP 验证
+		if req.Webroot == "" {
+			req.Webroot = "/app/data/webroot"
+		}
 		args = append(args, "-w", req.Webroot)
 	}
 
-	// 执行申请命令
-	s.logger.Info("执行 acme.sh 正式申请", logger.F("args", strings.Join(args, " ")))
+	// 设置服务器
+	if req.Provider != "" {
+		args = append(args, "--server", req.Provider)
+	}
+
+	s.logger.Info("开始申请证书", 
+		logger.F("domain", req.Domain),
+		logger.F("method", req.Method),
+		logger.F("wildcard", req.Wildcard),
+		logger.F("dns_provider", req.DNSProvider),
+		logger.F("args", strings.Join(args, " ")))
 	
-	cmd = exec.CommandContext(ctx, acmePath, args...)
+	cmd := exec.CommandContext(ctx, acmePath, args...)
 	
 	// 设置 DNS API 环境变量
 	if req.Method == "dns" && len(req.DNSEnv) > 0 {
 		cmd.Env = os.Environ()
 		for key, value := range req.DNSEnv {
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
-			// 不记录敏感信息到日志
-			s.logger.Debug("设置 DNS 环境变量", logger.F("key", key))
 		}
 	}
 	
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("acme.sh 申请失败: %s, output: %s", err.Error(), string(output))
+		s.logger.Error("证书申请失败", 
+			logger.F("domain", req.Domain),
+			logger.F("error", err.Error()),
+			logger.F("output", string(output)))
+		return fmt.Errorf("证书申请失败: %s", s.parseAcmeError(fmt.Errorf("%s", string(output))))
 	}
 
 	s.logger.Info("证书申请成功", logger.F("domain", req.Domain))
@@ -523,10 +551,13 @@ func (s *Service) issueWithAcme(ctx context.Context, req *ApplyRequest, cert *re
 
 	cmd = exec.CommandContext(ctx, acmePath, installArgs...)
 	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("安装证书失败: %s, output: %s", err.Error(), string(output))
+		s.logger.Error("安装证书失败", 
+			logger.F("error", err.Error()),
+			logger.F("output", string(output)))
+		return fmt.Errorf("安装证书失败: %w", err)
 	}
 
-	// 设置私钥文件权限为 0600（仅所有者可读写）
+	// 设置私钥文件权限
 	if err := os.Chmod(keyFile, 0600); err != nil {
 		s.logger.Warn("设置私钥文件权限失败", logger.Err(err))
 	}

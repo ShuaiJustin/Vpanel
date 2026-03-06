@@ -118,6 +118,18 @@
           </el-input>
         </el-form-item>
 
+        <el-form-item label="泛域名证书" prop="wildcard">
+          <el-switch 
+            v-model="applyForm.wildcard"
+            active-text="申请泛域名证书（*.domain.com）"
+            inactive-text="申请单域名证书"
+            @change="handleWildcardChange"
+          />
+          <div style="font-size: 12px; color: #909399; margin-top: 5px;">
+            泛域名证书可以保护主域名及其所有子域名，但只能使用 DNS 验证方式
+          </div>
+        </el-form-item>
+
         <el-form-item label="Email" prop="email">
           <el-input v-model="applyForm.email" placeholder="用于接收证书过期通知" />
         </el-form-item>
@@ -471,7 +483,8 @@ const applyForm = ref({
   awsAccessKeyId: '',
   awsSecretAccessKey: '',
   dnsRecords: [],
-  validationPath: ''
+  validationPath: '',
+  wildcard: false
 })
 const applyRules = {
   domain: [
@@ -593,7 +606,8 @@ const handleApply = () => {
     awsAccessKeyId: '',
     awsSecretAccessKey: '',
     dnsRecords: [],
-    validationPath: ''
+    validationPath: '',
+    wildcard: false
   }
   applyDialogVisible.value = true
 }
@@ -607,6 +621,22 @@ const handleMethodChange = (method) => {
     // 如果切换到 HTTP 验证，设置默认 webroot
     applyForm.value.webroot = '/app/data/webroot'
     applyForm.value.dnsProvider = ''
+    // HTTP 验证不支持泛域名
+    if (applyForm.value.wildcard) {
+      ElMessage.warning('HTTP 验证不支持泛域名证书，已自动切换为单域名模式')
+      applyForm.value.wildcard = false
+    }
+  }
+}
+
+// 处理泛域名选项变更
+const handleWildcardChange = (value) => {
+  if (value) {
+    // 开启泛域名，强制使用 DNS 验证
+    if (applyForm.value.validationMethod !== 'dns') {
+      applyForm.value.validationMethod = 'dns'
+      ElMessage.info('泛域名证书只能使用 DNS 验证，已自动切换')
+    }
   }
 }
 
@@ -654,7 +684,8 @@ const confirmApply = async () => {
       method: applyForm.value.validationMethod,
       webroot: applyForm.value.webroot,
       dns_provider: applyForm.value.dnsProvider,
-      dns_env: {}
+      dns_env: {},
+      wildcard: applyForm.value.wildcard
     }
 
     // 根据 DNS 提供商添加相应的凭证

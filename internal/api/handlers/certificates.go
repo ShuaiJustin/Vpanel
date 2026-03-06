@@ -74,9 +74,10 @@ type ApplyCertificateRequest struct {
 	Provider    string            `json:"provider"`                // "letsencrypt" or "zerossl", default: "letsencrypt"
 	Method      string            `json:"method"`                  // "http" or "dns", default: "http"
 	DNSProvider string            `json:"dns_provider"`            // DNS provider for dns method, e.g., "dns_cf"
-	Webroot     string            `json:"webroot"`                 // Webroot path for http method, default: "/var/www/html"
+	Webroot     string            `json:"webroot"`                 // Webroot path for http method, default: "/app/data/webroot"
 	DNSEnv      map[string]string `json:"dns_env"`                 // DNS API credentials
 	AutoRenew   bool              `json:"auto_renew"`              // Auto renew certificate
+	Wildcard    bool              `json:"wildcard"`                // 是否申请泛域名证书（*.domain.com）
 }
 
 // toCertificateResponse converts a certificate to API response format.
@@ -322,6 +323,7 @@ func (h *CertificateHandler) Apply(c *gin.Context) {
 		DNSProvider: req.DNSProvider,
 		Webroot:     req.Webroot,
 		DNSEnv:      req.DNSEnv,
+		Wildcard:    req.Wildcard,
 	}
 
 	// 调用 service 层申请证书
