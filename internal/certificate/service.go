@@ -104,7 +104,8 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 	}
 	if req.Method == "http" {
 		if req.Webroot == "" {
-			req.Webroot = "/var/www/html" // 默认 webroot
+			// 使用项目目录下的 webroot，避免权限问题
+			req.Webroot = "./data/webroot"
 		}
 		// 检查 webroot 目录是否存在，如果不存在则创建
 		if _, err := os.Stat(req.Webroot); os.IsNotExist(err) {
