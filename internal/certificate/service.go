@@ -87,11 +87,21 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 		s.installMu.Lock()
 		// 再次检查，可能其他 goroutine 已经安装了
 		if !s.isAcmeInstalled() {
-			if err := s.installAcme(ctx); err != nil {
-				s.installMu.Unlock()
-				return nil, fmt.Errorf("acme.sh 自动安装失败: %w，请手动安装: curl https://get.acme.sh | sh", err)
-			}
-			s.logger.Info("acme.sh 安装成功")
+			// 在后台安装，不阻塞当前请求
+			go func() {
+				installCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+				defer cancel()
+				
+				if err := s.installAcme(installCtx); err != nil {
+					s.logger.Error("acme.sh 自动安装失败", logger.Err(err))
+				} else {
+					s.logger.Info("acme.sh 安装成功")
+				}
+			}()
+			s.installMu.Unlock()
+			
+			// 返回提示信息，让用户稍后重试
+			return nil, fmt.Errorf("acme.sh 正在后台安装中，请等待 1-2 分钟后重试")
 		} else {
 			s.logger.Info("acme.sh 已被其他进程安装")
 		}
