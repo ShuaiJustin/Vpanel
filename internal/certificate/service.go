@@ -24,6 +24,7 @@ import (
 
 	"v/internal/database/repository"
 	"v/internal/logger"
+	apperrors "v/pkg/errors"
 )
 
 // Service provides certificate management operations.
@@ -33,12 +34,12 @@ type Service struct {
 	deploymentRepo repository.CertificateDeploymentRepository
 	logger         logger.Logger
 	certDir        string // 证书存储目录
-	
+
 	// 自动续期控制
 	renewCtx    context.Context
 	renewCancel context.CancelFunc
 	renewWg     sync.WaitGroup
-	
+
 	// acme.sh 安装锁
 	installMu sync.Mutex
 }
@@ -70,6 +71,7 @@ type ApplyRequest struct {
 	Webroot     string            // Webroot path for http method
 	DNSEnv      map[string]string // DNS API credentials (e.g., CF_Token, CF_Account_ID)
 	Wildcard    bool              // 是否申请泛域名证书
+	AutoRenew   *bool             // 是否自动续期（nil 表示默认开启）
 }
 
 // Apply applies for a new certificate using acme.sh.
@@ -82,26 +84,21 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 	// 检查 acme.sh 是否安装，如果未安装则自动安装
 	if !s.isAcmeInstalled() {
 		s.logger.Info("acme.sh 未安装，开始自动安装")
-		
+
 		// 使用锁防止并发安装
 		s.installMu.Lock()
 		// 再次检查，可能其他 goroutine 已经安装了
 		if !s.isAcmeInstalled() {
-			// 在后台安装，不阻塞当前请求
-			go func() {
-				installCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-				defer cancel()
-				
-				if err := s.installAcme(installCtx); err != nil {
-					s.logger.Error("acme.sh 自动安装失败", logger.Err(err))
-				} else {
-					s.logger.Info("acme.sh 安装成功")
-				}
-			}()
-			s.installMu.Unlock()
-			
-			// 返回提示信息，让用户稍后重试
-			return nil, fmt.Errorf("acme.sh 正在后台安装中，请等待 1-2 分钟后重试")
+			// 同步安装，确保完成后再继续
+			installCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+			defer cancel()
+
+			if err := s.installAcme(installCtx); err != nil {
+				s.installMu.Unlock()
+				s.logger.Error("acme.sh 自动安装失败", logger.Err(err))
+				return nil, fmt.Errorf("acme.sh 安装失败: %w，请手动安装或联系管理员", err)
+			}
+			s.logger.Info("acme.sh 安装成功")
 		} else {
 			s.logger.Info("acme.sh 已被其他进程安装")
 		}
@@ -122,7 +119,7 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 		req.Wildcard = true
 		// 通配符域名必须使用 DNS 验证
 		if req.Method != "dns" {
-			return nil, fmt.Errorf("通配符域名（%s）只能使用 DNS 验证方式", req.Domain)
+			return nil, apperrors.NewBadRequestError(fmt.Sprintf("通配符域名（%s）只能使用 DNS 验证方式", req.Domain))
 		}
 	} else if req.Wildcard {
 		// 如果用户勾选了泛域名选项，但域名不是 *. 开头，自动添加
@@ -132,24 +129,24 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 		}
 		// 泛域名必须使用 DNS 验证
 		if req.Method != "dns" {
-			return nil, fmt.Errorf("泛域名证书只能使用 DNS 验证方式")
+			return nil, apperrors.NewBadRequestError("泛域名证书只能使用 DNS 验证方式")
 		}
 	}
-	
+
 	// 验证请求参数
 	if req.Method == "dns" {
 		if req.DNSProvider == "" {
-			return nil, fmt.Errorf("DNS 验证方式需要指定 DNS 提供商，如: dns_cf (Cloudflare)")
+			return nil, apperrors.NewBadRequestError("DNS 验证方式需要指定 DNS 提供商，如: dns_cf (Cloudflare)")
 		}
 		// 检查 DNS API 凭证
 		if len(req.DNSEnv) == 0 {
-			return nil, fmt.Errorf("DNS 验证方式需要提供 API 凭证")
+			return nil, apperrors.NewBadRequestError("DNS 验证方式需要提供 API 凭证")
 		}
 	}
 	if req.Method == "http" {
 		// 通配符域名只能使用 DNS 验证
 		if strings.HasPrefix(req.Domain, "*.") || req.Wildcard {
-			return nil, fmt.Errorf("通配符域名（%s）只能使用 DNS 验证方式", req.Domain)
+			return nil, apperrors.NewBadRequestError(fmt.Sprintf("通配符域名（%s）只能使用 DNS 验证方式", req.Domain))
 		}
 		if req.Webroot == "" {
 			// 使用绝对路径，与前端保持一致
@@ -168,15 +165,18 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 
 	// 验证域名格式
 	if !s.isValidDomain(req.Domain) {
-		return nil, fmt.Errorf("无效的域名格式: %s", req.Domain)
+		return nil, apperrors.NewBadRequestError(fmt.Sprintf("无效的域名格式: %s", req.Domain))
 	}
 
 	// 检查域名是否已存在证书
 	existingCert, err := s.certRepo.GetByDomain(ctx, req.Domain)
+	if err != nil && !apperrors.IsNotFound(err) {
+		return nil, fmt.Errorf("查询证书记录失败: %w", err)
+	}
 	if err == nil && existingCert != nil {
 		// 如果证书状态是 pending，不允许重复申请
 		if existingCert.Status == "pending" {
-			return nil, fmt.Errorf("该域名的证书正在申请中，请稍后再试")
+			return nil, apperrors.New(apperrors.ErrCodeConflict, "该域名的证书正在申请中，请稍后再试")
 		}
 		// 如果证书状态是 active，提示用户
 		if existingCert.Status == "active" {
@@ -187,7 +187,7 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 	// HTTP 验证方式需要检查域名解析
 	if req.Method == "http" {
 		if err := s.checkDomainResolution(req.Domain); err != nil {
-			s.logger.Warn("域名解析检查失败", 
+			s.logger.Warn("域名解析检查失败",
 				logger.F("domain", req.Domain),
 				logger.F("error", err.Error()))
 			// 不阻止申请，只是警告
@@ -195,15 +195,48 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 	}
 
 	// 创建证书记录
-	cert := &repository.Certificate{
-		Domain:    req.Domain,
-		Provider:  req.Provider,
-		AutoRenew: true,
-		Status:    "pending",
+	autoRenew := true
+	if req.AutoRenew != nil {
+		autoRenew = *req.AutoRenew
 	}
 
-	if err := s.certRepo.Create(ctx, cert); err != nil {
-		return nil, fmt.Errorf("创建证书记录失败: %w", err)
+	estimatedExpire := time.Now().AddDate(0, 3, 0) // ACME 证书通常 90 天有效期
+	var cert *repository.Certificate
+	previousStatus := ""
+	if existingCert != nil {
+		// 复用现有记录，支持 failed/expired/active 状态下重新申请
+		cert = existingCert
+		previousStatus = existingCert.Status
+		cert.Provider = req.Provider
+		cert.AutoRenew = autoRenew
+		// 对于已有有效证书，重签发失败时应保持可用状态
+		if existingCert.Status == "active" {
+			cert.Status = "active"
+		} else {
+			cert.Status = "pending"
+		}
+		cert.ErrorMessage = ""
+		cert.ExpiresAt = estimatedExpire
+		cert.ExpireDate = &estimatedExpire
+		if err := s.certRepo.Update(ctx, cert); err != nil {
+			return nil, fmt.Errorf("更新证书记录失败: %w", err)
+		}
+	} else {
+		cert = &repository.Certificate{
+			Domain:     req.Domain,
+			Provider:   req.Provider,
+			AutoRenew:  autoRenew,
+			Status:     "pending",
+			ExpiresAt:  estimatedExpire,
+			ExpireDate: &estimatedExpire,
+		}
+
+		if err := s.certRepo.Create(ctx, cert); err != nil {
+			if apperrors.IsConflict(err) {
+				return nil, apperrors.New(apperrors.ErrCodeConflict, "该域名的证书已存在，请刷新后重试")
+			}
+			return nil, fmt.Errorf("创建证书记录失败: %w", err)
+		}
 	}
 
 	// 异步申请证书（使用独立的 context）
@@ -219,7 +252,7 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 		var lastErr error
 		for i := 0; i < 3; i++ {
 			if i > 0 {
-				s.logger.Info("重试证书申请", 
+				s.logger.Info("重试证书申请",
 					logger.F("domain", req.Domain),
 					logger.F("attempt", i+1))
 				time.Sleep(time.Duration(i*5) * time.Second) // 递增延迟
@@ -242,9 +275,15 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 		s.logger.Error("证书申请最终失败",
 			logger.F("domain", req.Domain),
 			logger.F("error", lastErr.Error()))
-		
-		cert.Status = "failed"
-		cert.ErrorMessage = s.parseAcmeError(lastErr)
+
+		parsedErr := s.parseAcmeError(lastErr)
+		if previousStatus == "active" {
+			cert.Status = "active"
+			cert.ErrorMessage = fmt.Sprintf("最近一次重签发失败: %s", parsedErr)
+		} else {
+			cert.Status = "failed"
+			cert.ErrorMessage = parsedErr
+		}
 		s.certRepo.Update(context.Background(), cert)
 	}()
 
@@ -258,12 +297,12 @@ func (s *Service) isAcmeInstalled() bool {
 		"/root/.acme.sh/acme.sh",
 		"/home/app/.acme.sh/acme.sh",
 	}
-	
+
 	// 也尝试从用户主目录获取
 	if homeDir, err := os.UserHomeDir(); err == nil {
 		possiblePaths = append(possiblePaths, filepath.Join(homeDir, ".acme.sh", "acme.sh"))
 	}
-	
+
 	// 检查所有可能的路径
 	for _, path := range possiblePaths {
 		if _, err := os.Stat(path); err == nil {
@@ -271,7 +310,7 @@ func (s *Service) isAcmeInstalled() bool {
 			return true
 		}
 	}
-	
+
 	s.logger.Warn("未找到 acme.sh，尝试的路径", logger.F("paths", possiblePaths))
 	return false
 }
@@ -279,27 +318,27 @@ func (s *Service) isAcmeInstalled() bool {
 // installAcme automatically installs acme.sh.
 func (s *Service) installAcme(ctx context.Context) error {
 	s.logger.Info("开始安装 acme.sh")
-	
+
 	// 不指定邮箱，让用户在申请证书时提供
 	installCmd := "curl -s https://get.acme.sh | sh"
-	
+
 	// 下载并安装 acme.sh
 	cmd := exec.CommandContext(ctx, "sh", "-c", installCmd)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		s.logger.Error("acme.sh 安装失败", 
+		s.logger.Error("acme.sh 安装失败",
 			logger.F("error", err.Error()),
 			logger.F("output", string(output)))
 		return fmt.Errorf("安装失败: %w", err)
 	}
-	
+
 	s.logger.Info("acme.sh 安装完成")
-	
+
 	// 验证安装
 	if !s.isAcmeInstalled() {
 		return fmt.Errorf("安装完成但无法找到 acme.sh")
 	}
-	
+
 	return nil
 }
 
@@ -320,13 +359,13 @@ func (s *Service) updateAcmeAccount(ctx context.Context, email string) error {
 	cmd := exec.CommandContext(ctx, acmePath, "--update-account", "--accountemail", email)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		s.logger.Warn("更新 acme.sh 账户邮箱失败", 
+		s.logger.Warn("更新 acme.sh 账户邮箱失败",
 			logger.F("error", err.Error()),
 			logger.F("output", string(output)))
 		// 不返回错误，因为可能账户还未注册
 		return nil
 	}
-	
+
 	s.logger.Info("acme.sh 账户邮箱已更新", logger.F("email", email))
 	return nil
 }
@@ -337,7 +376,7 @@ func (s *Service) isValidDomain(domain string) bool {
 	if strings.HasPrefix(domain, "*.") {
 		domain = domain[2:] // 移除 *. 前缀
 	}
-	
+
 	// 域名正则表达式
 	domainRegex := regexp.MustCompile(`^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$`)
 	return domainRegex.MatchString(domain)
@@ -349,15 +388,15 @@ func (s *Service) checkDomainResolution(domain string) error {
 	if err != nil {
 		return fmt.Errorf("域名解析失败: %w", err)
 	}
-	
+
 	if len(ips) == 0 {
 		return fmt.Errorf("域名未解析到任何 IP 地址")
 	}
-	
+
 	s.logger.Info("域名解析成功",
 		logger.F("domain", domain),
 		logger.F("ips", ips))
-	
+
 	return nil
 }
 
@@ -368,20 +407,20 @@ func (s *Service) parseAcmeError(err error) string {
 	}
 
 	errMsg := err.Error()
-	
+
 	// 常见错误模式匹配
 	patterns := map[string]string{
-		"Timeout":                           "申请超时，请检查网络连接",
-		"DNS problem":                       "DNS 解析问题，请检查域名是否正确解析",
-		"Connection refused":                "连接被拒绝，请检查防火墙和端口配置",
-		"too many certificates":             "证书申请次数过多，请稍后再试（Let's Encrypt 频率限制）",
-		"rate limit":                        "触发频率限制，请等待后再试",
-		"CAA record":                        "CAA 记录阻止了证书申请，请检查 DNS CAA 记录",
-		"Invalid response":                  "验证失败，请检查域名解析和 webroot 配置",
-		"Verify error":                      "域名验证失败，请确保域名正确解析到本服务器",
-		"Create new order error":            "创建订单失败，请检查 ACME 服务器状态",
-		"No EAB credentials found":          "缺少 EAB 凭证（ZeroSSL 需要）",
-		"The domain is in HSTS preload":     "域名在 HSTS 预加载列表中，必须使用 HTTPS",
+		"Timeout":                       "申请超时，请检查网络连接",
+		"DNS problem":                   "DNS 解析问题，请检查域名是否正确解析",
+		"Connection refused":            "连接被拒绝，请检查防火墙和端口配置",
+		"too many certificates":         "证书申请次数过多，请稍后再试（Let's Encrypt 频率限制）",
+		"rate limit":                    "触发频率限制，请等待后再试",
+		"CAA record":                    "CAA 记录阻止了证书申请，请检查 DNS CAA 记录",
+		"Invalid response":              "验证失败，请检查域名解析和 webroot 配置",
+		"Verify error":                  "域名验证失败，请确保域名正确解析到本服务器",
+		"Create new order error":        "创建订单失败，请检查 ACME 服务器状态",
+		"No EAB credentials found":      "缺少 EAB 凭证（ZeroSSL 需要）",
+		"The domain is in HSTS preload": "域名在 HSTS 预加载列表中，必须使用 HTTPS",
 	}
 
 	for pattern, friendlyMsg := range patterns {
@@ -422,7 +461,7 @@ func (s *Service) issueWithAcmeTest(ctx context.Context, req *ApplyRequest, cert
 			if strings.Contains(outputStr, "forbidden domain") || strings.Contains(outputStr, "invalidContact") {
 				return fmt.Errorf("邮箱地址无效或被拒绝: %s，请使用真实的邮箱地址", req.Email)
 			}
-			s.logger.Warn("注册测试账户失败，继续申请", 
+			s.logger.Warn("注册测试账户失败，继续申请",
 				logger.F("error", registerErr.Error()),
 				logger.F("output", outputStr))
 		} else {
@@ -453,9 +492,9 @@ func (s *Service) issueWithAcmeTest(ctx context.Context, req *ApplyRequest, cert
 
 	// 执行测试申请命令
 	s.logger.Info("执行 acme.sh 测试申请", logger.F("args", strings.Join(args, " ")))
-	
+
 	cmd := exec.CommandContext(ctx, acmePath, args...)
-	
+
 	// 设置 DNS API 环境变量
 	if req.Method == "dns" && len(req.DNSEnv) > 0 {
 		cmd.Env = os.Environ()
@@ -463,7 +502,7 @@ func (s *Service) issueWithAcmeTest(ctx context.Context, req *ApplyRequest, cert
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
 		}
 	}
-	
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("acme.sh 测试申请失败: %s, output: %s", err.Error(), string(output))
@@ -481,22 +520,22 @@ func (s *Service) issueWithAcme(ctx context.Context, req *ApplyRequest, cert *re
 		"/root/.acme.sh/acme.sh",
 		"/home/app/.acme.sh/acme.sh",
 	}
-	
+
 	if homeDir, err := os.UserHomeDir(); err == nil {
 		possiblePaths = append(possiblePaths, filepath.Join(homeDir, ".acme.sh", "acme.sh"))
 	}
-	
+
 	for _, path := range possiblePaths {
 		if _, err := os.Stat(path); err == nil {
 			acmePath = path
 			break
 		}
 	}
-	
+
 	if acmePath == "" {
 		return fmt.Errorf("未找到 acme.sh，请确保已正确安装")
 	}
-	
+
 	s.logger.Info("使用 acme.sh", logger.F("path", acmePath))
 
 	// 构建申请命令参数
@@ -531,15 +570,15 @@ func (s *Service) issueWithAcme(ctx context.Context, req *ApplyRequest, cert *re
 		args = append(args, "--server", req.Provider)
 	}
 
-	s.logger.Info("开始申请证书", 
+	s.logger.Info("开始申请证书",
 		logger.F("domain", req.Domain),
 		logger.F("method", req.Method),
 		logger.F("wildcard", req.Wildcard),
 		logger.F("dns_provider", req.DNSProvider),
 		logger.F("args", strings.Join(args, " ")))
-	
+
 	cmd := exec.CommandContext(ctx, acmePath, args...)
-	
+
 	// 设置 DNS API 环境变量
 	if req.Method == "dns" && len(req.DNSEnv) > 0 {
 		cmd.Env = os.Environ()
@@ -547,10 +586,10 @@ func (s *Service) issueWithAcme(ctx context.Context, req *ApplyRequest, cert *re
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
 		}
 	}
-	
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		s.logger.Error("证书申请失败", 
+		s.logger.Error("证书申请失败",
 			logger.F("domain", req.Domain),
 			logger.F("error", err.Error()),
 			logger.F("output", string(output)))
@@ -578,7 +617,7 @@ func (s *Service) issueWithAcme(ctx context.Context, req *ApplyRequest, cert *re
 
 	cmd = exec.CommandContext(ctx, acmePath, installArgs...)
 	if output, err := cmd.CombinedOutput(); err != nil {
-		s.logger.Error("安装证书失败", 
+		s.logger.Error("安装证书失败",
 			logger.F("error", err.Error()),
 			logger.F("output", string(output)))
 		return fmt.Errorf("安装证书失败: %w", err)
@@ -612,6 +651,7 @@ func (s *Service) issueWithAcme(ctx context.Context, req *ApplyRequest, cert *re
 	cert.KeyPath = keyFile
 	cert.IssueDate = &now
 	cert.ExpireDate = &x509Cert.NotAfter
+	cert.ExpiresAt = x509Cert.NotAfter
 	cert.Status = "active"
 	cert.ErrorMessage = ""
 
@@ -659,14 +699,15 @@ func (s *Service) Upload(ctx context.Context, domain string, certData, keyData [
 	// 创建证书记录
 	now := time.Now()
 	cert := &repository.Certificate{
-		Domain:      domain,
-		Provider:    "manual",
-		CertPath:    certFile,
-		KeyPath:     keyFile,
-		IssueDate:   &now,
-		ExpireDate:  &x509Cert.NotAfter,
-		AutoRenew:   false,
-		Status:      "active",
+		Domain:     domain,
+		Provider:   "manual",
+		CertPath:   certFile,
+		KeyPath:    keyFile,
+		IssueDate:  &now,
+		ExpireDate: &x509Cert.NotAfter,
+		ExpiresAt:  x509Cert.NotAfter,
+		AutoRenew:  false,
+		Status:     "active",
 	}
 
 	if err := s.certRepo.Create(ctx, cert); err != nil {
@@ -748,6 +789,7 @@ func (s *Service) Renew(ctx context.Context, id int64) error {
 	now := time.Now()
 	cert.IssueDate = &now
 	cert.ExpireDate = &x509Cert.NotAfter
+	cert.ExpiresAt = x509Cert.NotAfter
 
 	if err := s.certRepo.Update(ctx, cert); err != nil {
 		return fmt.Errorf("更新证书记录失败: %w", err)
@@ -811,7 +853,7 @@ func (s *Service) UpdateAutoRenew(ctx context.Context, id int64, autoRenew bool)
 	s.logger.Info("更新自动续期设置",
 		logger.F("domain", cert.Domain),
 		logger.F("auto_renew", autoRenew))
-	
+
 	return nil
 }
 
@@ -831,7 +873,7 @@ func (s *Service) CheckExpiring(ctx context.Context) error {
 		}
 
 		timeUntilExpiry := cert.ExpireDate.Sub(now)
-		
+
 		// 检查是否即将过期
 		if timeUntilExpiry < renewThreshold && timeUntilExpiry > 0 {
 			s.logger.Info("证书即将过期",
@@ -915,16 +957,17 @@ func (s *Service) GenerateSelfSigned(ctx context.Context, domain string) (*repos
 	// 创建证书记录
 	now := time.Now()
 	expireDate := now.Add(365 * 24 * time.Hour)
-	
+
 	cert := &repository.Certificate{
-		Domain:      domain,
-		Provider:    "self-signed",
-		CertPath:    certFile,
-		KeyPath:     keyFile,
-		IssueDate:   &now,
-		ExpireDate:  &expireDate,
-		AutoRenew:   false,
-		Status:      "active",
+		Domain:     domain,
+		Provider:   "self-signed",
+		CertPath:   certFile,
+		KeyPath:    keyFile,
+		IssueDate:  &now,
+		ExpireDate: &expireDate,
+		ExpiresAt:  expireDate,
+		AutoRenew:  false,
+		Status:     "active",
 	}
 
 	if err := s.certRepo.Create(ctx, cert); err != nil {
@@ -938,10 +981,10 @@ func (s *Service) GenerateSelfSigned(ctx context.Context, domain string) (*repos
 // StartAutoRenew 启动自动续期定时任务
 func (s *Service) StartAutoRenew(ctx context.Context) error {
 	s.renewCtx, s.renewCancel = context.WithCancel(ctx)
-	
+
 	s.renewWg.Add(1)
 	go s.autoRenewLoop()
-	
+
 	s.logger.Info("证书自动续期服务已启动")
 	return nil
 }
@@ -951,14 +994,14 @@ func (s *Service) StopAutoRenew() error {
 	if s.renewCancel != nil {
 		s.renewCancel()
 	}
-	
+
 	// 等待 goroutine 结束
 	done := make(chan struct{})
 	go func() {
 		s.renewWg.Wait()
 		close(done)
 	}()
-	
+
 	select {
 	case <-done:
 		s.logger.Info("证书自动续期服务已停止")
@@ -971,14 +1014,14 @@ func (s *Service) StopAutoRenew() error {
 // autoRenewLoop 自动续期循环
 func (s *Service) autoRenewLoop() {
 	defer s.renewWg.Done()
-	
+
 	// 每天检查一次
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
-	
+
 	// 启动时立即检查一次
 	s.checkAndRenewCertificates()
-	
+
 	for {
 		select {
 		case <-s.renewCtx.Done():
@@ -992,37 +1035,37 @@ func (s *Service) autoRenewLoop() {
 // checkAndRenewCertificates 检查并续期证书
 func (s *Service) checkAndRenewCertificates() {
 	ctx := context.Background()
-	
+
 	certs, err := s.certRepo.GetAutoRenew(ctx)
 	if err != nil {
 		s.logger.Error("获取自动续期证书列表失败", logger.Err(err))
 		return
 	}
-	
+
 	now := time.Now()
 	renewThreshold := 30 * 24 * time.Hour // 30 天内过期
-	
+
 	for _, cert := range certs {
 		if cert.ExpireDate == nil {
 			continue
 		}
-		
+
 		timeUntilExpiry := cert.ExpireDate.Sub(now)
-		
+
 		// 检查是否即将过期
 		if timeUntilExpiry < renewThreshold && timeUntilExpiry > 0 {
 			daysLeft := int(timeUntilExpiry.Hours() / 24)
 			s.logger.Info("证书即将过期，开始自动续期",
 				logger.F("domain", cert.Domain),
 				logger.F("days_left", daysLeft))
-			
+
 			if err := s.Renew(ctx, cert.ID); err != nil {
 				s.logger.Error("自动续期失败",
 					logger.F("domain", cert.Domain),
 					logger.F("error", err.Error()))
 			} else {
 				s.logger.Info("自动续期成功", logger.F("domain", cert.Domain))
-				
+
 				// 续期成功后，部署到关联的节点
 				if err := s.DeployToAssignedNodes(ctx, cert.ID); err != nil {
 					s.logger.Error("部署证书到节点失败",
@@ -1042,11 +1085,11 @@ func (s *Service) DeployToNode(ctx context.Context, certID int64, nodeID int64) 
 		NodeID:        nodeID,
 		Status:        "pending",
 	}
-	
+
 	if err := s.deploymentRepo.Create(ctx, deployment); err != nil {
 		return fmt.Errorf("创建部署记录失败: %w", err)
 	}
-	
+
 	// 获取证书
 	cert, err := s.certRepo.GetByID(ctx, certID)
 	if err != nil {
@@ -1055,7 +1098,7 @@ func (s *Service) DeployToNode(ctx context.Context, certID int64, nodeID int64) 
 		s.deploymentRepo.Update(ctx, deployment)
 		return fmt.Errorf("获取证书失败: %w", err)
 	}
-	
+
 	// 获取节点
 	node, err := s.nodeRepo.GetByID(ctx, nodeID)
 	if err != nil {
@@ -1064,11 +1107,11 @@ func (s *Service) DeployToNode(ctx context.Context, certID int64, nodeID int64) 
 		s.deploymentRepo.Update(ctx, deployment)
 		return fmt.Errorf("获取节点失败: %w", err)
 	}
-	
+
 	s.logger.Info("开始部署证书到节点",
 		logger.F("domain", cert.Domain),
 		logger.F("node", node.Name))
-	
+
 	// 读取证书文件
 	certData, err := os.ReadFile(cert.CertPath)
 	if err != nil {
@@ -1077,7 +1120,7 @@ func (s *Service) DeployToNode(ctx context.Context, certID int64, nodeID int64) 
 		s.deploymentRepo.Update(ctx, deployment)
 		return fmt.Errorf("读取证书文件失败: %w", err)
 	}
-	
+
 	keyData, err := os.ReadFile(cert.KeyPath)
 	if err != nil {
 		deployment.Status = "failed"
@@ -1085,7 +1128,7 @@ func (s *Service) DeployToNode(ctx context.Context, certID int64, nodeID int64) 
 		s.deploymentRepo.Update(ctx, deployment)
 		return fmt.Errorf("读取私钥文件失败: %w", err)
 	}
-	
+
 	// 通过 SSH 部署到节点
 	if err := s.deployViaSSH(node, cert.Domain, certData, keyData); err != nil {
 		deployment.Status = "failed"
@@ -1093,18 +1136,18 @@ func (s *Service) DeployToNode(ctx context.Context, certID int64, nodeID int64) 
 		s.deploymentRepo.Update(ctx, deployment)
 		return fmt.Errorf("SSH 部署失败: %w", err)
 	}
-	
+
 	// 更新部署记录为成功
 	now := time.Now()
 	deployment.Status = "success"
 	deployment.Message = "部署成功"
 	deployment.DeployedAt = &now
 	s.deploymentRepo.Update(ctx, deployment)
-	
+
 	s.logger.Info("证书部署成功",
 		logger.F("domain", cert.Domain),
 		logger.F("node", node.Name))
-	
+
 	return nil
 }
 
@@ -1115,7 +1158,7 @@ func (s *Service) DeployToAssignedNodes(ctx context.Context, certID int64) error
 	if err != nil {
 		return fmt.Errorf("获取节点列表失败: %w", err)
 	}
-	
+
 	// 找出关联此证书的节点
 	assignedNodes := make([]*repository.Node, 0)
 	for _, node := range nodes {
@@ -1123,20 +1166,20 @@ func (s *Service) DeployToAssignedNodes(ctx context.Context, certID int64) error
 			assignedNodes = append(assignedNodes, node)
 		}
 	}
-	
+
 	if len(assignedNodes) == 0 {
 		s.logger.Info("没有节点关联此证书", logger.F("cert_id", certID))
 		return nil
 	}
-	
+
 	s.logger.Info("开始部署证书到关联节点",
 		logger.F("cert_id", certID),
 		logger.F("node_count", len(assignedNodes)))
-	
+
 	// 并发部署到所有节点
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(assignedNodes))
-	
+
 	for _, node := range assignedNodes {
 		wg.Add(1)
 		go func(n *repository.Node) {
@@ -1146,20 +1189,20 @@ func (s *Service) DeployToAssignedNodes(ctx context.Context, certID int64) error
 			}
 		}(node)
 	}
-	
+
 	wg.Wait()
 	close(errChan)
-	
+
 	// 收集错误
 	var errors []error
 	for err := range errChan {
 		errors = append(errors, err)
 	}
-	
+
 	if len(errors) > 0 {
 		return fmt.Errorf("部分节点部署失败: %v", errors)
 	}
-	
+
 	return nil
 }
 
@@ -1170,40 +1213,40 @@ func (s *Service) deployViaSSH(node *repository.Node, domain string, certData, k
 	if sshHost == "" {
 		sshHost = node.Address
 	}
-	
+
 	sshPort := node.SSHPort
 	if sshPort == 0 {
 		sshPort = 22
 	}
-	
+
 	sshUser := node.SSHUser
 	if sshUser == "" {
 		sshUser = "root"
 	}
-	
+
 	s.logger.Info("建立 SSH 连接",
 		logger.F("host", sshHost),
 		logger.F("port", sshPort),
 		logger.F("user", sshUser))
-	
+
 	// 配置 SSH 认证
 	var authMethods []ssh.AuthMethod
-	
+
 	// 优先使用密钥认证
 	if node.SSHKeyPath != "" {
 		keyData, err := os.ReadFile(node.SSHKeyPath)
 		if err != nil {
 			return fmt.Errorf("读取 SSH 私钥失败: %w", err)
 		}
-		
+
 		signer, err := ssh.ParsePrivateKey(keyData)
 		if err != nil {
 			return fmt.Errorf("解析 SSH 私钥失败: %w", err)
 		}
-		
+
 		authMethods = append(authMethods, ssh.PublicKeys(signer))
 	}
-	
+
 	// 密码认证
 	if node.SSHPassword != "" {
 		authMethods = append(authMethods, ssh.Password(node.SSHPassword))
@@ -1215,11 +1258,11 @@ func (s *Service) deployViaSSH(node *repository.Node, domain string, certData, k
 			return answers, nil
 		}))
 	}
-	
+
 	if len(authMethods) == 0 {
 		return fmt.Errorf("未配置 SSH 认证方式")
 	}
-	
+
 	// 建立 SSH 连接
 	config := &ssh.ClientConfig{
 		User:            sshUser,
@@ -1227,43 +1270,43 @@ func (s *Service) deployViaSSH(node *repository.Node, domain string, certData, k
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // TODO: 使用已知主机密钥验证
 		Timeout:         30 * time.Second,
 	}
-	
+
 	addr := fmt.Sprintf("%s:%d", sshHost, sshPort)
 	client, err := ssh.Dial("tcp", addr, config)
 	if err != nil {
 		return fmt.Errorf("SSH 连接失败: %w", err)
 	}
 	defer client.Close()
-	
+
 	s.logger.Info("SSH 连接成功")
-	
+
 	// 创建证书目录
 	certDir := fmt.Sprintf("/etc/xray/certs/%s", domain)
 	if err := s.executeSSHCommand(client, fmt.Sprintf("mkdir -p %s", certDir)); err != nil {
 		return fmt.Errorf("创建证书目录失败: %w", err)
 	}
-	
+
 	// 上传证书文件
 	certPath := fmt.Sprintf("%s/fullchain.pem", certDir)
 	if err := s.uploadFileSSH(client, certPath, certData); err != nil {
 		return fmt.Errorf("上传证书文件失败: %w", err)
 	}
-	
+
 	// 上传私钥文件
 	keyPath := fmt.Sprintf("%s/privkey.pem", certDir)
 	if err := s.uploadFileSSH(client, keyPath, keyData); err != nil {
 		return fmt.Errorf("上传私钥文件失败: %w", err)
 	}
-	
+
 	// 设置文件权限
 	if err := s.executeSSHCommand(client, fmt.Sprintf("chmod 644 %s", certPath)); err != nil {
 		return fmt.Errorf("设置证书权限失败: %w", err)
 	}
-	
+
 	if err := s.executeSSHCommand(client, fmt.Sprintf("chmod 600 %s", keyPath)); err != nil {
 		return fmt.Errorf("设置私钥权限失败: %w", err)
 	}
-	
+
 	// 更新节点的 TLS 配置
 	if err := s.executeSSHCommand(client, fmt.Sprintf(`
 		# 备份当前配置
@@ -1273,18 +1316,18 @@ func (s *Service) deployViaSSH(node *repository.Node, domain string, certData, k
 	`)); err != nil {
 		s.logger.Warn("备份配置失败", logger.Err(err))
 	}
-	
+
 	// 重启 Xray 服务以应用新证书
 	s.logger.Info("重启 Xray 服务")
 	if err := s.executeSSHCommand(client, "systemctl restart xray || service xray restart"); err != nil {
 		s.logger.Warn("重启 Xray 服务失败", logger.Err(err))
 		// 不返回错误，因为证书已经部署成功
 	}
-	
+
 	s.logger.Info("证书部署完成",
 		logger.F("node", node.Name),
 		logger.F("domain", domain))
-	
+
 	return nil
 }
 
@@ -1295,12 +1338,12 @@ func (s *Service) executeSSHCommand(client *ssh.Client, command string) error {
 		return fmt.Errorf("创建 SSH 会话失败: %w", err)
 	}
 	defer session.Close()
-	
+
 	output, err := session.CombinedOutput(command)
 	if err != nil {
 		return fmt.Errorf("命令执行失败: %w, output: %s", err, string(output))
 	}
-	
+
 	return nil
 }
 
@@ -1311,42 +1354,41 @@ func (s *Service) uploadFileSSH(client *ssh.Client, remotePath string, data []by
 		return fmt.Errorf("创建 SSH 会话失败: %w", err)
 	}
 	defer session.Close()
-	
+
 	// 使用 base64 编码传输文件内容
 	encoded := base64.StdEncoding.EncodeToString(data)
-	
+
 	// 分块传输（每块 100KB）
 	chunkSize := 100 * 1024
 	totalChunks := (len(encoded) + chunkSize - 1) / chunkSize
-	
+
 	// 清空目标文件
 	if err := s.executeSSHCommand(client, fmt.Sprintf("rm -f %s", remotePath)); err != nil {
 		return err
 	}
-	
+
 	// 分块上传
 	for i := 0; i < len(encoded); i += chunkSize {
 		end := i + chunkSize
 		if end > len(encoded) {
 			end = len(encoded)
 		}
-		
+
 		chunk := encoded[i:end]
 		chunkNum := i/chunkSize + 1
-		
+
 		if chunkNum%10 == 0 || chunkNum == totalChunks {
 			s.logger.Debug("上传进度",
 				logger.F("chunk", chunkNum),
 				logger.F("total", totalChunks))
 		}
-		
+
 		// 使用 echo 和 base64 解码写入文件
 		cmd := fmt.Sprintf("echo '%s' | base64 -d >> %s", chunk, remotePath)
 		if err := s.executeSSHCommand(client, cmd); err != nil {
 			return fmt.Errorf("上传第 %d 块失败: %w", chunkNum, err)
 		}
 	}
-	
+
 	return nil
 }
-

@@ -29,16 +29,16 @@ import (
 	"v/internal/commercial/trial"
 	"v/internal/config"
 	"v/internal/database/repository"
+	"v/internal/ip"
 	logservice "v/internal/log"
 	"v/internal/logger"
-	"v/internal/ip"
 	"v/internal/node"
 	"v/internal/portal/announcement"
+	portalauth "v/internal/portal/auth"
 	"v/internal/portal/help"
 	portalnode "v/internal/portal/node"
 	"v/internal/portal/stats"
 	"v/internal/portal/ticket"
-	portalauth "v/internal/portal/auth"
 	"v/internal/proxy"
 	"v/internal/settings"
 	"v/internal/subscription"
@@ -47,17 +47,17 @@ import (
 
 // Router manages API routes.
 type Router struct {
-	engine              *gin.Engine
-	config              *config.Config
-	logger              logger.Logger
-	authService         *auth.Service
-	proxyManager        proxy.Manager
-	repos               *repository.Repositories
-	settingsService     *settings.Service
-	xrayManager         xray.Manager
-	logService          *logservice.Service
-	certificateService  CertificateService
-	nodeHealthChecker   *node.HealthChecker
+	engine             *gin.Engine
+	config             *config.Config
+	logger             logger.Logger
+	authService        *auth.Service
+	proxyManager       proxy.Manager
+	repos              *repository.Repositories
+	settingsService    *settings.Service
+	xrayManager        xray.Manager
+	logService         *logservice.Service
+	certificateService CertificateService
+	nodeHealthChecker  *node.HealthChecker
 }
 
 // CertificateService defines the interface for certificate operations.
@@ -145,7 +145,7 @@ func (r *Router) Setup() {
 		// Continue without IP service - don't block application startup
 		ipService = nil
 	}
-	
+
 	// Always create handler - it will handle nil service gracefully
 	ipRestrictionHandler := handlers.NewIPRestrictionHandler(r.logger, ipService)
 	if ipService == nil {
@@ -168,10 +168,10 @@ func (r *Router) Setup() {
 	couponService := coupon.NewService(r.repos.Coupon, r.logger)
 	orderService := order.NewService(r.repos.Order, r.repos.Plan, r.logger, nil)
 	paymentService := payment.NewService(orderService, r.logger)
-	
+
 	// Create payment retry service
 	retryService := payment.NewRetryService(r.repos.Order, paymentService, nil, r.logger)
-	
+
 	inviteService := invite.NewService(r.repos.Invite, r.logger, &invite.Config{BaseURL: r.config.GetBaseURL()})
 	commissionService := commission.NewService(r.repos.Invite, balanceService, r.logger, nil)
 	invoiceService := invoice.NewService(r.repos.Invoice, r.repos.Order, r.logger, nil)
@@ -262,11 +262,11 @@ func (r *Router) Setup() {
 		// Error reporting endpoint (public)
 		errorReportHandler := handlers.NewErrorReportHandler(r.logger)
 		api.POST("/errors/report", errorReportHandler.ReportErrors)
-		
+
 		// Agent download endpoint (public, for remote deployment)
 		// 注意：这是公开端点，用于远程节点下载 Agent
 		api.GET("/admin/nodes/agent/download", agentDownloadHandler.DownloadAgent)
-		
+
 		// Auth routes (public)
 		auth := api.Group("/auth")
 		{
@@ -409,8 +409,10 @@ func (r *Router) Setup() {
 				certificatesRoutes.DELETE("/:id", certificateHandler.Delete)
 				certificatesRoutes.POST("/apply", certificateHandler.Apply)
 				certificatesRoutes.POST("/:id/renew", certificateHandler.Renew)
+				certificatesRoutes.GET("/:id/validate", certificateHandler.Validate)
+				certificatesRoutes.GET("/:id/backup", certificateHandler.Backup)
 				certificatesRoutes.GET("/expiring", certificateHandler.GetExpiring)
-				
+
 				// 证书分配到节点
 				certificatesRoutes.POST("/:id/assign", certificateHandler.AssignToNodes)
 				certificatesRoutes.GET("/:id/nodes", certificateHandler.GetAssignedNodes)
@@ -655,11 +657,11 @@ func (r *Router) Setup() {
 				adminNodes.GET("", nodeHandler.List)
 				adminNodes.POST("", nodeHandler.Create)
 				adminNodes.GET("/statistics", nodeHandler.GetStatistics)
-				
+
 				// Remote deployment (必须在 /:id 之前，避免被参数路由匹配)
 				// Agent 下载已移到公开路由
 				adminNodes.POST("/test-connection", nodeDeployHandler.TestConnection)
-				
+
 				adminNodes.GET("/:id", nodeHandler.Get)
 				adminNodes.PUT("/:id", nodeHandler.Update)
 				adminNodes.DELETE("/:id", nodeHandler.Delete)
@@ -739,7 +741,7 @@ func (r *Router) Setup() {
 				// Node traffic routes
 				adminUsers.GET("/:id/node-traffic", nodeStatsHandler.GetTrafficByUser)
 				adminUsers.GET("/:id/node-traffic/breakdown", nodeStatsHandler.GetUserTrafficBreakdown)
-				
+
 				// IP management routes
 				adminUsers.GET("/:id/online-ips", ipRestrictionHandler.GetUserOnlineIPs)
 				adminUsers.POST("/:id/kick-ip", ipRestrictionHandler.KickUserIP)
@@ -810,13 +812,13 @@ func (r *Router) Setup() {
 	if r.config.Server.StaticPath != "" {
 		// Serve static assets (js, css, images, etc.)
 		r.engine.Static("/assets", r.config.Server.StaticPath+"/assets")
-		
+
 		// Serve favicon
 		r.engine.StaticFile("/favicon.ico", r.config.Server.StaticPath+"/favicon.ico")
-		
+
 		// Serve documentation files
 		r.engine.Static("/docs", "Docs")
-		
+
 		// SPA fallback - serve index.html for all other routes (except API routes)
 		r.engine.NoRoute(func(c *gin.Context) {
 			// Don't serve index.html for API routes
@@ -931,19 +933,19 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 // StartHealthChecker 启动健康检查服务
 func (r *Router) StartHealthChecker(ctx context.Context) error {
 	r.logger.Info("尝试启动健康检查服务...")
-	
+
 	if r.nodeHealthChecker == nil {
 		r.logger.Warn("健康检查服务未初始化，跳过启动")
 		return nil
 	}
-	
+
 	r.logger.Info("健康检查器已初始化，正在启动...")
-	
+
 	if err := r.nodeHealthChecker.Start(ctx); err != nil {
 		r.logger.Error("启动健康检查服务失败", logger.Err(err))
 		return err
 	}
-	
+
 	r.logger.Info("健康检查服务已成功启动")
 	return nil
 }
@@ -953,12 +955,12 @@ func (r *Router) StopHealthChecker(ctx context.Context) error {
 	if r.nodeHealthChecker == nil {
 		return nil
 	}
-	
+
 	if err := r.nodeHealthChecker.Stop(ctx); err != nil {
 		r.logger.Error("停止健康检查服务失败", logger.Err(err))
 		return err
 	}
-	
+
 	r.logger.Info("健康检查服务已停止")
 	return nil
 }

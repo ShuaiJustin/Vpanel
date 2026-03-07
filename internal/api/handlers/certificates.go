@@ -2,9 +2,16 @@
 package handlers
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
+	"crypto/x509"
+	"encoding/pem"
+	"fmt"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -42,14 +49,16 @@ func NewCertificateHandler(certRepo repository.CertificateRepository, nodeRepo r
 
 // CertificateResponse represents a certificate in API responses.
 type CertificateResponse struct {
-	ID          int64  `json:"id"`
-	Domain      string `json:"domain"`
-	AutoRenew   bool   `json:"auto_renew"`
-	ExpiresAt   string `json:"expires_at"`
-	DaysLeft    int    `json:"days_left"`
-	Status      string `json:"status"` // valid, expiring, expired
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
+	ID           int64  `json:"id"`
+	Domain       string `json:"domain"`
+	Provider     string `json:"provider"`
+	AutoRenew    bool   `json:"auto_renew"`
+	ExpiresAt    string `json:"expires_at"`
+	DaysLeft     int    `json:"days_left"`
+	Status       string `json:"status"` // pending, failed, valid, expiring, expired
+	ErrorMessage string `json:"error_message,omitempty"`
+	CreatedAt    string `json:"created_at"`
+	UpdatedAt    string `json:"updated_at"`
 }
 
 // CreateCertificateRequest represents a request to create/upload a certificate.
@@ -71,35 +80,53 @@ type UpdateCertificateRequest struct {
 type ApplyCertificateRequest struct {
 	Domain      string            `json:"domain" binding:"required"`
 	Email       string            `json:"email" binding:"required,email"`
-	Provider    string            `json:"provider"`                // "letsencrypt" or "zerossl", default: "letsencrypt"
-	Method      string            `json:"method"`                  // "http" or "dns", default: "http"
-	DNSProvider string            `json:"dns_provider"`            // DNS provider for dns method, e.g., "dns_cf"
-	Webroot     string            `json:"webroot"`                 // Webroot path for http method, default: "/app/data/webroot"
-	DNSEnv      map[string]string `json:"dns_env"`                 // DNS API credentials
-	AutoRenew   bool              `json:"auto_renew"`              // Auto renew certificate
-	Wildcard    bool              `json:"wildcard"`                // 是否申请泛域名证书（*.domain.com）
+	Provider    string            `json:"provider"`     // "letsencrypt" or "zerossl", default: "letsencrypt"
+	Method      string            `json:"method"`       // "http" or "dns", default: "http"
+	DNSProvider string            `json:"dns_provider"` // DNS provider for dns method, e.g., "dns_cf"
+	Webroot     string            `json:"webroot"`      // Webroot path for http method, default: "/app/data/webroot"
+	DNSEnv      map[string]string `json:"dns_env"`      // DNS API credentials
+	AutoRenew   *bool             `json:"auto_renew"`   // Auto renew certificate (default: true)
+	Wildcard    bool              `json:"wildcard"`     // 是否申请泛域名证书（*.domain.com）
 }
 
 // toCertificateResponse converts a certificate to API response format.
 func toCertificateResponse(cert *repository.Certificate) *CertificateResponse {
-	daysLeft := int(time.Until(cert.ExpiresAt).Hours() / 24)
-	
-	status := "valid"
-	if daysLeft < 0 {
-		status = "expired"
-	} else if daysLeft < 30 {
-		status = "expiring"
+	expiresAt := cert.ExpiresAt
+	if expiresAt.IsZero() && cert.ExpireDate != nil {
+		expiresAt = *cert.ExpireDate
 	}
-	
+
+	daysLeft := 0
+	expiresAtStr := ""
+	if !expiresAt.IsZero() {
+		daysLeft = int(time.Until(expiresAt).Hours() / 24)
+		expiresAtStr = expiresAt.UTC().Format(time.RFC3339)
+	}
+
+	status := cert.Status
+	if status == "" || status == "active" {
+		if expiresAt.IsZero() {
+			status = "pending"
+		} else if daysLeft < 0 {
+			status = "expired"
+		} else if daysLeft < 30 {
+			status = "expiring"
+		} else {
+			status = "valid"
+		}
+	}
+
 	return &CertificateResponse{
-		ID:        cert.ID,
-		Domain:    cert.Domain,
-		AutoRenew: cert.AutoRenew,
-		ExpiresAt: cert.ExpiresAt.Format("2006-01-02T15:04:05Z"),
-		DaysLeft:  daysLeft,
-		Status:    status,
-		CreatedAt: cert.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		UpdatedAt: cert.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+		ID:           cert.ID,
+		Domain:       cert.Domain,
+		Provider:     cert.Provider,
+		AutoRenew:    cert.AutoRenew,
+		ExpiresAt:    expiresAtStr,
+		DaysLeft:     daysLeft,
+		Status:       status,
+		ErrorMessage: cert.ErrorMessage,
+		CreatedAt:    cert.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:    cert.UpdatedAt.Format(time.RFC3339),
 	}
 }
 
@@ -199,6 +226,7 @@ func (h *CertificateHandler) Create(c *gin.Context) {
 		AutoRenew:   req.AutoRenew,
 		ExpiresAt:   time.Now().AddDate(0, 3, 0), // 默认 3 个月后过期
 	}
+	cert.ExpireDate = &cert.ExpiresAt
 
 	if err := h.certRepo.Create(c.Request.Context(), cert); err != nil {
 		if errors.IsConflict(err) {
@@ -246,6 +274,7 @@ func (h *CertificateHandler) Update(c *gin.Context) {
 		cert.Certificate = *req.Certificate
 		// TODO: 从新证书中提取过期时间
 		cert.ExpiresAt = time.Now().AddDate(0, 3, 0)
+		cert.ExpireDate = &cert.ExpiresAt
 	}
 	if req.PrivateKey != nil {
 		cert.PrivateKey = *req.PrivateKey
@@ -323,6 +352,7 @@ func (h *CertificateHandler) Apply(c *gin.Context) {
 		DNSProvider: req.DNSProvider,
 		Webroot:     req.Webroot,
 		DNSEnv:      req.DNSEnv,
+		AutoRenew:   req.AutoRenew,
 		Wildcard:    req.Wildcard,
 	}
 
@@ -332,12 +362,31 @@ func (h *CertificateHandler) Apply(c *gin.Context) {
 		h.logger.Error("证书申请失败",
 			logger.F("domain", req.Domain),
 			logger.Err(err))
-		// 返回更详细的错误信息给前端
-		c.JSON(http.StatusInternalServerError, gin.H{
+
+		statusCode := http.StatusInternalServerError
+		errorCode := "CERTIFICATE_APPLY_FAILED"
+		errCode := errors.GetCode(err)
+		errorMessage := err.Error()
+		if appErr, ok := errors.AsAppError(err); ok {
+			errorMessage = appErr.Message
+		}
+		switch {
+		case errors.IsConflict(err):
+			statusCode = http.StatusConflict
+			errorCode = "CERTIFICATE_APPLY_CONFLICT"
+		case errCode == errors.ErrCodeBadRequest || errCode == errors.ErrCodeValidation:
+			statusCode = http.StatusBadRequest
+			errorCode = "CERTIFICATE_APPLY_INVALID_REQUEST"
+		case errors.IsRateLimit(err):
+			statusCode = http.StatusTooManyRequests
+			errorCode = "CERTIFICATE_APPLY_RATE_LIMIT"
+		}
+
+		c.JSON(statusCode, gin.H{
 			"success": false,
 			"error": gin.H{
-				"code":    "CERTIFICATE_APPLY_FAILED",
-				"message": err.Error(),
+				"code":    errorCode,
+				"message": errorMessage,
 			},
 		})
 		return
@@ -387,6 +436,204 @@ func (h *CertificateHandler) Renew(c *gin.Context) {
 		"message": "证书续期已提交，请稍后查看结果",
 		"domain":  cert.Domain,
 	})
+}
+
+// Validate validates a certificate and returns detailed metadata.
+// GET /api/admin/certificates/:id/validate
+func (h *CertificateHandler) Validate(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的证书 ID"})
+		return
+	}
+
+	cert, err := h.certRepo.GetByID(c.Request.Context(), id)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "证书不存在"})
+			return
+		}
+		h.logger.Error("Failed to get certificate", logger.Err(err), logger.F("id", id))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取证书失败"})
+		return
+	}
+
+	certPEM, _, err := h.readCertificateMaterial(cert)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "证书内容不可用",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "证书格式无效",
+			"details": "无法解析 PEM 证书内容",
+		})
+		return
+	}
+
+	x509Cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "证书解析失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	now := time.Now()
+	daysLeft := int(time.Until(x509Cert.NotAfter).Hours() / 24)
+	validNow := now.After(x509Cert.NotBefore) && now.Before(x509Cert.NotAfter)
+
+	status := "valid"
+	if !validNow {
+		if now.Before(x509Cert.NotBefore) {
+			status = "not_yet_valid"
+		} else {
+			status = "expired"
+		}
+	} else if daysLeft < 30 {
+		status = "expiring"
+	}
+
+	details := fmt.Sprintf(
+		"域名: %s\n颁发者: %s\n主题: %s\n序列号: %s\n生效时间: %s\n过期时间: %s\n剩余天数: %d\n状态: %s",
+		cert.Domain,
+		x509Cert.Issuer.CommonName,
+		x509Cert.Subject.CommonName,
+		x509Cert.SerialNumber.String(),
+		x509Cert.NotBefore.UTC().Format(time.RFC3339),
+		x509Cert.NotAfter.UTC().Format(time.RFC3339),
+		daysLeft,
+		status,
+	)
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": validNow,
+		"message": "证书验证完成",
+		"details": details,
+		"data": gin.H{
+			"domain":       cert.Domain,
+			"issuer":       x509Cert.Issuer.CommonName,
+			"subject":      x509Cert.Subject.CommonName,
+			"not_before":   x509Cert.NotBefore.UTC().Format(time.RFC3339),
+			"not_after":    x509Cert.NotAfter.UTC().Format(time.RFC3339),
+			"days_left":    daysLeft,
+			"status":       status,
+			"is_valid_now": validNow,
+		},
+	})
+}
+
+// Backup exports certificate and private key as a zip archive.
+// GET /api/admin/certificates/:id/backup
+func (h *CertificateHandler) Backup(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的证书 ID"})
+		return
+	}
+
+	cert, err := h.certRepo.GetByID(c.Request.Context(), id)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "证书不存在"})
+			return
+		}
+		h.logger.Error("Failed to get certificate", logger.Err(err), logger.F("id", id))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取证书失败"})
+		return
+	}
+
+	certPEM, keyPEM, err := h.readCertificateMaterial(cert)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+
+	if err := addZipFile(zw, "fullchain.pem", certPEM); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "打包证书失败"})
+		return
+	}
+	if err := addZipFile(zw, "privkey.pem", keyPEM); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "打包私钥失败"})
+		return
+	}
+
+	meta := fmt.Sprintf(
+		"domain=%s\nprovider=%s\nstatus=%s\nexported_at=%s\n",
+		cert.Domain,
+		cert.Provider,
+		cert.Status,
+		time.Now().UTC().Format(time.RFC3339),
+	)
+	if err := addZipFile(zw, "metadata.txt", []byte(meta)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "打包元数据失败"})
+		return
+	}
+
+	if err := zw.Close(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成备份文件失败"})
+		return
+	}
+
+	filenameDomain := strings.NewReplacer("*", "wildcard", "/", "_", "\\", "_").Replace(cert.Domain)
+	filename := fmt.Sprintf("certificate_%s_%d.zip", filenameDomain, cert.ID)
+	c.Header("Content-Type", "application/zip")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	c.Data(http.StatusOK, "application/zip", buf.Bytes())
+}
+
+func addZipFile(zw *zip.Writer, name string, data []byte) error {
+	w, err := zw.Create(name)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(data)
+	return err
+}
+
+func (h *CertificateHandler) readCertificateMaterial(cert *repository.Certificate) ([]byte, []byte, error) {
+	var certPEM []byte
+	if cert.Certificate != "" {
+		certPEM = []byte(cert.Certificate)
+	} else if cert.CertPath != "" {
+		data, err := os.ReadFile(cert.CertPath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("读取证书文件失败: %w", err)
+		}
+		certPEM = data
+	}
+
+	var keyPEM []byte
+	if cert.PrivateKey != "" {
+		keyPEM = []byte(cert.PrivateKey)
+	} else if cert.KeyPath != "" {
+		data, err := os.ReadFile(cert.KeyPath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("读取私钥文件失败: %w", err)
+		}
+		keyPEM = data
+	}
+
+	if len(certPEM) == 0 {
+		return nil, nil, fmt.Errorf("证书内容为空")
+	}
+	if len(keyPEM) == 0 {
+		return nil, nil, fmt.Errorf("私钥内容为空")
+	}
+
+	return certPEM, keyPEM, nil
 }
 
 // ListAll returns all certificates (for dropdown selection).

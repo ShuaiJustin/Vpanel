@@ -27,10 +27,17 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="issueDate" label="签发日期" width="120" />
+        <el-table-column prop="status" label="状态" width="100">
+          <template #default="scope">
+            <el-tag :type="getStatusType(scope.row.status)">
+              {{ getStatusText(scope.row.status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="issueDate" label="创建日期" width="120" />
         <el-table-column prop="expireDate" label="过期日期" width="120">
           <template #default="scope">
-            <el-tag :type="getExpireStatusType(scope.row.expireDate)">
+            <el-tag :type="getExpireStatusType(scope.row)">
               {{ scope.row.expireDate }}
             </el-tag>
           </template>
@@ -141,6 +148,14 @@
           </el-select>
         </el-form-item>
 
+        <el-form-item label="自动续期" prop="autoRenew">
+          <el-switch
+            v-model="applyForm.autoRenew"
+            active-text="开启"
+            inactive-text="关闭"
+          />
+        </el-form-item>
+
         <el-form-item label="验证方式" prop="validationMethod">
           <el-radio-group v-model="applyForm.validationMethod" @change="handleMethodChange">
             <el-radio value="http">HTTP 验证</el-radio>
@@ -196,7 +211,6 @@
               <el-option label="腾讯云" value="dns_tencent" />
               <el-option label="DNSPod" value="dns_dp" />
               <el-option label="AWS Route53" value="dns_aws" />
-              <el-option label="其他" value="other" />
             </el-select>
           </el-form-item>
 
@@ -484,7 +498,8 @@ const applyForm = ref({
   awsSecretAccessKey: '',
   dnsRecords: [],
   validationPath: '',
-  wildcard: false
+  wildcard: false,
+  autoRenew: true
 })
 const applyRules = {
   domain: [
@@ -534,30 +549,38 @@ const uploadRules = {
 const validateDialogVisible = ref(false)
 const validateResult = ref(null)
 
+const formatDate = (value) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toISOString().slice(0, 10)
+}
+
+const normalizeCertificatesResponse = (response) => {
+  if (Array.isArray(response)) return response
+  if (Array.isArray(response?.certificates)) return response.certificates
+  if (Array.isArray(response?.data?.certificates)) return response.data.certificates
+  if (Array.isArray(response?.data)) return response.data
+  return []
+}
+
+const mapCertificate = (cert) => {
+  const autoRenew = cert.auto_renew ?? cert.autoRenew ?? false
+  const status = cert.status || 'pending'
+  const expiresAt = cert.expires_at || cert.expiresAt || ''
+
+  return {
+    ...cert,
+    autoRenew,
+    status,
+    issueDate: formatDate(cert.created_at || cert.createdAt),
+    expireDate: formatDate(expiresAt)
+  }
+}
+
 // 生命周期钩子
 onMounted(async () => {
-  loading.value = true
-  try {
-    const response = await certificatesApi.list()
-    // 处理响应格式
-    let data = []
-    if (response && response.data) {
-      data = response.data
-    } else if (Array.isArray(response)) {
-      data = response
-    }
-    // 确保每个证书对象都有 autoRenew 字段
-    certificates.value = data.map(cert => ({
-      ...cert,
-      autoRenew: cert.autoRenew ?? false
-    }))
-  } catch (error) {
-    console.error('Failed to fetch certificates:', error)
-    ElMessage.error('获取证书列表失败')
-    certificates.value = []
-  } finally {
-    loading.value = false
-  }
+  await fetchCertificates()
 })
 
 // 获取证书列表
@@ -565,18 +588,8 @@ const fetchCertificates = async () => {
   loading.value = true
   try {
     const response = await certificatesApi.list()
-    // 处理响应格式
-    let data = []
-    if (response && response.data) {
-      data = response.data
-    } else if (Array.isArray(response)) {
-      data = response
-    }
-    // 确保每个证书对象都有 autoRenew 字段
-    certificates.value = data.map(cert => ({
-      ...cert,
-      autoRenew: cert.autoRenew ?? false
-    }))
+    const data = normalizeCertificatesResponse(response)
+    certificates.value = data.map(mapCertificate)
   } catch (error) {
     console.error('Failed to fetch certificates:', error)
     ElMessage.error('获取证书列表失败')
@@ -607,7 +620,8 @@ const handleApply = () => {
     awsSecretAccessKey: '',
     dnsRecords: [],
     validationPath: '',
-    wildcard: false
+    wildcard: false,
+    autoRenew: true
   }
   applyDialogVisible.value = true
 }
@@ -685,6 +699,7 @@ const confirmApply = async () => {
       webroot: applyForm.value.webroot,
       dns_provider: applyForm.value.dnsProvider,
       dns_env: {},
+      auto_renew: applyForm.value.autoRenew,
       wildcard: applyForm.value.wildcard
     }
 
@@ -734,7 +749,8 @@ const confirmApply = async () => {
     fetchCertificates()
   } catch (error) {
     console.error('Failed to apply certificate:', error)
-    ElMessage.error(error.message || '申请证书失败')
+    const message = error?.response?.data?.error?.message || error?.message || '申请证书失败'
+    ElMessage.error(message)
   }
 }
 
@@ -764,53 +780,53 @@ const confirmUpload = async () => {
   
   try {
     await uploadFormRef.value.validate()
-    
-    // 实际项目中应调用API上传证书
-    // await certificatesApi.uploadCertificate(uploadForm.value)
-    
+
+    await certificatesApi.upload({
+      domain: uploadForm.value.domain,
+      certFile: uploadForm.value.certFile,
+      keyFile: uploadForm.value.keyFile,
+      autoRenew: false
+    })
+
     ElMessage.success('证书上传成功')
     uploadDialogVisible.value = false
     
     // 重新获取证书列表
-    fetchCertificates()
+    await fetchCertificates()
   } catch (error) {
     console.error('Failed to upload certificate:', error)
-    ElMessage.error('上传证书失败')
+    ElMessage.error(error?.message || '上传证书失败')
   }
 }
 
 // 处理自动续期设置变更
 const handleAutoRenewChange = async (row) => {
+  const newValue = row.autoRenew
   try {
-    // 实际项目中应调用API更新自动续期设置
-    // await certificatesApi.updateAutoRenew(row.id, row.autoRenew)
-    
+    await certificatesApi.updateAutoRenew(row.id, newValue)
     ElMessage.success(`${row.autoRenew ? '已开启' : '已关闭'}自动续期`)
   } catch (error) {
     console.error('Failed to update auto renew setting:', error)
     ElMessage.error('更新自动续期设置失败')
     // 恢复原状态
-    row.autoRenew = !row.autoRenew
+    row.autoRenew = !newValue
   }
 }
 
 // 处理续期证书
 const handleRenew = async (row) => {
   try {
-    ElMessageBox.confirm(`确定要为域名 ${row.domain} 续期证书吗？`, '续期证书', {
+    await ElMessageBox.confirm(`确定要为域名 ${row.domain} 续期证书吗？`, '续期证书', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'warning'
-    }).then(async () => {
-      // 实际项目中应调用API续期证书
-      // await certificatesApi.renewCertificate(row.id)
-      
-      ElMessage.success('证书续期已提交，请等待处理结果')
-      
-      // 重新获取证书列表
-      fetchCertificates()
     })
+
+    await certificatesApi.renew(row.id)
+    ElMessage.success('证书续期已提交，请等待处理结果')
+    await fetchCertificates()
   } catch (error) {
+    if (error === 'cancel' || error === 'close') return
     console.error('Failed to renew certificate:', error)
     ElMessage.error('续期证书失败')
   }
@@ -819,14 +835,11 @@ const handleRenew = async (row) => {
 // 处理验证证书
 const handleValidate = async (row) => {
   try {
-    // 实际项目中应调用API验证证书
-    // const result = await certificatesApi.validateCertificate(row.id)
-    
-    // TODO: 替换为实际 API 调用
+    const response = await certificatesApi.validate(row.id)
     const result = {
-      success: true,
-      message: '证书有效',
-      details: `域名: ${row.domain}\n提供商: ${row.provider}\n签发日期: ${row.issueDate}\n过期日期: ${row.expireDate}`
+      success: !!response?.success,
+      message: response?.message || '证书验证完成',
+      details: response?.details || `域名: ${row.domain}\n状态: ${getStatusText(row.status)}`
     }
     
     validateResult.value = result
@@ -840,32 +853,28 @@ const handleValidate = async (row) => {
 // 处理备份证书
 const handleBackup = async (row) => {
   try {
-    // 实际项目中应调用API备份证书
-    // await certificatesApi.backupCertificate(row.id)
+    await certificatesApi.backup(row.id)
     ElMessage.success('证书备份已下载')
   } catch (error) {
     console.error('Failed to backup certificate:', error)
-    ElMessage.error('备份证书失败')
+    ElMessage.error('当前版本暂不支持证书备份接口')
   }
 }
 
 // 处理删除证书
 const handleDelete = async (row) => {
   try {
-    ElMessageBox.confirm(`确定要删除域名 ${row.domain} 的证书吗？此操作不可恢复！`, '删除证书', {
+    await ElMessageBox.confirm(`确定要删除域名 ${row.domain} 的证书吗？此操作不可恢复！`, '删除证书', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'warning'
-    }).then(async () => {
-      // 实际项目中应调用API删除证书
-      // await certificatesApi.deleteCertificate(row.id)
-      
-      ElMessage.success('证书已删除')
-      
-      // 重新获取证书列表
-      fetchCertificates()
     })
+
+    await certificatesApi.delete(row.id)
+    ElMessage.success('证书已删除')
+    await fetchCertificates()
   } catch (error) {
+    if (error === 'cancel' || error === 'close') return
     console.error('Failed to delete certificate:', error)
     ElMessage.error('删除证书失败')
   }
@@ -881,15 +890,45 @@ const getProviderType = (provider) => {
   const types = {
     'letsencrypt': 'success',
     'zerossl': 'primary',
-    'custom': 'warning'
+    'manual': 'warning',
+    'self-signed': 'info'
   }
   return types[provider] || 'info'
 }
 
-// 获取过期状态类型
-const getExpireStatusType = (expireDate) => {
+// 获取状态标签类型
+const getStatusType = (status) => {
+  const types = {
+    pending: 'info',
+    failed: 'danger',
+    expired: 'danger',
+    expiring: 'warning',
+    valid: 'success',
+    active: 'success'
+  }
+  return types[status] || 'info'
+}
+
+const getStatusText = (status) => {
+  const labels = {
+    pending: '申请中',
+    failed: '失败',
+    expired: '已过期',
+    expiring: '即将过期',
+    valid: '有效',
+    active: '有效'
+  }
+  return labels[status] || status || '未知'
+}
+
+// 获取过期时间标签类型
+const getExpireStatusType = (row) => {
+  if (!row?.expireDate || row.expireDate === '-') {
+    return row?.status === 'failed' ? 'danger' : 'info'
+  }
+
   const now = new Date()
-  const expire = new Date(expireDate)
+  const expire = new Date(row.expireDate)
   const diff = expire - now
   const days = Math.floor(diff / (1000 * 60 * 60 * 24))
   

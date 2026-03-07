@@ -20,6 +20,17 @@ export const certificatesApi = {
   apply: (data) => api.post('/certificates/apply', data),
 
   /**
+   * 创建/上传证书（JSON）
+   * @param {Object} data - 证书数据
+   * @param {string} data.domain - 域名
+   * @param {string} data.certificate - PEM 证书内容
+   * @param {string} data.private_key - PEM 私钥内容
+   * @param {boolean} [data.auto_renew=false] - 是否自动续期
+   * @returns {Promise<Object>} 创建结果
+   */
+  create: (data) => api.post('/certificates', data),
+
+  /**
    * 上传证书
    * @param {Object} data - 证书数据
    * @param {string} data.domain - 域名
@@ -27,13 +38,21 @@ export const certificatesApi = {
    * @param {File} data.keyFile - 私钥文件
    * @returns {Promise<Object>} 上传结果
    */
-  upload: (data) => {
-    const formData = new FormData()
-    formData.append('domain', data.domain)
-    formData.append('cert', data.certFile)
-    formData.append('key', data.keyFile)
-    return api.post('/certificates/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+  upload: async (data) => {
+    if (!data?.certFile || !data?.keyFile) {
+      throw new Error('证书文件和私钥文件不能为空')
+    }
+
+    const [certificate, privateKey] = await Promise.all([
+      data.certFile.text(),
+      data.keyFile.text()
+    ])
+
+    return api.post('/certificates', {
+      domain: data.domain,
+      certificate,
+      private_key: privateKey,
+      auto_renew: data.autoRenew ?? false
     })
   },
 
@@ -83,7 +102,7 @@ export const certificatesApi = {
    * @param {boolean} autoRenew - 是否自动续期
    * @returns {Promise<void>}
    */
-  updateAutoRenew: (id, autoRenew) => api.put(`/certificates/${id}/auto-renew`, { autoRenew })
+  updateAutoRenew: (id, autoRenew) => api.put(`/certificates/${id}`, { auto_renew: autoRenew })
 }
 
 export default certificatesApi
