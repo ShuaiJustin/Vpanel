@@ -411,19 +411,22 @@ func (s *Service) parseAcmeError(err error) string {
 
 	// 常见错误模式匹配
 	patterns := map[string]string{
-		"timeout":                       "申请超时，请检查网络连接",
-		"dns problem":                   "DNS 解析问题，请检查域名是否正确解析",
-		"connection refused":            "连接被拒绝，请检查防火墙和端口配置",
-		"too many certificates":         "证书申请次数过多，请稍后再试（Let's Encrypt 频率限制）",
-		"rate limit":                    "触发频率限制，请等待后再试",
-		"caa record":                    "CAA 记录阻止了证书申请，请检查 DNS CAA 记录",
-		"invalid response":              "验证失败，请检查域名解析和 webroot 配置",
-		"verify error":                  "域名验证失败，请确保域名正确解析到本服务器",
-		"create new order error":        "创建订单失败，请检查 ACME 服务器状态",
-		"no eab credentials found":      "缺少 EAB 凭证（ZeroSSL 需要）",
-		"the domain is in hsts preload": "域名在 HSTS 预加载列表中，必须使用 HTTPS",
-		"invalid domain":                "DNS API 返回 invalid domain，请确认域名在对应 DNS 服务商账号中且权限正确",
-		"error adding txt record":       "DNS 验证失败：无法添加 TXT 记录，请检查 DNS API Token 权限与 Zone 配置",
+		"timeout":                            "申请超时，请检查网络连接",
+		"dns problem":                        "DNS 解析问题，请检查域名是否正确解析",
+		"connection refused":                 "连接被拒绝，请检查防火墙和端口配置",
+		"too many certificates":              "证书申请次数过多，请稍后再试（Let's Encrypt 频率限制）",
+		"rate limit":                         "触发频率限制，请等待后再试",
+		"caa record":                         "CAA 记录阻止了证书申请，请检查 DNS CAA 记录",
+		"invalid response":                   "验证失败，请检查域名解析和 webroot 配置",
+		"verify error":                       "域名验证失败，请确保域名正确解析到本服务器",
+		"create new order error":             "创建订单失败，请检查 ACME 服务器状态",
+		"no eab credentials found":           "缺少 EAB 凭证（ZeroSSL 需要）",
+		"the domain is in hsts preload":      "域名在 HSTS 预加载列表中，必须使用 HTTPS",
+		"invalid domain":                     "DNS API 返回 invalid domain，请确认域名在对应 DNS 服务商账号中且权限正确",
+		"error adding txt record":            "DNS 验证失败：无法添加 TXT 记录，请检查 DNS API Token 权限与 Zone 配置",
+		"invalidcontact":                     "证书邮箱无效或被 ACME 拒绝，请使用真实可用邮箱地址",
+		"forbidden domain":                   "证书邮箱域名被 ACME 拒绝，请更换邮箱地址（不要使用示例域名）",
+		"contact email has forbidden domain": "证书邮箱域名被 ACME 拒绝，请更换邮箱地址（不要使用示例域名）",
 	}
 
 	for pattern, friendlyMsg := range patterns {
@@ -437,6 +440,57 @@ func (s *Service) parseAcmeError(err error) string {
 		return errMsg[:500] + "..."
 	}
 	return errMsg
+}
+
+// ensureAcmeAccountEmail ensures acme.sh account email is set to the provided email.
+func (s *Service) ensureAcmeAccountEmail(ctx context.Context, acmePath, server, email string) error {
+	if email == "" {
+		return nil
+	}
+
+	// 先尝试注册账户（首次申请场景）
+	registerArgs := []string{"--register-account", "--accountemail", email}
+	if server != "" {
+		registerArgs = append(registerArgs, "--server", server)
+	}
+	registerCmd := exec.CommandContext(ctx, acmePath, registerArgs...)
+	registerOutput, registerErr := registerCmd.CombinedOutput()
+	if registerErr == nil {
+		s.logger.Info("acme.sh 账户邮箱已确认（register）", logger.F("email", email))
+		return nil
+	}
+
+	registerOutStr := string(registerOutput)
+	registerOutLower := strings.ToLower(registerOutStr)
+	if strings.Contains(registerOutLower, "invalidcontact") ||
+		strings.Contains(registerOutLower, "forbidden domain") {
+		return apperrors.NewBadRequestError(fmt.Sprintf("证书邮箱无效或被拒绝: %s，请使用真实可用邮箱", email))
+	}
+
+	// 再尝试更新账户（已有账户场景）
+	updateArgs := []string{"--update-account", "--accountemail", email}
+	updateCmd := exec.CommandContext(ctx, acmePath, updateArgs...)
+	updateOutput, updateErr := updateCmd.CombinedOutput()
+	if updateErr == nil {
+		s.logger.Info("acme.sh 账户邮箱已确认（update）", logger.F("email", email))
+		return nil
+	}
+
+	updateOutStr := string(updateOutput)
+	updateOutLower := strings.ToLower(updateOutStr)
+	if strings.Contains(updateOutLower, "invalidcontact") ||
+		strings.Contains(updateOutLower, "forbidden domain") {
+		return apperrors.NewBadRequestError(fmt.Sprintf("证书邮箱无效或被拒绝: %s，请使用真实可用邮箱", email))
+	}
+
+	// 非邮箱类失败不阻断主流程，继续尝试申请
+	s.logger.Warn("注册/更新 acme.sh 账户邮箱失败，继续申请",
+		logger.F("email", email),
+		logger.F("register_error", registerErr.Error()),
+		logger.F("register_output", registerOutStr),
+		logger.F("update_error", updateErr.Error()),
+		logger.F("update_output", updateOutStr))
+	return nil
 }
 
 // issueWithAcmeTest issues a test certificate to verify configuration.
@@ -540,6 +594,11 @@ func (s *Service) issueWithAcme(ctx context.Context, req *ApplyRequest, cert *re
 	}
 
 	s.logger.Info("使用 acme.sh", logger.F("path", acmePath))
+
+	// 确保 ACME 账户邮箱与请求一致，避免沿用安装时的示例邮箱
+	if err := s.ensureAcmeAccountEmail(ctx, acmePath, req.Provider, req.Email); err != nil {
+		return err
+	}
 
 	// 构建申请命令参数
 	args := []string{

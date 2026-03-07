@@ -8,7 +8,14 @@ echo "Starting V Panel..."
 # 安装 acme.sh（如果未安装）
 if [ ! -f "$HOME/.acme.sh/acme.sh" ]; then
     echo "Installing acme.sh..."
-    if curl -s https://get.acme.sh | sh -s email=admin@example.com; then
+    # 不使用示例邮箱（example.com 会被 Let's Encrypt 拒绝）
+    if [ -n "${ACME_EMAIL}" ]; then
+        ACME_INSTALL_CMD="curl -s https://get.acme.sh | sh -s email=${ACME_EMAIL}"
+    else
+        ACME_INSTALL_CMD="curl -s https://get.acme.sh | sh"
+    fi
+
+    if sh -c "$ACME_INSTALL_CMD"; then
         echo "✓ acme.sh installed successfully"
         # 设置默认 CA
         $HOME/.acme.sh/acme.sh --set-default-ca --server letsencrypt 2>/dev/null || true
