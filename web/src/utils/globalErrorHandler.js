@@ -147,6 +147,11 @@ export function handleUnhandledRejection(event) {
   const errorId = generateErrorId()
   
   console.error(`[${errorId}] Unhandled Promise Rejection:`, reason)
+
+  // 已在 API 拦截器中处理的预期错误（如 401）不再上报
+  if (reason?.silent || reason?.code === 'UNAUTHORIZED' || reason?.status === 401) {
+    return
+  }
   
   // 忽略某些错误
   const message = reason?.message || String(reason)
@@ -194,6 +199,9 @@ function shouldIgnoreError(message) {
     'canceled',
     'aborted',
     'CanceledError',
+    // 已由路由/拦截器处理的鉴权错误
+    '未授权访问，请重新登录',
+    'unauthorized',
     // ResizeObserver 错误（浏览器 bug）
     'ResizeObserver loop',
     // 脚本加载错误

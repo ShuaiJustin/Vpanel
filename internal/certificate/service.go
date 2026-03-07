@@ -264,6 +264,13 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 					logger.F("domain", req.Domain),
 					logger.F("attempt", i+1),
 					logger.F("error", err.Error()))
+				if !s.isRetryableApplyError(err) {
+					s.logger.Info("检测到不可重试错误，停止重试",
+						logger.F("domain", req.Domain),
+						logger.F("attempt", i+1),
+						logger.F("error", err.Error()))
+					break
+				}
 				continue
 			}
 
@@ -440,6 +447,36 @@ func (s *Service) parseAcmeError(err error) string {
 		return errMsg[:500] + "..."
 	}
 	return errMsg
+}
+
+// isRetryableApplyError determines whether certificate apply errors should be retried.
+func (s *Service) isRetryableApplyError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errMsg := strings.ToLower(err.Error())
+	nonRetryablePatterns := []string{
+		"invalid domain",
+		"error adding txt record",
+		"dns api 返回 invalid domain",
+		"无法添加 txt 记录",
+		"证书邮箱无效或被 acme 拒绝",
+		"证书邮箱域名被 acme 拒绝",
+		"forbidden domain",
+		"invalidcontact",
+		"缺少 dns 提供商配置",
+		"缺少 dns api 凭证",
+		"无效的域名格式",
+	}
+
+	for _, pattern := range nonRetryablePatterns {
+		if strings.Contains(errMsg, pattern) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // ensureAcmeAccountEmail ensures acme.sh account email is set to the provided email.
