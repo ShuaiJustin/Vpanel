@@ -237,28 +237,70 @@
                 <ol style="margin: 5px 0; padding-left: 20px">
                   <li>登录 Cloudflare → My Profile → API Tokens</li>
                   <li>Create Token → Edit zone DNS 模板</li>
-                  <li>Permissions: Zone → DNS → Edit</li>
+                  <li>Permissions: Zone → DNS → Edit，Zone → Zone → Read</li>
                   <li>Zone Resources: 选择你的域名</li>
-                  <li>创建并复制 Token 和 Account ID</li>
+                  <li>创建并复制 Token、Account ID（可选）和 Zone ID（推荐）</li>
                 </ol>
+                <p style="margin-top: 8px"><strong>兼容模式：</strong>也可切换为 x-ui 同款的 “邮箱 + Global API Key” 认证。</p>
               </div>
             </el-alert>
 
-            <el-form-item label="API Token" prop="cfToken">
-              <el-input 
-                v-model="applyForm.cfToken" 
-                type="password" 
-                show-password
-                placeholder="Cloudflare API Token"
-              />
+            <el-form-item label="认证方式">
+              <el-radio-group v-model="applyForm.cfAuthMode">
+                <el-radio value="token">API Token（推荐）</el-radio>
+                <el-radio value="global">Global API Key（x-ui）</el-radio>
+              </el-radio-group>
             </el-form-item>
 
-            <el-form-item label="Account ID" prop="cfAccountId">
-              <el-input 
-                v-model="applyForm.cfAccountId" 
-                placeholder="在域名 Overview 页面右侧可找到"
-              />
-            </el-form-item>
+            <template v-if="applyForm.cfAuthMode === 'token'">
+              <el-form-item label="API Token" prop="cfToken">
+                <el-input 
+                  v-model="applyForm.cfToken" 
+                  type="password" 
+                  show-password
+                  placeholder="Cloudflare API Token"
+                />
+              </el-form-item>
+
+              <el-form-item label="Account ID" prop="cfAccountId">
+                <el-input 
+                  v-model="applyForm.cfAccountId" 
+                  placeholder="可选：Cloudflare 账户 ID（非区域 ID）"
+                />
+              </el-form-item>
+
+              <el-form-item label="Zone ID" prop="cfZoneId">
+                <el-input 
+                  v-model="applyForm.cfZoneId" 
+                  placeholder="推荐：Cloudflare 区域 ID（Overview 页面右侧）"
+                />
+              </el-form-item>
+            </template>
+
+            <template v-else>
+              <el-form-item label="Cloudflare Email" prop="cfEmail">
+                <el-input 
+                  v-model="applyForm.cfEmail"
+                  placeholder="Cloudflare 注册邮箱"
+                />
+              </el-form-item>
+
+              <el-form-item label="Global API Key" prop="cfGlobalKey">
+                <el-input 
+                  v-model="applyForm.cfGlobalKey"
+                  type="password"
+                  show-password
+                  placeholder="Cloudflare Global API Key"
+                />
+              </el-form-item>
+
+              <el-form-item label="Zone ID" prop="cfZoneId">
+                <el-input 
+                  v-model="applyForm.cfZoneId" 
+                  placeholder="可选：Cloudflare 区域 ID（可加速定位 Zone）"
+                />
+              </el-form-item>
+            </template>
           </template>
 
           <!-- 阿里云配置 -->
@@ -500,8 +542,12 @@ const applyForm = ref({
   validationMethod: 'http',
   webroot: '/app/data/webroot',
   dnsProvider: '',
+  cfAuthMode: 'token',
   cfToken: '',
   cfAccountId: '',
+  cfZoneId: '',
+  cfEmail: '',
+  cfGlobalKey: '',
   aliKey: '',
   aliSecret: '',
   tencentSecretId: '',
@@ -773,8 +819,12 @@ const handleApply = () => {
     validationMethod: 'http',
     webroot: '/app/data/webroot',
     dnsProvider: '',
+    cfAuthMode: 'token',
     cfToken: '',
     cfAccountId: '',
+    cfZoneId: '',
+    cfEmail: '',
+    cfGlobalKey: '',
     aliKey: '',
     aliSecret: '',
     tencentSecretId: '',
@@ -824,6 +874,10 @@ const handleDnsProviderChange = (provider) => {
   // 清空所有 DNS API 凭证
   applyForm.value.cfToken = ''
   applyForm.value.cfAccountId = ''
+  applyForm.value.cfZoneId = ''
+  applyForm.value.cfEmail = ''
+  applyForm.value.cfGlobalKey = ''
+  applyForm.value.cfAuthMode = 'token'
   applyForm.value.aliKey = ''
   applyForm.value.aliSecret = ''
   applyForm.value.tencentSecretId = ''
@@ -875,9 +929,27 @@ const confirmApply = async () => {
     if (applyForm.value.validationMethod === 'dns') {
       switch (applyForm.value.dnsProvider) {
         case 'dns_cf':
-          requestData.dns_env = {
-            CF_Token: applyForm.value.cfToken,
-            CF_Account_ID: applyForm.value.cfAccountId
+          if (applyForm.value.cfAuthMode === 'global') {
+            if (!applyForm.value.cfEmail || !applyForm.value.cfGlobalKey) {
+              ElMessage.warning('Cloudflare Global API Key 模式下，请填写 Email 和 Global API Key')
+              return
+            }
+            requestData.dns_env = {
+              CF_Email: applyForm.value.cfEmail,
+              CF_Key: applyForm.value.cfGlobalKey
+            }
+          } else {
+            if (!applyForm.value.cfToken) {
+              ElMessage.warning('Cloudflare Token 模式下，请填写 API Token')
+              return
+            }
+            requestData.dns_env = {
+              CF_Token: applyForm.value.cfToken,
+              CF_Account_ID: applyForm.value.cfAccountId
+            }
+          }
+          if (applyForm.value.cfZoneId) {
+            requestData.dns_env.CF_Zone_ID = applyForm.value.cfZoneId
           }
           break
         case 'dns_ali':
