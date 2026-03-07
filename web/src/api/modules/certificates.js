@@ -17,7 +17,7 @@ export const certificatesApi = {
    * @param {string} data.domain - 域名
    * @returns {Promise<Object>} 申请结果
    */
-  apply: (data) => api.post('/certificates/apply', data),
+  apply: (data, config = {}) => api.post('/certificates/apply', data, config),
 
   /**
    * 创建/上传证书（JSON）

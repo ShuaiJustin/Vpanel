@@ -12,6 +12,16 @@
         </div>
       </template>
 
+      <el-alert
+        v-if="applyProgress"
+        class="apply-progress-alert"
+        :title="getApplyProgressTitle()"
+        :description="getApplyProgressDescription()"
+        :type="getApplyProgressType()"
+        show-icon
+        @close="clearApplyProgress"
+      />
+
       <!-- 证书列表 -->
       <el-table
         :data="certificates"
@@ -468,7 +478,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { certificatesApi } from '@/api'
 
@@ -480,6 +490,9 @@ const loading = ref(false)
 const applyDialogVisible = ref(false)
 const applyFormRef = ref(null)
 const applying = ref(false)
+const applyProgress = ref(null)
+let applyProgressTimer = null
+let applyProgressPolling = false
 const applyForm = ref({
   domain: '',
   email: '',
@@ -565,15 +578,49 @@ const normalizeCertificatesResponse = (response) => {
   return []
 }
 
+const normalizeDomain = (domain = '') => domain.replace(/^\*\./, '').trim().toLowerCase()
+
+const getApplyErrorMessage = (error) => {
+  const rawMessage = [
+    error?.response?.data?.error?.message,
+    error?.response?.data?.message,
+    error?.response?.data?.error,
+    error?.message
+  ].find(item => typeof item === 'string' && item.trim())
+
+  if (!rawMessage) return '申请证书失败，请稍后重试。'
+
+  if (rawMessage.includes('forbidden domain "example.com"') || rawMessage.includes('forbidden domain \\\"example.com\\\"')) {
+    return '申请失败：邮箱域名 example.com 不允许用于 ACME 注册，请填写可用邮箱后重试。'
+  }
+
+  if (rawMessage.includes('invalid domain') && rawMessage.includes('_acme-challenge')) {
+    return '申请失败：DNS 验证记录写入失败，请检查 DNS 提供商凭证、域名托管区域和权限。'
+  }
+
+  if (rawMessage.includes('正在申请中')) {
+    return '该域名证书正在申请中，请稍后刷新查看结果。'
+  }
+
+  if (rawMessage.includes('已存在')) {
+    return '该域名证书已存在，请先删除旧证书或直接续期。'
+  }
+
+  const compactMessage = rawMessage.replace(/\s+/g, ' ').trim()
+  return compactMessage.length > 180 ? `${compactMessage.slice(0, 180)}...` : compactMessage
+}
+
 const mapCertificate = (cert) => {
   const autoRenew = cert.auto_renew ?? cert.autoRenew ?? false
   const status = cert.status || 'pending'
   const expiresAt = cert.expires_at || cert.expiresAt || ''
+  const errorMessage = cert.error_message || cert.errorMessage || ''
 
   return {
     ...cert,
     autoRenew,
     status,
+    errorMessage,
     issueDate: formatDate(cert.created_at || cert.createdAt),
     expireDate: formatDate(expiresAt)
   }
@@ -584,19 +631,136 @@ onMounted(async () => {
   await fetchCertificates()
 })
 
+onUnmounted(() => {
+  stopApplyProgressTracking()
+})
+
 // 获取证书列表
-const fetchCertificates = async () => {
-  loading.value = true
+const fetchCertificates = async ({ silent = false } = {}) => {
+  if (!silent) {
+    loading.value = true
+  }
   try {
     const response = await certificatesApi.list()
     const data = normalizeCertificatesResponse(response)
     certificates.value = data.map(mapCertificate)
   } catch (error) {
     console.error('Failed to fetch certificates:', error)
-    ElMessage.error('获取证书列表失败')
-    certificates.value = []
+    if (!silent) {
+      ElMessage.error('获取证书列表失败')
+      certificates.value = []
+    }
   } finally {
-    loading.value = false
+    if (!silent) {
+      loading.value = false
+    }
+  }
+}
+
+const stopApplyProgressTracking = () => {
+  applyProgressPolling = false
+  if (applyProgressTimer) {
+    clearInterval(applyProgressTimer)
+    applyProgressTimer = null
+  }
+}
+
+const clearApplyProgress = () => {
+  stopApplyProgressTracking()
+  applyProgress.value = null
+}
+
+const getApplyProgressType = () => {
+  if (!applyProgress.value) return 'info'
+  if (['active', 'valid', 'expiring'].includes(applyProgress.value.status)) return 'success'
+  if (applyProgress.value.status === 'pending') return 'info'
+  if (applyProgress.value.status === 'timeout') return 'warning'
+  return 'error'
+}
+
+const getApplyProgressTitle = () => {
+  if (!applyProgress.value) return ''
+  const status = applyProgress.value.status
+  if (status === 'pending') return `证书申请处理中：${applyProgress.value.domain}`
+  if (['active', 'valid', 'expiring'].includes(status)) return `证书申请完成：${applyProgress.value.domain}`
+  if (status === 'timeout') return `证书申请仍在处理中：${applyProgress.value.domain}`
+  return `证书申请失败：${applyProgress.value.domain}`
+}
+
+const getApplyProgressDescription = () => {
+  if (!applyProgress.value) return ''
+  const status = applyProgress.value.status
+  if (status === 'pending') {
+    const elapsedSeconds = Math.max(1, Math.floor((Date.now() - (applyProgress.value.submittedAt || Date.now())) / 1000))
+    return `已提交到后台，系统每 5 秒自动刷新状态（已等待 ${elapsedSeconds} 秒）。你可以继续操作其他页面。`
+  }
+  if (['active', 'valid', 'expiring'].includes(status)) {
+    const expireInfo = applyProgress.value.expireDate && applyProgress.value.expireDate !== '-' ? `，过期日期：${applyProgress.value.expireDate}` : ''
+    return `证书已签发${expireInfo}。`
+  }
+  if (status === 'timeout') {
+    return '后台申请时间较长，已停止自动轮询。你可以点击“刷新”继续查看结果。'
+  }
+  return applyProgress.value.errorMessage || '后台申请失败，请检查 DNS 凭证、邮箱和服务器日志。'
+}
+
+const updateApplyProgressStatus = () => {
+  if (!applyProgress.value) return
+  const hasCertId = applyProgress.value.certId !== null && applyProgress.value.certId !== undefined && applyProgress.value.certId !== ''
+  const trackedDomain = normalizeDomain(applyProgress.value.domain)
+  const current = hasCertId
+    ? certificates.value.find(cert => Number(cert.id) === Number(applyProgress.value.certId))
+    : certificates.value.find(cert => normalizeDomain(cert.domain) === trackedDomain)
+  if (!current) return
+
+  if (!hasCertId) {
+    applyProgress.value.certId = current.id
+  }
+
+  applyProgress.value.status = current.status
+  applyProgress.value.errorMessage = current.errorMessage || current.error_message || ''
+  applyProgress.value.expireDate = current.expireDate
+
+  if (['active', 'valid', 'expiring', 'failed', 'expired'].includes(current.status)) {
+    stopApplyProgressTracking()
+  }
+}
+
+const startApplyProgressTracking = async (certId, domain) => {
+  stopApplyProgressTracking()
+  const normalizedCertId = certId === null || certId === undefined || certId === '' ? null : Number(certId)
+  applyProgress.value = {
+    certId: Number.isFinite(normalizedCertId) ? normalizedCertId : null,
+    domain,
+    status: 'pending',
+    errorMessage: '',
+    expireDate: '-',
+    checks: 0,
+    submittedAt: Date.now()
+  }
+
+  const poll = async () => {
+    if (!applyProgress.value || applyProgressPolling) return
+    applyProgressPolling = true
+    applyProgress.value.checks += 1
+
+    try {
+      await fetchCertificates({ silent: true })
+      updateApplyProgressStatus()
+
+      if (!applyProgress.value) return
+      if (applyProgress.value.checks >= 120 && applyProgress.value.status === 'pending') {
+        applyProgress.value.status = 'timeout'
+        stopApplyProgressTracking()
+      }
+    } finally {
+      applyProgressPolling = false
+    }
+  }
+
+  await poll()
+  if (applyProgress.value?.status === 'pending') {
+    applyProgressTimer = setInterval(poll, 5000)
   }
 }
 
@@ -687,13 +851,15 @@ const removeDnsRecord = (index) => {
 // 确认申请证书
 const confirmApply = async () => {
   if (!applyFormRef.value) return
+  let requestData = null
   
   try {
     applying.value = true
-    await applyFormRef.value.validate()
+    const formValid = await applyFormRef.value.validate().then(() => true).catch(() => false)
+    if (!formValid) return
     
     // 构建请求数据
-    const requestData = {
+    requestData = {
       domain: applyForm.value.domain,
       email: applyForm.value.email,
       provider: applyForm.value.provider,
@@ -742,16 +908,27 @@ const confirmApply = async () => {
     }
     
     // 调用 API 申请证书
-    const resp = await certificatesApi.apply(requestData)
+    const resp = await certificatesApi.apply(requestData, { silent: true })
     
     ElMessage.success(resp?.message || '证书申请已提交，请等待处理结果（通常需要 1-5 分钟）')
     applyDialogVisible.value = false
     
     // 重新获取证书列表
-    fetchCertificates()
+    await fetchCertificates()
+
+    await startApplyProgressTracking(resp?.cert_id ?? null, requestData.domain)
   } catch (error) {
     console.error('Failed to apply certificate:', error)
-    const message = error?.response?.data?.error?.message || error?.message || '申请证书失败'
+    const message = getApplyErrorMessage(error)
+    applyProgress.value = {
+      certId: null,
+      domain: requestData?.domain || applyForm.value.domain || '-',
+      status: 'failed',
+      errorMessage: message,
+      expireDate: '-',
+      checks: 0,
+      submittedAt: Date.now()
+    }
     ElMessage.error(message)
   } finally {
     applying.value = false
@@ -876,6 +1053,9 @@ const handleDelete = async (row) => {
 
     await certificatesApi.delete(row.id)
     ElMessage.success('证书已删除')
+    if (applyProgress.value?.certId === row.id) {
+      clearApplyProgress()
+    }
     await fetchCertificates()
   } catch (error) {
     if (error === 'cancel' || error === 'close') return
@@ -969,6 +1149,10 @@ const getExpireStatusType = (row) => {
 
 .config-guide p {
   margin: 5px 0;
+}
+
+.apply-progress-alert {
+  margin-bottom: 16px;
 }
 
 .dns-record {
