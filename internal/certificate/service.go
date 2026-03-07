@@ -326,16 +326,24 @@ func (s *Service) isAcmeInstalled() bool {
 func (s *Service) installAcme(ctx context.Context) error {
 	s.logger.Info("开始安装 acme.sh")
 
-	// 不指定邮箱，让用户在申请证书时提供
-	installCmd := "curl -s https://get.acme.sh | sh"
+	installScript := filepath.Join(os.TempDir(), fmt.Sprintf("acme-install-%d.sh", time.Now().UnixNano()))
+	defer os.Remove(installScript)
 
-	// 下载并安装 acme.sh
-	cmd := exec.CommandContext(ctx, "sh", "-c", installCmd)
-	output, err := cmd.CombinedOutput()
+	downloadCmd := exec.CommandContext(ctx, "curl", "-fsSL", "--retry", "3", "--connect-timeout", "10", "https://get.acme.sh", "-o", installScript)
+	downloadOutput, err := downloadCmd.CombinedOutput()
+	if err != nil {
+		s.logger.Error("acme.sh 安装脚本下载失败",
+			logger.F("error", err.Error()),
+			logger.F("output", string(downloadOutput)))
+		return fmt.Errorf("下载安装脚本失败: %w", err)
+	}
+
+	installCmd := exec.CommandContext(ctx, "sh", installScript)
+	installOutput, err := installCmd.CombinedOutput()
 	if err != nil {
 		s.logger.Error("acme.sh 安装失败",
 			logger.F("error", err.Error()),
-			logger.F("output", string(output)))
+			logger.F("output", string(installOutput)))
 		return fmt.Errorf("安装失败: %w", err)
 	}
 

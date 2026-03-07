@@ -8,17 +8,23 @@ echo "Starting V Panel..."
 # 安装 acme.sh（如果未安装）
 if [ ! -f "$HOME/.acme.sh/acme.sh" ]; then
     echo "Installing acme.sh..."
-    # 不使用示例邮箱（example.com 会被 Let's Encrypt 拒绝）
-    if [ -n "${ACME_EMAIL}" ]; then
-        ACME_INSTALL_CMD="curl -s https://get.acme.sh | sh -s email=${ACME_EMAIL}"
+    ACME_INSTALL_SCRIPT="/tmp/acme-install.sh"
+    if curl -fsSL --retry 3 --connect-timeout 10 https://get.acme.sh -o "$ACME_INSTALL_SCRIPT"; then
+        # 不使用示例邮箱（example.com 会被 Let's Encrypt 拒绝）
+        if [ -n "${ACME_EMAIL}" ]; then
+            sh "$ACME_INSTALL_SCRIPT" email="${ACME_EMAIL}" || true
+        else
+            sh "$ACME_INSTALL_SCRIPT" || true
+        fi
+        rm -f "$ACME_INSTALL_SCRIPT"
     else
-        ACME_INSTALL_CMD="curl -s https://get.acme.sh | sh"
+        echo "⚠ acme.sh script download failed, will retry on first certificate request"
     fi
 
-    if sh -c "$ACME_INSTALL_CMD"; then
+    if [ -f "$HOME/.acme.sh/acme.sh" ]; then
         echo "✓ acme.sh installed successfully"
         # 设置默认 CA
-        $HOME/.acme.sh/acme.sh --set-default-ca --server letsencrypt 2>/dev/null || true
+        "$HOME/.acme.sh/acme.sh" --set-default-ca --server letsencrypt 2>/dev/null || true
     else
         echo "⚠ acme.sh installation failed, will retry on first certificate request"
     fi

@@ -980,7 +980,11 @@ const confirmApply = async () => {
     }
     
     // 调用 API 申请证书
-    const resp = await certificatesApi.apply(requestData, { silent: true })
+    const resp = await certificatesApi.apply(requestData, {
+      silent: true,
+      // 首次安装 acme.sh 可能超过默认 30s 超时
+      timeout: 300000
+    })
     
     ElMessage.success(resp?.message || '证书申请已提交，请等待处理结果（通常需要 1-5 分钟）')
     applyDialogVisible.value = false
