@@ -407,24 +407,27 @@ func (s *Service) parseAcmeError(err error) string {
 	}
 
 	errMsg := err.Error()
+	errMsgLower := strings.ToLower(errMsg)
 
 	// 常见错误模式匹配
 	patterns := map[string]string{
-		"Timeout":                       "申请超时，请检查网络连接",
-		"DNS problem":                   "DNS 解析问题，请检查域名是否正确解析",
-		"Connection refused":            "连接被拒绝，请检查防火墙和端口配置",
+		"timeout":                       "申请超时，请检查网络连接",
+		"dns problem":                   "DNS 解析问题，请检查域名是否正确解析",
+		"connection refused":            "连接被拒绝，请检查防火墙和端口配置",
 		"too many certificates":         "证书申请次数过多，请稍后再试（Let's Encrypt 频率限制）",
 		"rate limit":                    "触发频率限制，请等待后再试",
-		"CAA record":                    "CAA 记录阻止了证书申请，请检查 DNS CAA 记录",
-		"Invalid response":              "验证失败，请检查域名解析和 webroot 配置",
-		"Verify error":                  "域名验证失败，请确保域名正确解析到本服务器",
-		"Create new order error":        "创建订单失败，请检查 ACME 服务器状态",
-		"No EAB credentials found":      "缺少 EAB 凭证（ZeroSSL 需要）",
-		"The domain is in HSTS preload": "域名在 HSTS 预加载列表中，必须使用 HTTPS",
+		"caa record":                    "CAA 记录阻止了证书申请，请检查 DNS CAA 记录",
+		"invalid response":              "验证失败，请检查域名解析和 webroot 配置",
+		"verify error":                  "域名验证失败，请确保域名正确解析到本服务器",
+		"create new order error":        "创建订单失败，请检查 ACME 服务器状态",
+		"no eab credentials found":      "缺少 EAB 凭证（ZeroSSL 需要）",
+		"the domain is in hsts preload": "域名在 HSTS 预加载列表中，必须使用 HTTPS",
+		"invalid domain":                "DNS API 返回 invalid domain，请确认域名在对应 DNS 服务商账号中且权限正确",
+		"error adding txt record":       "DNS 验证失败：无法添加 TXT 记录，请检查 DNS API Token 权限与 Zone 配置",
 	}
 
 	for pattern, friendlyMsg := range patterns {
-		if strings.Contains(errMsg, pattern) {
+		if strings.Contains(errMsgLower, pattern) {
 			return friendlyMsg
 		}
 	}

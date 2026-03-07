@@ -372,6 +372,17 @@ func (h *CertificateHandler) Apply(c *gin.Context) {
 		}
 		switch {
 		case errors.IsConflict(err):
+			// 如果同域名证书已在申请中，返回 202 而不是报错
+			existingCert, getErr := h.certRepo.GetByDomain(c.Request.Context(), req.Domain)
+			if getErr == nil && existingCert != nil && existingCert.Status == "pending" {
+				c.JSON(http.StatusAccepted, gin.H{
+					"message": "该域名证书正在后台申请中，请稍后刷新查看结果",
+					"domain":  req.Domain,
+					"cert_id": existingCert.ID,
+					"status":  existingCert.Status,
+				})
+				return
+			}
 			statusCode = http.StatusConflict
 			errorCode = "CERTIFICATE_APPLY_CONFLICT"
 		case errCode == errors.ErrCodeBadRequest || errCode == errors.ErrCodeValidation:
@@ -455,6 +466,20 @@ func (h *CertificateHandler) Validate(c *gin.Context) {
 		}
 		h.logger.Error("Failed to get certificate", logger.Err(err), logger.F("id", id))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取证书失败"})
+		return
+	}
+
+	// 申请中证书尚未落地，返回友好状态而不是错误
+	if cert.Status == "pending" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "证书仍在申请中，请稍后重试验证",
+			"details": fmt.Sprintf("域名: %s\n状态: pending", cert.Domain),
+			"data": gin.H{
+				"domain": cert.Domain,
+				"status": "pending",
+			},
+		})
 		return
 	}
 

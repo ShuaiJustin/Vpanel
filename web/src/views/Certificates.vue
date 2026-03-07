@@ -381,7 +381,7 @@
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="applyDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="confirmApply">确认申请</el-button>
+          <el-button type="primary" :loading="applying" :disabled="applying" @click="confirmApply">确认申请</el-button>
         </span>
       </template>
     </el-dialog>
@@ -479,6 +479,7 @@ const loading = ref(false)
 // 申请证书
 const applyDialogVisible = ref(false)
 const applyFormRef = ref(null)
+const applying = ref(false)
 const applyForm = ref({
   domain: '',
   email: '',
@@ -688,6 +689,7 @@ const confirmApply = async () => {
   if (!applyFormRef.value) return
   
   try {
+    applying.value = true
     await applyFormRef.value.validate()
     
     // 构建请求数据
@@ -740,9 +742,9 @@ const confirmApply = async () => {
     }
     
     // 调用 API 申请证书
-    await certificatesApi.apply(requestData)
+    const resp = await certificatesApi.apply(requestData)
     
-    ElMessage.success('证书申请已提交，请等待处理结果（通常需要 1-5 分钟）')
+    ElMessage.success(resp?.message || '证书申请已提交，请等待处理结果（通常需要 1-5 分钟）')
     applyDialogVisible.value = false
     
     // 重新获取证书列表
@@ -751,6 +753,8 @@ const confirmApply = async () => {
     console.error('Failed to apply certificate:', error)
     const message = error?.response?.data?.error?.message || error?.message || '申请证书失败'
     ElMessage.error(message)
+  } finally {
+    applying.value = false
   }
 }
 
