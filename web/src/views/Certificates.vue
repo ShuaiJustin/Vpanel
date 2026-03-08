@@ -539,10 +539,10 @@ const applyForm = ref({
   domain: '',
   email: '',
   provider: 'letsencrypt',
-  validationMethod: 'http',
-  webroot: '/app/data/webroot',
-  dnsProvider: '',
-  cfAuthMode: 'token',
+  validationMethod: 'dns',
+  webroot: '',
+  dnsProvider: 'dns_cf',
+  cfAuthMode: 'global',
   cfToken: '',
   cfAccountId: '',
   cfZoneId: '',
@@ -558,7 +558,7 @@ const applyForm = ref({
   awsSecretAccessKey: '',
   dnsRecords: [],
   validationPath: '',
-  wildcard: false,
+  wildcard: true,
   autoRenew: true
 })
 const applyRules = {
@@ -816,10 +816,10 @@ const handleApply = () => {
     domain: '',
     email: '',
     provider: 'letsencrypt',
-    validationMethod: 'http',
-    webroot: '/app/data/webroot',
-    dnsProvider: '',
-    cfAuthMode: 'token',
+    validationMethod: 'dns',
+    webroot: '',
+    dnsProvider: 'dns_cf',
+    cfAuthMode: 'global',
     cfToken: '',
     cfAccountId: '',
     cfZoneId: '',
@@ -835,7 +835,7 @@ const handleApply = () => {
     awsSecretAccessKey: '',
     dnsRecords: [],
     validationPath: '',
-    wildcard: false,
+    wildcard: true,
     autoRenew: true
   }
   applyDialogVisible.value = true
@@ -877,7 +877,7 @@ const handleDnsProviderChange = (provider) => {
   applyForm.value.cfZoneId = ''
   applyForm.value.cfEmail = ''
   applyForm.value.cfGlobalKey = ''
-  applyForm.value.cfAuthMode = 'token'
+  applyForm.value.cfAuthMode = 'global'
   applyForm.value.aliKey = ''
   applyForm.value.aliSecret = ''
   applyForm.value.tencentSecretId = ''
