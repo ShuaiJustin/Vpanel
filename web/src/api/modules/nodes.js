@@ -3,7 +3,7 @@
  * 处理节点的增删改查、状态管理、Token 管理等操作
  * Requirements: 1.1-1.7
  */
-import api from '../base'
+import api from "../base";
 
 export const nodesApi = {
   /**
@@ -16,7 +16,7 @@ export const nodesApi = {
    * @param {number} params.group_id - 分组 ID 过滤
    * @returns {Promise<Object>} 节点列表和总数
    */
-  list: (params) => api.get('/admin/nodes', { params }),
+  list: (params) => api.get("/admin/nodes", { params }),
 
   /**
    * 获取单个节点
@@ -38,9 +38,10 @@ export const nodesApi = {
    * @param {string[]} data.ip_whitelist - IP 白名单
    * @returns {Promise<Object>} 创建的节点 (包含 token)
    */
-  create: (data) => api.post('/admin/nodes', data, { 
-    timeout: 300000 // 5 分钟超时（用于自动部署）
-  }),
+  create: (data) =>
+    api.post("/admin/nodes", data, {
+      timeout: 300000, // 5 分钟超时（用于自动部署）
+    }),
 
   /**
    * 更新节点
@@ -63,7 +64,8 @@ export const nodesApi = {
    * @param {string} status - 状态 (online, offline, unhealthy)
    * @returns {Promise<void>}
    */
-  updateStatus: (id, status) => api.put(`/admin/nodes/${id}/status`, { status }),
+  updateStatus: (id, status) =>
+    api.put(`/admin/nodes/${id}/status`, { status }),
 
   /**
    * 生成节点 Token
@@ -90,7 +92,7 @@ export const nodesApi = {
    * 获取节点统计信息
    * @returns {Promise<Object>} 按状态分组的统计和总用户数
    */
-  getStatistics: () => api.get('/admin/nodes/statistics'),
+  getStatistics: () => api.get("/admin/nodes/statistics"),
 
   /**
    * 获取节点流量统计
@@ -111,7 +113,8 @@ export const nodesApi = {
    * @param {string} params.end - 结束时间
    * @returns {Promise<Object>} Top 用户列表
    */
-  getTopUsers: (id, params) => api.get(`/admin/nodes/${id}/traffic/top-users`, { params }),
+  getTopUsers: (id, params) =>
+    api.get(`/admin/nodes/${id}/traffic/top-users`, { params }),
 
   /**
    * 获取总流量统计
@@ -120,40 +123,44 @@ export const nodesApi = {
    * @param {string} params.end - 结束时间
    * @returns {Promise<Object>} 总流量统计
    */
-  getTotalTraffic: (params) => api.get('/admin/nodes/traffic/total', { params }),
+  getTotalTraffic: (params) =>
+    api.get("/admin/nodes/traffic/total", { params }),
 
   /**
    * 获取按节点分组的流量统计
    * @param {Object} params - 查询参数
    * @returns {Promise<Object>} 按节点分组的流量
    */
-  getTrafficByNode: (params) => api.get('/admin/nodes/traffic/by-node', { params }),
+  getTrafficByNode: (params) =>
+    api.get("/admin/nodes/traffic/by-node", { params }),
 
   /**
    * 获取按分组的流量统计
    * @param {Object} params - 查询参数
    * @returns {Promise<Object>} 按分组的流量
    */
-  getTrafficByGroup: (params) => api.get('/admin/nodes/traffic/by-group', { params }),
+  getTrafficByGroup: (params) =>
+    api.get("/admin/nodes/traffic/by-group", { params }),
 
   /**
    * 获取聚合流量统计
    * @param {Object} params - 查询参数
    * @returns {Promise<Object>} 聚合统计
    */
-  getAggregatedStats: (params) => api.get('/admin/nodes/traffic/aggregated', { params }),
+  getAggregatedStats: (params) =>
+    api.get("/admin/nodes/traffic/aggregated", { params }),
 
   /**
    * 获取实时流量统计
    * @returns {Promise<Object>} 实时流量数据
    */
-  getRealTimeStats: () => api.get('/admin/nodes/traffic/realtime'),
+  getRealTimeStats: () => api.get("/admin/nodes/traffic/realtime"),
 
   /**
    * 获取集群健康状态
    * @returns {Promise<Object>} 集群健康概览
    */
-  getClusterHealth: () => api.get('/admin/nodes/cluster-health'),
+  getClusterHealth: () => api.get("/admin/nodes/cluster-health"),
 
   /**
    * 远程部署 Agent
@@ -166,9 +173,17 @@ export const nodesApi = {
    * @param {string} data.private_key - SSH 私钥 (可选)
    * @returns {Promise<Object>} 部署结果
    */
-  deployAgent: (id, data) => api.post(`/admin/nodes/${id}/deploy`, data, {
-    timeout: 300000 // 5 分钟超时（上传和安装需要时间）
-  }),
+  deployAgent: (id, data) =>
+    api.post(`/admin/nodes/${id}/deploy`, data, {
+      timeout: 300000, // 5 分钟超时（上传和安装需要时间）
+    }),
+
+  /**
+   * 获取节点自动安装状态
+   * @param {number|string} id - 节点 ID
+   * @returns {Promise<Object>} 安装状态、步骤和日志
+   */
+  getInstallStatus: (id) => api.get(`/admin/nodes/${id}/install-status`),
 
   /**
    * 获取部署脚本
@@ -177,11 +192,11 @@ export const nodesApi = {
    * @returns {Promise<Blob>} 脚本文件
    */
   getDeployScript: (id, panelUrl) => {
-    const params = panelUrl ? { panel_url: panelUrl } : {}
-    return api.get(`/admin/nodes/${id}/deploy/script`, { 
+    const params = panelUrl ? { panel_url: panelUrl } : {};
+    return api.get(`/admin/nodes/${id}/deploy/script`, {
       params,
-      responseType: 'blob'
-    })
+      responseType: "blob",
+    });
   },
 
   /**
@@ -194,7 +209,7 @@ export const nodesApi = {
    * @param {string} data.private_key - SSH 私钥 (可选)
    * @returns {Promise<Object>} 测试结果
    */
-  testConnection: (data) => api.post('/admin/nodes/test-connection', data)
-}
+  testConnection: (data) => api.post("/admin/nodes/test-connection", data),
+};
 
-export default nodesApi
+export default nodesApi;

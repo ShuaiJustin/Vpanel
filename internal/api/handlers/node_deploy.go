@@ -103,7 +103,7 @@ func (h *NodeDeployHandler) DeployAgent(c *gin.Context) {
 			})
 			return
 		}
-		
+
 		// 重新从数据库读取节点信息，确保获取最新的 token
 		nodeData, err = h.nodeService.GetByID(c.Request.Context(), nodeID)
 		if err != nil {
@@ -116,7 +116,7 @@ func (h *NodeDeployHandler) DeployAgent(c *gin.Context) {
 			})
 			return
 		}
-		
+
 		h.logger.Info("Generated and loaded new token for node",
 			logger.F("node_id", nodeID),
 			logger.F("token_length", len(nodeData.Token)),
@@ -140,22 +140,22 @@ func (h *NodeDeployHandler) DeployAgent(c *gin.Context) {
 		if c.Request.TLS != nil || c.Request.Header.Get("X-Forwarded-Proto") == "https" {
 			scheme = "https"
 		}
-		
+
 		// 优先使用 X-Forwarded-Host（反向代理场景）
 		host := c.Request.Header.Get("X-Forwarded-Host")
 		if host == "" {
 			host = c.Request.Host
 		}
-		
+
 		panelURL = scheme + "://" + host
-		
+
 		h.logger.Info("Auto-detected Panel URL from request",
 			logger.F("panel_url", panelURL),
 			logger.F("request_host", c.Request.Host),
 			logger.F("x_forwarded_host", c.Request.Header.Get("X-Forwarded-Host")),
 			logger.F("x_forwarded_proto", c.Request.Header.Get("X-Forwarded-Proto")))
 	}
-	
+
 	// 验证 Panel URL 不能是 localhost 或 127.0.0.1
 	if strings.Contains(panelURL, "localhost") || strings.Contains(panelURL, "127.0.0.1") {
 		h.logger.Error("Invalid Panel URL for remote deployment",
@@ -168,7 +168,7 @@ func (h *NodeDeployHandler) DeployAgent(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	h.logger.Info("Using Panel URL for deployment",
 		logger.F("node_id", nodeID),
 		logger.F("panel_url", panelURL))
@@ -195,7 +195,7 @@ func (h *NodeDeployHandler) DeployAgent(c *gin.Context) {
 		h.logger.Error("Agent deployment failed",
 			logger.F("node_id", nodeID),
 			logger.F("error", err.Error()))
-		
+
 		// 返回 200 状态码，但 success 为 false，这样前端可以正确显示错误信息和日志
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -251,7 +251,7 @@ func (h *NodeDeployHandler) GetDeployScript(c *gin.Context) {
 			})
 			return
 		}
-		
+
 		// 重新从数据库读取节点信息，确保获取最新的 token
 		nodeData, err = h.nodeService.GetByID(c.Request.Context(), nodeID)
 		if err != nil {

@@ -19,16 +19,16 @@ import (
 
 // Common errors
 var (
-	ErrNodeNotFound       = errors.New("node not found")
-	ErrInvalidNode        = errors.New("invalid node data")
-	ErrInvalidAddress     = errors.New("invalid node address")
-	ErrInvalidToken       = errors.New("invalid token")
-	ErrTokenRevoked       = errors.New("token has been revoked")
-	ErrNoHealthyNodes     = errors.New("no healthy nodes available")
-	ErrNodeAtCapacity     = errors.New("node is at capacity")
-	ErrDuplicateToken     = errors.New("duplicate token generated")
-	ErrNodeUnreachable    = errors.New("node is unreachable")
-	ErrDuplicateNode      = errors.New("node already exists")
+	ErrNodeNotFound    = errors.New("node not found")
+	ErrInvalidNode     = errors.New("invalid node data")
+	ErrInvalidAddress  = errors.New("invalid node address")
+	ErrInvalidToken    = errors.New("invalid token")
+	ErrTokenRevoked    = errors.New("token has been revoked")
+	ErrNoHealthyNodes  = errors.New("no healthy nodes available")
+	ErrNodeAtCapacity  = errors.New("node is at capacity")
+	ErrDuplicateToken  = errors.New("duplicate token generated")
+	ErrNodeUnreachable = errors.New("node is unreachable")
+	ErrDuplicateNode   = errors.New("node already exists")
 )
 
 // TokenLength is the length of generated tokens in bytes (64 hex chars = 32 bytes)
@@ -36,72 +36,79 @@ const TokenLength = 32
 
 // Node represents a node in the service layer.
 type Node struct {
-	ID           int64      `json:"id"`
-	Name         string     `json:"name"`
-	Address      string     `json:"address"`
-	Port         int        `json:"port"`
-	PanelURL     string     `json:"panel_url"`      // Panel server URL
-	Token        string     `json:"token,omitempty"`
-	Status       string     `json:"status"`
-	Tags         []string   `json:"tags"`
-	Region       string     `json:"region"`
-	Weight       int        `json:"weight"`
-	MaxUsers     int        `json:"max_users"`
-	CurrentUsers int        `json:"current_users"`
-	Latency      int        `json:"latency"`
-	LastSeenAt   *time.Time `json:"last_seen_at"`
-	SyncStatus   string     `json:"sync_status"`
-	SyncedAt     *time.Time `json:"synced_at"`
-	IPWhitelist  []string   `json:"ip_whitelist"`
-	
+	ID                int64        `json:"id"`
+	Name              string       `json:"name"`
+	Address           string       `json:"address"`
+	Port              int          `json:"port"`
+	PanelURL          string       `json:"panel_url"` // Panel server URL
+	Token             string       `json:"token,omitempty"`
+	Status            string       `json:"status"`
+	Tags              []string     `json:"tags"`
+	Region            string       `json:"region"`
+	Weight            int          `json:"weight"`
+	MaxUsers          int          `json:"max_users"`
+	CurrentUsers      int          `json:"current_users"`
+	Latency           int          `json:"latency"`
+	LastSeenAt        *time.Time   `json:"last_seen_at"`
+	SyncStatus        string       `json:"sync_status"`
+	SyncedAt          *time.Time   `json:"synced_at"`
+	InstallStatus     string       `json:"install_status"`
+	InstallMessage    string       `json:"install_message"`
+	InstallSteps      []DeployStep `json:"install_steps"`
+	InstallLogs       string       `json:"install_logs"`
+	InstallStartedAt  *time.Time   `json:"install_started_at"`
+	InstallFinishedAt *time.Time   `json:"install_finished_at"`
+	InstallUpdatedAt  *time.Time   `json:"install_updated_at"`
+	IPWhitelist       []string     `json:"ip_whitelist"`
+
 	// 流量统计
 	TrafficUp      int64      `json:"traffic_up"`
 	TrafficDown    int64      `json:"traffic_down"`
 	TrafficTotal   int64      `json:"traffic_total"`
 	TrafficLimit   int64      `json:"traffic_limit"`
 	TrafficResetAt *time.Time `json:"traffic_reset_at"`
-	
+
 	// 负载信息
 	CPUUsage    float64 `json:"cpu_usage"`
 	MemoryUsage float64 `json:"memory_usage"`
 	DiskUsage   float64 `json:"disk_usage"`
 	NetSpeed    int64   `json:"net_speed"`
-	
+
 	// 速率限制
 	SpeedLimit int64 `json:"speed_limit"`
-	
+
 	// 协议支持
 	Protocols []string `json:"protocols"`
-	
+
 	// TLS 配置
 	TLSEnabled  bool   `json:"tls_enabled"`
 	TLSDomain   string `json:"tls_domain"`
 	TLSCertPath string `json:"tls_cert_path,omitempty"`
 	TLSKeyPath  string `json:"tls_key_path,omitempty"`
-	
+
 	// 节点分组
 	GroupID *int64 `json:"group_id"`
-	
+
 	// 排序和优先级
 	Priority int `json:"priority"`
 	Sort     int `json:"sort"`
-	
+
 	// 告警配置
 	AlertTrafficThreshold float64 `json:"alert_traffic_threshold"`
 	AlertCPUThreshold     float64 `json:"alert_cpu_threshold"`
 	AlertMemoryThreshold  float64 `json:"alert_memory_threshold"`
-	
+
 	// 备注和描述
 	Description string `json:"description"`
 	Remarks     string `json:"remarks"`
-	
+
 	// Xray 状态
 	XrayRunning bool   `json:"xray_running"`
 	XrayVersion string `json:"xray_version"`
-	
+
 	// 证书关联
 	CertificateID *int64 `json:"certificate_id,omitempty"`
-	
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -123,36 +130,36 @@ type CreateNodeRequest struct {
 	Weight      int      `json:"weight"`
 	MaxUsers    int      `json:"max_users"`
 	IPWhitelist []string `json:"ip_whitelist"`
-	
+
 	// 流量限制
 	TrafficLimit int64 `json:"traffic_limit"`
-	
+
 	// 速率限制
 	SpeedLimit int64 `json:"speed_limit"`
-	
+
 	// 协议支持
 	Protocols []string `json:"protocols"`
-	
+
 	// TLS 配置
 	TLSEnabled bool   `json:"tls_enabled"`
 	TLSDomain  string `json:"tls_domain"`
-	
+
 	// 节点分组
 	GroupID *int64 `json:"group_id"`
-	
+
 	// 排序和优先级
 	Priority int `json:"priority"`
 	Sort     int `json:"sort"`
-	
+
 	// 告警配置
 	AlertTrafficThreshold float64 `json:"alert_traffic_threshold"`
 	AlertCPUThreshold     float64 `json:"alert_cpu_threshold"`
 	AlertMemoryThreshold  float64 `json:"alert_memory_threshold"`
-	
+
 	// 备注和描述
 	Description string `json:"description"`
 	Remarks     string `json:"remarks"`
-	
+
 	// 证书关联
 	CertificateID *int64 `json:"certificate_id"`
 }
@@ -168,36 +175,36 @@ type UpdateNodeRequest struct {
 	Weight      *int      `json:"weight"`
 	MaxUsers    *int      `json:"max_users"`
 	IPWhitelist *[]string `json:"ip_whitelist"`
-	
+
 	// 流量限制
 	TrafficLimit *int64 `json:"traffic_limit"`
-	
+
 	// 速率限制
 	SpeedLimit *int64 `json:"speed_limit"`
-	
+
 	// 协议支持
 	Protocols *[]string `json:"protocols"`
-	
+
 	// TLS 配置
 	TLSEnabled *bool   `json:"tls_enabled"`
 	TLSDomain  *string `json:"tls_domain"`
-	
+
 	// 节点分组
 	GroupID *int64 `json:"group_id"`
-	
+
 	// 排序和优先级
 	Priority *int `json:"priority"`
 	Sort     *int `json:"sort"`
-	
+
 	// 告警配置
 	AlertTrafficThreshold *float64 `json:"alert_traffic_threshold"`
 	AlertCPUThreshold     *float64 `json:"alert_cpu_threshold"`
 	AlertMemoryThreshold  *float64 `json:"alert_memory_threshold"`
-	
+
 	// 备注和描述
 	Description *string `json:"description"`
 	Remarks     *string `json:"remarks"`
-	
+
 	// 证书关联
 	CertificateID *int64 `json:"certificate_id"`
 }
@@ -212,12 +219,11 @@ type NodeFilter struct {
 	Offset  int
 }
 
-
 // Service provides node management operations.
 type Service struct {
-	nodeRepo           repository.NodeRepository
-	assignmentRepo     repository.UserNodeAssignmentRepository
-	logger             logger.Logger
+	nodeRepo       repository.NodeRepository
+	assignmentRepo repository.UserNodeAssignmentRepository
+	logger         logger.Logger
 }
 
 // NewService creates a new node service.
@@ -361,7 +367,7 @@ func (s *Service) Create(ctx context.Context, req *CreateNodeRequest) (*Node, er
 		s.logger.Error("Failed to generate token", logger.Err(err))
 		return nil, fmt.Errorf("生成认证 Token 失败: %w", err)
 	}
-	
+
 	// 记录生成的 token（用于调试）
 	s.logger.Info("Generated node token",
 		logger.F("token_length", len(token)),
@@ -373,12 +379,12 @@ func (s *Service) Create(ctx context.Context, req *CreateNodeRequest) (*Node, er
 	if req.Tags == nil {
 		tagsJSON = []byte("[]")
 	}
-	
+
 	ipWhitelistJSON, _ := json.Marshal(req.IPWhitelist)
 	if req.IPWhitelist == nil {
 		ipWhitelistJSON = []byte("[]")
 	}
-	
+
 	protocolsJSON, _ := json.Marshal(req.Protocols)
 	if req.Protocols == nil {
 		protocolsJSON = []byte("[]")
@@ -411,32 +417,32 @@ func (s *Service) Create(ctx context.Context, req *CreateNodeRequest) (*Node, er
 		MaxUsers:    req.MaxUsers,
 		SyncStatus:  repository.NodeSyncStatusPending,
 		IPWhitelist: string(ipWhitelistJSON),
-		
+
 		// 流量和速率
 		TrafficLimit: req.TrafficLimit,
 		SpeedLimit:   req.SpeedLimit,
-		
+
 		// 协议
 		Protocols: string(protocolsJSON),
-		
+
 		// TLS
 		TLSEnabled: req.TLSEnabled,
 		TLSDomain:  req.TLSDomain,
-		
+
 		// 分组和排序
 		GroupID:  req.GroupID,
 		Priority: req.Priority,
 		Sort:     req.Sort,
-		
+
 		// 告警
 		AlertTrafficThreshold: alertTrafficThreshold,
 		AlertCPUThreshold:     alertCPUThreshold,
 		AlertMemoryThreshold:  alertMemoryThreshold,
-		
+
 		// 描述
 		Description: req.Description,
 		Remarks:     req.Remarks,
-		
+
 		// 证书关联
 		CertificateID: req.CertificateID,
 	}
@@ -480,7 +486,7 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdateNodeRequest) 
 		if len(*req.Name) > 128 {
 			return nil, fmt.Errorf("%w: 节点名称过长（最多 128 个字符）", ErrInvalidNode)
 		}
-		
+
 		// 检查名称是否与其他节点重复
 		existingNodes, err := s.nodeRepo.List(ctx, &repository.NodeFilter{Limit: 10000})
 		if err == nil {
@@ -499,17 +505,17 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdateNodeRequest) 
 		address = strings.TrimPrefix(address, "http://")
 		address = strings.TrimPrefix(address, "https://")
 		address = strings.TrimSuffix(address, "/")
-		
+
 		if !ValidateAddress(address) {
 			return nil, fmt.Errorf("%w: 地址格式无效", ErrInvalidAddress)
 		}
-		
+
 		// 检查地址+端口是否与其他节点重复
 		checkPort := repoNode.Port
 		if req.Port != nil {
 			checkPort = *req.Port
 		}
-		
+
 		existingNodes, err := s.nodeRepo.List(ctx, &repository.NodeFilter{Limit: 10000})
 		if err == nil {
 			for _, node := range existingNodes {
@@ -672,7 +678,6 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdateNodeRequest) 
 	return s.toNode(repoNode), nil
 }
 
-
 // Delete deletes a node and reassigns its users to other healthy nodes.
 // 此操作在事务中执行，确保原子性
 func (s *Service) Delete(ctx context.Context, id int64) error {
@@ -693,8 +698,8 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 		// Reassign users to other healthy nodes
 		if len(userIDs) > 0 {
 			if err := s.reassignUsersFromNodeInTx(txCtx, id, userIDs); err != nil {
-				s.logger.Error("Failed to reassign users in transaction", 
-					logger.Err(err), 
+				s.logger.Error("Failed to reassign users in transaction",
+					logger.Err(err),
 					logger.F("node_id", id))
 				return fmt.Errorf("无法重分配用户: %w", err)
 			}
@@ -702,8 +707,8 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 
 		// Delete the node
 		if err := s.nodeRepo.DeleteInTx(txCtx, id); err != nil {
-			s.logger.Error("Failed to delete node in transaction", 
-				logger.Err(err), 
+			s.logger.Error("Failed to delete node in transaction",
+				logger.Err(err),
 				logger.F("id", id))
 			return err
 		}
@@ -712,14 +717,14 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 	})
 
 	if err != nil {
-		s.logger.Error("Node deletion transaction failed", 
-			logger.Err(err), 
+		s.logger.Error("Node deletion transaction failed",
+			logger.Err(err),
 			logger.F("node_id", id))
 		return fmt.Errorf("节点删除失败: %w", err)
 	}
 
-	s.logger.Info("Node deleted successfully", 
-		logger.F("id", id), 
+	s.logger.Info("Node deleted successfully",
+		logger.F("id", id),
 		logger.F("name", node.Name),
 		logger.F("reassigned_users", len(userIDs)))
 	return nil
@@ -758,7 +763,7 @@ func (s *Service) reassignUsersFromNodeInTx(ctx context.Context, excludeNodeID i
 	// Distribute users across available nodes using round-robin
 	failedCount := 0
 	failedUsers := make([]int64, 0)
-	
+
 	for i, userID := range userIDs {
 		targetNode := availableNodes[i%len(availableNodes)]
 		if err := s.assignmentRepo.ReassignInTx(ctx, userID, targetNode.ID); err != nil {
@@ -772,7 +777,7 @@ func (s *Service) reassignUsersFromNodeInTx(ctx context.Context, excludeNodeID i
 	}
 
 	if failedCount > 0 {
-		return fmt.Errorf("重分配失败: %d/%d 用户分配失败 (用户ID: %v)", 
+		return fmt.Errorf("重分配失败: %d/%d 用户分配失败 (用户ID: %v)",
 			failedCount, len(userIDs), failedUsers)
 	}
 
@@ -867,7 +872,6 @@ func (s *Service) GetAvailableNodes(ctx context.Context) ([]*Node, error) {
 	}
 	return nodes, nil
 }
-
 
 // ============================================
 // Token Management
@@ -1076,7 +1080,6 @@ func ValidateDomain(address string) bool {
 	return domainRegex.MatchString(address)
 }
 
-
 // ============================================
 // Helper Methods
 // ============================================
@@ -1086,6 +1089,7 @@ func (s *Service) toNode(rn *repository.Node) *Node {
 	var tags []string
 	var ipWhitelist []string
 	var protocols []string
+	var installSteps []DeployStep
 
 	if rn.Tags != "" {
 		_ = json.Unmarshal([]byte(rn.Tags), &tags)
@@ -1096,74 +1100,84 @@ func (s *Service) toNode(rn *repository.Node) *Node {
 	if rn.Protocols != "" {
 		_ = json.Unmarshal([]byte(rn.Protocols), &protocols)
 	}
+	if rn.InstallSteps != "" {
+		_ = json.Unmarshal([]byte(rn.InstallSteps), &installSteps)
+	}
 
 	return &Node{
-		ID:           rn.ID,
-		Name:         rn.Name,
-		Address:      rn.Address,
-		Port:         rn.Port,
-		PanelURL:     rn.PanelURL, // 添加 Panel URL 字段
-		Token:        rn.Token,
-		Status:       rn.Status,
-		Tags:         tags,
-		Region:       rn.Region,
-		Weight:       rn.Weight,
-		MaxUsers:     rn.MaxUsers,
-		CurrentUsers: rn.CurrentUsers,
-		Latency:      rn.Latency,
-		LastSeenAt:   rn.LastSeenAt,
-		SyncStatus:   rn.SyncStatus,
-		SyncedAt:     rn.SyncedAt,
-		IPWhitelist:  ipWhitelist,
-		
+		ID:                rn.ID,
+		Name:              rn.Name,
+		Address:           rn.Address,
+		Port:              rn.Port,
+		PanelURL:          rn.PanelURL, // 添加 Panel URL 字段
+		Token:             rn.Token,
+		Status:            rn.Status,
+		Tags:              tags,
+		Region:            rn.Region,
+		Weight:            rn.Weight,
+		MaxUsers:          rn.MaxUsers,
+		CurrentUsers:      rn.CurrentUsers,
+		Latency:           rn.Latency,
+		LastSeenAt:        rn.LastSeenAt,
+		SyncStatus:        rn.SyncStatus,
+		SyncedAt:          rn.SyncedAt,
+		InstallStatus:     rn.InstallStatus,
+		InstallMessage:    rn.InstallMessage,
+		InstallSteps:      installSteps,
+		InstallLogs:       rn.InstallLogs,
+		InstallStartedAt:  rn.InstallStartedAt,
+		InstallFinishedAt: rn.InstallFinishedAt,
+		InstallUpdatedAt:  rn.InstallUpdatedAt,
+		IPWhitelist:       ipWhitelist,
+
 		// 流量统计
 		TrafficUp:      rn.TrafficUp,
 		TrafficDown:    rn.TrafficDown,
 		TrafficTotal:   rn.TrafficTotal,
 		TrafficLimit:   rn.TrafficLimit,
 		TrafficResetAt: rn.TrafficResetAt,
-		
+
 		// 负载信息
 		CPUUsage:    rn.CPUUsage,
 		MemoryUsage: rn.MemoryUsage,
 		DiskUsage:   rn.DiskUsage,
 		NetSpeed:    rn.NetSpeed,
-		
+
 		// 速率限制
 		SpeedLimit: rn.SpeedLimit,
-		
+
 		// 协议支持
 		Protocols: protocols,
-		
+
 		// TLS 配置
 		TLSEnabled:  rn.TLSEnabled,
 		TLSDomain:   rn.TLSDomain,
 		TLSCertPath: rn.TLSCertPath,
 		TLSKeyPath:  rn.TLSKeyPath,
-		
+
 		// 节点分组
 		GroupID: rn.GroupID,
-		
+
 		// 排序和优先级
 		Priority: rn.Priority,
 		Sort:     rn.Sort,
-		
+
 		// 告警配置
 		AlertTrafficThreshold: rn.AlertTrafficThreshold,
 		AlertCPUThreshold:     rn.AlertCPUThreshold,
 		AlertMemoryThreshold:  rn.AlertMemoryThreshold,
-		
+
 		// 备注和描述
 		Description: rn.Description,
 		Remarks:     rn.Remarks,
-		
+
 		// Xray 状态
 		XrayRunning: rn.XrayRunning,
 		XrayVersion: rn.XrayVersion,
-		
+
 		// 证书关联
 		CertificateID: rn.CertificateID,
-		
+
 		CreatedAt: rn.CreatedAt,
 		UpdatedAt: rn.UpdatedAt,
 	}
@@ -1184,9 +1198,9 @@ func (s *Service) TestNodeConnectivity(ctx context.Context, address string, port
 	if port <= 0 {
 		port = 18443
 	}
-	
+
 	addr := fmt.Sprintf("%s:%d", address, port)
-	
+
 	// 设置超时
 	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
 	if err != nil {
@@ -1197,7 +1211,7 @@ func (s *Service) TestNodeConnectivity(ctx context.Context, address string, port
 		return fmt.Errorf("%w: %v", ErrNodeUnreachable, err)
 	}
 	defer conn.Close()
-	
+
 	s.logger.Info("节点连通性测试成功",
 		logger.F("address", address),
 		logger.F("port", port))
@@ -1213,22 +1227,22 @@ func (s *Service) ValidateNodeConfig(req *CreateNodeRequest) error {
 	if req.Address == "" {
 		return fmt.Errorf("节点地址不能为空")
 	}
-	
+
 	// 地址格式验证
 	if !ValidateAddress(req.Address) {
 		return fmt.Errorf("节点地址格式无效")
 	}
-	
+
 	// 端口验证
 	if req.Port > 0 && (req.Port < 1 || req.Port > 65535) {
 		return fmt.Errorf("端口必须在 1-65535 之间")
 	}
-	
+
 	// TLS 配置验证
 	if req.TLSEnabled && req.TLSDomain == "" {
 		return fmt.Errorf("启用 TLS 时必须指定域名")
 	}
-	
+
 	// 协议验证
 	validProtocols := map[string]bool{
 		"vless": true, "vmess": true, "trojan": true,
@@ -1239,7 +1253,7 @@ func (s *Service) ValidateNodeConfig(req *CreateNodeRequest) error {
 			return fmt.Errorf("不支持的协议: %s", p)
 		}
 	}
-	
+
 	return nil
 }
 

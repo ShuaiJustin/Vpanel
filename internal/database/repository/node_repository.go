@@ -12,81 +12,88 @@ import (
 
 // Node represents a remote Xray node server in the database.
 type Node struct {
-	ID           int64      `gorm:"primaryKey;autoIncrement"`
-	Name         string     `gorm:"size:128;not null"`
-	Address      string     `gorm:"size:256;not null"` // IP or domain
-	Port         int        `gorm:"default:18443"`      // Agent port
-	PanelURL     string     `gorm:"size:256"`           // Panel server URL
-	Token        string     `gorm:"size:64;uniqueIndex"`
-	Status       string     `gorm:"size:32;default:offline;index"` // online, offline, unhealthy
-	Tags         string     `gorm:"type:text"`                     // JSON array
-	Region       string     `gorm:"size:64;index"`
-	Weight       int        `gorm:"default:1"`
-	MaxUsers     int        `gorm:"default:0"` // 0 = unlimited
-	CurrentUsers int        `gorm:"default:0"`
-	Latency      int        `gorm:"default:0"` // milliseconds
-	LastSeenAt   *time.Time `gorm:""`
-	SyncStatus   string     `gorm:"size:32;default:pending"` // synced, pending, failed
-	SyncedAt     *time.Time `gorm:""`
-	IPWhitelist  string     `gorm:"type:text"` // JSON array of allowed IPs
-	
+	ID                int64      `gorm:"primaryKey;autoIncrement"`
+	Name              string     `gorm:"size:128;not null"`
+	Address           string     `gorm:"size:256;not null"` // IP or domain
+	Port              int        `gorm:"default:18443"`     // Agent port
+	PanelURL          string     `gorm:"size:256"`          // Panel server URL
+	Token             string     `gorm:"size:64;uniqueIndex"`
+	Status            string     `gorm:"size:32;default:offline;index"` // online, offline, unhealthy
+	Tags              string     `gorm:"type:text"`                     // JSON array
+	Region            string     `gorm:"size:64;index"`
+	Weight            int        `gorm:"default:1"`
+	MaxUsers          int        `gorm:"default:0"` // 0 = unlimited
+	CurrentUsers      int        `gorm:"default:0"`
+	Latency           int        `gorm:"default:0"` // milliseconds
+	LastSeenAt        *time.Time `gorm:""`
+	SyncStatus        string     `gorm:"size:32;default:pending"` // synced, pending, failed
+	SyncedAt          *time.Time `gorm:""`
+	InstallStatus     string     `gorm:"size:32;default:idle;index"` // idle, queued, running, success, failed
+	InstallMessage    string     `gorm:"size:255"`
+	InstallSteps      string     `gorm:"type:text"`
+	InstallLogs       string     `gorm:"type:text"`
+	InstallStartedAt  *time.Time `gorm:""`
+	InstallFinishedAt *time.Time `gorm:""`
+	InstallUpdatedAt  *time.Time `gorm:""`
+	IPWhitelist       string     `gorm:"type:text"` // JSON array of allowed IPs
+
 	// 流量统计
-	TrafficUp      int64 `gorm:"default:0"` // 上传流量 (bytes)
-	TrafficDown    int64 `gorm:"default:0"` // 下载流量 (bytes)
-	TrafficTotal   int64 `gorm:"default:0"` // 总流量 (bytes)
-	TrafficLimit   int64 `gorm:"default:0"` // 流量限制 (bytes), 0 = 无限制
-	TrafficResetAt *time.Time `gorm:""` // 流量重置时间
-	
+	TrafficUp      int64      `gorm:"default:0"` // 上传流量 (bytes)
+	TrafficDown    int64      `gorm:"default:0"` // 下载流量 (bytes)
+	TrafficTotal   int64      `gorm:"default:0"` // 总流量 (bytes)
+	TrafficLimit   int64      `gorm:"default:0"` // 流量限制 (bytes), 0 = 无限制
+	TrafficResetAt *time.Time `gorm:""`          // 流量重置时间
+
 	// 负载信息
 	CPUUsage    float64 `gorm:"default:0"` // CPU 使用率 (0-100)
 	MemoryUsage float64 `gorm:"default:0"` // 内存使用率 (0-100)
 	DiskUsage   float64 `gorm:"default:0"` // 磁盘使用率 (0-100)
 	NetSpeed    int64   `gorm:"default:0"` // 当前网速 (bytes/s)
-	
+
 	// 速率限制
 	SpeedLimit int64 `gorm:"default:0"` // 速率限制 (bytes/s), 0 = 无限制
-	
+
 	// 协议支持
 	Protocols string `gorm:"type:text"` // JSON array: ["vless", "vmess", "trojan", "shadowsocks"]
-	
+
 	// TLS 配置
-	TLSEnabled bool   `gorm:"default:false"`
-	TLSDomain  string `gorm:"size:256"`
+	TLSEnabled  bool   `gorm:"default:false"`
+	TLSDomain   string `gorm:"size:256"`
 	TLSCertPath string `gorm:"size:512"`
 	TLSKeyPath  string `gorm:"size:512"`
-	
+
 	// 节点分组
 	GroupID *int64 `gorm:"index"` // 节点组 ID
-	
+
 	// 排序和优先级
 	Priority int `gorm:"default:0"` // 优先级，数字越大优先级越高
 	Sort     int `gorm:"default:0"` // 排序序号
-	
+
 	// 告警配置
 	AlertTrafficThreshold float64 `gorm:"default:80"` // 流量告警阈值 (%)
 	AlertCPUThreshold     float64 `gorm:"default:80"` // CPU 告警阈值 (%)
 	AlertMemoryThreshold  float64 `gorm:"default:80"` // 内存告警阈值 (%)
-	
+
 	// 备注和描述
 	Description string `gorm:"type:text"` // 节点描述
 	Remarks     string `gorm:"type:text"` // 管理员备注
-	
+
 	// Xray 状态
 	XrayRunning bool   `gorm:"default:false"` // Xray 是否运行
 	XrayVersion string `gorm:"size:64"`       // Xray 版本
-	
+
 	// 证书关联
 	CertificateID *int64 `gorm:"index"` // 关联的证书 ID
-	
+
 	// SSH 配置（用于证书部署和远程管理）
-	SSHHost     string `gorm:"size:256"` // SSH 主机地址（默认使用 Address）
-	SSHPort     int    `gorm:"default:22"` // SSH 端口
+	SSHHost     string `gorm:"size:256"`             // SSH 主机地址（默认使用 Address）
+	SSHPort     int    `gorm:"default:22"`           // SSH 端口
 	SSHUser     string `gorm:"size:64;default:root"` // SSH 用户名
-	SSHPassword string `gorm:"size:256"` // SSH 密码（加密存储）
-	SSHKeyPath  string `gorm:"size:512"` // SSH 私钥路径
-	
-	CreatedAt time.Time  `gorm:"autoCreateTime"`
-	UpdatedAt time.Time  `gorm:"autoUpdateTime"`
+	SSHPassword string `gorm:"size:256"`             // SSH 密码（加密存储）
+	SSHKeyPath  string `gorm:"size:512"`             // SSH 私钥路径
+
+	CreatedAt time.Time `gorm:"autoCreateTime"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime"`
 }
 
 // TableName returns the table name for Node.
@@ -106,6 +113,15 @@ const (
 	NodeSyncStatusSynced  = "synced"
 	NodeSyncStatusPending = "pending"
 	NodeSyncStatusFailed  = "failed"
+)
+
+// NodeInstallStatus constants
+const (
+	NodeInstallStatusIdle    = "idle"
+	NodeInstallStatusQueued  = "queued"
+	NodeInstallStatusRunning = "running"
+	NodeInstallStatusSuccess = "success"
+	NodeInstallStatusFailed  = "failed"
 )
 
 // NodeFilter defines filter options for listing nodes.
@@ -138,6 +154,7 @@ type NodeRepository interface {
 	UpdateMetrics(ctx context.Context, id int64, latency int, currentUsers int) error
 	UpdateLoadMetrics(ctx context.Context, id int64, cpuUsage, memoryUsage, diskUsage float64) error
 	UpdateXrayStatus(ctx context.Context, id int64, xrayRunning bool, xrayVersion string) error
+	UpdateInstallStatus(ctx context.Context, id int64, status, message, steps, logs string, startedAt, finishedAt, updatedAt *time.Time) error
 
 	// Sync operations
 	UpdateSyncStatus(ctx context.Context, id int64, status string, syncedAt *time.Time) error
@@ -269,7 +286,6 @@ func (r *nodeRepository) Count(ctx context.Context, filter *NodeFilter) (int64, 
 	return count, nil
 }
 
-
 // GetByToken retrieves a node by its authentication token.
 func (r *nodeRepository) GetByToken(ctx context.Context, token string) (*Node, error) {
 	var node Node
@@ -358,6 +374,27 @@ func (r *nodeRepository) UpdateXrayStatus(ctx context.Context, id int64, xrayRun
 	})
 	if result.Error != nil {
 		return errors.NewDatabaseError("failed to update node xray status", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return errors.NewNotFoundError("node", id)
+	}
+	return nil
+}
+
+// UpdateInstallStatus updates a node's install status, progress and logs.
+func (r *nodeRepository) UpdateInstallStatus(ctx context.Context, id int64, status, message, steps, logs string, startedAt, finishedAt, updatedAt *time.Time) error {
+	updates := map[string]interface{}{
+		"install_status":      status,
+		"install_message":     message,
+		"install_steps":       steps,
+		"install_logs":        logs,
+		"install_started_at":  startedAt,
+		"install_finished_at": finishedAt,
+		"install_updated_at":  updatedAt,
+	}
+	result := r.db.WithContext(ctx).Model(&Node{}).Where("id = ?", id).Updates(updates)
+	if result.Error != nil {
+		return errors.NewDatabaseError("failed to update node install status", result.Error)
 	}
 	if result.RowsAffected == 0 {
 		return errors.NewNotFoundError("node", id)

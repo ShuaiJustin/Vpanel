@@ -39,7 +39,7 @@ type User struct {
 	InvitedBy        *int64     `json:"invited_by" gorm:"index"`
 
 	// Commercial System fields
-	Balance     int64 `json:"balance" gorm:"default:0"`      // cents
+	Balance     int64 `json:"balance" gorm:"default:0"` // cents
 	AutoRenewal bool  `json:"auto_renewal" gorm:"default:false"`
 }
 
@@ -135,17 +135,17 @@ func (Log) TableName() string {
 
 // Plan represents a subscription plan with its features and limits.
 type Plan struct {
-	ID                     int64     `json:"id" gorm:"primaryKey"`
-	Name                   string    `json:"name" gorm:"size:100;not null"`
-	Description            string    `json:"description" gorm:"size:500"`
-	TrafficLimit           int64     `json:"traffic_limit" gorm:"default:0"`           // 0 means unlimited
-	DurationDays           int       `json:"duration_days" gorm:"default:30"`
-	DefaultMaxConcurrentIPs int      `json:"default_max_concurrent_ips" gorm:"default:3"` // default concurrent IP limit for this plan
-	Price                  float64   `json:"price" gorm:"default:0"`
-	Enabled                bool      `json:"enabled" gorm:"default:true"`
-	SortOrder              int       `json:"sort_order" gorm:"default:0"`
-	CreatedAt              time.Time `json:"created_at"`
-	UpdatedAt              time.Time `json:"updated_at"`
+	ID                      int64     `json:"id" gorm:"primaryKey"`
+	Name                    string    `json:"name" gorm:"size:100;not null"`
+	Description             string    `json:"description" gorm:"size:500"`
+	TrafficLimit            int64     `json:"traffic_limit" gorm:"default:0"` // 0 means unlimited
+	DurationDays            int       `json:"duration_days" gorm:"default:30"`
+	DefaultMaxConcurrentIPs int       `json:"default_max_concurrent_ips" gorm:"default:3"` // default concurrent IP limit for this plan
+	Price                   float64   `json:"price" gorm:"default:0"`
+	Enabled                 bool      `json:"enabled" gorm:"default:true"`
+	SortOrder               int       `json:"sort_order" gorm:"default:0"`
+	CreatedAt               time.Time `json:"created_at"`
+	UpdatedAt               time.Time `json:"updated_at"`
 }
 
 // TableName returns the table name for Plan.
@@ -345,7 +345,7 @@ type InviteCode struct {
 	CreatedAt time.Time  `json:"created_at"`
 	UsedAt    *time.Time `json:"used_at"`
 
-	Creator *User `json:"creator,omitempty" gorm:"foreignKey:CreatedBy"`
+	Creator    *User `json:"creator,omitempty" gorm:"foreignKey:CreatedBy"`
 	UsedByUser *User `json:"used_by_user,omitempty" gorm:"foreignKey:UsedBy"`
 }
 
@@ -370,7 +370,6 @@ func (TwoFactorSecret) TableName() string {
 	return "two_factor_secrets"
 }
 
-
 // ============================================
 // Commercial System Models
 // ============================================
@@ -380,18 +379,18 @@ type CommercialPlan struct {
 	ID             int64     `json:"id" gorm:"primaryKey"`
 	Name           string    `json:"name" gorm:"size:128;not null"`
 	Description    string    `json:"description" gorm:"type:text"`
-	TrafficLimit   int64     `json:"traffic_limit" gorm:"default:0"`    // bytes, 0 = unlimited
-	Duration       int       `json:"duration" gorm:"not null"`          // days
-	Price          int64     `json:"price" gorm:"not null"`             // cents
-	PlanType       string    `json:"plan_type" gorm:"size:32;default:monthly"` // monthly, quarterly, yearly, traffic
+	TrafficLimit   int64     `json:"traffic_limit" gorm:"default:0"`             // bytes, 0 = unlimited
+	Duration       int       `json:"duration" gorm:"not null"`                   // days
+	Price          int64     `json:"price" gorm:"not null"`                      // cents
+	PlanType       string    `json:"plan_type" gorm:"size:32;default:monthly"`   // monthly, quarterly, yearly, traffic
 	ResetCycle     string    `json:"reset_cycle" gorm:"size:32;default:monthly"` // monthly, on_purchase, never
-	IPLimit        int       `json:"ip_limit" gorm:"default:0"`         // 0 = unlimited
+	IPLimit        int       `json:"ip_limit" gorm:"default:0"`                  // 0 = unlimited
 	SortOrder      int       `json:"sort_order" gorm:"default:0"`
 	IsActive       bool      `json:"is_active" gorm:"default:true"`
 	IsRecommended  bool      `json:"is_recommended" gorm:"default:false"`
 	GroupID        *int64    `json:"group_id" gorm:"index"`
-	PaymentMethods string    `json:"payment_methods" gorm:"type:text"`  // JSON array
-	Features       string    `json:"features" gorm:"type:text"`         // JSON array
+	PaymentMethods string    `json:"payment_methods" gorm:"type:text"` // JSON array
+	Features       string    `json:"features" gorm:"type:text"`        // JSON array
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
@@ -430,7 +429,6 @@ func (PlanGroup) TableName() string {
 	return "plan_groups"
 }
 
-
 // Order represents a purchase order.
 type Order struct {
 	ID             int64      `json:"id" gorm:"primaryKey"`
@@ -438,10 +436,10 @@ type Order struct {
 	UserID         int64      `json:"user_id" gorm:"index;not null"`
 	PlanID         int64      `json:"plan_id" gorm:"index;not null"`
 	CouponID       *int64     `json:"coupon_id" gorm:"index"`
-	OriginalAmount int64      `json:"original_amount" gorm:"not null"`  // cents
-	DiscountAmount int64      `json:"discount_amount" gorm:"default:0"` // cents
-	BalanceUsed    int64      `json:"balance_used" gorm:"default:0"`    // cents
-	PayAmount      int64      `json:"pay_amount" gorm:"not null"`       // cents (actual payment)
+	OriginalAmount int64      `json:"original_amount" gorm:"not null"`             // cents
+	DiscountAmount int64      `json:"discount_amount" gorm:"default:0"`            // cents
+	BalanceUsed    int64      `json:"balance_used" gorm:"default:0"`               // cents
+	PayAmount      int64      `json:"pay_amount" gorm:"not null"`                  // cents (actual payment)
 	Status         string     `json:"status" gorm:"size:32;default:pending;index"` // pending, paid, completed, cancelled, refunded
 	PaymentMethod  string     `json:"payment_method" gorm:"size:32"`
 	PaymentNo      string     `json:"payment_no" gorm:"size:128;index"` // external payment ID
@@ -472,13 +470,12 @@ const (
 
 // PaymentMethod constants
 const (
-	PaymentMethodAlipay    = "alipay"
-	PaymentMethodWechat    = "wechat"
-	PaymentMethodPaypal    = "paypal"
-	PaymentMethodCrypto    = "crypto"
-	PaymentMethodBalance   = "balance"
+	PaymentMethodAlipay  = "alipay"
+	PaymentMethodWechat  = "wechat"
+	PaymentMethodPaypal  = "paypal"
+	PaymentMethodCrypto  = "crypto"
+	PaymentMethodBalance = "balance"
 )
-
 
 // BalanceTransaction represents a balance change record.
 type BalanceTransaction struct {
@@ -510,14 +507,13 @@ const (
 	BalanceTxTypeAdjustment = "adjustment"
 )
 
-
 // Coupon represents a discount coupon.
 type Coupon struct {
 	ID             int64     `json:"id" gorm:"primaryKey"`
 	Code           string    `json:"code" gorm:"uniqueIndex;size:32;not null"`
 	Name           string    `json:"name" gorm:"size:128;not null"`
-	Type           string    `json:"type" gorm:"size:16;not null"` // fixed, percentage
-	Value          int64     `json:"value" gorm:"not null"`        // cents or percentage * 100
+	Type           string    `json:"type" gorm:"size:16;not null"`      // fixed, percentage
+	Value          int64     `json:"value" gorm:"not null"`             // cents or percentage * 100
 	MinOrderAmount int64     `json:"min_order_amount" gorm:"default:0"` // cents
 	MaxDiscount    int64     `json:"max_discount" gorm:"default:0"`     // cents, for percentage type
 	TotalLimit     int       `json:"total_limit" gorm:"default:0"`      // 0 = unlimited
@@ -559,7 +555,6 @@ type CouponUsage struct {
 func (CouponUsage) TableName() string {
 	return "coupon_usages"
 }
-
 
 // CommercialInviteCode represents a user's invite code for referral system.
 type CommercialInviteCode struct {
@@ -605,12 +600,12 @@ const (
 // Commission represents a commission record for referrals.
 type Commission struct {
 	ID         int64      `json:"id" gorm:"primaryKey"`
-	UserID     int64      `json:"user_id" gorm:"index;not null"`     // inviter
+	UserID     int64      `json:"user_id" gorm:"index;not null"`      // inviter
 	FromUserID int64      `json:"from_user_id" gorm:"index;not null"` // invitee
 	OrderID    int64      `json:"order_id" gorm:"index;not null"`
 	Amount     int64      `json:"amount" gorm:"not null"` // cents
 	Rate       float64    `json:"rate" gorm:"not null"`
-	Level      int        `json:"level" gorm:"default:1"` // referral level
+	Level      int        `json:"level" gorm:"default:1"`                      // referral level
 	Status     string     `json:"status" gorm:"size:32;default:pending;index"` // pending, confirmed, cancelled
 	ConfirmAt  *time.Time `json:"confirm_at"`
 	CreatedAt  time.Time  `json:"created_at"`
@@ -632,14 +627,13 @@ const (
 	CommissionStatusCancelled = "cancelled"
 )
 
-
 // Invoice represents an invoice for an order.
 type Invoice struct {
 	ID        int64     `json:"id" gorm:"primaryKey"`
 	InvoiceNo string    `json:"invoice_no" gorm:"uniqueIndex;size:64;not null"`
 	OrderID   int64     `json:"order_id" gorm:"index;not null"`
 	UserID    int64     `json:"user_id" gorm:"index;not null"`
-	Amount    int64     `json:"amount" gorm:"not null"` // cents
+	Amount    int64     `json:"amount" gorm:"not null"`            // cents
 	Content   string    `json:"content" gorm:"type:text;not null"` // JSON with line items
 	PDFPath   string    `json:"pdf_path" gorm:"size:256"`
 	CreatedAt time.Time `json:"created_at"`
@@ -657,7 +651,6 @@ func (Invoice) TableName() string {
 // Note: Balance field should be added to User model via migration.
 // ALTER TABLE users ADD COLUMN balance BIGINT DEFAULT 0;
 // ALTER TABLE users ADD COLUMN auto_renewal BOOLEAN DEFAULT FALSE;
-
 
 // ============================================
 // Trial System Models
@@ -711,7 +704,6 @@ type PendingDowngrade struct {
 func (PendingDowngrade) TableName() string {
 	return "pending_downgrades"
 }
-
 
 // ============================================
 // Currency Support Models
@@ -783,22 +775,22 @@ const (
 
 // GiftCard represents a gift card that can be redeemed for balance.
 type GiftCard struct {
-	ID           int64      `json:"id" gorm:"primaryKey"`
-	Code         string     `json:"code" gorm:"uniqueIndex;size:32;not null"`
-	Value        int64      `json:"value" gorm:"not null"`                          // cents
-	Status       string     `json:"status" gorm:"size:32;default:active;index"`     // active, redeemed, expired, disabled
-	CreatedBy    *int64     `json:"created_by" gorm:"index"`                        // Admin who created
-	PurchasedBy  *int64     `json:"purchased_by" gorm:"index"`                      // User who purchased (if purchased)
-	RedeemedBy   *int64     `json:"redeemed_by" gorm:"index"`                       // User who redeemed
-	BatchID      string     `json:"batch_id" gorm:"size:64;index"`                  // For batch creation tracking
-	ExpiresAt    *time.Time `json:"expires_at" gorm:"index"`
-	RedeemedAt   *time.Time `json:"redeemed_at"`
-	PurchasedAt  *time.Time `json:"purchased_at"`
-	CreatedAt    time.Time  `json:"created_at"`
+	ID          int64      `json:"id" gorm:"primaryKey"`
+	Code        string     `json:"code" gorm:"uniqueIndex;size:32;not null"`
+	Value       int64      `json:"value" gorm:"not null"`                      // cents
+	Status      string     `json:"status" gorm:"size:32;default:active;index"` // active, redeemed, expired, disabled
+	CreatedBy   *int64     `json:"created_by" gorm:"index"`                    // Admin who created
+	PurchasedBy *int64     `json:"purchased_by" gorm:"index"`                  // User who purchased (if purchased)
+	RedeemedBy  *int64     `json:"redeemed_by" gorm:"index"`                   // User who redeemed
+	BatchID     string     `json:"batch_id" gorm:"size:64;index"`              // For batch creation tracking
+	ExpiresAt   *time.Time `json:"expires_at" gorm:"index"`
+	RedeemedAt  *time.Time `json:"redeemed_at"`
+	PurchasedAt *time.Time `json:"purchased_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 
-	Creator    *User `json:"creator,omitempty" gorm:"foreignKey:CreatedBy"`
-	Purchaser  *User `json:"purchaser,omitempty" gorm:"foreignKey:PurchasedBy"`
-	Redeemer   *User `json:"redeemer,omitempty" gorm:"foreignKey:RedeemedBy"`
+	Creator   *User `json:"creator,omitempty" gorm:"foreignKey:CreatedBy"`
+	Purchaser *User `json:"purchaser,omitempty" gorm:"foreignKey:PurchasedBy"`
+	Redeemer  *User `json:"redeemer,omitempty" gorm:"foreignKey:RedeemedBy"`
 }
 
 // TableName returns the table name for GiftCard.
@@ -817,32 +809,38 @@ const (
 // BalanceTxTypeGiftCard is the transaction type for gift card redemption
 const BalanceTxTypeGiftCard = "gift_card"
 
-
 // ============================================
 // Multi-Server Management Models
 // ============================================
 
 // Node represents a remote Xray node server.
 type Node struct {
-	ID           int64      `json:"id" gorm:"primaryKey"`
-	Name         string     `json:"name" gorm:"size:128;not null"`
-	Address      string     `json:"address" gorm:"size:256;not null"` // IP or domain
-	Port         int        `json:"port" gorm:"default:18443"`         // Agent port
-	Token        string     `json:"-" gorm:"size:64;uniqueIndex"`     // Authentication token
-	PanelURL     string     `json:"panel_url" gorm:"size:256"`        // Panel server URL for agent connection
-	Status       string     `json:"status" gorm:"size:32;default:offline;index"` // online, offline, unhealthy
-	Tags         string     `json:"tags" gorm:"type:text"`            // JSON array
-	Region       string     `json:"region" gorm:"size:64;index"`
-	Weight       int        `json:"weight" gorm:"default:1"`          // Load balancing weight
-	MaxUsers     int        `json:"max_users" gorm:"default:0"`       // 0 = unlimited
-	CurrentUsers int        `json:"current_users" gorm:"default:0"`
-	Latency      int        `json:"latency" gorm:"default:0"`         // milliseconds
-	LastSeenAt   *time.Time `json:"last_seen_at"`
-	SyncStatus   string     `json:"sync_status" gorm:"size:32;default:pending"` // synced, pending, failed
-	SyncedAt     *time.Time `json:"synced_at"`
-	IPWhitelist  string     `json:"ip_whitelist" gorm:"type:text"`    // JSON array of allowed IPs
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	ID                int64      `json:"id" gorm:"primaryKey"`
+	Name              string     `json:"name" gorm:"size:128;not null"`
+	Address           string     `json:"address" gorm:"size:256;not null"`            // IP or domain
+	Port              int        `json:"port" gorm:"default:18443"`                   // Agent port
+	Token             string     `json:"-" gorm:"size:64;uniqueIndex"`                // Authentication token
+	PanelURL          string     `json:"panel_url" gorm:"size:256"`                   // Panel server URL for agent connection
+	Status            string     `json:"status" gorm:"size:32;default:offline;index"` // online, offline, unhealthy
+	Tags              string     `json:"tags" gorm:"type:text"`                       // JSON array
+	Region            string     `json:"region" gorm:"size:64;index"`
+	Weight            int        `json:"weight" gorm:"default:1"`    // Load balancing weight
+	MaxUsers          int        `json:"max_users" gorm:"default:0"` // 0 = unlimited
+	CurrentUsers      int        `json:"current_users" gorm:"default:0"`
+	Latency           int        `json:"latency" gorm:"default:0"` // milliseconds
+	LastSeenAt        *time.Time `json:"last_seen_at"`
+	SyncStatus        string     `json:"sync_status" gorm:"size:32;default:pending"` // synced, pending, failed
+	SyncedAt          *time.Time `json:"synced_at"`
+	InstallStatus     string     `json:"install_status" gorm:"size:32;default:idle;index"`
+	InstallMessage    string     `json:"install_message" gorm:"size:255"`
+	InstallSteps      string     `json:"install_steps" gorm:"type:text"`
+	InstallLogs       string     `json:"install_logs" gorm:"type:text"`
+	InstallStartedAt  *time.Time `json:"install_started_at"`
+	InstallFinishedAt *time.Time `json:"install_finished_at"`
+	InstallUpdatedAt  *time.Time `json:"install_updated_at"`
+	IPWhitelist       string     `json:"ip_whitelist" gorm:"type:text"` // JSON array of allowed IPs
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }
 
 // TableName returns the table name for Node.
@@ -863,7 +861,6 @@ const (
 	NodeSyncStatusPending = "pending"
 	NodeSyncStatusFailed  = "failed"
 )
-
 
 // NodeGroup represents a group of nodes for organization and load balancing.
 type NodeGroup struct {
@@ -905,7 +902,6 @@ const (
 	StrategyGeographic       = "geographic"
 )
 
-
 // HealthCheck represents a health check record for a node.
 type HealthCheck struct {
 	ID        int64     `json:"id" gorm:"primaryKey"`
@@ -932,7 +928,6 @@ const (
 	HealthCheckStatusFailed  = "failed"
 )
 
-
 // UserNodeAssignment represents the assignment of a user to a specific node.
 type UserNodeAssignment struct {
 	ID         int64     `json:"id" gorm:"primaryKey"`
@@ -949,7 +944,6 @@ type UserNodeAssignment struct {
 func (UserNodeAssignment) TableName() string {
 	return "user_node_assignments"
 }
-
 
 // NodeTraffic represents traffic statistics for a node.
 type NodeTraffic struct {
@@ -970,7 +964,6 @@ type NodeTraffic struct {
 func (NodeTraffic) TableName() string {
 	return "node_traffic"
 }
-
 
 // NodeAuthFailure represents authentication failure records for rate limiting.
 type NodeAuthFailure struct {

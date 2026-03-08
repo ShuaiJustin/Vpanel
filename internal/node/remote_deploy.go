@@ -7,30 +7,117 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
 
+	"v/internal/database/repository"
 	"v/internal/logger"
 )
 
 // RemoteDeployService handles remote agent deployment.
 type RemoteDeployService struct {
-	logger logger.Logger
+	logger   logger.Logger
+	nodeRepo repository.NodeRepository
+	mu       sync.RWMutex
+	tasks    map[int64]*DeployTaskStatus
+}
+
+// DeployTaskStatus represents async deployment progress for a node.
+type DeployTaskStatus struct {
+	NodeID     int64        `json:"node_id"`
+	Status     string       `json:"status"`
+	Message    string       `json:"message"`
+	Steps      []DeployStep `json:"steps"`
+	Logs       string       `json:"logs"`
+	StartedAt  *time.Time   `json:"started_at,omitempty"`
+	FinishedAt *time.Time   `json:"finished_at,omitempty"`
+	UpdatedAt  time.Time    `json:"updated_at"`
 }
 
 // NewRemoteDeployService creates a new remote deploy service.
-func NewRemoteDeployService(log logger.Logger) *RemoteDeployService {
+func NewRemoteDeployService(log logger.Logger, nodeRepo repository.NodeRepository) *RemoteDeployService {
 	return &RemoteDeployService{
-		logger: log,
+		logger:   log,
+		nodeRepo: nodeRepo,
+		tasks:    make(map[int64]*DeployTaskStatus),
 	}
+}
+
+// MarkInstallQueued initializes async deployment status for a node.
+func (s *RemoteDeployService) MarkInstallQueued(nodeID int64, message string) {
+	if nodeID == 0 {
+		return
+	}
+	now := time.Now()
+	s.storeTaskStatus(&DeployTaskStatus{
+		NodeID:    nodeID,
+		Status:    "queued",
+		Message:   message,
+		Steps:     []DeployStep{},
+		Logs:      "",
+		StartedAt: &now,
+		UpdatedAt: now,
+	})
+}
+
+// GetInstallStatus returns the tracked async deployment status for a node.
+func (s *RemoteDeployService) GetInstallStatus(nodeID int64) (*DeployTaskStatus, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	status, ok := s.tasks[nodeID]
+	if !ok {
+		return nil, false
+	}
+	return cloneDeployTaskStatus(status), true
+}
+
+func (s *RemoteDeployService) storeTaskStatus(status *DeployTaskStatus) {
+	if status == nil || status.NodeID == 0 {
+		return
+	}
+	cloned := cloneDeployTaskStatus(status)
+	s.mu.Lock()
+	s.tasks[status.NodeID] = cloned
+	s.mu.Unlock()
+	s.persistTaskStatus(cloned)
+}
+
+func (s *RemoteDeployService) persistTaskStatus(status *DeployTaskStatus) {
+	if s.nodeRepo == nil || status == nil || status.NodeID == 0 {
+		return
+	}
+	stepsJSON, err := json.Marshal(status.Steps)
+	if err != nil {
+		s.logger.Warn("Failed to marshal install steps", logger.Err(err), logger.F("node_id", status.NodeID))
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.nodeRepo.UpdateInstallStatus(ctx, status.NodeID, status.Status, status.Message, string(stepsJSON), status.Logs, status.StartedAt, status.FinishedAt, &status.UpdatedAt); err != nil {
+		s.logger.Warn("Failed to persist install status", logger.Err(err), logger.F("node_id", status.NodeID))
+	}
+}
+
+func cloneDeployTaskStatus(status *DeployTaskStatus) *DeployTaskStatus {
+	if status == nil {
+		return nil
+	}
+	cloned := *status
+	if status.Steps != nil {
+		cloned.Steps = append([]DeployStep(nil), status.Steps...)
+	}
+	return &cloned
 }
 
 // DeployConfig contains configuration for remote deployment.
 type DeployConfig struct {
+	NodeID          int64  `json:"node_id,omitempty"`
 	Host            string `json:"host"`
 	Port            int    `json:"port"`
 	Username        string `json:"username"`
@@ -57,25 +144,45 @@ type DeployResult struct {
 
 // Deploy deploys the agent to a remote server.
 func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) (*DeployResult, error) {
-	// 验证配置
-	if err := s.validateDeployConfig(config); err != nil {
-		return &DeployResult{
-			Success: false,
-			Message: fmt.Sprintf("配置验证失败: %v", err),
-			Steps:   []DeployStep{{Name: "配置验证", Status: "failed"}},
-		}, err
-	}
-
-	// 添加总体超时控制
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
-	defer cancel()
-
+	startedAt := time.Now()
 	result := &DeployResult{
 		Steps:   []DeployStep{},
 		Success: false,
 	}
 
 	var logBuffer bytes.Buffer
+
+	publish := func(status, message string, finishedAt *time.Time) {
+		if config == nil || config.NodeID == 0 {
+			return
+		}
+		if message == "" {
+			message = result.Message
+		}
+		s.storeTaskStatus(&DeployTaskStatus{
+			NodeID:     config.NodeID,
+			Status:     status,
+			Message:    message,
+			Steps:      append([]DeployStep(nil), result.Steps...),
+			Logs:       logBuffer.String(),
+			StartedAt:  &startedAt,
+			FinishedAt: finishedAt,
+			UpdatedAt:  time.Now(),
+		})
+	}
+
+	// 验证配置
+	if err := s.validateDeployConfig(config); err != nil {
+		result.Message = fmt.Sprintf("配置验证失败: %v", err)
+		result.Steps = []DeployStep{{Name: "配置验证", Status: "failed"}}
+		finishedAt := time.Now()
+		publish("failed", result.Message, &finishedAt)
+		return result, err
+	}
+
+	// 添加总体超时控制
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+	defer cancel()
 
 	// 记录开始部署
 	logBuffer.WriteString("========================================\n")
@@ -84,10 +191,12 @@ func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) 
 	logBuffer.WriteString(fmt.Sprintf("目标服务器: %s:%d\n", config.Host, config.Port))
 	logBuffer.WriteString(fmt.Sprintf("用户名: %s\n", config.Username))
 	logBuffer.WriteString(fmt.Sprintf("Panel URL: %s\n\n", config.PanelURL))
+	publish("running", "开始部署 Agent", nil)
 
 	// 辅助函数：添加步骤并标记为运行中
 	addStep := func(name string) int {
 		result.Steps = append(result.Steps, DeployStep{Name: name, Status: "running"})
+		publish("running", "正在"+name, nil)
 		return len(result.Steps) - 1
 	}
 
@@ -108,13 +217,15 @@ func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) 
 	// Step 1: Connect to remote server
 	stepIdx := addStep("连接到远程服务器")
 	logBuffer.WriteString("步骤 1/8: 连接到远程服务器...\n")
-	
+
 	client, err := s.connectSSH(config)
 	if err != nil {
 		markFailed(stepIdx)
 		result.Message = fmt.Sprintf("SSH 连接失败: %v", err)
-		result.Logs = logBuffer.String()
 		logBuffer.WriteString(fmt.Sprintf("✗ 连接失败: %v\n", err))
+		result.Logs = logBuffer.String()
+		finishedAt := time.Now()
+		publish("failed", result.Message, &finishedAt)
 		return result, err
 	}
 	defer client.Close()
@@ -126,11 +237,13 @@ func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) 
 	// Step 2: Check system requirements
 	stepIdx = addStep("检查系统要求")
 	logBuffer.WriteString("步骤 2/8: 检查系统要求...\n")
-	
+
 	if err := s.checkSystemRequirements(client, &logBuffer); err != nil {
 		markFailed(stepIdx)
 		result.Message = fmt.Sprintf("系统检查失败: %v", err)
 		result.Logs = logBuffer.String()
+		finishedAt := time.Now()
+		publish("failed", result.Message, &finishedAt)
 		return result, err
 	}
 	markSuccess(stepIdx)
@@ -139,11 +252,13 @@ func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) 
 	// Step 3: Install dependencies
 	stepIdx = addStep("安装依赖")
 	logBuffer.WriteString("步骤 3/8: 安装依赖...\n")
-	
+
 	if err := s.installDependencies(client, &logBuffer); err != nil {
 		markFailed(stepIdx)
 		result.Message = fmt.Sprintf("依赖安装失败: %v", err)
 		result.Logs = logBuffer.String()
+		finishedAt := time.Now()
+		publish("failed", result.Message, &finishedAt)
 		return result, err
 	}
 	markSuccess(stepIdx)
@@ -161,11 +276,13 @@ func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) 
 	// Step 4: Download and install agent
 	stepIdx = addStep("下载并安装 Agent")
 	logBuffer.WriteString("步骤 4/8: 下载并安装 Agent...\n")
-	
+
 	if err := s.installAgent(client, config, &logBuffer); err != nil {
 		markFailed(stepIdx)
 		result.Message = fmt.Sprintf("Agent 安装失败: %v", err)
 		result.Logs = logBuffer.String()
+		finishedAt := time.Now()
+		publish("failed", result.Message, &finishedAt)
 		return result, err
 	}
 	markSuccess(stepIdx)
@@ -174,11 +291,13 @@ func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) 
 	// Step 5: Install Xray
 	stepIdx = addStep("安装 Xray")
 	logBuffer.WriteString("步骤 5/8: 安装 Xray...\n")
-	
+
 	if err := s.installXray(client, &logBuffer); err != nil {
 		markFailed(stepIdx)
 		result.Message = fmt.Sprintf("Xray 安装失败: %v", err)
 		result.Logs = logBuffer.String()
+		finishedAt := time.Now()
+		publish("failed", result.Message, &finishedAt)
 		return result, err
 	}
 	markSuccess(stepIdx)
@@ -187,11 +306,13 @@ func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) 
 	// Step 6: Configure agent
 	stepIdx = addStep("配置 Agent")
 	logBuffer.WriteString("步骤 6/8: 配置 Agent...\n")
-	
+
 	if err := s.configureAgent(client, config, &logBuffer); err != nil {
 		markFailed(stepIdx)
 		result.Message = fmt.Sprintf("Agent 配置失败: %v", err)
 		result.Logs = logBuffer.String()
+		finishedAt := time.Now()
+		publish("failed", result.Message, &finishedAt)
 		return result, err
 	}
 	markSuccess(stepIdx)
@@ -200,11 +321,13 @@ func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) 
 	// Step 7: Start agent service
 	stepIdx = addStep("启动 Agent 服务")
 	logBuffer.WriteString("步骤 7/8: 启动 Agent 服务...\n")
-	
+
 	if err := s.startAgentService(client, &logBuffer); err != nil {
 		markFailed(stepIdx)
 		result.Message = fmt.Sprintf("Agent 启动失败: %v", err)
 		result.Logs = logBuffer.String()
+		finishedAt := time.Now()
+		publish("failed", result.Message, &finishedAt)
 		return result, err
 	}
 	markSuccess(stepIdx)
@@ -213,11 +336,13 @@ func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) 
 	// Step 8: Verify installation
 	stepIdx = addStep("验证安装")
 	logBuffer.WriteString("步骤 8/8: 验证安装...\n")
-	
+
 	if err := s.verifyInstallation(client, &logBuffer); err != nil {
 		markFailed(stepIdx)
 		result.Message = fmt.Sprintf("安装验证失败: %v", err)
 		result.Logs = logBuffer.String()
+		finishedAt := time.Now()
+		publish("failed", result.Message, &finishedAt)
 		return result, err
 	}
 	markSuccess(stepIdx)
@@ -229,6 +354,9 @@ func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) 
 	result.Success = true
 	result.Message = "Agent 部署成功"
 	result.Logs = logBuffer.String()
+
+	finishedAt := time.Now()
+	publish("success", result.Message, &finishedAt)
 
 	s.logger.Info("Agent deployed successfully", logger.F("host", config.Host))
 
@@ -305,7 +433,7 @@ func (s *RemoteDeployService) connectSSH(config *DeployConfig) (*ssh.Client, err
 	}
 
 	addr := fmt.Sprintf("%s:%d", config.Host, port)
-	
+
 	s.logger.Info("尝试连接 SSH",
 		logger.F("address", addr),
 		logger.F("username", config.Username))
@@ -528,7 +656,7 @@ exit 1
 
 	// 下载失败或未配置公网地址，使用 SCP 上传方式
 	logBuffer.WriteString("使用 SCP 上传方式安装 Agent...\n")
-	
+
 	// 读取本地 Agent 文件
 	agentPath := config.AgentBinaryPath
 	if agentPath == "" {
@@ -544,12 +672,12 @@ exit 1
 	}
 
 	logBuffer.WriteString(fmt.Sprintf("正在上传 Agent (大小: %d bytes)...\n", len(agentData)))
-	
+
 	// 计算本地文件哈希
 	localHash := sha256.Sum256(agentData)
 	localHashStr := hex.EncodeToString(localHash[:])
 	s.logger.Info("Agent 文件哈希", logger.F("sha256", localHashStr))
-	
+
 	// 使用 SCP 协议上传文件（包含验证）
 	if err := s.uploadFileSCP(client, agentData, "/usr/local/bin/vpanel-agent", localHashStr, logBuffer); err != nil {
 		return fmt.Errorf("Agent 上传失败: %w", err)
@@ -693,18 +821,18 @@ func (s *RemoteDeployService) configureAgent(client *ssh.Client, config *DeployC
 	if config.NodeToken == "" {
 		return fmt.Errorf("节点 token 为空，无法配置 Agent")
 	}
-	
+
 	// 记录配置信息用于调试
 	s.logger.Info("Configuring agent",
 		logger.F("panel_url", config.PanelURL),
 		logger.F("node_token_length", len(config.NodeToken)),
 		logger.F("node_token_prefix", config.NodeToken[:min(16, len(config.NodeToken))]),
 		logger.F("node_token_suffix", config.NodeToken[max(0, len(config.NodeToken)-8):]))
-	
+
 	logBuffer.WriteString(fmt.Sprintf("配置 Token 长度: %d\n", len(config.NodeToken)))
 	logBuffer.WriteString(fmt.Sprintf("配置 Token 前缀: %s\n", config.NodeToken[:min(16, len(config.NodeToken))]))
 	logBuffer.WriteString(fmt.Sprintf("配置 Token 后缀: %s\n\n", config.NodeToken[max(0, len(config.NodeToken)-8):]))
-	
+
 	// 创建新的 Agent 配置
 	agentConfig := fmt.Sprintf(`node:
   token: "%s"
@@ -722,7 +850,7 @@ health:
 
 	// 使用 base64 编码配置内容，避免特殊字符问题
 	encoded := base64Encode([]byte(agentConfig))
-	
+
 	// 第三步：写入新配置文件
 	script := fmt.Sprintf(`
 echo "=== 写入新的 Agent 配置 ==="
@@ -1139,7 +1267,7 @@ func (s *RemoteDeployService) TestConnection(ctx context.Context, config *Deploy
 		logger.F("host", config.Host),
 		logger.F("port", config.Port),
 		logger.F("username", config.Username))
-	
+
 	// 连接 SSH
 	client, err := s.connectSSH(config)
 	if err != nil {
@@ -1176,31 +1304,31 @@ func (s *RemoteDeployService) validateDeployConfig(config *DeployConfig) error {
 	if config.Host == "" {
 		return fmt.Errorf("服务器地址不能为空")
 	}
-	
+
 	if config.Username == "" {
 		return fmt.Errorf("用户名不能为空")
 	}
-	
+
 	if config.Password == "" && config.PrivateKey == "" {
 		return fmt.Errorf("必须提供密码或私钥")
 	}
-	
+
 	if config.NodeToken == "" {
 		return fmt.Errorf("节点 Token 不能为空")
 	}
-	
+
 	if len(config.NodeToken) < 32 {
 		return fmt.Errorf("节点 Token 长度不足（至少 32 字符，当前 %d 字符）", len(config.NodeToken))
 	}
-	
+
 	if config.PanelURL == "" {
 		return fmt.Errorf("Panel URL 不能为空")
 	}
-	
+
 	if strings.Contains(config.PanelURL, "localhost") || strings.Contains(config.PanelURL, "127.0.0.1") {
 		return fmt.Errorf("Panel URL 不能使用 localhost 或 127.0.0.1，远程节点无法访问")
 	}
-	
+
 	return nil
 }
 
@@ -1248,45 +1376,45 @@ pkill -9 vpanel-agent 2>/dev/null || true
 sleep 1
 `
 	s.executeCommand(client, stopScript, logBuffer)
-	
+
 	// 创建临时文件并上传
 	tmpPath := "/tmp/vpanel-agent.tmp"
-	
+
 	// 使用 base64 编码上传（更可靠）
 	encoded := base64Encode(data)
-	
+
 	// 分块上传（每块 100KB）
 	chunkSize := 100 * 1024
 	totalChunks := (len(encoded) + chunkSize - 1) / chunkSize
-	
+
 	logBuffer.WriteString(fmt.Sprintf("开始上传文件 (共 %d 块)...\n", totalChunks))
-	
+
 	// 清空临时文件
 	if err := s.executeCommand(client, fmt.Sprintf("rm -f %s", tmpPath), logBuffer); err != nil {
 		return fmt.Errorf("清空临时文件失败: %w", err)
 	}
-	
+
 	// 分块上传
 	for i := 0; i < len(encoded); i += chunkSize {
 		end := i + chunkSize
 		if end > len(encoded) {
 			end = len(encoded)
 		}
-		
+
 		chunk := encoded[i:end]
 		chunkNum := i/chunkSize + 1
-		
+
 		// 每 10 块显示一次进度
 		if chunkNum%10 == 0 || chunkNum == totalChunks {
 			logBuffer.WriteString(fmt.Sprintf("上传进度: %d/%d\n", chunkNum, totalChunks))
 		}
-		
+
 		uploadCmd := fmt.Sprintf("echo '%s' | base64 -d >> %s", chunk, tmpPath)
 		if err := s.executeCommand(client, uploadCmd, logBuffer); err != nil {
 			return fmt.Errorf("上传第 %d 块失败: %w", chunkNum, err)
 		}
 	}
-	
+
 	// 移动到目标位置并设置权限
 	moveScript := fmt.Sprintf(`
 mv -f %s %s
@@ -1305,7 +1433,7 @@ fi
 REMOTE_HASH=$(sha256sum %s 2>/dev/null | awk '{print $1}' || shasum -a 256 %s 2>/dev/null | awk '{print $1}')
 echo "远程文件哈希: ${REMOTE_HASH}"
 `, tmpPath, remotePath, remotePath, remotePath, remotePath, remotePath, remotePath)
-	
+
 	if err := s.executeCommand(client, moveScript, logBuffer); err != nil {
 		return fmt.Errorf("移动文件失败: %w", err)
 	}
@@ -1321,7 +1449,7 @@ if [ "$REMOTE_HASH" != "%s" ]; then
 fi
 echo "✓ 文件校验通过"
 `, remotePath, remotePath, expectedHash, expectedHash)
-	
+
 	if err := s.executeCommand(client, verifyScript, logBuffer); err != nil {
 		return fmt.Errorf("文件完整性校验失败: %w", err)
 	}

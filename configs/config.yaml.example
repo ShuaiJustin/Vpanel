@@ -20,7 +20,7 @@ server:
   # Read timeout for HTTP requests
   read_timeout: "30s"
   # Write timeout for HTTP responses
-  write_timeout: "30s"
+  write_timeout: "10m"
 
 # Database configuration
 database:

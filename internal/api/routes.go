@@ -198,7 +198,7 @@ func (r *Router) Setup() {
 	nodeGroupService := node.NewGroupService(r.repos.NodeGroup, r.repos.Node, r.logger)
 	r.nodeHealthChecker = node.NewHealthChecker(nil, r.repos.Node, r.repos.Certificate, r.repos.HealthCheck, r.logger)
 	nodeTrafficService := node.NewTrafficService(r.repos.NodeTraffic, r.repos.NodeGroup, r.logger)
-	nodeDeployService := node.NewRemoteDeployService(r.logger)
+	nodeDeployService := node.NewRemoteDeployService(r.logger, r.repos.Node)
 
 	// Create node management handlers
 	nodeHandler := handlers.NewNodeHandler(nodeService, nodeDeployService, r.logger)
@@ -663,6 +663,7 @@ func (r *Router) Setup() {
 				adminNodes.POST("/test-connection", nodeDeployHandler.TestConnection)
 
 				adminNodes.GET("/:id", nodeHandler.Get)
+				adminNodes.GET("/:id/install-status", nodeHandler.GetInstallStatus)
 				adminNodes.PUT("/:id", nodeHandler.Update)
 				adminNodes.DELETE("/:id", nodeHandler.Delete)
 				adminNodes.PUT("/:id/status", nodeHandler.UpdateStatus)

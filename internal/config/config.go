@@ -34,7 +34,7 @@ type ServerConfig struct {
 	Mode            string        `yaml:"mode" env:"V_SERVER_MODE" default:"debug"`
 	BaseURL         string        `yaml:"base_url" env:"V_SERVER_BASE_URL" default:""`
 	ReadTimeout     time.Duration `yaml:"read_timeout" env:"V_SERVER_READ_TIMEOUT" default:"30s"`
-	WriteTimeout    time.Duration `yaml:"write_timeout" env:"V_SERVER_WRITE_TIMEOUT" default:"30s"`
+	WriteTimeout    time.Duration `yaml:"write_timeout" env:"V_SERVER_WRITE_TIMEOUT" default:"10m"`
 	IdleTimeout     time.Duration `yaml:"idle_timeout" env:"V_SERVER_IDLE_TIMEOUT" default:"60s"`
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout" env:"V_SERVER_SHUTDOWN_TIMEOUT" default:"30s"`
 	TLSCert         string        `yaml:"tls_cert" env:"V_SERVER_TLS_CERT" default:""`
