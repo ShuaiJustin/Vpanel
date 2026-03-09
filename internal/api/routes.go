@@ -833,11 +833,17 @@ func (r *Router) Setup() {
 
 	// Static files for frontend (if enabled)
 	if r.config.Server.StaticPath != "" {
+		staticPath := r.config.Server.StaticPath
+		r.logger.Info("serving frontend static files", logger.F("static_path", staticPath))
+
 		// Serve static assets (js, css, images, etc.)
-		r.engine.Static("/assets", r.config.Server.StaticPath+"/assets")
+		r.engine.Static("/assets", staticPath+"/assets")
 
 		// Serve favicon
-		r.engine.StaticFile("/favicon.ico", r.config.Server.StaticPath+"/favicon.ico")
+		r.engine.GET("/favicon.ico", func(c *gin.Context) {
+			c.Header("Cache-Control", "public, max-age=86400")
+			c.File(staticPath + "/favicon.ico")
+		})
 
 		// Serve documentation files
 		r.engine.Static("/docs", "Docs")
@@ -853,7 +859,11 @@ func (r *Router) Setup() {
 				})
 				return
 			}
-			c.File(r.config.Server.StaticPath + "/index.html")
+
+			c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+			c.Header("Pragma", "no-cache")
+			c.Header("Expires", "0")
+			c.File(staticPath + "/index.html")
 		})
 	}
 }
