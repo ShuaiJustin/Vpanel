@@ -34,7 +34,9 @@ type CertificateHandler struct {
 // CertificateService defines the interface for certificate operations.
 type CertificateService interface {
 	Apply(ctx context.Context, req *certificate.ApplyRequest) (*repository.Certificate, error)
+	Upload(ctx context.Context, domain string, certData, keyData []byte) (*repository.Certificate, error)
 	Renew(ctx context.Context, certID int64) error
+	DeployToAssignedNodes(ctx context.Context, certID int64) error
 }
 
 // NewCertificateHandler creates a new certificate handler.
@@ -63,10 +65,11 @@ type CertificateResponse struct {
 
 // CreateCertificateRequest represents a request to create/upload a certificate.
 type CreateCertificateRequest struct {
-	Domain      string `json:"domain" binding:"required"`
-	Certificate string `json:"certificate" binding:"required"`
-	PrivateKey  string `json:"private_key" binding:"required"`
-	AutoRenew   bool   `json:"auto_renew"`
+	Domain      string  `json:"domain" binding:"required"`
+	Certificate string  `json:"certificate" binding:"required"`
+	PrivateKey  string  `json:"private_key" binding:"required"`
+	AutoRenew   bool    `json:"auto_renew"`
+	NodeIDs     []int64 `json:"node_ids"`
 }
 
 // UpdateCertificateRequest represents a request to update a certificate.
@@ -87,6 +90,93 @@ type ApplyCertificateRequest struct {
 	DNSEnv      map[string]string `json:"dns_env"`      // DNS API credentials
 	AutoRenew   *bool             `json:"auto_renew"`   // Auto renew certificate (default: true)
 	Wildcard    bool              `json:"wildcard"`     // 是否申请泛域名证书（*.domain.com）
+	NodeIDs     []int64           `json:"node_ids"`     // 签发成功后自动关联到这些节点
+}
+
+func normalizeCertificateTLSDomain(domain string) string {
+	domain = strings.TrimSpace(strings.ToLower(domain))
+	if strings.HasPrefix(domain, "*.") {
+		return ""
+	}
+	return domain
+}
+
+func deduplicateNodeIDs(nodeIDs []int64) []int64 {
+	result := make([]int64, 0, len(nodeIDs))
+	seen := make(map[int64]struct{}, len(nodeIDs))
+	for _, nodeID := range nodeIDs {
+		if nodeID <= 0 {
+			continue
+		}
+		if _, exists := seen[nodeID]; exists {
+			continue
+		}
+		seen[nodeID] = struct{}{}
+		result = append(result, nodeID)
+	}
+	return result
+}
+
+func (h *CertificateHandler) assignCertificateToNodes(ctx context.Context, cert *repository.Certificate, nodeIDs []int64) (int, []int64) {
+	if cert == nil {
+		return 0, deduplicateNodeIDs(nodeIDs)
+	}
+
+	tlsDomain := normalizeCertificateTLSDomain(cert.Domain)
+	successCount := 0
+	failedNodes := make([]int64, 0)
+
+	for _, nodeID := range deduplicateNodeIDs(nodeIDs) {
+		node, err := h.nodeRepo.GetByID(ctx, nodeID)
+		if err != nil {
+			h.logger.Warn("Node not found, skipping",
+				logger.F("node_id", nodeID),
+				logger.Err(err))
+			failedNodes = append(failedNodes, nodeID)
+			continue
+		}
+
+		node.CertificateID = &cert.ID
+		if tlsDomain != "" && strings.TrimSpace(node.TLSDomain) == "" {
+			node.TLSDomain = tlsDomain
+		}
+
+		if err := h.nodeRepo.Update(ctx, node); err != nil {
+			h.logger.Error("Failed to update node certificate",
+				logger.F("node_id", nodeID),
+				logger.F("cert_id", cert.ID),
+				logger.Err(err))
+			failedNodes = append(failedNodes, nodeID)
+			continue
+		}
+
+		successCount++
+		h.logger.Info("Certificate assigned to node",
+			logger.F("cert_id", cert.ID),
+			logger.F("cert_domain", cert.Domain),
+			logger.F("node_id", nodeID),
+			logger.F("node_name", node.Name))
+	}
+
+	return successCount, failedNodes
+}
+
+func (h *CertificateHandler) deployAssignedNodesAsync(cert *repository.Certificate) {
+	if h.certSvc == nil || cert == nil {
+		return
+	}
+
+	go func(certID int64, domain string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		if err := h.certSvc.DeployToAssignedNodes(ctx, certID); err != nil {
+			h.logger.Warn("Failed to auto deploy certificate to assigned nodes",
+				logger.F("cert_id", certID),
+				logger.F("domain", domain),
+				logger.Err(err))
+		}
+	}(cert.ID, cert.Domain)
 }
 
 // toCertificateResponse converts a certificate to API response format.
@@ -216,31 +306,41 @@ func (h *CertificateHandler) Create(c *gin.Context) {
 		return
 	}
 
-	// TODO: 验证证书格式和有效性
-	// TODO: 从证书中提取过期时间
-
-	cert := &repository.Certificate{
-		Domain:      req.Domain,
-		Certificate: req.Certificate,
-		PrivateKey:  req.PrivateKey,
-		AutoRenew:   req.AutoRenew,
-		ExpiresAt:   time.Now().AddDate(0, 3, 0), // 默认 3 个月后过期
+	if h.certSvc == nil {
+		h.logger.Error("Certificate service is not initialized")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "证书服务未初始化"})
+		return
 	}
-	cert.ExpireDate = &cert.ExpiresAt
 
-	if err := h.certRepo.Create(c.Request.Context(), cert); err != nil {
+	cert, err := h.certSvc.Upload(c.Request.Context(), req.Domain, []byte(req.Certificate), []byte(req.PrivateKey))
+	if err != nil {
 		if errors.IsConflict(err) {
 			c.JSON(http.StatusConflict, gin.H{"error": "该域名的证书已存在"})
 			return
 		}
-		h.logger.Error("Failed to create certificate", logger.Err(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建证书失败"})
+		h.logger.Error("Failed to upload certificate", logger.Err(err), logger.F("domain", req.Domain))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "上传证书失败"})
 		return
+	}
+
+	successCount, failedNodes := h.assignCertificateToNodes(c.Request.Context(), cert, req.NodeIDs)
+	if successCount > 0 {
+		h.deployAssignedNodesAsync(cert)
 	}
 
 	h.logger.Info("Certificate created", logger.F("cert_id", cert.ID), logger.F("domain", cert.Domain))
 
-	c.JSON(http.StatusCreated, toCertificateResponse(cert))
+	response := gin.H{
+		"certificate": toCertificateResponse(cert),
+	}
+	if successCount > 0 || len(failedNodes) > 0 {
+		response["assignment"] = gin.H{
+			"success_count": successCount,
+			"failed_nodes":  failedNodes,
+		}
+	}
+
+	c.JSON(http.StatusCreated, response)
 }
 
 // Update updates an existing certificate.
@@ -354,6 +454,7 @@ func (h *CertificateHandler) Apply(c *gin.Context) {
 		DNSEnv:      req.DNSEnv,
 		AutoRenew:   req.AutoRenew,
 		Wildcard:    req.Wildcard,
+		NodeIDs:     req.NodeIDs,
 	}
 
 	// 调用 service 层申请证书
@@ -773,38 +874,9 @@ func (h *CertificateHandler) AssignToNodes(c *gin.Context) {
 		return
 	}
 
-	// 更新每个节点的 certificate_id
-	successCount := 0
-	failedNodes := make([]int64, 0)
-
-	for _, nodeID := range req.NodeIDs {
-		// 获取节点
-		node, err := h.nodeRepo.GetByID(ctx, nodeID)
-		if err != nil {
-			h.logger.Warn("Node not found, skipping",
-				logger.F("node_id", nodeID),
-				logger.Err(err))
-			failedNodes = append(failedNodes, nodeID)
-			continue
-		}
-
-		// 更新节点的证书 ID
-		node.CertificateID = &certID
-		if err := h.nodeRepo.Update(ctx, node); err != nil {
-			h.logger.Error("Failed to update node certificate",
-				logger.F("node_id", nodeID),
-				logger.F("cert_id", certID),
-				logger.Err(err))
-			failedNodes = append(failedNodes, nodeID)
-			continue
-		}
-
-		successCount++
-		h.logger.Info("Certificate assigned to node",
-			logger.F("cert_id", certID),
-			logger.F("cert_domain", cert.Domain),
-			logger.F("node_id", nodeID),
-			logger.F("node_name", node.Name))
+	successCount, failedNodes := h.assignCertificateToNodes(ctx, cert, req.NodeIDs)
+	if successCount > 0 {
+		h.deployAssignedNodesAsync(cert)
 	}
 
 	// 返回结果

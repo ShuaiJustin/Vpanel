@@ -151,6 +151,32 @@ func TestGenerateStreamSettings_SupportsInlineCertificateContent(t *testing.T) {
 	assert.Equal(t, []string{"-----BEGIN PRIVATE KEY-----test-----END PRIVATE KEY-----"}, stream.TLSSettings.Certificates[0].Key)
 }
 
+func TestGenerateStreamSettings_AutoMatchesStoredCertificateContent(t *testing.T) {
+	generator := &ConfigGenerator{
+		certRepo: &mockCertificateRepoForGenerator{certs: map[string]*repository.Certificate{
+			"example.com": {
+				ID:          3,
+				Domain:      "example.com",
+				Status:      "active",
+				Certificate: "-----BEGIN CERTIFICATE-----stored-----END CERTIFICATE-----",
+				PrivateKey:  "-----BEGIN PRIVATE KEY-----stored-----END PRIVATE KEY-----",
+			},
+		}},
+		logger: logger.NewNopLogger(),
+	}
+
+	stream := generator.generateStreamSettings(context.Background(), map[string]any{
+		"security":    "tls",
+		"server_name": "example.com",
+	})
+
+	require.NotNil(t, stream)
+	require.NotNil(t, stream.TLSSettings)
+	require.Len(t, stream.TLSSettings.Certificates, 1)
+	assert.Equal(t, []string{"-----BEGIN CERTIFICATE-----stored-----END CERTIFICATE-----"}, stream.TLSSettings.Certificates[0].Certificate)
+	assert.Equal(t, []string{"-----BEGIN PRIVATE KEY-----stored-----END PRIVATE KEY-----"}, stream.TLSSettings.Certificates[0].Key)
+}
+
 func TestBuildCertificateCandidates(t *testing.T) {
 	assert.Equal(t, []string{"api.example.com", "*.example.com"}, buildCertificateCandidates("api.example.com"))
 	assert.Equal(t, []string{"example.com"}, buildCertificateCandidates("example.com"))

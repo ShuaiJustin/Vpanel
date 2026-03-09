@@ -1023,7 +1023,23 @@ else
     echo "⚠ 健康检查端口 $HEALTH_PORT 未监听（可能正在启动）"
 fi
 
-# 6. 检查最近日志（查看是否有错误）
+# 6. 检查 Xray 是否已被 Agent 自动拉起
+XRAY_READY=0
+for i in 1 2 3 4 5 6 7 8; do
+    if curl -fsS http://127.0.0.1:${HEALTH_PORT}/xray/status 2>/dev/null | grep -q '"running":true'; then
+        echo "✓ Xray 已由 Agent 自动拉起"
+        XRAY_READY=1
+        break
+    fi
+    sleep 2
+done
+
+if [ "$XRAY_READY" -ne 1 ]; then
+    echo "⚠ Xray 暂未就绪，Agent 将继续后台自动拉起/自愈"
+    systemctl status xray --no-pager 2>/dev/null | head -20 || true
+fi
+
+# 7. 检查最近日志（查看是否有错误）
 echo ""
 echo "=== 最近日志 ==="
 journalctl -u vpanel-agent -n 10 --no-pager 2>/dev/null || echo "无法读取日志"

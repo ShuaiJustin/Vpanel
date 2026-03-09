@@ -48,7 +48,7 @@
 - ✅ 提交时包含 node_id
 - ✅ 显示节点信息
 
-**文件**: `web/src/views/Proxies.vue`
+**文件**: `web/src/views/Inbounds.vue`
 
 ### 5. 远程部署 ✅
 

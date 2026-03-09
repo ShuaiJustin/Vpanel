@@ -111,12 +111,13 @@
     <!-- 添加入站对话框 -->
     <el-dialog
       v-model="addInboundDialogVisible"
-      title="添加协议"
+      :title="dialogMode === 'edit' ? '编辑协议' : '添加协议'"
       width="500px"
       destroy-on-close
       :close-on-click-modal="false"
     >
       <el-form
+        v-loading="dialogLoading"
         ref="inboundFormRef"
         :model="inboundForm"
         :rules="rules"
@@ -124,7 +125,7 @@
         label-position="left"
       >
         <el-form-item label="协议" prop="protocol">
-          <el-select v-model="inboundForm.protocol" style="width: 100%">
+          <el-select v-model="inboundForm.protocol" style="width: 100%" :disabled="dialogMode === 'edit'">
             <el-option label="VMess" value="vmess" />
             <el-option label="VLESS" value="vless" />
             <el-option label="Trojan" value="trojan" />
@@ -410,7 +411,7 @@
           <el-switch v-model="tlsEnabled" />
         </el-form-item>
         
-        <template v-if="tlsEnabled">
+        <template v-if="tlsSettingsEnabled">
           <el-form-item label="XTLS">
             <el-switch v-model="xtlsEnabled" />
           </el-form-item>
@@ -418,52 +419,17 @@
           <el-form-item label="域名">
             <el-input
               v-model="inboundForm.stream_settings.tls_settings.server_name"
-              placeholder="请输入域名"
+              placeholder="请输入 TLS 域名，例如 vpn.example.com"
             />
+            <div class="form-tip">自动模式会按这里填写的域名，从“证书管理”中匹配已签发且可用的系统证书。</div>
           </el-form-item>
           
           <el-form-item label="证书配置">
-            <el-radio-group v-model="inboundForm.stream_settings.tls_settings.cert_mode">
-              <el-radio value="certificate file path">证书文件路径</el-radio>
-              <el-radio value="certificate file content">证书文件内容</el-radio>
-            </el-radio-group>
+            <div class="cert-input">
+              <el-tag type="success">自动匹配系统证书</el-tag>
+              <div class="form-tip">保存后会按上面的域名，从“证书管理”里自动匹配已签发且可用的系统证书。</div>
+            </div>
           </el-form-item>
-          
-          <template v-if="inboundForm.stream_settings.tls_settings.cert_mode === 'certificate file path'">
-            <el-form-item label="公钥文件路径">
-              <el-input
-                v-model="inboundForm.stream_settings.tls_settings.cert_file"
-                placeholder="请输入公钥文件路径"
-              />
-            </el-form-item>
-            
-            <el-form-item label="私钥文件路径">
-              <el-input
-                v-model="inboundForm.stream_settings.tls_settings.key_file"
-                placeholder="请输入私钥文件路径"
-              />
-            </el-form-item>
-          </template>
-          
-          <template v-else>
-            <el-form-item label="公钥文件内容">
-              <el-input
-                v-model="inboundForm.stream_settings.tls_settings.cert_content"
-                type="textarea"
-                rows="4"
-                placeholder="请输入公钥文件内容"
-              />
-            </el-form-item>
-            
-            <el-form-item label="私钥文件内容">
-              <el-input
-                v-model="inboundForm.stream_settings.tls_settings.key_content"
-                type="textarea"
-                rows="4"
-                placeholder="请输入私钥文件内容"
-              />
-            </el-form-item>
-          </template>
         </template>
         
         <el-divider content-position="left">高级设置</el-divider>
@@ -534,10 +500,14 @@
 
 <script setup>
 import { ref, reactive, onMounted, computed, nextTick, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { InfoFilled, Plus, Delete } from '@element-plus/icons-vue'
 import api from '@/api/index'
 import QRCode from 'qrcode'
+
+const route = useRoute()
+const router = useRouter()
 
 // 数据表格
 const loading = ref(false)
@@ -548,6 +518,8 @@ const nodeList = ref([])  // 节点列表
 const addInboundDialogVisible = ref(false)
 const inboundFormRef = ref(null)
 const submitting = ref(false)
+const dialogLoading = ref(false)
+const dialogMode = ref('add')
 
 // 二维码相关
 const qrCodeDialogVisible = ref(false)
@@ -598,12 +570,7 @@ const defaultInboundForm = {
       service_name: ''
     },
     tls_settings: {
-      server_name: '',
-      cert_mode: 'certificate file path',
-      cert_file: '',
-      key_file: '',
-      cert_content: '',
-      key_content: ''
+      server_name: ''
     }
   },
   sniffing: {
@@ -615,11 +582,25 @@ const defaultInboundForm = {
 // 当前表单
 const inboundForm = reactive({...defaultInboundForm})
 
+const unwrapApiData = (response) => response?.data ?? response ?? null
+const normalizeStringValue = (value) => typeof value === 'string' ? value.trim() : ''
+const firstStringValue = (value) => Array.isArray(value) ? normalizeStringValue(value[0]) : normalizeStringValue(value)
+const cloneDefaultInboundForm = () => JSON.parse(JSON.stringify(defaultInboundForm))
+const resetInboundForm = () => Object.assign(inboundForm, cloneDefaultInboundForm())
+
+const tlsSettingsEnabled = computed(() => ['tls', 'xtls'].includes(inboundForm.stream_settings.security))
+
 // TLS开关
 const tlsEnabled = computed({
-  get: () => inboundForm.stream_settings.security === 'tls',
+  get: () => tlsSettingsEnabled.value,
   set: (value) => {
-    inboundForm.stream_settings.security = value ? 'tls' : ''
+    if (!value) {
+      inboundForm.stream_settings.security = ''
+      return
+    }
+    if (!tlsSettingsEnabled.value) {
+      inboundForm.stream_settings.security = 'tls'
+    }
   }
 })
 
@@ -670,13 +651,7 @@ const rules = {
 // 添加运行时验证
 const validateTrojanForm = () => {
   if (inboundForm.protocol === 'trojan') {
-    // Trojan协议必须启用TLS
-    tlsEnabled.value = true;
-    
-    // 如果没有设置服务器名称，使用默认值
-    if (!inboundForm.stream_settings.tls_settings.server_name) {
-      inboundForm.stream_settings.tls_settings.server_name = 'example.com';
-    }
+    tlsEnabled.value = true
   }
 }
 
@@ -701,17 +676,46 @@ const handleCurrentChange = (page) => {
   loadInbounds()
 }
 
+const consumeRoutePreset = async () => {
+  const create = route.query.create === '1'
+  const tlsDomain = normalizeStringValue(route.query.tls_domain)
+
+  if (!create && !tlsDomain) {
+    return
+  }
+
+  if (!addInboundDialogVisible.value || dialogMode.value !== 'add') {
+    openAddInboundDialog()
+  }
+
+  if (tlsDomain) {
+    inboundForm.stream_settings.security = 'tls'
+    inboundForm.stream_settings.tls_settings.server_name = tlsDomain
+  }
+
+  await nextTick()
+
+  const nextQuery = { ...route.query }
+  delete nextQuery.create
+  delete nextQuery.tls_domain
+  router.replace({ path: route.path, query: nextQuery })
+}
+
 // 初始化
 onMounted(() => {
   loadInbounds()
   loadNodes()
 })
 
+watch(() => [route.query.create, route.query.tls_domain], () => {
+  consumeRoutePreset()
+}, { immediate: true })
+
 // 加载节点列表
 const loadNodes = async () => {
   try {
     const response = await api.get('/admin/nodes')
-    const data = response.data || response
+    const data = unwrapApiData(response)
     nodeList.value = data.nodes || data.list || (Array.isArray(data) ? data : [])
   } catch (error) {
     console.error('加载节点列表失败:', error)
@@ -729,10 +733,11 @@ const loadInbounds = async () => {
         offset: (currentPage.value - 1) * pageSize.value
       }
     })
+    const data = unwrapApiData(response)
     
     // 后端返回数组格式
-    if (Array.isArray(response.data)) {
-      inbounds.value = response.data.map(p => ({
+    if (Array.isArray(data)) {
+      inbounds.value = data.map(p => ({
         id: p.id,
         remark: p.name || p.remark,
         protocol: p.protocol,
@@ -741,10 +746,10 @@ const loadInbounds = async () => {
         clientCount: 0,
         created_at: p.created_at
       }))
-      total.value = response.data.length
-    } else if (response.data) {
-      inbounds.value = response.data.list || []
-      total.value = response.data.total || 0
+      total.value = data.length
+    } else if (data) {
+      inbounds.value = data.list || []
+      total.value = data.total || 0
     }
   } catch (error) {
     console.error('Failed to load inbounds:', error)
@@ -768,9 +773,11 @@ const formatTraffic = (bytes) => {
 }
 
 // 打开添加入站对话框
-const openAddInboundDialog = () => {
+function openAddInboundDialog() {
+  dialogMode.value = 'add'
+  dialogLoading.value = false
   // 重置表单
-  Object.assign(inboundForm, defaultInboundForm)
+  resetInboundForm()
   // 设置默认端口
   inboundForm.port = generateRandomPort()
   
@@ -782,13 +789,211 @@ const openAddInboundDialog = () => {
   } else if (inboundForm.protocol === 'trojan') {
     inboundForm.trojan_password = generateRandomPassword();
     // 确保TLS启用
-    tlsEnabled.value = true;
-    inboundForm.stream_settings.tls_settings.server_name = 'example.com';
+    tlsEnabled.value = true
   }
   
   // 验证表单
   validateTrojanForm();
   addInboundDialogVisible.value = true
+}
+
+const normalizeProxyToInboundForm = (proxyData = {}) => {
+  const settings = proxyData.settings || {}
+  const form = cloneDefaultInboundForm()
+
+  form.id = proxyData.id || null
+  form.remark = proxyData.name || proxyData.remark || ''
+  form.enable = proxyData.enabled ?? true
+  form.protocol = proxyData.protocol || form.protocol
+  form.listen = proxyData.host || ''
+  form.port = proxyData.port || null
+  form.node_id = proxyData.node_id ?? null
+
+  const transportNetwork = settings.network || form.stream_settings.network
+  form.stream_settings.network = transportNetwork
+
+  const tlsDomain = normalizeStringValue(settings.server_name || settings.sni || settings.tls_domain)
+  const hasLegacyCertificateMaterial = (normalizeStringValue(settings.cert_file) && normalizeStringValue(settings.key_file)) || (firstStringValue(settings.certificate) && firstStringValue(settings.key))
+  const hasTLS = settings.security === 'tls' || settings.tls === true || !!tlsDomain || hasLegacyCertificateMaterial
+  const hasXTLSFlow = typeof settings.flow === 'string' && settings.flow.toLowerCase().includes('xtls')
+
+  if (hasTLS) {
+    form.stream_settings.security = hasXTLSFlow ? 'xtls' : 'tls'
+    form.stream_settings.tls_settings.server_name = tlsDomain
+  }
+
+  switch (form.protocol) {
+    case 'trojan':
+      form.trojan_password = settings.password || ''
+      form.trojan_flow = settings.flow || 'none'
+      form.trojan_fallbacks = Array.isArray(settings.fallbacks) ? settings.fallbacks : []
+      break
+    case 'vless':
+      form.vless_id = settings.uuid || ''
+      form.vless_flow = settings.flow || 'none'
+      break
+    case 'vmess':
+      form.vmess_id = settings.uuid || ''
+      form.vmess_aid = Number(settings.alter_id ?? settings.alterId ?? 0)
+      break
+    case 'shadowsocks':
+      form.ss_method = settings.method || form.ss_method
+      form.ss_password = settings.password || ''
+      form.network = settings.network || form.network
+      break
+    case 'dokodemo-door':
+      form.dokodemo_address = settings.address || ''
+      form.dokodemo_port = Number(settings.port || 0) || null
+      form.network = settings.network || form.network
+      break
+  }
+
+  switch (transportNetwork) {
+    case 'ws':
+      form.stream_settings.ws_settings.path = settings.path || '/'
+      form.stream_settings.ws_settings.host = settings.host || ''
+      break
+    case 'http':
+      form.stream_settings.http_settings.path = settings.path || '/'
+      form.stream_settings.http_settings.host = [firstStringValue(settings.host)].filter(Boolean)
+      break
+    case 'grpc':
+      form.stream_settings.grpc_settings.service_name = settings.serviceName || settings.service_name || ''
+      break
+    case 'tcp':
+      if (settings.headerType === 'http') {
+        form.stream_settings.tcp_settings.is_http = true
+        form.stream_settings.tcp_settings.http_settings.path = settings.path || '/'
+        form.stream_settings.tcp_settings.http_settings.host = [firstStringValue(settings.host)].filter(Boolean)
+      }
+      break
+  }
+
+  return form
+}
+
+const buildTransportPayload = () => {
+  const network = inboundForm.stream_settings.network || 'tcp'
+  const payload = { network }
+
+  if (network === 'ws') {
+    payload.path = normalizeStringValue(inboundForm.stream_settings.ws_settings.path) || '/'
+    const host = normalizeStringValue(inboundForm.stream_settings.ws_settings.host)
+    if (host) payload.host = host
+  }
+
+  if (network === 'http') {
+    payload.path = normalizeStringValue(inboundForm.stream_settings.http_settings.path) || '/'
+    const host = firstStringValue(inboundForm.stream_settings.http_settings.host)
+    if (host) payload.host = host
+  }
+
+  if (network === 'grpc') {
+    const serviceName = normalizeStringValue(inboundForm.stream_settings.grpc_settings.service_name)
+    if (serviceName) payload.serviceName = serviceName
+  }
+
+  if (network === 'tcp' && inboundForm.stream_settings.tcp_settings.is_http) {
+    payload.headerType = 'http'
+    payload.path = normalizeStringValue(inboundForm.stream_settings.tcp_settings.http_settings.path) || '/'
+    const host = firstStringValue(inboundForm.stream_settings.tcp_settings.http_settings.host)
+    if (host) payload.host = host
+  }
+
+  return payload
+}
+
+const buildTLSCertificatePayload = () => {
+  if (!tlsSettingsEnabled.value) {
+    return {}
+  }
+
+  const tlsSettings = inboundForm.stream_settings.tls_settings || {}
+  const domain = normalizeStringValue(tlsSettings.server_name)
+  if (!domain) {
+    throw new Error('启用 TLS/XTLS 时请填写域名')
+  }
+
+  const payload = {
+    security: 'tls',
+    sni: domain,
+    server_name: domain,
+    tls_domain: domain
+  }
+
+  return payload
+}
+
+const buildProxyPayload = () => {
+  const payload = {
+    name: normalizeStringValue(inboundForm.remark),
+    protocol: inboundForm.protocol,
+    port: inboundForm.port,
+    host: normalizeStringValue(inboundForm.listen),
+    node_id: inboundForm.node_id,
+    enabled: inboundForm.enable,
+    remark: normalizeStringValue(inboundForm.remark),
+    settings: {}
+  }
+
+  const tlsPayload = buildTLSCertificatePayload()
+  const transportPayload = buildTransportPayload()
+
+  switch (inboundForm.protocol) {
+    case 'trojan':
+      payload.settings = {
+        password: inboundForm.trojan_password,
+        flow: inboundForm.trojan_flow === 'none' ? '' : inboundForm.trojan_flow,
+        ...transportPayload,
+        tls: true,
+        fallbacks: inboundForm.trojan_fallbacks,
+        ...tlsPayload
+      }
+      break
+    case 'vless':
+      payload.settings = {
+        uuid: inboundForm.vless_id,
+        flow: inboundForm.vless_flow === 'none' ? '' : inboundForm.vless_flow,
+        ...transportPayload,
+        security: tlsSettingsEnabled.value ? 'tls' : 'none',
+        ...tlsPayload
+      }
+      break
+    case 'vmess':
+      payload.settings = {
+        uuid: inboundForm.vmess_id,
+        alter_id: inboundForm.vmess_aid,
+        alterId: inboundForm.vmess_aid,
+        ...transportPayload,
+        security: tlsSettingsEnabled.value ? 'tls' : 'auto',
+        ...tlsPayload
+      }
+      break
+    case 'shadowsocks':
+      payload.settings = {
+        method: inboundForm.ss_method,
+        password: inboundForm.ss_password,
+        network: inboundForm.network || 'tcp,udp',
+        ...transportPayload,
+        ...(tlsSettingsEnabled.value ? tlsPayload : {})
+      }
+      break
+    case 'dokodemo-door':
+      payload.settings = {
+        address: inboundForm.dokodemo_address,
+        port: inboundForm.dokodemo_port,
+        network: inboundForm.network || 'tcp+udp'
+      }
+      break
+    default:
+      payload.settings = {
+        ...transportPayload,
+        ...(tlsSettingsEnabled.value ? tlsPayload : {})
+      }
+      break
+  }
+
+  return payload
 }
 
 // 添加fallback
@@ -817,58 +1022,49 @@ const saveInbound = async () => {
     
     submitting.value = true
     try {
-      // 准备提交数据
-      const submittingData = { ...inboundForm }
-      
-      // 特殊处理不同协议的配置
-      if (inboundForm.protocol === 'trojan') {
-        submittingData.settings = {
-          password: inboundForm.trojan_password,
-          flow: inboundForm.trojan_flow,
-          sni: inboundForm.stream_settings.tls_settings.server_name || 'example.com',
-          network: inboundForm.stream_settings.network,
-          tls: true, // Trojan必须启用TLS
-          fallbacks: inboundForm.trojan_fallbacks
-        }
-        
-        // 确保启用TLS
-        if (!tlsEnabled.value) {
-          tlsEnabled.value = true
-        }
-      } else if (inboundForm.protocol === 'vmess') {
-        // 其他协议配置...
-      }
-      
-      // 提交到服务器
-      try {
-        const response = await api.post('/proxies', submittingData)
-        
-        if (response.data && response.data.success) {
-          ElMessage.success('添加入站成功')
-          addInboundDialogVisible.value = false
-          loadInbounds()
-        } else {
-          ElMessage.error(response.data?.message || '添加入站失败')
-        }
-      } catch (apiError) {
-        console.error('Failed to save inbound:', apiError)
-        ElMessage.error('添加入站失败: ' + apiError.message)
-      } finally {
-        submitting.value = false
+      const submittingData = buildProxyPayload()
+      const isEdit = dialogMode.value === 'edit' && inboundForm.id
+      const response = isEdit
+        ? await api.put(`/proxies/${inboundForm.id}`, submittingData)
+        : await api.post('/proxies', submittingData)
+      const result = unwrapApiData(response)
+
+      if (result?.id || result?.port || result?.name) {
+        ElMessage.success(isEdit ? '更新入站成功' : '添加入站成功')
+        addInboundDialogVisible.value = false
+        loadInbounds()
+      } else {
+        ElMessage.error(result?.message || (isEdit ? '更新入站失败' : '添加入站失败'))
       }
     } catch (error) {
       console.error('Failed to save inbound:', error)
-      ElMessage.error('添加入站失败: ' + error.message)
+      ElMessage.error('添加入站失败: ' + (error?.message || '未知错误'))
+    } finally {
       submitting.value = false
     }
   })
 }
 
 // 编辑入站
-const editInbound = (row) => {
-  // 直接赋值
-  Object.assign(inboundForm, row)
+const editInbound = async (row) => {
+  dialogMode.value = 'edit'
+  dialogLoading.value = true
+  resetInboundForm()
   addInboundDialogVisible.value = true
+
+  try {
+    const response = await api.get(`/proxies/${row.id}`)
+    const proxyData = unwrapApiData(response)
+    const normalized = normalizeProxyToInboundForm(proxyData)
+    Object.assign(inboundForm, normalized)
+    validateTrojanForm()
+  } catch (error) {
+    console.error('加载入站详情失败:', error)
+    ElMessage.error('加载入站详情失败: ' + (error?.message || '未知错误'))
+    addInboundDialogVisible.value = false
+  } finally {
+    dialogLoading.value = false
+  }
 }
 
 // 切换状态
@@ -881,11 +1077,12 @@ const toggleStatus = (row) => {
   }).then(async () => {
     try {
       const response = await api.post(`/proxies/${row.id}/toggle`)
-      if (response.data && response.data.success) {
-        row.enable = !row.enable
+      const result = unwrapApiData(response)
+      if (typeof result?.enabled === 'boolean') {
+        row.enable = result.enabled
         ElMessage.success(`${action}入站成功`)
       } else {
-        ElMessage.error(response.data?.message || `${action}入站失败`)
+        ElMessage.error(result?.message || `${action}入站失败`)
       }
     } catch (error) {
       console.error(`Failed to ${action} inbound:`, error)
@@ -905,11 +1102,12 @@ const deleteInbound = (row) => {
   }).then(async () => {
     try {
       const response = await api.delete(`/proxies/${row.id}`)
-      if (response.data && response.data.success) {
+      const result = unwrapApiData(response)
+      if (result?.message || result === '' || result == null) {
         ElMessage.success('删除入站成功')
         loadInbounds()
       } else {
-        ElMessage.error(response.data?.message || '删除入站失败')
+        ElMessage.error(result?.message || '删除入站失败')
       }
     } catch (error) {
       console.error('Failed to delete inbound:', error)
@@ -928,10 +1126,11 @@ const copyLink = async (row) => {
     // 使用API获取实际链接
     try {
       const response = await api.get(`/proxies/${row.id}/link`)
-      if (response.data && response.data.link) {
-        link = response.data.link;
+      const result = unwrapApiData(response)
+      if (result?.link) {
+        link = result.link
       } else {
-        throw new Error('API返回链接为空');
+        throw new Error('API返回链接为空')
       }
     } catch (apiError) {
       console.error('API获取链接失败:', apiError);
@@ -1335,6 +1534,20 @@ const downloadQrCode = async () => {
   line-height: 20px;
   white-space: nowrap;
   overflow: visible;
+}
+
+.form-tip {
+  font-size: 12px;
+  color: var(--el-text-color-secondary, #909399);
+  margin-top: 4px;
+}
+
+.cert-input {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--el-border-color-lighter, #ebeef5);
+  border-radius: 4px;
+  background-color: var(--el-fill-color-lighter, #f9f9f9);
 }
 
 .fallback-item {

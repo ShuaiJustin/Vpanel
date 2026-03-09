@@ -17,17 +17,19 @@ import (
 
 // NodeHandler handles node management API requests.
 type NodeHandler struct {
-	nodeService   *node.Service
-	deployService *node.RemoteDeployService
-	logger        logger.Logger
+	nodeService     *node.Service
+	deployService   *node.RemoteDeployService
+	recoveryTracker *NodeRecoveryTracker
+	logger          logger.Logger
 }
 
 // NewNodeHandler creates a new node handler.
-func NewNodeHandler(nodeService *node.Service, deployService *node.RemoteDeployService, log logger.Logger) *NodeHandler {
+func NewNodeHandler(nodeService *node.Service, deployService *node.RemoteDeployService, recoveryTracker *NodeRecoveryTracker, log logger.Logger) *NodeHandler {
 	return &NodeHandler{
-		nodeService:   nodeService,
-		deployService: deployService,
-		logger:        log,
+		nodeService:     nodeService,
+		deployService:   deployService,
+		recoveryTracker: recoveryTracker,
+		logger:          log,
 	}
 }
 
@@ -97,6 +99,13 @@ type NodeResponse struct {
 	// Xray 状态
 	XrayRunning bool   `json:"xray_running"`
 	XrayVersion string `json:"xray_version,omitempty"`
+
+	// 恢复记录
+	LastRecoveryStatus   string              `json:"last_recovery_status,omitempty"`
+	LastRecoveryMessage  string              `json:"last_recovery_message,omitempty"`
+	LastRecoverySource   string              `json:"last_recovery_source,omitempty"`
+	LastRecoveryAt       string              `json:"last_recovery_at,omitempty"`
+	RecentRecoveryEvents []NodeRecoveryEvent `json:"recent_recovery_events,omitempty"`
 
 	// 证书关联
 	CertificateID *int64 `json:"certificate_id,omitempty"`
@@ -308,6 +317,30 @@ func toNodeResponse(n *node.Node) *NodeResponse {
 	return resp
 }
 
+func (h *NodeHandler) buildNodeResponse(n *node.Node) *NodeResponse {
+	resp := toNodeResponse(n)
+	if h == nil || h.recoveryTracker == nil || resp == nil {
+		return resp
+	}
+
+	events := h.recoveryTracker.GetRecentRecoveryEvents(n.ID)
+	if len(events) == 0 {
+		resp.RecentRecoveryEvents = []NodeRecoveryEvent{}
+		return resp
+	}
+
+	resp.RecentRecoveryEvents = events
+	resp.LastRecoveryStatus = events[0].Status
+	resp.LastRecoveryMessage = events[0].Message
+	resp.LastRecoverySource = events[0].Source
+	if events[0].UpdatedAt != "" {
+		resp.LastRecoveryAt = events[0].UpdatedAt
+	} else {
+		resp.LastRecoveryAt = events[0].CreatedAt
+	}
+	return resp
+}
+
 // List returns all nodes with optional filtering.
 // GET /api/admin/nodes
 func (h *NodeHandler) List(c *gin.Context) {
@@ -339,7 +372,7 @@ func (h *NodeHandler) List(c *gin.Context) {
 
 	response := make([]*NodeResponse, len(nodes))
 	for i, n := range nodes {
-		response[i] = toNodeResponse(n)
+		response[i] = h.buildNodeResponse(n)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -432,7 +465,7 @@ func (h *NodeHandler) Get(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, toNodeResponse(n))
+	c.JSON(http.StatusOK, h.buildNodeResponse(n))
 }
 
 // Create creates a new node.
@@ -504,7 +537,7 @@ func (h *NodeHandler) Create(c *gin.Context) {
 	h.logger.Info("Node created", logger.F("node_id", n.ID), logger.F("name", n.Name))
 
 	resp := &NodeWithTokenResponse{
-		NodeResponse: *toNodeResponse(n),
+		NodeResponse: *h.buildNodeResponse(n),
 		Token:        n.Token,
 	}
 
@@ -661,7 +694,7 @@ func (h *NodeHandler) Update(c *gin.Context) {
 
 	h.logger.Info("Node updated", logger.F("node_id", id))
 
-	c.JSON(http.StatusOK, toNodeResponse(n))
+	c.JSON(http.StatusOK, h.buildNodeResponse(n))
 }
 
 // Delete deletes a node.

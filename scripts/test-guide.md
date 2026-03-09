@@ -173,7 +173,7 @@ git checkout HEAD -- web/src/
 3. `web/src/views/Monitor.vue` - 系统监控API
 4. `web/src/views/TrafficMonitor.vue` - 流量监控API
 5. `web/src/views/Traffic.vue` - 流量统计API
-6. `web/src/views/ProtocolManager.vue` - 协议管理API
+6. `web/src/views/Settings.vue` - 协议管理API
 7. `web/src/components/XraySimpleManager.vue` - Xray设置API
 8. `web/src/views/Devices.vue` - 移除订阅IP功能
 

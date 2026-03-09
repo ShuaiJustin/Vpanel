@@ -16,7 +16,7 @@
 - `internal/database/repository/repository.go`
 - `internal/database/repository/proxy_repository.go`
 - `internal/database/migrations/024_add_node_id_to_proxies.sql`
-- `web/src/views/Proxies.vue`
+- `web/src/views/Inbounds.vue`
 
 ### 2. ✅ 节点自动安装 Xray
 

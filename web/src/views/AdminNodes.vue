@@ -129,6 +129,19 @@
             {{ row.address }}:{{ row.port }}
           </template>
         </el-table-column>
+        <el-table-column label="TLS / 证书" min-width="180">
+          <template #default="{ row }">
+            <div class="tls-cell">
+              <el-tag :type="row.tls_enabled ? 'success' : 'info'" size="small">
+                {{ row.tls_enabled ? 'TLS 已启用' : '未启用 TLS' }}
+              </el-tag>
+              <div v-if="row.tls_domain" class="tls-domain-text">{{ row.tls_domain }}</div>
+              <div v-if="row.certificate_id" class="tls-cert-text">
+                证书：{{ getAssignedCertificateDisplay(row.certificate_id) }}
+              </div>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)" size="small">
@@ -288,6 +301,50 @@
             :rows="3"
             placeholder="每行一个 IP 地址，留空表示不限制"
           />
+        </el-form-item>
+
+        <el-divider content-position="left">TLS 与证书</el-divider>
+
+        <el-form-item label="启用 TLS">
+          <el-switch
+            v-model="form.tls_enabled"
+            active-text="开启"
+            inactive-text="关闭"
+          />
+        </el-form-item>
+
+        <el-form-item label="TLS 域名" prop="tls_domain">
+          <el-input
+            v-model="form.tls_domain"
+            placeholder="如 jp.example.com"
+          />
+          <div class="form-tip-inline">用于节点 TLS 标识、健康检查和系统证书自动匹配。</div>
+        </el-form-item>
+
+        <el-form-item label="系统证书">
+          <el-select
+            v-model="form.certificate_id"
+            filterable
+            clearable
+            :loading="certificatesLoading"
+            placeholder="自动匹配或手动选择证书"
+            style="width: 100%"
+            @change="handleCertificateChange"
+          >
+            <el-option
+              v-for="cert in certificates"
+              :key="cert.id"
+              :label="getCertificateOptionLabel(cert)"
+              :value="cert.id"
+            />
+          </el-select>
+          <div class="form-tip-inline">选择后会自动回填 TLS 域名，你仍可继续手动修改。</div>
+          <div v-if="selectedCertificate" class="certificate-tip">
+            当前证书：{{ selectedCertificate.domain }}
+            <span v-if="selectedCertificate.expireDate && selectedCertificate.expireDate !== '-'">
+              ，到期 {{ selectedCertificate.expireDate }}
+            </span>
+          </div>
         </el-form-item>
 
         <template v-if="!isEdit && form.installMethod === 'manual'">
@@ -743,6 +800,7 @@ import {
   Connection,
 } from "@element-plus/icons-vue";
 import { useNodeStore } from "@/stores/node";
+import { certificatesApi } from "@/api";
 import { nodesApi } from "@/api/modules/nodes";
 
 const nodeStore = useNodeStore();
@@ -772,6 +830,8 @@ const deployStepActive = ref(0);
 const deployLogs = ref("");
 const deployResult = ref(null);
 const deployStatusMessage = ref("");
+const certificates = ref([]);
+const certificatesLoading = ref(false);
 
 let installStatusTimer = null;
 let shouldPollInstallStatus = false;
@@ -786,6 +846,9 @@ const form = reactive({
   max_users: 0,
   tags: [],
   ip_whitelist_str: "",
+  tls_enabled: false,
+  tls_domain: "",
+  certificate_id: null,
   // 安装方式
   installMethod: "manual",
   // Panel URL
@@ -891,6 +954,7 @@ const rules = {
       trigger: "blur",
     },
   ],
+  tls_domain: [{ validator: validateTLSDomain, trigger: "blur" }],
 };
 
 const deployRules = {
@@ -921,6 +985,96 @@ const deployRules = {
     },
   ],
 };
+
+const normalizeText = (value) =>
+  typeof value === "string" ? value.trim() : "";
+
+const normalizeCertificateDomain = (domain) =>
+  normalizeText(domain).replace(/^\*\./, "").toLowerCase();
+
+const formatCertificateDate = (value) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toISOString().slice(0, 10);
+};
+
+const normalizeCertificatesResponse = (response) => {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.certificates)) return response.certificates;
+  if (Array.isArray(response?.data?.certificates)) return response.data.certificates;
+  if (Array.isArray(response?.data)) return response.data;
+  return [];
+};
+
+const selectedCertificate = computed(
+  () =>
+    certificates.value.find(
+      (cert) => Number(cert.id) === Number(form.certificate_id),
+    ) || null,
+);
+
+const fetchCertificates = async () => {
+  certificatesLoading.value = true;
+  try {
+    const response = await certificatesApi.list();
+    certificates.value = normalizeCertificatesResponse(response).map((cert) => ({
+      ...cert,
+      expireDate: formatCertificateDate(cert.expires_at || cert.expiresAt),
+    }));
+  } catch (e) {
+    console.error("获取证书失败:", e);
+    certificates.value = [];
+  } finally {
+    certificatesLoading.value = false;
+  }
+};
+
+const getCertificateOptionLabel = (cert) => {
+  if (!cert) return "";
+  return cert.expireDate && cert.expireDate !== "-"
+    ? `${cert.domain}（到期 ${cert.expireDate}）`
+    : cert.domain;
+};
+
+const getAssignedCertificateDisplay = (certificateId) => {
+  const certificate = certificates.value.find(
+    (cert) => Number(cert.id) === Number(certificateId),
+  );
+  return certificate?.domain || `#${certificateId}`;
+};
+
+const handleCertificateChange = (certificateId) => {
+  if (!certificateId) return;
+  const certificate = certificates.value.find(
+    (cert) => Number(cert.id) === Number(certificateId),
+  );
+  if (!certificate) return;
+
+  const suggestedDomain = normalizeCertificateDomain(certificate.domain);
+  form.tls_enabled = true;
+  if (suggestedDomain) {
+    form.tls_domain = suggestedDomain;
+  }
+};
+
+function validateTLSDomain(rule, value, callback) {
+  const domain = normalizeText(value).toLowerCase();
+  const domainRegex =
+    /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+
+  if (form.tls_enabled && !domain) {
+    callback(new Error("启用 TLS 时请输入 TLS 域名"));
+    return;
+  }
+
+  if (domain && !domainRegex.test(domain)) {
+    callback(new Error("请输入有效的 TLS 域名"));
+    return;
+  }
+
+  callback();
+}
 
 const regions = computed(() => {
   const regionSet = new Set(
@@ -1142,6 +1296,9 @@ const showCreateDialog = () => {
     max_users: 0,
     tags: [],
     ip_whitelist_str: "",
+    tls_enabled: false,
+    tls_domain: "",
+    certificate_id: null,
     installMethod: "manual",
     panel_url: currentUrl, // 自动填充当前访问地址
     ssh_host: "",
@@ -1171,12 +1328,21 @@ const editNode = (node) => {
     max_users: node.max_users || 0,
     tags: tags,
     ip_whitelist_str: ipWhitelist,
+    tls_enabled: Boolean(node.tls_enabled),
+    tls_domain: node.tls_domain || "",
+    certificate_id: node.certificate_id ?? null,
   });
   dialogVisible.value = true;
 };
 
 const submitForm = async () => {
   await formRef.value.validate();
+
+  if (form.tls_enabled && !normalizeText(form.tls_domain)) {
+    ElMessage.error("启用 TLS 时请输入 TLS 域名");
+    return;
+  }
+
   submitting.value = true;
 
   try {
@@ -1191,6 +1357,9 @@ const submitForm = async () => {
       max_users: form.max_users,
       tags: form.tags,
       ip_whitelist: ipWhitelist,
+      tls_enabled: form.tls_enabled,
+      tls_domain: normalizeText(form.tls_domain).toLowerCase(),
+      certificate_id: form.certificate_id || null,
     };
 
     // 如果是编辑模式
@@ -1611,7 +1780,9 @@ const testSSHConnection = async () => {
   }
 };
 
-onMounted(fetchNodes);
+onMounted(async () => {
+  await Promise.all([fetchNodes(), fetchCertificates()]);
+});
 
 onUnmounted(() => {
   clearInstallStatusPolling();
@@ -1817,5 +1988,31 @@ onUnmounted(() => {
   line-height: 1.6;
   white-space: pre-wrap;
   word-wrap: break-word;
+}
+
+.form-tip-inline {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+.certificate-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--el-color-primary);
+}
+
+.tls-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tls-domain-text,
+.tls-cert-text {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.4;
 }
 </style>

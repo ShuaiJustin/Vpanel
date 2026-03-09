@@ -141,6 +141,33 @@
           </div>
         </el-card>
 
+        <!-- Xray 恢复记录 -->
+        <el-card shadow="never" class="info-card">
+          <template #header>
+            <span>Xray 恢复记录</span>
+          </template>
+          <div v-if="recentRecoveryEvents.length" class="recovery-events">
+            <div
+              v-for="event in recentRecoveryEvents"
+              :key="event.command_id"
+              class="recovery-event"
+            >
+              <div class="recovery-event-header">
+                <el-tag :type="getRecoveryStatusType(event.status)" size="small">
+                  {{ getRecoveryStatusText(event.status) }}
+                </el-tag>
+                <span class="recovery-time">{{ formatTime(event.updated_at || event.created_at) }}</span>
+              </div>
+              <div class="recovery-reason">{{ event.reason || '未提供原因' }}</div>
+              <div class="recovery-meta">
+                来源：{{ getRecoverySourceText(event.source) }}
+                <span v-if="event.message"> · {{ event.message }}</span>
+              </div>
+            </div>
+          </div>
+          <el-empty v-else description="暂无恢复记录" :image-size="60" />
+        </el-card>
+
         <!-- 所属分组 -->
         <el-card shadow="never" class="info-card">
           <template #header>
@@ -245,6 +272,7 @@ const topUsers = ref([])
 const nodeGroups = ref([])
 
 const node = computed(() => nodeStore.currentNode)
+const recentRecoveryEvents = computed(() => Array.isArray(node.value?.recent_recovery_events) ? node.value.recent_recovery_events : [])
 
 const loadPercentage = computed(() => {
   if (!node.value?.max_users) return 0
@@ -282,6 +310,21 @@ const getLatencyClass = (latency) => {
   if (latency < 100) return 'latency-good'
   if (latency < 300) return 'latency-medium'
   return 'latency-bad'
+}
+
+const getRecoveryStatusType = (status) => {
+  const types = { success: 'success', failed: 'danger', dispatched: 'warning', queued: 'info' }
+  return types[status] || 'info'
+}
+
+const getRecoveryStatusText = (status) => {
+  const texts = { success: '已恢复', failed: '恢复失败', dispatched: '已下发', queued: '已排队' }
+  return texts[status] || status || '未知'
+}
+
+const getRecoverySourceText = (source) => {
+  const texts = { heartbeat: '节点心跳', health_checker: '健康检查器' }
+  return texts[source] || source || '系统'
 }
 
 const formatTime = (time) => {
@@ -621,5 +664,45 @@ onMounted(async () => {
   padding: 8px;
   background: var(--el-fill-color-light);
   border-radius: 4px;
+}
+
+
+.recovery-events {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recovery-event {
+  padding: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-fill-color-blank);
+}
+
+.recovery-event-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.recovery-time {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.recovery-reason {
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+
+.recovery-meta {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  word-break: break-word;
 }
 </style>

@@ -39,7 +39,7 @@ check_fix "web/src/stores/portalStats.js" "async function fetchStats" "Portal St
 check_fix "web/src/views/Monitor.vue" "/system/stats" "系统监控API路径"
 check_fix "web/src/views/TrafficMonitor.vue" "/stats/traffic" "流量监控API路径"
 check_fix "web/src/views/Traffic.vue" "/stats/user" "流量统计API路径"
-check_fix "web/src/views/ProtocolManager.vue" "/settings/protocols" "协议管理API路径"
+check_fix "web/src/views/Settings.vue" "/settings/protocols" "协议管理API路径"
 check_fix "web/src/components/XraySimpleManager.vue" "/settings/xray" "Xray设置API路径"
 
 echo ""

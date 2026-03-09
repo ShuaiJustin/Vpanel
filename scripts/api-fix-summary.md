@@ -45,7 +45,7 @@
 ### 8. 协议管理API (✓ 已修复)
 - **错误**: `GET /api/protocols` 返回 404
 - **修复**: 修改为 `/api/settings/protocols`
-- **文件**: `web/src/views/ProtocolManager.vue:353`
+- **文件**: `web/src/views/Settings.vue:353`
 
 ### 9. Xray设置API (✓ 已修复)
 - **错误**: `PUT /api/xray/settings` 返回 404
@@ -137,6 +137,6 @@ Network -> Filter: 404
 3. `web/src/views/Monitor.vue` - 修复系统监控API
 4. `web/src/views/TrafficMonitor.vue` - 修复流量监控API
 5. `web/src/views/Traffic.vue` - 修复流量统计API
-6. `web/src/views/ProtocolManager.vue` - 修复协议管理API
+6. `web/src/views/Settings.vue` - 修复协议管理API
 7. `web/src/components/XraySimpleManager.vue` - 修复Xray设置API
 8. `web/src/views/Devices.vue` - 移除订阅IP功能

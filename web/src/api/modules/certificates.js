@@ -52,7 +52,8 @@ export const certificatesApi = {
       domain: data.domain,
       certificate,
       private_key: privateKey,
-      auto_renew: data.autoRenew ?? false
+      auto_renew: data.autoRenew ?? false,
+      node_ids: Array.isArray(data.node_ids) ? data.node_ids : []
     })
   },
 

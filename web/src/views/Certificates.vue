@@ -22,6 +22,12 @@
         @close="clearApplyProgress"
       />
 
+      <div v-if="canQuickCreateInbound" class="apply-progress-actions">
+        <el-button type="primary" size="small" @click="openInboundWithCertificateDomain">
+          用此域名新增 TLS 入站
+        </el-button>
+      </div>
+
       <!-- 证书列表 -->
       <el-table
         :data="certificates"
@@ -429,6 +435,30 @@
         >
           <el-input v-model="applyForm.validationPath" placeholder="验证路径" />
         </el-form-item>
+
+        <el-form-item label="自动关联节点">
+          <el-select
+            v-model="applyForm.node_ids"
+            multiple
+            filterable
+            clearable
+            collapse-tags
+            collapse-tags-tooltip
+            :loading="nodesLoading"
+            placeholder="签发成功后自动关联到这些节点"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="node in nodes"
+              :key="node.id"
+              :label="`${node.name} (${node.address})`"
+              :value="node.id"
+            />
+          </el-select>
+          <div class="form-tip-inline">
+            证书签发成功后会自动写入所选节点的证书关联；如果节点已配置 SSH，也会尝试自动下发证书。
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <span class="dialog-footer">
@@ -483,6 +513,29 @@
             </template>
           </el-upload>
         </el-form-item>
+        <el-form-item label="自动关联节点">
+          <el-select
+            v-model="uploadForm.node_ids"
+            multiple
+            filterable
+            clearable
+            collapse-tags
+            collapse-tags-tooltip
+            :loading="nodesLoading"
+            placeholder="上传成功后自动关联到这些节点"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="node in nodes"
+              :key="node.id"
+              :label="`${node.name} (${node.address})`"
+              :value="node.id"
+            />
+          </el-select>
+          <div class="form-tip-inline">
+            上传成功后会自动关联所选节点，并尝试把证书下发到已配置 SSH 的节点。
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <span class="dialog-footer">
@@ -520,13 +573,18 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { certificatesApi } from '@/api'
+import { certificatesApi, nodesApi } from '@/api'
+
+const router = useRouter()
 
 // 证书列表
 const certificates = ref([])
 const loading = ref(false)
+const nodes = ref([])
+const nodesLoading = ref(false)
 
 // 申请证书
 const applyDialogVisible = ref(false)
@@ -559,7 +617,8 @@ const applyForm = ref({
   dnsRecords: [],
   validationPath: '',
   wildcard: true,
-  autoRenew: true
+  autoRenew: true,
+  node_ids: []
 })
 const applyRules = {
   domain: [
@@ -590,7 +649,8 @@ const uploadFormRef = ref(null)
 const uploadForm = ref({
   domain: '',
   certFile: null,
-  keyFile: null
+  keyFile: null,
+  node_ids: []
 })
 const uploadRules = {
   domain: [
@@ -674,7 +734,7 @@ const mapCertificate = (cert) => {
 
 // 生命周期钩子
 onMounted(async () => {
-  await fetchCertificates()
+  await Promise.all([fetchCertificates(), fetchNodes()])
 })
 
 onUnmounted(() => {
@@ -703,6 +763,31 @@ const fetchCertificates = async ({ silent = false } = {}) => {
   }
 }
 
+const fetchNodes = async () => {
+  nodesLoading.value = true
+  try {
+    const response = await nodesApi.list({ limit: 1000, offset: 0 })
+    if (Array.isArray(response)) {
+      nodes.value = response
+      return
+    }
+    if (Array.isArray(response?.nodes)) {
+      nodes.value = response.nodes
+      return
+    }
+    if (Array.isArray(response?.data)) {
+      nodes.value = response.data
+      return
+    }
+    nodes.value = []
+  } catch (error) {
+    console.error('Failed to fetch nodes:', error)
+    nodes.value = []
+  } finally {
+    nodesLoading.value = false
+  }
+}
+
 const stopApplyProgressTracking = () => {
   applyProgressPolling = false
   if (applyProgressTimer) {
@@ -714,6 +799,24 @@ const stopApplyProgressTracking = () => {
 const clearApplyProgress = () => {
   stopApplyProgressTracking()
   applyProgress.value = null
+}
+
+const canQuickCreateInbound = computed(() => ['active', 'valid', 'expiring'].includes(applyProgress.value?.status))
+
+const openInboundWithCertificateDomain = () => {
+  if (!applyProgress.value?.domain) return
+  const sourceDomain = String(applyProgress.value.domain).trim()
+  const suggestedDomain = normalizeDomain(sourceDomain)
+  if (sourceDomain.startsWith('*.')) {
+    ElMessage.warning('已带入主域名，请在入站页面改成实际使用的子域名，例如 api.example.com')
+  }
+  router.push({
+    path: '/admin/inbounds',
+    query: {
+      create: '1',
+      tls_domain: suggestedDomain
+    }
+  })
 }
 
 const getApplyProgressType = () => {
@@ -742,7 +845,8 @@ const getApplyProgressDescription = () => {
   }
   if (['active', 'valid', 'expiring'].includes(status)) {
     const expireInfo = applyProgress.value.expireDate && applyProgress.value.expireDate !== '-' ? `，过期日期：${applyProgress.value.expireDate}` : ''
-    return `证书已签发${expireInfo}。`
+    const nodeInfo = applyProgress.value.requestedNodeCount > 0 ? ` 已自动关联 ${applyProgress.value.requestedNodeCount} 个节点。` : ''
+    return `证书已签发${expireInfo}。${nodeInfo}`
   }
   if (status === 'timeout') {
     return '后台申请时间较长，已停止自动轮询。你可以点击“刷新”继续查看结果。'
@@ -772,7 +876,7 @@ const updateApplyProgressStatus = () => {
   }
 }
 
-const startApplyProgressTracking = async (certId, domain) => {
+const startApplyProgressTracking = async (certId, domain, requestedNodeCount = 0) => {
   stopApplyProgressTracking()
   const normalizedCertId = certId === null || certId === undefined || certId === '' ? null : Number(certId)
   applyProgress.value = {
@@ -782,6 +886,7 @@ const startApplyProgressTracking = async (certId, domain) => {
     errorMessage: '',
     expireDate: '-',
     checks: 0,
+    requestedNodeCount,
     submittedAt: Date.now()
   }
 
@@ -836,7 +941,8 @@ const handleApply = () => {
     dnsRecords: [],
     validationPath: '',
     wildcard: true,
-    autoRenew: true
+    autoRenew: true,
+    node_ids: []
   }
   applyDialogVisible.value = true
 }
@@ -922,7 +1028,8 @@ const confirmApply = async () => {
       dns_provider: applyForm.value.dnsProvider,
       dns_env: {},
       auto_renew: applyForm.value.autoRenew,
-      wildcard: applyForm.value.wildcard
+      wildcard: applyForm.value.wildcard,
+      node_ids: [...applyForm.value.node_ids]
     }
 
     // 根据 DNS 提供商添加相应的凭证
@@ -986,13 +1093,14 @@ const confirmApply = async () => {
       timeout: 300000
     })
     
-    ElMessage.success(resp?.message || '证书申请已提交，请等待处理结果（通常需要 1-5 分钟）')
+    const requestedNodeCount = requestData.node_ids.length
+    ElMessage.success(requestedNodeCount > 0 ? `证书申请已提交，签发成功后会自动关联 ${requestedNodeCount} 个节点` : (resp?.message || '证书申请已提交，请等待处理结果（通常需要 1-5 分钟）'))
     applyDialogVisible.value = false
     
     // 重新获取证书列表
     await fetchCertificates()
 
-    await startApplyProgressTracking(resp?.cert_id ?? null, requestData.domain)
+    await startApplyProgressTracking(resp?.cert_id ?? null, requestData.domain, requestData.node_ids.length)
   } catch (error) {
     console.error('Failed to apply certificate:', error)
     const message = getApplyErrorMessage(error)
@@ -1003,6 +1111,7 @@ const confirmApply = async () => {
       errorMessage: message,
       expireDate: '-',
       checks: 0,
+      requestedNodeCount: requestData?.node_ids?.length || 0,
       submittedAt: Date.now()
     }
     ElMessage.error(message)
@@ -1016,7 +1125,8 @@ const handleUpload = () => {
   uploadForm.value = {
     domain: '',
     certFile: null,
-    keyFile: null
+    keyFile: null,
+    node_ids: []
   }
   uploadDialogVisible.value = true
 }
@@ -1038,18 +1148,34 @@ const confirmUpload = async () => {
   try {
     await uploadFormRef.value.validate()
 
-    await certificatesApi.upload({
+    const requestData = {
       domain: uploadForm.value.domain,
       certFile: uploadForm.value.certFile,
       keyFile: uploadForm.value.keyFile,
-      autoRenew: false
-    })
+      autoRenew: false,
+      node_ids: [...uploadForm.value.node_ids]
+    }
 
-    ElMessage.success('证书上传成功')
+    const response = await certificatesApi.upload(requestData)
+
+    ElMessage.success(requestData.node_ids.length > 0 ? `证书上传成功，已自动关联 ${requestData.node_ids.length} 个节点` : '证书上传成功')
     uploadDialogVisible.value = false
     
     // 重新获取证书列表
     await fetchCertificates()
+
+    const uploadedCert = certificates.value.find(cert => normalizeDomain(cert.domain) === normalizeDomain(requestData.domain))
+    const responseCert = response?.certificate || response
+    applyProgress.value = {
+      certId: uploadedCert?.id ?? responseCert?.id ?? null,
+      domain: requestData.domain,
+      status: uploadedCert?.status || responseCert?.status || 'active',
+      errorMessage: '',
+      expireDate: uploadedCert?.expireDate || '-',
+      checks: 0,
+      requestedNodeCount: requestData.node_ids.length,
+      submittedAt: Date.now()
+    }
   } catch (error) {
     console.error('Failed to upload certificate:', error)
     ElMessage.error(error?.message || '上传证书失败')
@@ -1229,6 +1355,19 @@ const getExpireStatusType = (row) => {
 
 .apply-progress-alert {
   margin-bottom: 16px;
+}
+
+.apply-progress-actions {
+  margin: -4px 0 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.form-tip-inline {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-top: 6px;
+  line-height: 1.5;
 }
 
 .dns-record {

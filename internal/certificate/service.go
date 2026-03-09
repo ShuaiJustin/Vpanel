@@ -72,6 +72,7 @@ type ApplyRequest struct {
 	DNSEnv      map[string]string // DNS API credentials (e.g., CF_Token, CF_Account_ID)
 	Wildcard    bool              // 是否申请泛域名证书
 	AutoRenew   *bool             // 是否自动续期（nil 表示默认开启）
+	NodeIDs     []int64           // 签发成功后自动关联的节点
 }
 
 // Apply applies for a new certificate using acme.sh.
@@ -259,6 +260,21 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 			}
 
 			// 成功
+			if len(req.NodeIDs) > 0 {
+				postIssueCtx, postIssueCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+				if err := s.assignCertificateToNodes(postIssueCtx, cert.ID, cert.Domain, req.NodeIDs); err != nil {
+					s.logger.Warn("证书签发后自动关联节点失败",
+						logger.F("domain", cert.Domain),
+						logger.F("cert_id", cert.ID),
+						logger.Err(err))
+				} else if err := s.DeployToAssignedNodes(postIssueCtx, cert.ID); err != nil {
+					s.logger.Warn("证书签发后自动部署到节点失败",
+						logger.F("domain", cert.Domain),
+						logger.F("cert_id", cert.ID),
+						logger.Err(err))
+				}
+				postIssueCancel()
+			}
 			return
 		}
 
@@ -274,6 +290,66 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 }
 
 // isAcmeInstalled checks if acme.sh is installed.
+func normalizeNodeTLSDomainFromCertificate(domain string) string {
+	domain = strings.TrimSpace(strings.ToLower(domain))
+	if strings.HasPrefix(domain, "*.") {
+		return ""
+	}
+	return domain
+}
+
+func (s *Service) assignCertificateToNodes(ctx context.Context, certID int64, certDomain string, nodeIDs []int64) error {
+	if len(nodeIDs) == 0 {
+		return nil
+	}
+
+	autoFillDomain := normalizeNodeTLSDomainFromCertificate(certDomain)
+	seen := make(map[int64]struct{}, len(nodeIDs))
+	errorsList := make([]string, 0)
+	successCount := 0
+
+	for _, nodeID := range nodeIDs {
+		if nodeID <= 0 {
+			continue
+		}
+		if _, exists := seen[nodeID]; exists {
+			continue
+		}
+		seen[nodeID] = struct{}{}
+
+		node, err := s.nodeRepo.GetByID(ctx, nodeID)
+		if err != nil {
+			errorsList = append(errorsList, fmt.Sprintf("节点 %d 不存在", nodeID))
+			continue
+		}
+
+		node.CertificateID = &certID
+		if autoFillDomain != "" && strings.TrimSpace(node.TLSDomain) == "" {
+			node.TLSDomain = autoFillDomain
+		}
+
+		if err := s.nodeRepo.Update(ctx, node); err != nil {
+			errorsList = append(errorsList, fmt.Sprintf("节点 %d 更新失败", nodeID))
+			continue
+		}
+
+		successCount++
+		s.logger.Info("证书已自动关联到节点",
+			logger.F("cert_id", certID),
+			logger.F("domain", certDomain),
+			logger.F("node_id", nodeID),
+			logger.F("node_name", node.Name))
+	}
+
+	if successCount == 0 && len(errorsList) > 0 {
+		return fmt.Errorf("%s", strings.Join(errorsList, "; "))
+	}
+	if len(errorsList) > 0 {
+		return fmt.Errorf("部分节点关联失败: %s", strings.Join(errorsList, "; "))
+	}
+	return nil
+}
+
 func (s *Service) isAcmeInstalled() bool {
 	_, found := s.findAcmePath(true)
 	return found

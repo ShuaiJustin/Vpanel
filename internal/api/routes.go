@@ -63,7 +63,9 @@ type Router struct {
 // CertificateService defines the interface for certificate operations.
 type CertificateService interface {
 	Apply(ctx context.Context, req *certificate.ApplyRequest) (*repository.Certificate, error)
+	Upload(ctx context.Context, domain string, certData, keyData []byte) (*repository.Certificate, error)
 	Renew(ctx context.Context, certID int64) error
+	DeployToAssignedNodes(ctx context.Context, certID int64) error
 }
 
 // NewRouter creates a new API router.
@@ -199,18 +201,39 @@ func (r *Router) Setup() {
 	r.nodeHealthChecker = node.NewHealthChecker(nil, r.repos.Node, r.repos.Certificate, r.repos.HealthCheck, r.logger)
 	nodeTrafficService := node.NewTrafficService(r.repos.NodeTraffic, r.repos.NodeGroup, r.logger)
 	nodeDeployService := node.NewRemoteDeployService(r.logger, r.repos.Node)
+	nodeRecoveryTracker := handlers.NewNodeRecoveryTracker(r.logger)
+
+	// Create Xray config generator for nodes
+	configGenerator := xray.NewConfigGenerator(r.repos.Proxy, r.repos.Certificate, r.logger)
+	nodeConfigTestHandler := handlers.NewNodeConfigTestHandler(configGenerator, r.logger)
+	nodeAgentHandler := handlers.NewNodeAgentHandler(nodeService, r.repos.Node, configGenerator, nodeRecoveryTracker, r.logger)
 
 	// Create node management handlers
-	nodeHandler := handlers.NewNodeHandler(nodeService, nodeDeployService, r.logger)
+	nodeHandler := handlers.NewNodeHandler(nodeService, nodeDeployService, nodeRecoveryTracker, r.logger)
 	nodeGroupHandler := handlers.NewNodeGroupHandler(nodeGroupService, r.logger)
 	nodeHealthHandler := handlers.NewNodeHealthHandler(r.nodeHealthChecker, r.repos.HealthCheck, r.repos.Node, r.logger)
 	nodeStatsHandler := handlers.NewNodeStatsHandler(nodeTrafficService, nodeService, nodeGroupService, r.logger)
 	nodeDeployHandler := handlers.NewNodeDeployHandler(nodeDeployService, nodeService, r.config, r.logger)
 	agentDownloadHandler := handlers.NewAgentDownloadHandler(r.logger)
+	if r.nodeHealthChecker != nil {
+		r.nodeHealthChecker.SetOnStatusChange(func(nodeID int64, oldStatus, newStatus string) {
+			if newStatus != repository.NodeStatusUnhealthy {
+				return
+			}
 
-	// Create Xray config generator for nodes
-	configGenerator := xray.NewConfigGenerator(r.repos.Proxy, r.repos.Certificate, r.logger)
-	nodeConfigTestHandler := handlers.NewNodeConfigTestHandler(configGenerator, r.logger)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			nodeData, err := r.repos.Node.GetByID(ctx, nodeID)
+			if err != nil {
+				r.logger.Warn("获取节点状态失败，无法排队恢复命令", logger.Err(err), logger.F("node_id", nodeID))
+				return
+			}
+			if !nodeData.XrayRunning {
+				nodeAgentHandler.QueueXrayRecoveryCommand(nodeID, "health_checker", "health checker marked node unhealthy while xray was down")
+			}
+		})
+	}
 
 	// Create commercial handlers
 	planHandler := handlers.NewPlanHandler(planService, r.logger)
@@ -796,7 +819,6 @@ func (r *Router) Setup() {
 		api.POST("/payments/callback/:method", paymentHandler.HandleCallback)
 
 		// Node Agent routes (token-based auth, no user auth required)
-		nodeAgentHandler := handlers.NewNodeAgentHandler(nodeService, r.repos.Node, configGenerator, r.logger)
 		nodeAgent := api.Group("/node")
 		{
 			nodeAgent.POST("/register", nodeAgentHandler.Register)

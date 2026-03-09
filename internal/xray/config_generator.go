@@ -437,7 +437,12 @@ func (g *ConfigGenerator) resolveTLSCertificates(ctx context.Context, settings m
 			logger.F("error", err.Error()))
 		return nil
 	}
-	if cert == nil || cert.CertPath == "" || cert.KeyPath == "" {
+	if cert == nil {
+		return nil
+	}
+
+	resolvedCertificates := buildRepositoryTLSCertificates(cert)
+	if len(resolvedCertificates) == 0 {
 		return nil
 	}
 
@@ -446,10 +451,7 @@ func (g *ConfigGenerator) resolveTLSCertificates(ctx context.Context, settings m
 		logger.F("matched_domain", matchedDomain),
 		logger.F("cert_path", cert.CertPath))
 
-	return []Certificate{{
-		CertificateFile: cert.CertPath,
-		KeyFile:         cert.KeyPath,
-	}}
+	return resolvedCertificates
 }
 
 func (g *ConfigGenerator) getTLSDomain(settings map[string]any) string {
@@ -479,13 +481,42 @@ func (g *ConfigGenerator) findCertificateForDomain(ctx context.Context, domain s
 				logger.F("status", cert.Status))
 			continue
 		}
-		if cert.CertPath == "" || cert.KeyPath == "" {
-			g.logger.Warn("certificate found but path missing", logger.F("domain", candidate))
+		if !hasRepositoryCertificateMaterial(cert) {
+			g.logger.Warn("certificate found but material missing", logger.F("domain", candidate))
 			continue
 		}
 		return cert, candidate, nil
 	}
 	return nil, "", nil
+}
+
+func hasRepositoryCertificateMaterial(cert *repository.Certificate) bool {
+	if cert == nil {
+		return false
+	}
+	if cert.CertPath != "" && cert.KeyPath != "" {
+		return true
+	}
+	return cert.Certificate != "" && cert.PrivateKey != ""
+}
+
+func buildRepositoryTLSCertificates(cert *repository.Certificate) []Certificate {
+	if cert == nil {
+		return nil
+	}
+	if cert.CertPath != "" && cert.KeyPath != "" {
+		return []Certificate{{
+			CertificateFile: cert.CertPath,
+			KeyFile:         cert.KeyPath,
+		}}
+	}
+	if cert.Certificate != "" && cert.PrivateKey != "" {
+		return []Certificate{{
+			Certificate: []string{cert.Certificate},
+			Key:         []string{cert.PrivateKey},
+		}}
+	}
+	return nil
 }
 
 func (g *ConfigGenerator) logMissingTLSCertificate(settings map[string]any) {

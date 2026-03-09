@@ -411,7 +411,7 @@ curl -X POST http://localhost:8080/api/admin/nodes/1/deploy \
 4. `internal/api/handlers/node_agent.go`
 5. `internal/agent/agent.go`
 6. `internal/api/routes.go`
-7. `web/src/views/Proxies.vue`
+7. `web/src/views/Inbounds.vue`
 
 ---
 

@@ -144,6 +144,50 @@
           <div class="form-tip">节点可以同时属于多个分组</div>
         </el-form-item>
 
+        <el-divider />
+
+        <el-form-item label="启用 TLS">
+          <el-switch
+            v-model="form.tls_enabled"
+            active-text="开启"
+            inactive-text="关闭"
+          />
+        </el-form-item>
+
+        <el-form-item label="TLS 域名" prop="tls_domain">
+          <el-input
+            v-model="form.tls_domain"
+            placeholder="如 jp.example.com"
+          />
+          <div class="form-tip-inline">用于节点 TLS 标识、健康检查和系统证书自动匹配。</div>
+        </el-form-item>
+
+        <el-form-item label="系统证书">
+          <el-select
+            v-model="form.certificate_id"
+            filterable
+            clearable
+            :loading="certificatesLoading"
+            placeholder="自动匹配或手动选择证书"
+            style="width: 100%"
+            @change="handleCertificateChange"
+          >
+            <el-option
+              v-for="cert in certificates"
+              :key="cert.id"
+              :label="getCertificateOptionLabel(cert)"
+              :value="cert.id"
+            />
+          </el-select>
+          <div class="form-tip-inline">选择后会自动回填 TLS 域名，你仍可继续手动修改。</div>
+          <div v-if="selectedCertificate" class="certificate-tip">
+            当前证书：{{ selectedCertificate.domain }}
+            <span v-if="selectedCertificate.expireDate && selectedCertificate.expireDate !== '-'">
+              ，到期 {{ selectedCertificate.expireDate }}
+            </span>
+          </div>
+        </el-form-item>
+
         <!-- SSH 自动安装（仅新建时显示） -->
         <template v-if="!isEdit">
           <el-divider />
@@ -269,7 +313,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { ArrowLeft, CopyDocument } from "@element-plus/icons-vue";
 import { useNodeStore } from "@/stores/node";
-import { nodeGroupsApi, nodesApi } from "@/api";
+import { certificatesApi, nodeGroupsApi, nodesApi } from "@/api";
 
 const route = useRoute();
 const router = useRouter();
@@ -284,6 +328,8 @@ const showTagInput = ref(false);
 const newTag = ref("");
 const addressType = ref("ip");
 const groups = ref([]);
+const certificates = ref([]);
+const certificatesLoading = ref(false);
 const tokenDialogVisible = ref(false);
 const createdToken = ref("");
 
@@ -301,6 +347,9 @@ const form = reactive({
   tags: [],
   ip_whitelist_str: "",
   group_ids: [],
+  tls_enabled: false,
+  tls_domain: "",
+  certificate_id: null,
   // SSH 连接信息
   ssh_host: "",
   ssh_port: 22,
@@ -320,6 +369,7 @@ const rules = {
     { validator: validateAddress, trigger: "blur" },
   ],
   port: [{ required: true, message: "请输入端口", trigger: "blur" }],
+  tls_domain: [{ validator: validateTLSDomain, trigger: "blur" }],
 };
 
 function validateAddress(rule, value, callback) {
@@ -349,6 +399,53 @@ function validateAddress(rule, value, callback) {
   callback();
 }
 
+
+const normalizeText = (value) =>
+  typeof value === "string" ? value.trim() : "";
+
+const normalizeCertificateDomain = (domain) =>
+  normalizeText(domain).replace(/^\*\./, "").toLowerCase();
+
+const formatCertificateDate = (value) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toISOString().slice(0, 10);
+};
+
+const normalizeCertificatesResponse = (response) => {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.certificates)) return response.certificates;
+  if (Array.isArray(response?.data?.certificates)) return response.data.certificates;
+  if (Array.isArray(response?.data)) return response.data;
+  return [];
+};
+
+const selectedCertificate = computed(
+  () =>
+    certificates.value.find(
+      (cert) => Number(cert.id) === Number(form.certificate_id),
+    ) || null,
+);
+
+function validateTLSDomain(rule, value, callback) {
+  const domain = normalizeText(value).toLowerCase();
+  const domainRegex =
+    /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+
+  if (form.tls_enabled && !domain) {
+    callback(new Error("启用 TLS 时请输入 TLS 域名"));
+    return;
+  }
+
+  if (domain && !domainRegex.test(domain)) {
+    callback(new Error("请输入有效的 TLS 域名"));
+    return;
+  }
+
+  callback();
+}
+
 const agentConfigExample = computed(() => {
   return `# agent.yaml
 panel:
@@ -368,6 +465,43 @@ const fetchGroups = async () => {
     groups.value = res?.groups || res || [];
   } catch (e) {
     console.error("获取分组失败:", e);
+  }
+};
+
+const fetchCertificates = async () => {
+  certificatesLoading.value = true;
+  try {
+    const response = await certificatesApi.list();
+    certificates.value = normalizeCertificatesResponse(response).map((cert) => ({
+      ...cert,
+      expireDate: formatCertificateDate(cert.expires_at || cert.expiresAt),
+    }));
+  } catch (e) {
+    console.error("获取证书失败:", e);
+    certificates.value = [];
+  } finally {
+    certificatesLoading.value = false;
+  }
+};
+
+const getCertificateOptionLabel = (cert) => {
+  if (!cert) return "";
+  return cert.expireDate && cert.expireDate !== "-"
+    ? `${cert.domain}（到期 ${cert.expireDate}）`
+    : cert.domain;
+};
+
+const handleCertificateChange = (certificateId) => {
+  if (!certificateId) return;
+  const certificate = certificates.value.find(
+    (cert) => Number(cert.id) === Number(certificateId),
+  );
+  if (!certificate) return;
+
+  const suggestedDomain = normalizeCertificateDomain(certificate.domain);
+  form.tls_enabled = true;
+  if (suggestedDomain) {
+    form.tls_domain = suggestedDomain;
   }
 };
 
@@ -392,6 +526,9 @@ const fetchNode = async () => {
         : ""
       : "";
     form.group_ids = node.group_ids || [];
+    form.tls_enabled = Boolean(node.tls_enabled);
+    form.tls_domain = node.tls_domain || "";
+    form.certificate_id = node.certificate_id ?? null;
 
     // 判断地址类型
     const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$|^([0-9a-fA-F]{1,4}:)/;
@@ -437,6 +574,11 @@ const removeTag = (index) => {
 const submitForm = async () => {
   await formRef.value.validate();
 
+  if (form.tls_enabled && !normalizeText(form.tls_domain)) {
+    ElMessage.error("启用 TLS 时请输入 TLS 域名");
+    return;
+  }
+
   submitting.value = true;
   try {
     const ipWhitelist = form.ip_whitelist_str
@@ -454,6 +596,9 @@ const submitForm = async () => {
       tags: form.tags,
       ip_whitelist: ipWhitelist,
       group_ids: form.group_ids,
+      tls_enabled: form.tls_enabled,
+      tls_domain: normalizeText(form.tls_domain).toLowerCase(),
+      certificate_id: form.certificate_id || null,
     };
 
     // 如果开启了自动安装，添加 SSH 信息
@@ -563,7 +708,7 @@ const goBack = () => {
 };
 
 onMounted(async () => {
-  await fetchGroups();
+  await Promise.all([fetchGroups(), fetchCertificates()]);
   await fetchNode();
 });
 </script>
@@ -596,6 +741,19 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--el-text-color-secondary);
   margin-left: 12px;
+}
+
+.form-tip-inline {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+.certificate-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--el-color-primary);
 }
 
 .tags-input {

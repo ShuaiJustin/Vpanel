@@ -115,7 +115,7 @@ func (e *CommandExecutor) Execute(ctx context.Context, cmd *Command) *CommandRes
 func (e *CommandExecutor) executeXrayStart(ctx context.Context, cmd *Command) *CommandResult {
 	result := &CommandResult{CommandID: cmd.ID}
 
-	err := e.agent.xrayManager.Start(ctx)
+	err := e.agent.ensureXrayRunning(ctx)
 	if err != nil {
 		result.Success = false
 		result.Message = fmt.Sprintf("failed to start Xray: %v", err)
@@ -124,7 +124,7 @@ func (e *CommandExecutor) executeXrayStart(ctx context.Context, cmd *Command) *C
 
 	result.Success = true
 	result.Message = "Xray started successfully"
-	result.Data = e.agent.xrayManager.GetStatus()
+	result.Data = e.agent.GetXrayStatus()
 	return result
 }
 
@@ -165,7 +165,7 @@ func (e *CommandExecutor) executeXrayRestart(ctx context.Context, cmd *Command) 
 func (e *CommandExecutor) executeXrayStatus(ctx context.Context, cmd *Command) *CommandResult {
 	result := &CommandResult{CommandID: cmd.ID}
 
-	status := e.agent.xrayManager.GetStatus()
+	status := e.agent.GetXrayStatus()
 	result.Success = true
 	result.Message = "Status retrieved"
 	result.Data = status

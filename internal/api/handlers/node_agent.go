@@ -20,6 +20,7 @@ type NodeAgentHandler struct {
 	nodeService     *node.Service
 	nodeRepo        repository.NodeRepository
 	configGenerator *xray.ConfigGenerator
+	recoveryTracker *NodeRecoveryTracker
 	logger          logger.Logger
 }
 
@@ -28,12 +29,17 @@ func NewNodeAgentHandler(
 	nodeService *node.Service,
 	nodeRepo repository.NodeRepository,
 	configGenerator *xray.ConfigGenerator,
+	recoveryTracker *NodeRecoveryTracker,
 	log logger.Logger,
 ) *NodeAgentHandler {
+	if recoveryTracker == nil {
+		recoveryTracker = NewNodeRecoveryTracker(log)
+	}
 	return &NodeAgentHandler{
 		nodeService:     nodeService,
 		nodeRepo:        nodeRepo,
 		configGenerator: configGenerator,
+		recoveryTracker: recoveryTracker,
 		logger:          log,
 	}
 }
@@ -63,18 +69,18 @@ type HeartbeatRequest struct {
 
 // NodeMetrics represents metrics from a node.
 type NodeMetrics struct {
-	CPUUsage     float64 `json:"cpu_usage"`
-	MemoryUsage  float64 `json:"memory_usage"`
-	MemoryTotal  uint64  `json:"memory_total"`
-	MemoryUsed   uint64  `json:"memory_used"`
-	DiskUsage    float64 `json:"disk_usage"`
-	NetworkIn    uint64  `json:"network_in"`
-	NetworkOut   uint64  `json:"network_out"`
-	Connections  int     `json:"connections"`
-	XrayRunning  bool    `json:"xray_running"`
-	XrayVersion  string  `json:"xray_version"`
-	Uptime       int64   `json:"uptime"`
-	Timestamp    int64   `json:"timestamp"`
+	CPUUsage    float64 `json:"cpu_usage"`
+	MemoryUsage float64 `json:"memory_usage"`
+	MemoryTotal uint64  `json:"memory_total"`
+	MemoryUsed  uint64  `json:"memory_used"`
+	DiskUsage   float64 `json:"disk_usage"`
+	NetworkIn   uint64  `json:"network_in"`
+	NetworkOut  uint64  `json:"network_out"`
+	Connections int     `json:"connections"`
+	XrayRunning bool    `json:"xray_running"`
+	XrayVersion string  `json:"xray_version"`
+	Uptime      int64   `json:"uptime"`
+	Timestamp   int64   `json:"timestamp"`
 }
 
 // HeartbeatResponse represents a node heartbeat response.
@@ -212,7 +218,7 @@ func (h *NodeAgentHandler) Heartbeat(c *gin.Context) {
 			logger.F("memory_usage", req.Metrics.MemoryUsage),
 			logger.F("disk_usage", req.Metrics.DiskUsage),
 			logger.F("xray_running", req.Metrics.XrayRunning))
-		
+
 		// 更新用户连接数
 		metrics := &node.NodeMetrics{
 			Latency:      0, // 延迟由健康检查服务计算
@@ -223,11 +229,11 @@ func (h *NodeAgentHandler) Heartbeat(c *gin.Context) {
 				logger.F("node_id", nodeData.ID),
 				logger.F("error", err.Error()))
 		}
-		
+
 		// 更新负载信息（CPU、内存、磁盘）
-		if err := h.nodeRepo.UpdateLoadMetrics(c.Request.Context(), nodeData.ID, 
-			req.Metrics.CPUUsage, 
-			req.Metrics.MemoryUsage, 
+		if err := h.nodeRepo.UpdateLoadMetrics(c.Request.Context(), nodeData.ID,
+			req.Metrics.CPUUsage,
+			req.Metrics.MemoryUsage,
 			req.Metrics.DiskUsage); err != nil {
 			h.logger.Error("Failed to update node load metrics",
 				logger.F("node_id", nodeData.ID),
@@ -239,7 +245,7 @@ func (h *NodeAgentHandler) Heartbeat(c *gin.Context) {
 				logger.F("memory", req.Metrics.MemoryUsage),
 				logger.F("disk", req.Metrics.DiskUsage))
 		}
-		
+
 		// 更新 Xray 状态
 		if err := h.nodeRepo.UpdateXrayStatus(c.Request.Context(), nodeData.ID,
 			req.Metrics.XrayRunning,
@@ -252,6 +258,12 @@ func (h *NodeAgentHandler) Heartbeat(c *gin.Context) {
 				logger.F("node_id", nodeData.ID),
 				logger.F("xray_running", req.Metrics.XrayRunning),
 				logger.F("xray_version", req.Metrics.XrayVersion))
+		}
+
+		if req.Metrics.XrayRunning {
+			h.recoveryTracker.MarkCommandRecovered(nodeData.ID, commandTypeXrayStart, "节点心跳已恢复，Xray 正在运行")
+		} else {
+			h.QueueXrayRecoveryCommand(nodeData.ID, "heartbeat", "heartbeat reported xray not running")
 		}
 	} else {
 		h.logger.Warn("心跳请求中没有指标数据",
@@ -300,13 +312,13 @@ func (h *NodeAgentHandler) ReportCommandResult(c *gin.Context) {
 		return
 	}
 
+	commandType := h.recoveryTracker.CompleteInflightCommand(nodeData.ID, req.CommandID, req.Success, req.Message)
 	h.logger.Info("Command result received",
 		logger.F("node_id", nodeData.ID),
 		logger.F("command_id", req.CommandID),
+		logger.F("command_type", commandType),
 		logger.F("success", req.Success),
 		logger.F("message", req.Message))
-
-	// TODO: Store command result for tracking
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -405,21 +417,37 @@ func (h *NodeAgentHandler) GetSystemInfo(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"os":           runtime.GOOS,
-			"arch":         runtime.GOARCH,
-			"go_version":   runtime.Version(),
-			"num_cpu":      runtime.NumCPU(),
+			"os":            runtime.GOOS,
+			"arch":          runtime.GOARCH,
+			"go_version":    runtime.Version(),
+			"num_cpu":       runtime.NumCPU(),
 			"num_goroutine": runtime.NumGoroutine(),
 		},
 	})
 }
 
+// QueueXrayRecoveryCommand queues a lightweight recovery command for a node.
+func (h *NodeAgentHandler) QueueXrayRecoveryCommand(nodeID int64, source, reason string) bool {
+	if h.recoveryTracker == nil {
+		return false
+	}
+	return h.recoveryTracker.QueueXrayRecoveryCommand(nodeID, source, reason)
+}
+
+// GetRecentRecoveryEvents returns recent recovery events for a node.
+func (h *NodeAgentHandler) GetRecentRecoveryEvents(nodeID int64) []NodeRecoveryEvent {
+	if h.recoveryTracker == nil {
+		return []NodeRecoveryEvent{}
+	}
+	return h.recoveryTracker.GetRecentRecoveryEvents(nodeID)
+}
+
 // getPendingCommands returns pending commands for a node.
-// In a production system, this would query a command queue.
 func (h *NodeAgentHandler) getPendingCommands(nodeID int64) []Command {
-	// TODO: Implement command queue
-	// For now, return empty list
-	return []Command{}
+	if h.recoveryTracker == nil {
+		return []Command{}
+	}
+	return h.recoveryTracker.GetPendingCommands(nodeID)
 }
 
 // truncateToken truncates a token for logging purposes.
