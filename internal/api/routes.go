@@ -209,7 +209,7 @@ func (r *Router) Setup() {
 	agentDownloadHandler := handlers.NewAgentDownloadHandler(r.logger)
 
 	// Create Xray config generator for nodes
-	configGenerator := xray.NewConfigGenerator(r.repos.Proxy, r.logger)
+	configGenerator := xray.NewConfigGenerator(r.repos.Proxy, r.repos.Certificate, r.logger)
 	nodeConfigTestHandler := handlers.NewNodeConfigTestHandler(configGenerator, r.logger)
 
 	// Create commercial handlers

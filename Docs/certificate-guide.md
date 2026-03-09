@@ -16,7 +16,13 @@
 
 ### 1. 安装 acme.sh
 
-系统使用 acme.sh 作为 ACME 客户端，首次使用前需要安装：
+系统使用 `acme.sh` 作为 ACME 客户端。
+
+- 默认情况下，系统会在**首次申请证书时自动安装** `acme.sh`
+- 如果服务器无法访问 `https://get.acme.sh`，建议提前手动安装
+- 首次申请通常会比后续申请多等待约 1~2 分钟
+
+如需手动安装，可执行：
 
 ```bash
 curl https://get.acme.sh | sh

@@ -195,39 +195,48 @@
             </el-form-item>
             
             <template v-if="proxyForm.streamSettings.security === 'tls'">
-              <el-form-item label="服务器名称" prop="streamSettings.tlsSettings.serverName">
-                <el-input v-model="proxyForm.streamSettings.tlsSettings.serverName" placeholder="请输入服务器名称" />
+              <el-form-item label="域名" prop="streamSettings.tlsSettings.serverName">
+                <el-input
+                  v-model="proxyForm.streamSettings.tlsSettings.serverName"
+                  placeholder="请输入 TLS 域名，例如 vpn.example.com"
+                />
+                <div class="form-tip">自动模式会按这里填写的域名，从“证书管理”里匹配已签发且可用的证书。</div>
               </el-form-item>
-              <el-form-item label="证书" prop="streamSettings.tlsSettings.certificates">
+              <el-form-item label="证书配置" prop="streamSettings.tlsSettings.certificates">
                 <el-radio-group v-model="certType">
+                  <el-radio value="auto">自动匹配系统证书</el-radio>
                   <el-radio value="file">证书文件路径</el-radio>
                   <el-radio value="content">证书文件内容</el-radio>
                 </el-radio-group>
-                
+
+                <div v-if="certType === 'auto'" class="cert-input">
+                  <div class="form-tip">保存后节点下发配置时会优先按域名自动匹配证书；如果同域名证书不存在，可再切到手动模式填写。</div>
+                </div>
+
                 <div v-if="certType === 'file'" class="cert-input">
-                  <el-form-item label="证书文件">
-                    <el-input v-model="proxyForm.streamSettings.tlsSettings.certificates.certFile" placeholder="证书文件路径" />
+                  <el-form-item label="公钥文件路径">
+                    <el-input v-model="proxyForm.streamSettings.tlsSettings.certificates.certFile" placeholder="请输入公钥文件路径" />
                   </el-form-item>
-                  <el-form-item label="密钥文件">
-                    <el-input v-model="proxyForm.streamSettings.tlsSettings.certificates.keyFile" placeholder="密钥文件路径" />
+                  <el-form-item label="私钥文件路径">
+                    <el-input v-model="proxyForm.streamSettings.tlsSettings.certificates.keyFile" placeholder="请输入私钥文件路径" />
                   </el-form-item>
                 </div>
-                
+
                 <div v-if="certType === 'content'" class="cert-input">
                   <el-form-item label="证书内容">
-                    <el-input 
-                      type="textarea" 
-                      v-model="proxyForm.streamSettings.tlsSettings.certificates.certificate" 
-                      rows="4" 
-                      placeholder="证书内容" 
+                    <el-input
+                      type="textarea"
+                      v-model="proxyForm.streamSettings.tlsSettings.certificates.certificate"
+                      rows="4"
+                      placeholder="证书内容"
                     />
                   </el-form-item>
-                  <el-form-item label="密钥内容">
-                    <el-input 
-                      type="textarea" 
-                      v-model="proxyForm.streamSettings.tlsSettings.certificates.key" 
-                      rows="4" 
-                      placeholder="密钥内容" 
+                  <el-form-item label="私钥内容">
+                    <el-input
+                      type="textarea"
+                      v-model="proxyForm.streamSettings.tlsSettings.certificates.key"
+                      rows="4"
+                      placeholder="私钥内容"
                     />
                   </el-form-item>
                 </div>
@@ -321,7 +330,7 @@ const viewDialogVisible = ref(false)
 const dialogType = ref('add')
 const activeTab = ref('basic')
 const selectedProxy = ref(null)
-const certType = ref('file')
+const certType = ref('auto')
 const proxyFormRef = ref(null)
 
 // 表单校验规则
@@ -499,7 +508,7 @@ const resetForm = () => {
     totalGB: 0,
     expiryTime: ''
   })
-  certType.value = 'file'
+  certType.value = 'auto'
 }
 
 // 处理编辑

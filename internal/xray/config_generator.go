@@ -5,24 +5,29 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"v/internal/database/repository"
 	"v/internal/logger"
+	apperrors "v/pkg/errors"
 )
 
 // ConfigGenerator generates Xray configurations for nodes.
 type ConfigGenerator struct {
 	proxyRepo repository.ProxyRepository
+	certRepo  repository.CertificateRepository
 	logger    logger.Logger
 }
 
 // NewConfigGenerator creates a new Xray config generator.
 func NewConfigGenerator(
 	proxyRepo repository.ProxyRepository,
+	certRepo repository.CertificateRepository,
 	log logger.Logger,
 ) *ConfigGenerator {
 	return &ConfigGenerator{
 		proxyRepo: proxyRepo,
+		certRepo:  certRepo,
 		logger:    log,
 	}
 }
@@ -76,22 +81,22 @@ type SystemPolicy struct {
 
 // InboundConfig represents an Xray inbound configuration.
 type InboundConfig struct {
-	Tag          string         `json:"tag"`
-	Listen       string         `json:"listen,omitempty"`
-	Port         int            `json:"port"`
-	Protocol     string         `json:"protocol"`
-	Settings     map[string]any `json:"settings"`
+	Tag            string          `json:"tag"`
+	Listen         string          `json:"listen,omitempty"`
+	Port           int             `json:"port"`
+	Protocol       string          `json:"protocol"`
+	Settings       map[string]any  `json:"settings"`
 	StreamSettings *StreamSettings `json:"streamSettings,omitempty"`
-	Sniffing     *SniffingConfig `json:"sniffing,omitempty"`
+	Sniffing       *SniffingConfig `json:"sniffing,omitempty"`
 }
 
 // StreamSettings represents stream settings for transport.
 type StreamSettings struct {
-	Network  string         `json:"network"`
-	Security string         `json:"security,omitempty"`
-	TLSSettings *TLSSettings `json:"tlsSettings,omitempty"`
-	TCPSettings map[string]any `json:"tcpSettings,omitempty"`
-	WSSettings  map[string]any `json:"wsSettings,omitempty"`
+	Network      string         `json:"network"`
+	Security     string         `json:"security,omitempty"`
+	TLSSettings  *TLSSettings   `json:"tlsSettings,omitempty"`
+	TCPSettings  map[string]any `json:"tcpSettings,omitempty"`
+	WSSettings   map[string]any `json:"wsSettings,omitempty"`
 	HTTPSettings map[string]any `json:"httpSettings,omitempty"`
 	QUICSettings map[string]any `json:"quicSettings,omitempty"`
 	GRPCSettings map[string]any `json:"grpcSettings,omitempty"`
@@ -99,15 +104,15 @@ type StreamSettings struct {
 
 // TLSSettings represents TLS configuration.
 type TLSSettings struct {
-	ServerName   string   `json:"serverName,omitempty"`
+	ServerName   string        `json:"serverName,omitempty"`
 	Certificates []Certificate `json:"certificates,omitempty"`
-	ALPN         []string `json:"alpn,omitempty"`
+	ALPN         []string      `json:"alpn,omitempty"`
 }
 
 // Certificate represents a TLS certificate.
 type Certificate struct {
-	CertificateFile string `json:"certificateFile,omitempty"`
-	KeyFile         string `json:"keyFile,omitempty"`
+	CertificateFile string   `json:"certificateFile,omitempty"`
+	KeyFile         string   `json:"keyFile,omitempty"`
 	Certificate     []string `json:"certificate,omitempty"`
 	Key             []string `json:"key,omitempty"`
 }
@@ -176,7 +181,7 @@ func (g *ConfigGenerator) GenerateForNode(ctx context.Context, nodeID int64) (*X
 				StatsOutboundDownlink: true,
 			},
 		},
-		Inbounds:  g.generateInbounds(allProxies),
+		Inbounds:  g.generateInbounds(ctx, allProxies),
 		Outbounds: g.generateOutbounds(),
 		Routing:   g.generateRouting(),
 	}
@@ -185,7 +190,7 @@ func (g *ConfigGenerator) GenerateForNode(ctx context.Context, nodeID int64) (*X
 }
 
 // generateInbounds generates inbound configurations from proxies.
-func (g *ConfigGenerator) generateInbounds(proxies []*repository.Proxy) []InboundConfig {
+func (g *ConfigGenerator) generateInbounds(ctx context.Context, proxies []*repository.Proxy) []InboundConfig {
 	inbounds := []InboundConfig{
 		// API inbound for stats
 		{
@@ -201,7 +206,7 @@ func (g *ConfigGenerator) generateInbounds(proxies []*repository.Proxy) []Inboun
 
 	// Generate inbound for each proxy
 	for _, proxy := range proxies {
-		inbound := g.proxyToInbound(proxy)
+		inbound := g.proxyToInbound(ctx, proxy)
 		if inbound != nil {
 			inbounds = append(inbounds, *inbound)
 		}
@@ -211,7 +216,7 @@ func (g *ConfigGenerator) generateInbounds(proxies []*repository.Proxy) []Inboun
 }
 
 // proxyToInbound converts a proxy to an Xray inbound configuration.
-func (g *ConfigGenerator) proxyToInbound(proxy *repository.Proxy) *InboundConfig {
+func (g *ConfigGenerator) proxyToInbound(ctx context.Context, proxy *repository.Proxy) *InboundConfig {
 	tag := fmt.Sprintf("inbound-%d", proxy.ID)
 
 	inbound := &InboundConfig{
@@ -234,13 +239,13 @@ func (g *ConfigGenerator) proxyToInbound(proxy *repository.Proxy) *InboundConfig
 	switch proxy.Protocol {
 	case "vless":
 		inbound.Settings = g.generateVLESSSettings(proxy, settings)
-		inbound.StreamSettings = g.generateStreamSettings(settings)
+		inbound.StreamSettings = g.generateStreamSettings(ctx, settings)
 	case "vmess":
 		inbound.Settings = g.generateVMessSettings(proxy, settings)
-		inbound.StreamSettings = g.generateStreamSettings(settings)
+		inbound.StreamSettings = g.generateStreamSettings(ctx, settings)
 	case "trojan":
 		inbound.Settings = g.generateTrojanSettings(proxy, settings)
-		inbound.StreamSettings = g.generateStreamSettings(settings)
+		inbound.StreamSettings = g.generateStreamSettings(ctx, settings)
 	case "shadowsocks":
 		inbound.Settings = g.generateShadowsocksSettings(proxy, settings)
 	default:
@@ -256,7 +261,7 @@ func (g *ConfigGenerator) proxyToInbound(proxy *repository.Proxy) *InboundConfig
 // generateVLESSSettings generates VLESS protocol settings.
 func (g *ConfigGenerator) generateVLESSSettings(proxy *repository.Proxy, settings map[string]any) map[string]any {
 	clients := []map[string]any{}
-	
+
 	// Extract UUID from settings
 	if uuid, ok := settings["uuid"].(string); ok && uuid != "" {
 		clients = append(clients, map[string]any{
@@ -276,7 +281,7 @@ func (g *ConfigGenerator) generateVLESSSettings(proxy *repository.Proxy, setting
 // generateVMessSettings generates VMess protocol settings.
 func (g *ConfigGenerator) generateVMessSettings(proxy *repository.Proxy, settings map[string]any) map[string]any {
 	clients := []map[string]any{}
-	
+
 	// Extract UUID from settings
 	if uuid, ok := settings["uuid"].(string); ok && uuid != "" {
 		client := map[string]any{
@@ -284,14 +289,14 @@ func (g *ConfigGenerator) generateVMessSettings(proxy *repository.Proxy, setting
 			"email": fmt.Sprintf("user-%d-proxy-%d", proxy.UserID, proxy.ID),
 			"level": 0,
 		}
-		
+
 		// Optional: alterId
 		if alterId, ok := settings["alter_id"]; ok {
 			client["alterId"] = alterId
 		} else {
 			client["alterId"] = 0
 		}
-		
+
 		clients = append(clients, client)
 	}
 
@@ -303,7 +308,7 @@ func (g *ConfigGenerator) generateVMessSettings(proxy *repository.Proxy, setting
 // generateTrojanSettings generates Trojan protocol settings.
 func (g *ConfigGenerator) generateTrojanSettings(proxy *repository.Proxy, settings map[string]any) map[string]any {
 	clients := []map[string]any{}
-	
+
 	// Extract password from settings
 	if password, ok := settings["password"].(string); ok && password != "" {
 		clients = append(clients, map[string]any{
@@ -324,14 +329,14 @@ func (g *ConfigGenerator) generateShadowsocksSettings(proxy *repository.Proxy, s
 	result := map[string]any{
 		"network": "tcp,udp",
 	}
-	
+
 	// Extract method and password
 	if method, ok := settings["method"].(string); ok {
 		result["method"] = method
 	} else {
 		result["method"] = "aes-256-gcm"
 	}
-	
+
 	if password, ok := settings["password"].(string); ok {
 		result["password"] = password
 	}
@@ -340,7 +345,7 @@ func (g *ConfigGenerator) generateShadowsocksSettings(proxy *repository.Proxy, s
 }
 
 // generateStreamSettings generates stream settings from proxy settings.
-func (g *ConfigGenerator) generateStreamSettings(settings map[string]any) *StreamSettings {
+func (g *ConfigGenerator) generateStreamSettings(ctx context.Context, settings map[string]any) *StreamSettings {
 	stream := &StreamSettings{
 		Network: "tcp", // default
 	}
@@ -353,26 +358,20 @@ func (g *ConfigGenerator) generateStreamSettings(settings map[string]any) *Strea
 	// Extract security settings
 	if security, ok := settings["security"].(string); ok {
 		stream.Security = security
-		
+
 		if security == "tls" {
 			stream.TLSSettings = &TLSSettings{}
-			
+
 			if serverName, ok := settings["server_name"].(string); ok {
 				stream.TLSSettings.ServerName = serverName
 			}
-			
-			// Certificate settings
-			if certFile, ok := settings["cert_file"].(string); ok {
-				if keyFile, ok := settings["key_file"].(string); ok {
-					stream.TLSSettings.Certificates = []Certificate{
-						{
-							CertificateFile: certFile,
-							KeyFile:         keyFile,
-						},
-					}
-				}
+
+			stream.TLSSettings.Certificates = g.resolveTLSCertificates(ctx, settings)
+
+			if len(stream.TLSSettings.Certificates) == 0 {
+				g.logMissingTLSCertificate(settings)
 			}
-			
+
 			// ALPN
 			if alpn, ok := settings["alpn"].([]string); ok {
 				stream.TLSSettings.ALPN = alpn
@@ -405,6 +404,138 @@ func (g *ConfigGenerator) generateStreamSettings(settings map[string]any) *Strea
 	}
 
 	return stream
+}
+
+func (g *ConfigGenerator) resolveTLSCertificates(ctx context.Context, settings map[string]any) []Certificate {
+	certFile := getStringSetting(settings, "cert_file")
+	keyFile := getStringSetting(settings, "key_file")
+	if certFile != "" && keyFile != "" {
+		return []Certificate{{
+			CertificateFile: certFile,
+			KeyFile:         keyFile,
+		}}
+	}
+
+	certificateContent := getStringSetting(settings, "certificate")
+	keyContent := getStringSetting(settings, "key")
+	if certificateContent != "" && keyContent != "" {
+		return []Certificate{{
+			Certificate: []string{certificateContent},
+			Key:         []string{keyContent},
+		}}
+	}
+
+	domain := g.getTLSDomain(settings)
+	if domain == "" || g.certRepo == nil {
+		return nil
+	}
+
+	cert, matchedDomain, err := g.findCertificateForDomain(ctx, domain)
+	if err != nil {
+		g.logger.Warn("failed to resolve tls certificate",
+			logger.F("domain", domain),
+			logger.F("error", err.Error()))
+		return nil
+	}
+	if cert == nil || cert.CertPath == "" || cert.KeyPath == "" {
+		return nil
+	}
+
+	g.logger.Info("auto matched tls certificate",
+		logger.F("domain", domain),
+		logger.F("matched_domain", matchedDomain),
+		logger.F("cert_path", cert.CertPath))
+
+	return []Certificate{{
+		CertificateFile: cert.CertPath,
+		KeyFile:         cert.KeyPath,
+	}}
+}
+
+func (g *ConfigGenerator) getTLSDomain(settings map[string]any) string {
+	for _, key := range []string{"tls_domain", "server_name", "host"} {
+		if value := normalizeTLSDomain(getStringSetting(settings, key)); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func (g *ConfigGenerator) findCertificateForDomain(ctx context.Context, domain string) (*repository.Certificate, string, error) {
+	for _, candidate := range buildCertificateCandidates(domain) {
+		cert, err := g.certRepo.GetByDomain(ctx, candidate)
+		if err != nil {
+			if apperrors.IsNotFound(err) {
+				continue
+			}
+			return nil, "", err
+		}
+		if cert == nil {
+			continue
+		}
+		if cert.Status != "active" {
+			g.logger.Warn("certificate found but not active",
+				logger.F("domain", candidate),
+				logger.F("status", cert.Status))
+			continue
+		}
+		if cert.CertPath == "" || cert.KeyPath == "" {
+			g.logger.Warn("certificate found but path missing", logger.F("domain", candidate))
+			continue
+		}
+		return cert, candidate, nil
+	}
+	return nil, "", nil
+}
+
+func (g *ConfigGenerator) logMissingTLSCertificate(settings map[string]any) {
+	domain := g.getTLSDomain(settings)
+	if domain == "" {
+		return
+	}
+	g.logger.Warn("tls enabled but no matching certificate found", logger.F("domain", domain))
+}
+
+func buildCertificateCandidates(domain string) []string {
+	domain = normalizeTLSDomain(domain)
+	if domain == "" {
+		return nil
+	}
+
+	candidates := []string{domain}
+	if wildcard := wildcardDomain(domain); wildcard != "" && wildcard != domain {
+		candidates = append(candidates, wildcard)
+	}
+	return candidates
+}
+
+func wildcardDomain(domain string) string {
+	parts := strings.Split(normalizeTLSDomain(domain), ".")
+	if len(parts) < 3 {
+		return ""
+	}
+	return "*." + strings.Join(parts[1:], ".")
+}
+
+func normalizeTLSDomain(domain string) string {
+	domain = strings.TrimSpace(strings.ToLower(domain))
+	return strings.TrimPrefix(domain, "*.")
+}
+
+func getStringSetting(settings map[string]any, key string) string {
+	value, ok := settings[key]
+	if !ok || value == nil {
+		return ""
+	}
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case []string:
+		if len(typed) > 0 {
+			return strings.TrimSpace(typed[0])
+		}
+	}
+	return ""
 }
 
 // generateOutbounds generates outbound configurations.

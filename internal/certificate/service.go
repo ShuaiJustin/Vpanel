@@ -81,30 +81,6 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 		logger.F("provider", req.Provider),
 		logger.F("method", req.Method))
 
-	// 检查 acme.sh 是否安装，如果未安装则自动安装
-	if !s.isAcmeInstalled() {
-		s.logger.Info("acme.sh 未安装，开始自动安装")
-
-		// 使用锁防止并发安装
-		s.installMu.Lock()
-		// 再次检查，可能其他 goroutine 已经安装了
-		if !s.isAcmeInstalled() {
-			// 同步安装，确保完成后再继续
-			installCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-			defer cancel()
-
-			if err := s.installAcme(installCtx); err != nil {
-				s.installMu.Unlock()
-				s.logger.Error("acme.sh 自动安装失败", logger.Err(err))
-				return nil, fmt.Errorf("acme.sh 安装失败: %w，请手动安装或联系管理员", err)
-			}
-			s.logger.Info("acme.sh 安装成功")
-		} else {
-			s.logger.Info("acme.sh 已被其他进程安装")
-		}
-		s.installMu.Unlock()
-	}
-
 	// 设置默认值
 	if req.Provider == "" {
 		req.Provider = "letsencrypt"
@@ -245,6 +221,14 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 		applyCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 
+		if err := s.ensureAcmeInstalled(applyCtx, req.Email); err != nil {
+			s.logger.Error("准备 ACME 环境失败",
+				logger.F("domain", req.Domain),
+				logger.Err(err))
+			s.updateApplyFailure(cert, previousStatus, err)
+			return
+		}
+
 		// 跳过测试阶段，直接正式申请
 		s.logger.Info("开始正式申请证书（跳过测试阶段）", logger.F("domain", req.Domain))
 
@@ -283,15 +267,7 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 			logger.F("domain", req.Domain),
 			logger.F("error", lastErr.Error()))
 
-		parsedErr := s.parseAcmeError(lastErr)
-		if previousStatus == "active" {
-			cert.Status = "active"
-			cert.ErrorMessage = fmt.Sprintf("最近一次重签发失败: %s", parsedErr)
-		} else {
-			cert.Status = "failed"
-			cert.ErrorMessage = parsedErr
-		}
-		s.certRepo.Update(context.Background(), cert)
+		s.updateApplyFailure(cert, previousStatus, lastErr)
 	}()
 
 	return cert, nil
@@ -299,6 +275,11 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 
 // isAcmeInstalled checks if acme.sh is installed.
 func (s *Service) isAcmeInstalled() bool {
+	_, found := s.findAcmePath(true)
+	return found
+}
+
+func (s *Service) findAcmePath(logMissing bool) (string, bool) {
 	// 尝试多个可能的路径
 	possiblePaths := []string{
 		"/root/.acme.sh/acme.sh",
@@ -314,16 +295,46 @@ func (s *Service) isAcmeInstalled() bool {
 	for _, path := range possiblePaths {
 		if _, err := os.Stat(path); err == nil {
 			s.logger.Info("找到 acme.sh", logger.F("path", path))
-			return true
+			return path, true
 		}
 	}
 
-	s.logger.Warn("未找到 acme.sh，尝试的路径", logger.F("paths", possiblePaths))
-	return false
+	if logMissing {
+		s.logger.Warn("未找到 acme.sh，尝试的路径", logger.F("paths", possiblePaths))
+	}
+
+	return "", false
+}
+
+func (s *Service) ensureAcmeInstalled(ctx context.Context, email string) error {
+	if _, found := s.findAcmePath(false); found {
+		return nil
+	}
+
+	s.logger.Info("acme.sh 未安装，开始自动安装")
+
+	s.installMu.Lock()
+	defer s.installMu.Unlock()
+
+	if _, found := s.findAcmePath(false); found {
+		s.logger.Info("acme.sh 已被其他进程安装")
+		return nil
+	}
+
+	installCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+
+	if err := s.installAcme(installCtx, email); err != nil {
+		s.logger.Error("acme.sh 自动安装失败", logger.Err(err))
+		return fmt.Errorf("acme.sh 安装失败: %w", err)
+	}
+
+	s.logger.Info("acme.sh 安装成功")
+	return nil
 }
 
 // installAcme automatically installs acme.sh.
-func (s *Service) installAcme(ctx context.Context) error {
+func (s *Service) installAcme(ctx context.Context, email string) error {
 	s.logger.Info("开始安装 acme.sh")
 
 	installScript := filepath.Join(os.TempDir(), fmt.Sprintf("acme-install-%d.sh", time.Now().UnixNano()))
@@ -338,7 +349,16 @@ func (s *Service) installAcme(ctx context.Context) error {
 		return fmt.Errorf("下载安装脚本失败: %w", err)
 	}
 
-	installCmd := exec.CommandContext(ctx, "sh", installScript)
+	installArgs := []string{installScript}
+	if email != "" {
+		installArgs = append(installArgs, fmt.Sprintf("email=%s", email))
+	}
+
+	installCmd := exec.CommandContext(ctx, "sh", installArgs...)
+	installCmd.Env = os.Environ()
+	if homeDir, err := os.UserHomeDir(); err == nil && homeDir != "" {
+		installCmd.Env = append(installCmd.Env, fmt.Sprintf("HOME=%s", homeDir))
+	}
 	installOutput, err := installCmd.CombinedOutput()
 	if err != nil {
 		s.logger.Error("acme.sh 安装失败",
@@ -350,11 +370,28 @@ func (s *Service) installAcme(ctx context.Context) error {
 	s.logger.Info("acme.sh 安装完成")
 
 	// 验证安装
-	if !s.isAcmeInstalled() {
+	if _, found := s.findAcmePath(true); !found {
 		return fmt.Errorf("安装完成但无法找到 acme.sh")
 	}
 
 	return nil
+}
+
+func (s *Service) updateApplyFailure(cert *repository.Certificate, previousStatus string, err error) {
+	parsedErr := s.parseAcmeError(err)
+	if previousStatus == "active" {
+		cert.Status = "active"
+		cert.ErrorMessage = fmt.Sprintf("最近一次重签发失败: %s", parsedErr)
+	} else {
+		cert.Status = "failed"
+		cert.ErrorMessage = parsedErr
+	}
+
+	if updateErr := s.certRepo.Update(context.Background(), cert); updateErr != nil {
+		s.logger.Error("更新证书失败状态失败",
+			logger.F("domain", cert.Domain),
+			logger.Err(updateErr))
+	}
 }
 
 // updateAcmeAccount updates the acme.sh account email.
@@ -427,6 +464,9 @@ func (s *Service) parseAcmeError(err error) string {
 	// 常见错误模式匹配
 	patterns := map[string]string{
 		"timeout":                              "申请超时，请检查网络连接",
+		"acme.sh 安装失败":                         "acme.sh 自动安装失败，请检查服务器网络、HOME 目录权限或手动预装后重试",
+		"下载安装脚本失败":                             "acme.sh 安装脚本下载失败，请检查服务器是否可访问 https://get.acme.sh",
+		"安装完成但无法找到 acme.sh":                    "acme.sh 安装后未找到可执行文件，请检查 HOME 目录权限或手动安装",
 		"dns problem":                          "DNS 解析问题，请检查域名是否正确解析",
 		"connection refused":                   "连接被拒绝，请检查防火墙和端口配置",
 		"too many certificates":                "证书申请次数过多，请稍后再试（Let's Encrypt 频率限制）",
@@ -618,24 +658,8 @@ func (s *Service) issueWithAcmeTest(ctx context.Context, req *ApplyRequest, cert
 // issueWithAcme issues a certificate using acme.sh.
 func (s *Service) issueWithAcme(ctx context.Context, req *ApplyRequest, cert *repository.Certificate) error {
 	// 查找 acme.sh 路径
-	acmePath := ""
-	possiblePaths := []string{
-		"/root/.acme.sh/acme.sh",
-		"/home/app/.acme.sh/acme.sh",
-	}
-
-	if homeDir, err := os.UserHomeDir(); err == nil {
-		possiblePaths = append(possiblePaths, filepath.Join(homeDir, ".acme.sh", "acme.sh"))
-	}
-
-	for _, path := range possiblePaths {
-		if _, err := os.Stat(path); err == nil {
-			acmePath = path
-			break
-		}
-	}
-
-	if acmePath == "" {
+	acmePath, found := s.findAcmePath(true)
+	if !found {
 		return fmt.Errorf("未找到 acme.sh，请确保已正确安装")
 	}
 
@@ -839,12 +863,14 @@ func (s *Service) Renew(ctx context.Context, id int64) error {
 
 	s.logger.Info("续期证书", logger.F("domain", cert.Domain))
 
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("获取用户目录失败: %w", err)
+	if err := s.ensureAcmeInstalled(ctx, ""); err != nil {
+		return err
 	}
 
-	acmePath := filepath.Join(homeDir, ".acme.sh", "acme.sh")
+	acmePath, found := s.findAcmePath(true)
+	if !found {
+		return fmt.Errorf("未找到 acme.sh，请确保已正确安装")
+	}
 
 	// 执行续期命令
 	args := []string{
