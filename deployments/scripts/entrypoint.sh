@@ -9,7 +9,7 @@ echo "Starting V Panel..."
 if [ ! -f "$HOME/.acme.sh/acme.sh" ]; then
     echo "Installing acme.sh..."
     ACME_INSTALL_SCRIPT="/tmp/acme-install.sh"
-    if curl -fsSL --retry 3 --connect-timeout 10 https://get.acme.sh -o "$ACME_INSTALL_SCRIPT"; then
+    if wget -q -O "$ACME_INSTALL_SCRIPT" -t 3 -T 10 https://get.acme.sh; then
         # 不使用示例邮箱（example.com 会被 Let's Encrypt 拒绝）
         if [ -n "${ACME_EMAIL}" ]; then
             sh "$ACME_INSTALL_SCRIPT" email="${ACME_EMAIL}" || true
@@ -18,6 +18,7 @@ if [ ! -f "$HOME/.acme.sh/acme.sh" ]; then
         fi
         rm -f "$ACME_INSTALL_SCRIPT"
     else
+        rm -f "$ACME_INSTALL_SCRIPT"
         echo "⚠ acme.sh script download failed, will retry on first certificate request"
     fi
 

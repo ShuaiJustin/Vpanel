@@ -10,8 +10,10 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"math/big"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -416,12 +418,8 @@ func (s *Service) installAcme(ctx context.Context, email string) error {
 	installScript := filepath.Join(os.TempDir(), fmt.Sprintf("acme-install-%d.sh", time.Now().UnixNano()))
 	defer os.Remove(installScript)
 
-	downloadCmd := exec.CommandContext(ctx, "curl", "-fsSL", "--retry", "3", "--connect-timeout", "10", "https://get.acme.sh", "-o", installScript)
-	downloadOutput, err := downloadCmd.CombinedOutput()
-	if err != nil {
-		s.logger.Error("acme.sh 安装脚本下载失败",
-			logger.F("error", err.Error()),
-			logger.F("output", string(downloadOutput)))
+	if err := s.downloadAcmeInstallScript(ctx, "https://get.acme.sh", installScript); err != nil {
+		s.logger.Error("acme.sh 安装脚本下载失败", logger.F("error", err.Error()))
 		return fmt.Errorf("下载安装脚本失败: %w", err)
 	}
 
@@ -448,6 +446,40 @@ func (s *Service) installAcme(ctx context.Context, email string) error {
 	// 验证安装
 	if _, found := s.findAcmePath(true); !found {
 		return fmt.Errorf("安装完成但无法找到 acme.sh")
+	}
+
+	return nil
+}
+
+func (s *Service) downloadAcmeInstallScript(ctx context.Context, downloadURL, targetPath string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	if err != nil {
+		return err
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status: %s", resp.Status)
+	}
+
+	file, err := os.Create(targetPath)
+	if err != nil {
+		return err
+	}
+
+	if _, err := io.Copy(file, resp.Body); err != nil {
+		_ = file.Close()
+		return err
+	}
+
+	if err := file.Close(); err != nil {
+		return err
 	}
 
 	return nil

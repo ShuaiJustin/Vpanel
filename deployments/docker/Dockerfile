@@ -82,7 +82,6 @@ RUN apk add --no-cache \
     tzdata \
     sqlite \
     wget \
-    curl \
     bash \
     openssl \
     socat \
