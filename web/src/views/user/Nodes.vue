@@ -310,8 +310,8 @@ function getLatencyClass(latency) {
 async function testLatency(node) {
   testingNodes[node.id] = true
   try {
-    const result = await nodesStore.testLatency(node.id)
-    latencyResults[node.id] = result.latency
+    const latency = await nodesStore.testNodeLatency(node.id)
+    latencyResults[node.id] = latency
   } catch (error) {
     latencyResults[node.id] = null
     ElMessage.error(`测速失败: ${node.name}`)
