@@ -161,6 +161,10 @@
               <el-icon class="action-icon"><Download /></el-icon>
               <span class="action-label">客户端下载</span>
             </div>
+            <div class="action-item" @click="goToDevices">
+              <el-icon class="action-icon"><Monitor /></el-icon>
+              <span class="action-label">在线设备</span>
+            </div>
             <div class="action-item" @click="goToTickets">
               <el-icon class="action-icon"><ChatDotRound /></el-icon>
               <span class="action-label">工单支持</span>
@@ -354,6 +358,10 @@ function goToSubscription() {
 
 function goToDownload() {
   router.push('/user/download')
+}
+
+function goToDevices() {
+  router.push('/user/devices')
 }
 
 function goToTickets() {

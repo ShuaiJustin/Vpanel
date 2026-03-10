@@ -55,6 +55,10 @@
                   <el-icon><ChatDotRound /></el-icon>
                   我的工单
                 </el-dropdown-item>
+                <el-dropdown-item command="devices">
+                  <el-icon><Monitor /></el-icon>
+                  在线设备
+                </el-dropdown-item>
                 <el-dropdown-item command="help">
                   <el-icon><QuestionFilled /></el-icon>
                   帮助中心
@@ -165,6 +169,7 @@ import {
   HomeFilled,
   Connection,
   Link,
+  Monitor,
   Download,
   DataAnalysis,
   Bell,
@@ -197,6 +202,7 @@ const navItems = [
   { path: '/user/dashboard', label: '仪表板', icon: HomeFilled },
   { path: '/user/nodes', label: '节点列表', icon: Connection },
   { path: '/user/subscription', label: '订阅管理', icon: Link },
+  { path: '/user/devices', label: '在线设备', icon: Monitor },
   { path: '/user/download', label: '客户端下载', icon: Download },
   { path: '/user/stats', label: '使用统计', icon: DataAnalysis }
 ]
@@ -230,6 +236,9 @@ const handleCommand = (command) => {
   switch (command) {
     case 'settings':
       router.push('/user/settings')
+      break
+    case 'devices':
+      router.push('/user/devices')
       break
     case 'tickets':
       router.push('/user/tickets')

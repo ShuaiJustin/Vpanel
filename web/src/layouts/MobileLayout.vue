@@ -57,7 +57,7 @@ import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { 
   ArrowLeft, Bell, User, HomeFilled, Connection, 
-  Link, Download, ChatDotRound 
+  Link, Download, ChatDotRound, Monitor
 } from '@element-plus/icons-vue'
 import { usePortalAnnouncementsStore } from '@/stores/portalAnnouncements'
 
@@ -70,6 +70,7 @@ const tabItems = [
   { path: '/user/dashboard', label: '首页', icon: HomeFilled },
   { path: '/user/nodes', label: '节点', icon: Connection },
   { path: '/user/subscription', label: '订阅', icon: Link },
+  { path: '/user/devices', label: '设备', icon: Monitor },
   { path: '/user/download', label: '下载', icon: Download },
   { path: '/user/tickets', label: '工单', icon: ChatDotRound }
 ]

@@ -42,20 +42,26 @@ func (h *IPRestrictionHandler) resolveUserMaxConcurrentIPsWithContext(ctx contex
 		return -1
 	}
 
-	type row struct {
+	db := h.ipService.Tracker().GetDB().WithContext(ctx)
+	userHasMaxConcurrentIPs := db.Migrator().HasColumn("users", "max_concurrent_ips")
+	userHasPlanID := db.Migrator().HasColumn("users", "plan_id")
+
+	type userRow struct {
 		Role             string `gorm:"column:role"`
 		MaxConcurrentIPs *int   `gorm:"column:max_concurrent_ips"`
-		PlanDefault      *int   `gorm:"column:plan_default"`
+		PlanID           *int64 `gorm:"column:plan_id"`
 	}
 
-	var result row
-	err := h.ipService.Tracker().GetDB().
-		WithContext(ctx).
-		Table("users AS u").
-		Select("u.role AS role, u.max_concurrent_ips AS max_concurrent_ips, p.default_max_concurrent_ips AS plan_default").
-		Joins("LEFT JOIN plans p ON p.id = u.plan_id").
-		Where("u.id = ?", userID).
-		Take(&result).Error
+	var result userRow
+	selectFields := []string{"role"}
+	if userHasMaxConcurrentIPs {
+		selectFields = append(selectFields, "max_concurrent_ips")
+	}
+	if userHasPlanID {
+		selectFields = append(selectFields, "plan_id")
+	}
+
+	err := db.Table("users").Select(strings.Join(selectFields, ", ")).Where("id = ?", userID).Take(&result).Error
 	if err != nil {
 		h.logger.Warn("Failed to resolve user max concurrent IPs", logger.F("user_id", userID), logger.F("error", err))
 		return -1
@@ -65,15 +71,51 @@ func (h *IPRestrictionHandler) resolveUserMaxConcurrentIPsWithContext(ctx contex
 		return 0
 	}
 
-	if result.MaxConcurrentIPs != nil && *result.MaxConcurrentIPs >= 0 {
+	if userHasMaxConcurrentIPs && result.MaxConcurrentIPs != nil && *result.MaxConcurrentIPs >= 0 {
 		return *result.MaxConcurrentIPs
 	}
 
-	if result.PlanDefault != nil && *result.PlanDefault >= 0 {
-		return *result.PlanDefault
+	if userHasPlanID && result.PlanID != nil && *result.PlanID > 0 {
+		if planDefault, ok := h.lookupPlanDefaultMaxConcurrentIPs(ctx, *result.PlanID); ok {
+			return planDefault
+		}
 	}
 
 	return -1
+}
+
+func (h *IPRestrictionHandler) lookupPlanDefaultMaxConcurrentIPs(ctx context.Context, planID int64) (int, bool) {
+	if h.ipService == nil || h.ipService.Tracker() == nil || h.ipService.Tracker().GetDB() == nil {
+		return 0, false
+	}
+
+	db := h.ipService.Tracker().GetDB().WithContext(ctx)
+
+	type planRow struct {
+		Value *int `gorm:"column:value"`
+	}
+
+	if db.Migrator().HasTable("plans") {
+		var plan planRow
+		if err := db.Table("plans").Select("default_max_concurrent_ips AS value").Where("id = ?", planID).Take(&plan).Error; err == nil {
+			if plan.Value != nil && *plan.Value >= 0 {
+				return *plan.Value, true
+			}
+			return 0, false
+		}
+	}
+
+	if db.Migrator().HasTable("commercial_plans") {
+		var plan planRow
+		if err := db.Table("commercial_plans").Select("ip_limit AS value").Where("id = ?", planID).Take(&plan).Error; err == nil {
+			if plan.Value != nil && *plan.Value >= 0 {
+				return *plan.Value, true
+			}
+			return 0, false
+		}
+	}
+
+	return 0, false
 }
 
 // GetStats returns IP restriction statistics.

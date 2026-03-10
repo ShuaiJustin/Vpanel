@@ -231,12 +231,21 @@ const fetchIPHistory = async () => {
   try {
     const response = await api.get('/user/ip-history', {
       params: {
-        page: historyPage.value,
-        pageSize: historyPageSize.value
+        limit: historyPageSize.value,
+        offset: (historyPage.value - 1) * historyPageSize.value
       }
     })
-    ipHistory.value = response.list || response || []
-    historyTotal.value = response.total || ipHistory.value.length
+    const payload = response?.data ?? response ?? {}
+    const list = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload.data)
+        ? payload.data
+        : Array.isArray(payload.list)
+          ? payload.list
+          : []
+
+    ipHistory.value = list
+    historyTotal.value = Number(payload.total ?? list.length)
   } catch (error) {
     console.error('Failed to fetch IP history:', error)
   } finally {

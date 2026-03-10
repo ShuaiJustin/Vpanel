@@ -17,6 +17,7 @@ const ResetPassword = () => import(/* webpackChunkName: "user-auth" */ '../views
 const UserDashboard = () => import(/* webpackChunkName: "user-core" */ '../views/user/Dashboard.vue')
 const UserNodes = () => import(/* webpackChunkName: "user-core" */ '../views/user/Nodes.vue')
 const UserSubscription = () => import(/* webpackChunkName: "user-core" */ '../views/user/Subscription.vue')
+const UserDevices = () => import(/* webpackChunkName: "user-core" */ '../views/Devices.vue')
 const UserDownload = () => import(/* webpackChunkName: "user-core" */ '../views/user/Download.vue')
 const UserSettings = () => import(/* webpackChunkName: "user-core" */ '../views/user/Settings.vue')
 
@@ -80,6 +81,15 @@ export const userRoutes = [
         component: UserSubscription,
         meta: {
           title: '订阅管理',
+          requiresUserAuth: true
+        }
+      },
+      {
+        path: 'devices',
+        name: 'UserDevices',
+        component: UserDevices,
+        meta: {
+          title: '在线设备',
           requiresUserAuth: true
         }
       },
