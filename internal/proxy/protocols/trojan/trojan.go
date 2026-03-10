@@ -131,8 +131,13 @@ func (p *Protocol) GenerateLink(settings *proxy.Settings) (string, error) {
 		params.Set("fp", fp)
 	}
 
+	server := proxy.ResolveServerAddress(settings.Host, settings.Settings)
+	if server == "" {
+		return "", errors.NewValidationError("server address is required", nil)
+	}
+
 	// Build link: trojan://password@host:port?params#name
-	link := fmt.Sprintf("trojan://%s@%s:%d", url.PathEscape(password), settings.Host, settings.Port)
+	link := fmt.Sprintf("trojan://%s@%s:%d", url.PathEscape(password), server, settings.Port)
 	if len(params) > 0 {
 		link += "?" + params.Encode()
 	}

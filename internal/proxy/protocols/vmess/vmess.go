@@ -67,10 +67,20 @@ func (p *Protocol) GenerateLink(settings *proxy.Settings) (string, error) {
 		return "", errors.NewValidationError("uuid is required", nil)
 	}
 
+	server := proxy.ResolveServerAddress(settings.Host, settings.Settings)
+	if server == "" {
+		return "", errors.NewValidationError("server address is required", nil)
+	}
+
+	tlsValue := ""
+	if proxy.HasTLSSettings(settings.Settings) {
+		tlsValue = "tls"
+	}
+
 	linkData := map[string]any{
 		"v":    "2",
 		"ps":   settings.Name,
-		"add":  settings.Host,
+		"add":  server,
 		"port": settings.Port,
 		"id":   userID,
 		"aid":  settings.GetInt("alterId"),
@@ -78,7 +88,8 @@ func (p *Protocol) GenerateLink(settings *proxy.Settings) (string, error) {
 		"type": settings.GetString("type"),
 		"host": settings.GetString("host"),
 		"path": settings.GetString("path"),
-		"tls":  settings.GetString("tls"),
+		"tls":  tlsValue,
+		"sni":  proxy.ResolveSNI(settings.Settings),
 	}
 
 	jsonData, err := json.Marshal(linkData)

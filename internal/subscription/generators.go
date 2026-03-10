@@ -11,6 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"v/internal/database/repository"
+	proxylib "v/internal/proxy"
 )
 
 // Helper functions for extracting settings
@@ -46,12 +47,7 @@ func extractProxyInfo(proxy *repository.Proxy) (name, server string, port int, s
 		name = proxy.Remark
 	}
 
-	server = proxy.Host
-	if server == "" {
-		if s, ok := proxy.Settings["server"].(string); ok {
-			server = s
-		}
-	}
+	server = proxylib.ResolveServerAddress(proxy.Host, proxy.Settings)
 
 	return name, server, proxy.Port, proxy.Settings
 }
@@ -121,10 +117,10 @@ func generateVMessLink(name, server string, port int, settings map[string]interf
 		Type: getSettingString(settings, "type", "none"),
 		Host: getSettingString(settings, "host", ""),
 		Path: getSettingString(settings, "path", ""),
-		SNI:  getSettingString(settings, "sni", ""),
+		SNI:  proxylib.ResolveSNI(settings),
 	}
 
-	if getSettingBool(settings, "tls", false) {
+	if proxylib.HasTLSSettings(settings) {
 		config.TLS = "tls"
 	}
 
@@ -213,7 +209,6 @@ func generateSSLink(name, server string, port int, settings map[string]interface
 	link := fmt.Sprintf("ss://%s@%s:%d#%s", userInfo, server, port, url.PathEscape(name))
 	return link, nil
 }
-
 
 // Clash configuration structures
 type clashConfig struct {

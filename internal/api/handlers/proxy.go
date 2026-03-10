@@ -70,7 +70,6 @@ func (h *ProxyHandler) canAccessProxy(c *gin.Context, proxy *repository.Proxy) b
 	return isAdmin || proxy.UserID == userID
 }
 
-
 // List returns proxies based on user role.
 // Admin users can see all proxies, regular users can only see their own.
 func (h *ProxyHandler) List(c *gin.Context) {
@@ -217,7 +216,6 @@ func (h *ProxyHandler) Create(c *gin.Context) {
 		UpdatedAt: proxyModel.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 	})
 }
-
 
 // Get retrieves a proxy by ID.
 // Users can only access their own proxies unless they are admin.
@@ -401,7 +399,6 @@ func (h *ProxyHandler) Delete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Proxy deleted successfully"})
 }
 
-
 // GetShareLink generates a share link for a proxy.
 func (h *ProxyHandler) GetShareLink(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -432,13 +429,30 @@ func (h *ProxyHandler) GetShareLink(c *gin.Context) {
 		return
 	}
 
+	settingsMap := make(map[string]any, len(p.Settings)+1)
+	for key, value := range p.Settings {
+		settingsMap[key] = value
+	}
+
+	resolvedServer := proxy.ResolveServerAddress(p.Host, settingsMap)
+	if resolvedServer == "" && p.NodeID == nil {
+		if forwardedHost := proxy.NormalizeShareHost(c.GetHeader("X-Forwarded-Host")); forwardedHost != "" {
+			resolvedServer = forwardedHost
+		} else if requestHost := proxy.NormalizeShareHost(c.Request.Host); requestHost != "" {
+			resolvedServer = requestHost
+		}
+	}
+	if resolvedServer != "" {
+		settingsMap["server"] = resolvedServer
+	}
+
 	settings := &proxy.Settings{
 		ID:       p.ID,
 		Name:     p.Name,
 		Protocol: p.Protocol,
 		Port:     p.Port,
 		Host:     p.Host,
-		Settings: p.Settings,
+		Settings: settingsMap,
 		Enabled:  p.Enabled,
 		Remark:   p.Remark,
 	}

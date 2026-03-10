@@ -15,13 +15,13 @@ import (
 
 // Supported encryption methods.
 var supportedMethods = map[string]bool{
-	"aes-128-gcm":            true,
-	"aes-256-gcm":            true,
-	"chacha20-ietf-poly1305": true,
+	"aes-128-gcm":             true,
+	"aes-256-gcm":             true,
+	"chacha20-ietf-poly1305":  true,
 	"2022-blake3-aes-128-gcm": true,
 	"2022-blake3-aes-256-gcm": true,
-	"none":                   true,
-	"plain":                  true,
+	"none":                    true,
+	"plain":                   true,
 }
 
 // Protocol implements the Shadowsocks protocol.
@@ -123,11 +123,16 @@ func (p *Protocol) GenerateLink(settings *proxy.Settings) (string, error) {
 		return "", errors.NewValidationError("password is required", nil)
 	}
 
+	server := proxy.ResolveServerAddress(settings.Host, settings.Settings)
+	if server == "" {
+		return "", errors.NewValidationError("server address is required", nil)
+	}
+
 	// Use SIP002 format: ss://base64(method:password)@host:port#name
 	userInfo := base64.URLEncoding.EncodeToString([]byte(method + ":" + password))
-	
-	link := fmt.Sprintf("ss://%s@%s:%d", userInfo, settings.Host, settings.Port)
-	
+
+	link := fmt.Sprintf("ss://%s@%s:%d", userInfo, server, settings.Port)
+
 	// Add plugin if specified
 	if plugin := settings.GetString("plugin"); plugin != "" {
 		params := url.Values{}

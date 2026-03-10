@@ -417,11 +417,31 @@
           </el-form-item>
           
           <el-form-item label="域名">
-            <el-input
+            <el-select
               v-model="inboundForm.stream_settings.tls_settings.server_name"
-              placeholder="请输入 TLS 域名，例如 vpn.example.com"
-            />
-            <div class="form-tip">自动模式会按这里填写的域名，从“证书管理”中匹配已签发且可用的系统证书。</div>
+              filterable
+              clearable
+              :loading="certificatesLoading"
+              placeholder="请选择已签发证书对应的域名"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="cert in availableCertificateOptions"
+                :key="cert.id"
+                :label="getCertificateOptionLabel(cert)"
+                :value="cert.domain"
+                :disabled="cert.disabled"
+              />
+            </el-select>
+            <div class="form-tip">只能从“证书管理”中选择已签发且可用的证书域名。</div>
+            <div v-if="selectedCertificateOption" class="form-tip">当前证书：{{ selectedCertificateOption.domain }}<span v-if="selectedCertificateOption.expireDate && selectedCertificateOption.expireDate !== '-'">，到期 {{ selectedCertificateOption.expireDate }}</span></div>
+            <div v-else-if="!certificatesLoading && !availableCertificateOptions.length" class="form-tip">当前没有可选证书，请先到“证书管理”申请或上传证书。</div>
+            <div v-if="effectiveSNI" class="cert-input" style="margin-top: 8px">
+              <el-tag type="info">客户端连接预览</el-tag>
+              <div v-if="effectiveServerAddress" class="form-tip">服务器地址：{{ effectiveServerAddress }}<span v-if="effectiveServerAddressSource">（来源：{{ effectiveServerAddressSource }}）</span></div>
+              <div v-if="effectiveSNI" class="form-tip">SNI：{{ effectiveSNI }}</div>
+              <div class="form-tip">保存后，分享链接会优先使用这里展示的服务器地址与 SNI。</div>
+            </div>
           </el-form-item>
           
           <el-form-item label="证书配置">
@@ -513,6 +533,8 @@ const router = useRouter()
 const loading = ref(false)
 const inbounds = ref([])
 const nodeList = ref([])  // 节点列表
+const certificates = ref([])
+const certificatesLoading = ref(false)
 
 // 表单对话框
 const addInboundDialogVisible = ref(false)
@@ -587,8 +609,88 @@ const normalizeStringValue = (value) => typeof value === 'string' ? value.trim()
 const firstStringValue = (value) => Array.isArray(value) ? normalizeStringValue(value[0]) : normalizeStringValue(value)
 const cloneDefaultInboundForm = () => JSON.parse(JSON.stringify(defaultInboundForm))
 const resetInboundForm = () => Object.assign(inboundForm, cloneDefaultInboundForm())
+const formatCertificateDate = (value) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toISOString().slice(0, 10)
+}
+const invalidShareHosts = new Set(['', '0.0.0.0', '::', '[::]', '0:0:0:0:0:0:0:0'])
+const normalizeCertificatesResponse = (response) => {
+  if (Array.isArray(response)) return response
+  if (Array.isArray(response?.certificates)) return response.certificates
+  if (Array.isArray(response?.data?.certificates)) return response.data.certificates
+  if (Array.isArray(response?.data)) return response.data
+  return []
+}
+const normalizeShareHost = (rawValue) => {
+  const value = normalizeStringValue(rawValue)
+  if (!value) return ''
+
+  try {
+    const normalized = value.includes('://') ? new URL(value).hostname : new URL(`https://${value}`).hostname
+    return invalidShareHosts.has(normalized.toLowerCase()) ? '' : normalized
+  } catch {
+    return invalidShareHosts.has(value.toLowerCase()) ? '' : value
+  }
+}
+const getCurrentAccessHost = () => {
+  if (typeof window === 'undefined') return ''
+  return normalizeShareHost(window.location.hostname)
+}
+const availableCertificateOptions = computed(() => certificates.value)
+const firstAvailableCertificateOption = computed(() => availableCertificateOptions.value.find((cert) => !cert.disabled) || null)
+const selectedCertificateOption = computed(() => {
+  const selectedDomain = normalizeStringValue(inboundForm.stream_settings.tls_settings.server_name)
+  if (!selectedDomain) return null
+  return certificates.value.find((cert) => cert.domain === selectedDomain) || null
+})
+const getCertificateOptionLabel = (cert) => {
+  if (!cert) return ''
+  const suffix = cert.statusLabel ? `，${cert.statusLabel}` : ''
+  return cert.expireDate && cert.expireDate !== '-'
+    ? `${cert.domain}（到期 ${cert.expireDate}${suffix}）`
+    : `${cert.domain}${suffix ? `（${cert.statusLabel}）` : ''}`
+}
+const effectiveSNI = computed(() => normalizeStringValue(inboundForm.stream_settings.tls_settings.server_name))
+const effectiveServerAddress = computed(() => {
+  const candidates = [
+    effectiveSNI.value,
+    inboundForm.listen,
+    getCurrentAccessHost()
+  ]
+
+  for (const candidate of candidates) {
+    const normalized = normalizeShareHost(candidate)
+    if (normalized) return normalized
+  }
+
+  return ''
+})
+const effectiveServerAddressSource = computed(() => {
+  if (!effectiveServerAddress.value) return ''
+  if (effectiveSNI.value && normalizeShareHost(effectiveSNI.value) === effectiveServerAddress.value) return '证书域名'
+  if (normalizeShareHost(inboundForm.listen) === effectiveServerAddress.value) return 'IP监听'
+  if (getCurrentAccessHost() === effectiveServerAddress.value) return '当前访问地址'
+  return ''
+})
 
 const tlsSettingsEnabled = computed(() => ['tls', 'xtls'].includes(inboundForm.stream_settings.security))
+
+const shouldAutoSelectCertificateDomain = () => dialogMode.value === 'add'
+  && tlsSettingsEnabled.value
+  && !normalizeStringValue(inboundForm.stream_settings.tls_settings.server_name)
+
+const selectDefaultCertificateDomain = () => {
+  if (!shouldAutoSelectCertificateDomain()) {
+    return
+  }
+
+  const defaultCertificate = firstAvailableCertificateOption.value
+  if (defaultCertificate?.domain) {
+    inboundForm.stream_settings.tls_settings.server_name = defaultCertificate.domain
+  }
+}
 
 // TLS开关
 const tlsEnabled = computed({
@@ -600,6 +702,7 @@ const tlsEnabled = computed({
     }
     if (!tlsSettingsEnabled.value) {
       inboundForm.stream_settings.security = 'tls'
+      selectDefaultCertificateDomain()
     }
   }
 })
@@ -705,6 +808,7 @@ const consumeRoutePreset = async () => {
 onMounted(() => {
   loadInbounds()
   loadNodes()
+  loadCertificates()
 })
 
 watch(() => [route.query.create, route.query.tls_domain], () => {
@@ -720,6 +824,51 @@ const loadNodes = async () => {
   } catch (error) {
     console.error('加载节点列表失败:', error)
     nodeList.value = []
+  }
+}
+
+const loadCertificates = async () => {
+  certificatesLoading.value = true
+  try {
+    const response = await api.get('/certificates', {
+      params: {
+        limit: 1000,
+        offset: 0
+      }
+    })
+    const normalized = normalizeCertificatesResponse(unwrapApiData(response))
+    certificates.value = normalized
+      .map((cert) => {
+        const status = normalizeStringValue(cert.status || '').toLowerCase()
+        const isUsable = !['expired', 'failed', 'pending'].includes(status)
+        const statusLabelMap = {
+          valid: '有效',
+          expiring: '即将过期',
+          expired: '已过期',
+          failed: '失败',
+          pending: '处理中'
+        }
+        return {
+          ...cert,
+          domain: normalizeStringValue(cert.domain),
+          expireDate: formatCertificateDate(cert.expires_at || cert.expiresAt),
+          status,
+          statusLabel: statusLabelMap[status] || '',
+          disabled: !isUsable
+        }
+      })
+      .filter((cert) => cert.domain)
+      .sort((left, right) => {
+        if (left.disabled !== right.disabled) return left.disabled ? 1 : -1
+        return left.domain.localeCompare(right.domain)
+      })
+
+    selectDefaultCertificateDomain()
+  } catch (error) {
+    console.error('加载证书列表失败:', error)
+    certificates.value = []
+  } finally {
+    certificatesLoading.value = false
   }
 }
 
@@ -776,6 +925,7 @@ const formatTraffic = (bytes) => {
 function openAddInboundDialog() {
   dialogMode.value = 'add'
   dialogLoading.value = false
+  loadCertificates()
   // 重置表单
   resetInboundForm()
   // 设置默认端口
@@ -794,6 +944,7 @@ function openAddInboundDialog() {
   
   // 验证表单
   validateTrojanForm();
+  selectDefaultCertificateDomain()
   addInboundDialogVisible.value = true
 }
 
@@ -911,7 +1062,7 @@ const buildTLSCertificatePayload = () => {
   const tlsSettings = inboundForm.stream_settings.tls_settings || {}
   const domain = normalizeStringValue(tlsSettings.server_name)
   if (!domain) {
-    throw new Error('启用 TLS/XTLS 时请填写域名')
+    throw new Error('启用 TLS/XTLS 时请选择证书域名')
   }
 
   const payload = {
@@ -1049,6 +1200,7 @@ const saveInbound = async () => {
 const editInbound = async (row) => {
   dialogMode.value = 'edit'
   dialogLoading.value = true
+  loadCertificates()
   resetInboundForm()
   addInboundDialogVisible.value = true
 

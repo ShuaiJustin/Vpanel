@@ -165,8 +165,13 @@ func (p *Protocol) GenerateLink(settings *proxy.Settings) (string, error) {
 		params.Set("fp", fp)
 	}
 
+	server := proxy.ResolveServerAddress(settings.Host, settings.Settings)
+	if server == "" {
+		return "", errors.NewValidationError("server address is required", nil)
+	}
+
 	// Build link: vless://uuid@host:port?params#name
-	link := fmt.Sprintf("vless://%s@%s:%d", userID, settings.Host, settings.Port)
+	link := fmt.Sprintf("vless://%s@%s:%d", userID, server, settings.Port)
 	if len(params) > 0 {
 		link += "?" + params.Encode()
 	}
