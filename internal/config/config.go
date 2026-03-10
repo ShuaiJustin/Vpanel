@@ -406,6 +406,9 @@ func (cfg *Config) GetBaseURL() string {
 	if cfg.Server.BaseURL != "" {
 		return strings.TrimSuffix(cfg.Server.BaseURL, "/")
 	}
+	if cfg.Server.PublicURL != "" {
+		return strings.TrimSuffix(cfg.Server.PublicURL, "/")
+	}
 	
 	scheme := "http"
 	if cfg.Server.TLSCert != "" && cfg.Server.TLSKey != "" {

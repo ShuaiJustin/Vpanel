@@ -124,7 +124,7 @@ func (r *Router) Setup() {
 
 	// Create handlers
 	authHandler := handlers.NewAuthHandler(r.authService, r.repos.User, r.repos.LoginHistory, r.logger)
-	proxyHandler := handlers.NewProxyHandlerWithTraffic(r.proxyManager, r.repos.Proxy, r.repos.Traffic, r.logger)
+	proxyHandler := handlers.NewProxyHandlerWithTraffic(r.proxyManager, r.repos.Proxy, r.repos.Traffic, r.logger).WithNodeRepository(r.repos.Node)
 	systemHandler := handlers.NewSystemHandler(r.config, r.logger)
 	healthHandler := handlers.NewHealthHandler(r.repos, r.logger, r.xrayManager, nil)
 	roleHandler := handlers.NewRoleHandler(r.logger, r.repos.Role)
@@ -150,6 +150,7 @@ func (r *Router) Setup() {
 
 	// Always create handler - it will handle nil service gracefully
 	ipRestrictionHandler := handlers.NewIPRestrictionHandler(r.logger, ipService)
+	ipRestrictionMiddleware := middleware.NewIPRestrictionMiddleware(ipService, r.logger)
 	if ipService == nil {
 		r.logger.Warn("IP restriction service is disabled due to initialization failure")
 	}
@@ -161,7 +162,7 @@ func (r *Router) Setup() {
 		r.repos.Proxy,
 		r.logger,
 		r.config.GetBaseURL(),
-	)
+	).WithNodeRepository(r.repos.Node)
 	subscriptionHandler := handlers.NewSubscriptionHandler(subscriptionService, r.logger)
 
 	// Create commercial services
@@ -305,6 +306,11 @@ func (r *Router) Setup() {
 		// Protected routes
 		protected := api.Group("")
 		protected.Use(authMiddleware.Authenticate())
+		if ipService != nil {
+			protected.Use(ipRestrictionMiddleware.CheckIPRestriction(func(userID int64) int {
+				return ipRestrictionHandler.ResolveUserMaxConcurrentIPs(userID)
+			}))
+		}
 		{
 			// Auth routes (protected)
 			protected.POST("/auth/logout", authHandler.Logout)

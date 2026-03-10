@@ -81,7 +81,7 @@ func (s *Service) GetPauseStatus(ctx context.Context, userID int64) (*PauseStatu
 	// Check if pause feature is enabled
 	if !s.config.Enabled {
 		status.CanPause = false
-		status.CannotPauseReason = "Pause feature is disabled"
+		status.CannotPauseReason = "暂停功能未开启"
 		return status, nil
 	}
 
@@ -95,7 +95,7 @@ func (s *Service) GetPauseStatus(ctx context.Context, userID int64) (*PauseStatu
 		status.IsPaused = true
 		status.Pause = activePause
 		status.CanPause = false
-		status.CannotPauseReason = "Subscription is already paused"
+		status.CannotPauseReason = "订阅已处于暂停状态"
 		return status, nil
 	}
 
@@ -115,39 +115,39 @@ func (s *Service) GetPauseStatus(ctx context.Context, userID int64) (*PauseStatu
 func (s *Service) CanPause(ctx context.Context, userID int64) (bool, string) {
 	// Check if pause feature is enabled
 	if !s.config.Enabled {
-		return false, "Pause feature is disabled"
+		return false, "暂停功能未开启"
 	}
 
 	// Get user
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		s.logger.Error("Failed to get user for pause check", logger.F("error", err), logger.F("user_id", userID))
-		return false, "Failed to verify user"
+		return false, "用户校验失败"
 	}
 
 	// Check if user has an active subscription
 	if user.ExpiresAt == nil || user.ExpiresAt.Before(time.Now()) {
-		return false, "No active subscription"
+		return false, "当前无有效订阅"
 	}
 
 	// Check if already paused
 	activePause, err := s.pauseRepo.GetActivePause(ctx, userID)
 	if err != nil {
 		s.logger.Error("Failed to check active pause", logger.F("error", err), logger.F("user_id", userID))
-		return false, "Failed to check pause status"
+		return false, "暂停状态检查失败"
 	}
 	if activePause != nil {
-		return false, "Subscription is already paused"
+		return false, "订阅已处于暂停状态"
 	}
 
 	// Check pause frequency limit
 	remainingPauses, err := s.getRemainingPausesInCycle(ctx, userID)
 	if err != nil {
 		s.logger.Error("Failed to check pause frequency", logger.F("error", err), logger.F("user_id", userID))
-		return false, "Failed to check pause frequency"
+		return false, "暂停次数检查失败"
 	}
 	if remainingPauses <= 0 {
-		return false, fmt.Sprintf("Maximum %d pause(s) per billing cycle reached", s.config.MaxPerCycle)
+		return false, fmt.Sprintf("当前计费周期最多可暂停 %d 次，已达到上限", s.config.MaxPerCycle)
 	}
 
 	return true, ""

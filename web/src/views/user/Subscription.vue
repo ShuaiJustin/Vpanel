@@ -272,6 +272,7 @@ function formatTraffic(bytes) {
 async function loadSubscription() {
   loading.value = true
   try {
+    await userStore.fetchProfile()
     await subscriptionStore.fetchLink()
     await generateQRCode()
   } catch (error) {

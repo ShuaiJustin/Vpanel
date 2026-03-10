@@ -2,8 +2,10 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -26,6 +28,52 @@ func NewIPRestrictionHandler(log logger.Logger, ipService *ip.Service) *IPRestri
 		logger:    log,
 		ipService: ipService,
 	}
+}
+
+// ResolveUserMaxConcurrentIPs resolves effective device limit for a user.
+// Priority: user override > plan default > global default.
+// Return semantics: -1 use global default, 0 unlimited, >0 explicit limit.
+func (h *IPRestrictionHandler) ResolveUserMaxConcurrentIPs(userID int64) int {
+	return h.resolveUserMaxConcurrentIPsWithContext(context.Background(), userID)
+}
+
+func (h *IPRestrictionHandler) resolveUserMaxConcurrentIPsWithContext(ctx context.Context, userID int64) int {
+	if h.ipService == nil || h.ipService.Tracker() == nil || h.ipService.Tracker().GetDB() == nil {
+		return -1
+	}
+
+	type row struct {
+		Role             string `gorm:"column:role"`
+		MaxConcurrentIPs *int   `gorm:"column:max_concurrent_ips"`
+		PlanDefault      *int   `gorm:"column:plan_default"`
+	}
+
+	var result row
+	err := h.ipService.Tracker().GetDB().
+		WithContext(ctx).
+		Table("users AS u").
+		Select("u.role AS role, u.max_concurrent_ips AS max_concurrent_ips, p.default_max_concurrent_ips AS plan_default").
+		Joins("LEFT JOIN plans p ON p.id = u.plan_id").
+		Where("u.id = ?", userID).
+		Take(&result).Error
+	if err != nil {
+		h.logger.Warn("Failed to resolve user max concurrent IPs", logger.F("user_id", userID), logger.F("error", err))
+		return -1
+	}
+
+	if strings.EqualFold(result.Role, "admin") {
+		return 0
+	}
+
+	if result.MaxConcurrentIPs != nil && *result.MaxConcurrentIPs >= 0 {
+		return *result.MaxConcurrentIPs
+	}
+
+	if result.PlanDefault != nil && *result.PlanDefault >= 0 {
+		return *result.PlanDefault
+	}
+
+	return -1
 }
 
 // GetStats returns IP restriction statistics.
@@ -81,13 +129,13 @@ func (h *IPRestrictionHandler) GetStats(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	if err := db.WithContext(ctx).Model(&ip.IPBlacklist{}).Count(&totalBlacklisted).Error; err != nil {
 		h.logger.Error("Failed to count blacklisted IPs", logger.Err(err))
 		// Don't return error, just log it and continue with 0
 		totalBlacklisted = 0
 	}
-	
+
 	if err := db.WithContext(ctx).Model(&ip.IPWhitelist{}).Count(&totalWhitelisted).Error; err != nil {
 		h.logger.Error("Failed to count whitelisted IPs", logger.Err(err))
 		// Don't return error, just log it and continue with 0
@@ -106,14 +154,14 @@ func (h *IPRestrictionHandler) GetStats(c *gin.Context) {
 		"code":    200,
 		"message": "success",
 		"data": gin.H{
-			"total_active_ips":   totalActiveIPs,
-			"total_blacklisted":  totalBlacklisted,
-			"total_whitelisted":  totalWhitelisted,
-			"active_users":       activeUsers,
-			"blocked_today":      0, // TODO: 实现今日拦截统计
-			"suspicious_count":   0, // TODO: 实现可疑活动统计
-			"country_stats":      []interface{}{}, // TODO: 实现国家统计
-			"settings":           h.ipService.GetSettings(),
+			"total_active_ips":  totalActiveIPs,
+			"total_blacklisted": totalBlacklisted,
+			"total_whitelisted": totalWhitelisted,
+			"active_users":      activeUsers,
+			"blocked_today":     0,               // TODO: 实现今日拦截统计
+			"suspicious_count":  0,               // TODO: 实现可疑活动统计
+			"country_stats":     []interface{}{}, // TODO: 实现国家统计
+			"settings":          h.ipService.GetSettings(),
 		},
 	})
 }
@@ -130,9 +178,9 @@ func (h *IPRestrictionHandler) GetAllOnlineIPs(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	ctx := c.Request.Context()
-	
+
 	// Get all active IPs from database
 	tracker := h.ipService.Tracker()
 	if tracker == nil {
@@ -143,7 +191,7 @@ func (h *IPRestrictionHandler) GetAllOnlineIPs(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	db := tracker.GetDB()
 	if db == nil {
 		h.logger.Error("Database connection is not available")
@@ -153,7 +201,7 @@ func (h *IPRestrictionHandler) GetAllOnlineIPs(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	var activeIPs []ip.ActiveIP
 	if err := db.WithContext(ctx).Find(&activeIPs).Error; err != nil {
 		h.logger.Error("Failed to get active IPs", logger.Err(err))
@@ -164,7 +212,7 @@ func (h *IPRestrictionHandler) GetAllOnlineIPs(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "success",
@@ -184,7 +232,7 @@ func (h *IPRestrictionHandler) GetUserOnlineIPs(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	ctx := c.Request.Context()
 
 	userID, err := strconv.ParseUint(c.Param("id"), 10, 64)
@@ -209,7 +257,7 @@ func (h *IPRestrictionHandler) GetUserOnlineIPs(c *gin.Context) {
 
 // KickIPRequest represents a request to kick an IP.
 type KickIPRequest struct {
-	IP            string `json:"ip" binding:"required"`
+	IP             string `json:"ip" binding:"required"`
 	AddToBlacklist bool   `json:"add_to_blacklist"`
 	BlockDuration  int    `json:"block_duration"` // minutes
 }
@@ -226,7 +274,7 @@ func (h *IPRestrictionHandler) KickUserIP(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	ctx := c.Request.Context()
 
 	userID, err := strconv.ParseUint(c.Param("id"), 10, 64)
@@ -258,7 +306,6 @@ func (h *IPRestrictionHandler) KickUserIP(c *gin.Context) {
 	})
 }
 
-
 // WhitelistEntry represents a whitelist entry request.
 type WhitelistEntry struct {
 	IP          string `json:"ip"`
@@ -279,7 +326,7 @@ func (h *IPRestrictionHandler) GetWhitelist(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	ctx := c.Request.Context()
 
 	var userID *uint
@@ -325,7 +372,7 @@ func (h *IPRestrictionHandler) AddWhitelist(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	ctx := c.Request.Context()
 
 	var req AddWhitelistRequest
@@ -379,7 +426,7 @@ func (h *IPRestrictionHandler) DeleteWhitelist(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	ctx := c.Request.Context()
 
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
@@ -421,7 +468,7 @@ func (h *IPRestrictionHandler) ImportWhitelist(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	ctx := c.Request.Context()
 
 	var req ImportWhitelistRequest
@@ -451,7 +498,6 @@ func (h *IPRestrictionHandler) ImportWhitelist(c *gin.Context) {
 	})
 }
 
-
 // GetBlacklist returns the IP blacklist.
 // GET /api/admin/ip-blacklist
 func (h *IPRestrictionHandler) GetBlacklist(c *gin.Context) {
@@ -464,7 +510,7 @@ func (h *IPRestrictionHandler) GetBlacklist(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	ctx := c.Request.Context()
 
 	var userID *uint
@@ -511,7 +557,7 @@ func (h *IPRestrictionHandler) AddBlacklist(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	ctx := c.Request.Context()
 
 	var req AddBlacklistRequest
@@ -573,7 +619,7 @@ func (h *IPRestrictionHandler) DeleteBlacklist(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	ctx := c.Request.Context()
 
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
@@ -608,7 +654,7 @@ func (h *IPRestrictionHandler) GetIPRestrictionSettings(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	settings := h.ipService.GetSettings()
 
 	c.JSON(http.StatusOK, gin.H{
@@ -630,7 +676,7 @@ func (h *IPRestrictionHandler) UpdateIPRestrictionSettings(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	ctx := c.Request.Context()
 
 	var settings ip.IPRestrictionSettings
@@ -656,7 +702,6 @@ func (h *IPRestrictionHandler) UpdateIPRestrictionSettings(c *gin.Context) {
 	})
 }
 
-
 // ===== User API Endpoints =====
 
 // GetUserDevices returns the current user's online devices.
@@ -671,7 +716,7 @@ func (h *IPRestrictionHandler) GetUserDevices(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	ctx := c.Request.Context()
 
 	userID := middleware.GetUserID(c)
@@ -687,10 +732,17 @@ func (h *IPRestrictionHandler) GetUserDevices(c *gin.Context) {
 		return
 	}
 
-	// Get user's max concurrent IPs (would need to be passed or fetched)
-	// For now, use default from settings
-	settings := h.ipService.GetSettings()
-	maxDevices := settings.DefaultMaxConcurrentIPs
+	maxDevices := h.resolveUserMaxConcurrentIPsWithContext(ctx, userID)
+	if maxDevices < 0 {
+		maxDevices = h.ipService.GetSettings().DefaultMaxConcurrentIPs
+	}
+	remainingSlots := 0
+	if maxDevices > 0 {
+		remainingSlots = maxDevices - len(onlineIPs)
+		if remainingSlots < 0 {
+			remainingSlots = 0
+		}
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
@@ -699,7 +751,7 @@ func (h *IPRestrictionHandler) GetUserDevices(c *gin.Context) {
 			"devices":         onlineIPs,
 			"max_devices":     maxDevices,
 			"current_count":   len(onlineIPs),
-			"remaining_slots": maxDevices - len(onlineIPs),
+			"remaining_slots": remainingSlots,
 		},
 	})
 }
@@ -722,7 +774,7 @@ func (h *IPRestrictionHandler) KickUserDevice(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	ctx := c.Request.Context()
 
 	userID := middleware.GetUserID(c)
@@ -768,7 +820,7 @@ func (h *IPRestrictionHandler) GetUserIPStats(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	ctx := c.Request.Context()
 
 	userID := middleware.GetUserID(c)
@@ -777,9 +829,10 @@ func (h *IPRestrictionHandler) GetUserIPStats(c *gin.Context) {
 		return
 	}
 
-	// Get user's max concurrent IPs (would need to be passed or fetched)
-	settings := h.ipService.GetSettings()
-	maxConcurrentIPs := settings.DefaultMaxConcurrentIPs
+	maxConcurrentIPs := h.resolveUserMaxConcurrentIPsWithContext(ctx, userID)
+	if maxConcurrentIPs < 0 {
+		maxConcurrentIPs = h.ipService.GetSettings().DefaultMaxConcurrentIPs
+	}
 
 	stats, err := h.ipService.GetIPStats(ctx, uint(userID), maxConcurrentIPs)
 	if err != nil {
@@ -807,7 +860,7 @@ func (h *IPRestrictionHandler) GetUserIPHistory(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	ctx := c.Request.Context()
 
 	userID := middleware.GetUserID(c)
@@ -862,9 +915,9 @@ func (h *IPRestrictionHandler) GetAllIPHistory(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	ctx := c.Request.Context()
-	
+
 	// Parse query parameters
 	var userID *uint
 	if userIDStr := c.Query("user_id"); userIDStr != "" {
@@ -873,7 +926,7 @@ func (h *IPRestrictionHandler) GetAllIPHistory(c *gin.Context) {
 			userID = &uid
 		}
 	}
-	
+
 	limit := 50
 	if limitStr := c.Query("limit"); limitStr != "" {
 		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
@@ -887,7 +940,7 @@ func (h *IPRestrictionHandler) GetAllIPHistory(c *gin.Context) {
 			offset = o
 		}
 	}
-	
+
 	tracker := h.ipService.Tracker()
 	if tracker == nil {
 		h.logger.Error("IP tracker is not available")
@@ -897,14 +950,14 @@ func (h *IPRestrictionHandler) GetAllIPHistory(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	// If user_id is specified, get history for that user
 	if userID != nil {
 		filter := &ip.IPHistoryFilter{
 			Limit:  limit,
 			Offset: offset,
 		}
-		
+
 		history, err := tracker.GetIPHistory(ctx, *userID, filter)
 		if err != nil {
 			h.logger.Error("Failed to get IP history", logger.Err(err), logger.F("user_id", *userID))
@@ -915,7 +968,7 @@ func (h *IPRestrictionHandler) GetAllIPHistory(c *gin.Context) {
 			})
 			return
 		}
-		
+
 		c.JSON(http.StatusOK, gin.H{
 			"code":    200,
 			"message": "success",
@@ -923,7 +976,7 @@ func (h *IPRestrictionHandler) GetAllIPHistory(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	// Otherwise, return all IP history (this might be expensive, so we limit it)
 	db := tracker.GetDB()
 	if db == nil {
@@ -934,7 +987,7 @@ func (h *IPRestrictionHandler) GetAllIPHistory(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	var history []ip.IPHistory
 	if err := db.WithContext(ctx).Limit(limit).Offset(offset).Order("created_at DESC").Find(&history).Error; err != nil {
 		h.logger.Error("Failed to get all IP history", logger.Err(err))
@@ -945,7 +998,7 @@ func (h *IPRestrictionHandler) GetAllIPHistory(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "success",

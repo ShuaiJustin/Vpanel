@@ -11,6 +11,7 @@ import (
 
 	"v/internal/database/repository"
 	"v/internal/logger"
+	proxylib "v/internal/proxy"
 	"v/pkg/errors"
 )
 
@@ -67,6 +68,7 @@ type Service struct {
 	subscriptionRepo repository.SubscriptionRepository
 	userRepo         repository.UserRepository
 	proxyRepo        repository.ProxyRepository
+	nodeRepo         repository.NodeRepository
 	logger           logger.Logger
 	baseURL          string
 }
@@ -86,6 +88,12 @@ func NewService(
 		logger:           log,
 		baseURL:          baseURL,
 	}
+}
+
+// WithNodeRepository injects node repository for node-aware server resolution.
+func (s *Service) WithNodeRepository(nodeRepo repository.NodeRepository) *Service {
+	s.nodeRepo = nodeRepo
+	return s
 }
 
 // GenerateToken generates a cryptographically secure random token.
@@ -325,9 +333,39 @@ func (s *Service) GetUserEnabledProxies(ctx context.Context, userID int64) ([]*r
 	// Filter to only enabled proxies
 	var enabledProxies []*repository.Proxy
 	for _, proxy := range proxies {
-		if proxy.Enabled {
-			enabledProxies = append(enabledProxies, proxy)
+		if !proxy.Enabled {
+			continue
 		}
+
+		resolvedServer := ""
+		if proxy.Settings != nil {
+			if explicitServer, ok := proxy.Settings["server"].(string); ok {
+				resolvedServer = proxylib.NormalizeShareHost(explicitServer)
+			}
+		}
+		if resolvedServer == "" && proxy.NodeID != nil && s.nodeRepo != nil {
+			node, nodeErr := s.nodeRepo.GetByID(ctx, *proxy.NodeID)
+			if nodeErr == nil {
+				resolvedServer = proxylib.NormalizeShareHost(node.Address)
+			}
+		}
+		if resolvedServer == "" {
+			resolvedServer = proxylib.ResolveServerAddress(proxy.Host, proxy.Settings)
+		}
+		if resolvedServer == "" {
+			s.logger.Warn("skip proxy in subscription due to unresolved server address",
+				logger.F("proxy_id", proxy.ID),
+				logger.F("protocol", proxy.Protocol),
+				logger.UserID(userID),
+			)
+			continue
+		}
+
+		if proxy.Settings == nil {
+			proxy.Settings = map[string]any{}
+		}
+		proxy.Settings["server"] = resolvedServer
+		enabledProxies = append(enabledProxies, proxy)
 	}
 
 	return enabledProxies, nil

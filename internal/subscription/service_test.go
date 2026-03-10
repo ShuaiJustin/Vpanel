@@ -733,3 +733,73 @@ func TestProperty_UniqueProxyNames(t *testing.T) {
 		t.Errorf("Expected 3 proxies, got %d", len(proxies))
 	}
 }
+
+func TestGetUserEnabledProxies_SkipsProxyWithoutResolvableServer(t *testing.T) {
+	db := setupTestDB(t)
+	service := createTestService(t, db)
+	ctx := context.Background()
+
+	userID := createTestUser(t, db, "noserver-user")
+
+	proxy := &repository.Proxy{
+		UserID:   userID,
+		Name:     "No Server",
+		Protocol: "vmess",
+		Host:     "0.0.0.0",
+		Port:     443,
+		Settings: map[string]interface{}{
+			"uuid": "12345678-1234-1234-1234-123456789012",
+		},
+		Enabled: true,
+	}
+	if err := db.Create(proxy).Error; err != nil {
+		t.Fatalf("Failed to create proxy: %v", err)
+	}
+
+	proxies, err := service.GetUserEnabledProxies(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserEnabledProxies returned error: %v", err)
+	}
+
+	if len(proxies) != 0 {
+		t.Fatalf("Expected unresolved server proxy to be skipped, got %d proxies", len(proxies))
+	}
+}
+
+func TestGetUserEnabledProxies_UsesTLSDomainAsServer(t *testing.T) {
+	db := setupTestDB(t)
+	service := createTestService(t, db)
+	ctx := context.Background()
+
+	userID := createTestUser(t, db, "tlsdomain-user")
+
+	proxy := &repository.Proxy{
+		UserID:   userID,
+		Name:     "TLS Server",
+		Protocol: "vmess",
+		Host:     "0.0.0.0",
+		Port:     443,
+		Settings: map[string]interface{}{
+			"uuid":        "12345678-1234-1234-1234-123456789012",
+			"security":    "tls",
+			"server_name": "vpn.example.com",
+		},
+		Enabled: true,
+	}
+	if err := db.Create(proxy).Error; err != nil {
+		t.Fatalf("Failed to create proxy: %v", err)
+	}
+
+	proxies, err := service.GetUserEnabledProxies(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserEnabledProxies returned error: %v", err)
+	}
+	if len(proxies) != 1 {
+		t.Fatalf("Expected 1 proxy, got %d", len(proxies))
+	}
+
+	server, ok := proxies[0].Settings["server"].(string)
+	if !ok || server != "vpn.example.com" {
+		t.Fatalf("Expected resolved server vpn.example.com, got %#v", proxies[0].Settings["server"])
+	}
+}

@@ -3,6 +3,7 @@
 .vscode/
 .kiro/
 .claude/
+.playwright-cli/
 *.suo
 *.ntvs*
 *.njsproj

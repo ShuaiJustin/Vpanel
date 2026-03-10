@@ -15,6 +15,7 @@ import (
 type ProxyHandler struct {
 	proxyManager proxy.Manager
 	proxyRepo    repository.ProxyRepository
+	nodeRepo     repository.NodeRepository
 	trafficRepo  repository.TrafficRepository
 	logger       logger.Logger
 }
@@ -35,6 +36,12 @@ func NewProxyHandlerWithTraffic(proxyManager proxy.Manager, proxyRepo repository
 		trafficRepo:  trafficRepo,
 		logger:       log,
 	}
+}
+
+// WithNodeRepository injects node repository for node-aware share link resolution.
+func (h *ProxyHandler) WithNodeRepository(nodeRepo repository.NodeRepository) *ProxyHandler {
+	h.nodeRepo = nodeRepo
+	return h
 }
 
 type ProxyResponse struct {
@@ -434,7 +441,19 @@ func (h *ProxyHandler) GetShareLink(c *gin.Context) {
 		settingsMap[key] = value
 	}
 
-	resolvedServer := proxy.ResolveServerAddress(p.Host, settingsMap)
+	resolvedServer := ""
+	if explicitServer, ok := settingsMap["server"].(string); ok {
+		resolvedServer = proxy.NormalizeShareHost(explicitServer)
+	}
+	if resolvedServer == "" && p.NodeID != nil && h.nodeRepo != nil {
+		node, nodeErr := h.nodeRepo.GetByID(c.Request.Context(), *p.NodeID)
+		if nodeErr == nil {
+			resolvedServer = proxy.NormalizeShareHost(node.Address)
+		}
+	}
+	if resolvedServer == "" {
+		resolvedServer = proxy.ResolveServerAddress(p.Host, settingsMap)
+	}
 	if resolvedServer == "" && p.NodeID == nil {
 		if forwardedHost := proxy.NormalizeShareHost(c.GetHeader("X-Forwarded-Host")); forwardedHost != "" {
 			resolvedServer = forwardedHost

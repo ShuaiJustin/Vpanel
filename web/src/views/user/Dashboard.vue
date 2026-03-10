@@ -67,7 +67,7 @@
           <div class="card-content">
             <div class="card-label">在线设备</div>
             <div class="card-value">
-              {{ onlineDevices }} / {{ maxDevices }}
+              {{ onlineDevices }} / {{ maxDevicesDisplay }}
             </div>
           </div>
         </div>
@@ -236,6 +236,7 @@ import { useUserPortalStore } from '@/stores/userPortal'
 import { usePortalAnnouncementsStore } from '@/stores/portalAnnouncements'
 import PauseCard from '@/components/user/PauseCard.vue'
 import TrialCard from '@/components/user/TrialCard.vue'
+import api from '@/api/base'
 
 const router = useRouter()
 const userStore = useUserPortalStore()
@@ -243,8 +244,7 @@ const announcementsStore = usePortalAnnouncementsStore()
 
 // 数据
 const onlineDevices = ref(0)
-const maxDevices = ref(3)
-const availableNodes = ref(0)
+const maxDevices = ref(0)
 const trafficResetAt = ref(null)
 
 // 计算属性
@@ -293,6 +293,12 @@ const trafficProgressColor = computed(() => {
 const announcements = computed(() => {
   return announcementsStore.announcements.slice(0, 5)
 })
+
+const maxDevicesDisplay = computed(() => {
+  return maxDevices.value === 0 ? '无限制' : String(maxDevices.value)
+})
+
+const availableNodes = computed(() => userStore.availableNodes || 0)
 
 // 方法
 function formatDate(dateStr) {
@@ -379,6 +385,11 @@ async function loadDashboardData() {
   try {
     await userStore.fetchProfile()
     await announcementsStore.fetchAnnouncements()
+    const devicesResp = await api.get('/user/devices')
+    const devicesData = devicesResp?.data ?? devicesResp ?? {}
+    const devices = Array.isArray(devicesData.devices) ? devicesData.devices : []
+    onlineDevices.value = Number(devicesData.current_count ?? devices.length ?? 0)
+    maxDevices.value = Number(devicesData.max_devices ?? devicesData.maxDevices ?? 0)
   } catch (error) {
     console.error('Failed to load dashboard data:', error)
   }

@@ -271,6 +271,23 @@ func TestConfigValidation_InvalidLogLevel(t *testing.T) {
 	}
 }
 
+func TestGetBaseURL_Priority(t *testing.T) {
+	cfg := createValidConfig()
+	cfg.Server.Host = "0.0.0.0"
+	cfg.Server.Port = 8080
+
+	cfg.Server.BaseURL = "https://base.example.com/"
+	cfg.Server.PublicURL = "https://public.example.com/"
+	if got := cfg.GetBaseURL(); got != "https://base.example.com" {
+		t.Fatalf("expected base_url to win, got %s", got)
+	}
+
+	cfg.Server.BaseURL = ""
+	if got := cfg.GetBaseURL(); got != "https://public.example.com" {
+		t.Fatalf("expected public_url fallback, got %s", got)
+	}
+}
+
 func TestConfigValidation_InvalidLogFormat(t *testing.T) {
 	validFormats := []string{"json", "text"}
 	invalidFormats := []string{"xml", "csv", "yaml", "invalid"}

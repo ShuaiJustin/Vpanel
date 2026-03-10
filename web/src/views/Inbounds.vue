@@ -634,9 +634,26 @@ const normalizeShareHost = (rawValue) => {
     return invalidShareHosts.has(value.toLowerCase()) ? '' : value
   }
 }
+const encodeBase64UTF8 = (value) => {
+  const text = String(value ?? '')
+  if (typeof window !== 'undefined' && typeof window.btoa === 'function') {
+    const bytes = new TextEncoder().encode(text)
+    let binary = ''
+    bytes.forEach((byte) => {
+      binary += String.fromCharCode(byte)
+    })
+    return window.btoa(binary)
+  }
+  return text
+}
 const getCurrentAccessHost = () => {
   if (typeof window === 'undefined') return ''
   return normalizeShareHost(window.location.hostname)
+}
+const getNodeAddressByID = (nodeID) => {
+  if (nodeID === null || nodeID === undefined) return ''
+  const node = nodeList.value.find((item) => String(item.id) === String(nodeID))
+  return normalizeShareHost(node?.address)
 }
 const availableCertificateOptions = computed(() => certificates.value)
 const firstAvailableCertificateOption = computed(() => availableCertificateOptions.value.find((cert) => !cert.disabled) || null)
@@ -653,8 +670,25 @@ const getCertificateOptionLabel = (cert) => {
     : `${cert.domain}${suffix ? `（${cert.statusLabel}）` : ''}`
 }
 const effectiveSNI = computed(() => normalizeStringValue(inboundForm.stream_settings.tls_settings.server_name))
+const selectedNodeAddress = computed(() => getNodeAddressByID(inboundForm.node_id))
+const resolveLocalFallbackServer = (row = {}) => {
+  const candidates = [
+    getNodeAddressByID(row.node_id),
+    row.server,
+    row.host,
+    getCurrentAccessHost()
+  ]
+
+  for (const candidate of candidates) {
+    const normalized = normalizeShareHost(candidate)
+    if (normalized) return normalized
+  }
+
+  return 'example.com'
+}
 const effectiveServerAddress = computed(() => {
   const candidates = [
+    selectedNodeAddress.value,
     effectiveSNI.value,
     inboundForm.listen,
     getCurrentAccessHost()
@@ -669,6 +703,7 @@ const effectiveServerAddress = computed(() => {
 })
 const effectiveServerAddressSource = computed(() => {
   if (!effectiveServerAddress.value) return ''
+  if (selectedNodeAddress.value && selectedNodeAddress.value === effectiveServerAddress.value) return '部署节点'
   if (effectiveSNI.value && normalizeShareHost(effectiveSNI.value) === effectiveServerAddress.value) return '证书域名'
   if (normalizeShareHost(inboundForm.listen) === effectiveServerAddress.value) return 'IP监听'
   if (getCurrentAccessHost() === effectiveServerAddress.value) return '当前访问地址'
@@ -891,6 +926,9 @@ const loadInbounds = async () => {
         remark: p.name || p.remark,
         protocol: p.protocol,
         port: p.port,
+        host: p.host || '',
+        node_id: p.node_id ?? null,
+        settings: p.settings || {},
         enable: p.enabled,
         clientCount: 0,
         created_at: p.created_at
@@ -1076,6 +1114,7 @@ const buildTLSCertificatePayload = () => {
 }
 
 const buildProxyPayload = () => {
+  const selectedNodeShareServer = selectedNodeAddress.value
   const payload = {
     name: normalizeStringValue(inboundForm.remark),
     protocol: inboundForm.protocol,
@@ -1096,6 +1135,7 @@ const buildProxyPayload = () => {
         password: inboundForm.trojan_password,
         flow: inboundForm.trojan_flow === 'none' ? '' : inboundForm.trojan_flow,
         ...transportPayload,
+        ...(selectedNodeShareServer ? { server: selectedNodeShareServer } : {}),
         tls: true,
         fallbacks: inboundForm.trojan_fallbacks,
         ...tlsPayload
@@ -1106,6 +1146,7 @@ const buildProxyPayload = () => {
         uuid: inboundForm.vless_id,
         flow: inboundForm.vless_flow === 'none' ? '' : inboundForm.vless_flow,
         ...transportPayload,
+        ...(selectedNodeShareServer ? { server: selectedNodeShareServer } : {}),
         security: tlsSettingsEnabled.value ? 'tls' : 'none',
         ...tlsPayload
       }
@@ -1116,6 +1157,7 @@ const buildProxyPayload = () => {
         alter_id: inboundForm.vmess_aid,
         alterId: inboundForm.vmess_aid,
         ...transportPayload,
+        ...(selectedNodeShareServer ? { server: selectedNodeShareServer } : {}),
         security: tlsSettingsEnabled.value ? 'tls' : 'auto',
         ...tlsPayload
       }
@@ -1126,6 +1168,7 @@ const buildProxyPayload = () => {
         password: inboundForm.ss_password,
         network: inboundForm.network || 'tcp,udp',
         ...transportPayload,
+        ...(selectedNodeShareServer ? { server: selectedNodeShareServer } : {}),
         ...(tlsSettingsEnabled.value ? tlsPayload : {})
       }
       break
@@ -1139,6 +1182,7 @@ const buildProxyPayload = () => {
     default:
       payload.settings = {
         ...transportPayload,
+        ...(selectedNodeShareServer ? { server: selectedNodeShareServer } : {}),
         ...(tlsSettingsEnabled.value ? tlsPayload : {})
       }
       break
@@ -1321,38 +1365,51 @@ const copyLink = async (row) => {
 
 // 生成本地链接(备用)
 const getLocalGeneratedLink = (row) => {
-  const protocol = row.protocol;
-  let link = '';
+  const protocol = row.protocol
+  const fallbackServer = resolveLocalFallbackServer(row)
+  let link = ''
   
   switch (protocol) {
     case 'vmess':
-      link = `vmess://eyJhZGQiOiJleGFtcGxlLmNvbSIsImFpZCI6IjAiLCJpZCI6IjhhZDM4OGZmLThkODItNDE4Yy05YzQ0LWZiYjNhNTgwYzFmYiIsIm5ldCI6InRjcCIsInBhdGgiOiIvIiwicG9ydCI6IiR7cm93LnBvcnR9IiwicHMiOiIke3Jvdy5yZW1hcmt9IiwidGxzIjoiIiwidHlwZSI6Im5vbmUiLCJ2IjoiMiJ9`
+      link = `vmess://${encodeBase64UTF8(JSON.stringify({
+        v: '2',
+        ps: row.remark || '',
+        add: fallbackServer,
+        port: String(row.port ?? ''),
+        id: row?.settings?.uuid || '8ad388ff-8d82-418c-9c44-fbb3a580c1fb',
+        aid: String(row?.settings?.alter_id ?? row?.settings?.alterId ?? 0),
+        net: row?.settings?.network || 'tcp',
+        type: 'none',
+        host: row?.settings?.host || '',
+        path: row?.settings?.path || '/',
+        tls: row?.settings?.security === 'tls' || row?.settings?.tls === true ? 'tls' : ''
+      }))}`
       break;
     case 'vless':
-      link = `vless://8ad388ff-8d82-418c-9c44-fbb3a580c1fb@example.com:${row.port}?encryption=none&security=tls&type=tcp#${encodeURIComponent(row.remark)}`
+      link = `vless://${row?.settings?.uuid || '8ad388ff-8d82-418c-9c44-fbb3a580c1fb'}@${fallbackServer}:${row.port}?encryption=none&security=${encodeURIComponent(row?.settings?.security || 'none')}&type=${encodeURIComponent(row?.settings?.network || 'tcp')}#${encodeURIComponent(row.remark)}`
       break;
     case 'trojan':
       // 获取设置，如果有的话
-      let password = 'password123';
-      let sni = 'example.com';
+      let password = 'password123'
+      let sni = fallbackServer
       
       if (row.settings) {
         if (row.settings.password) {
-          password = row.settings.password;
+          password = row.settings.password
         }
         if (row.settings.sni) {
-          sni = row.settings.sni;
+          sni = row.settings.sni
         }
       }
       
       // 标准Trojan链接格式
-      link = `trojan://${encodeURIComponent(password)}@example.com:${row.port}?security=tls&sni=${encodeURIComponent(sni)}#${encodeURIComponent(row.remark)}`
+      link = `trojan://${encodeURIComponent(password)}@${fallbackServer}:${row.port}?security=tls&sni=${encodeURIComponent(sni)}#${encodeURIComponent(row.remark)}`
       break;
     default:
-      link = `${protocol}://example.com:${row.port}#${encodeURIComponent(row.remark)}`
+      link = `${protocol}://${fallbackServer}:${row.port}#${encodeURIComponent(row.remark)}`
   }
   
-  return link;
+  return link
 }
 
 // 生成随机密码
@@ -1391,35 +1448,18 @@ const generateUUID = () => {
 
 // 获取分享链接
 const getShareLink = async (row) => {
-  // TODO: 替换为实际 API 调用获取链接
-  const protocol = row.protocol
-  let link = ''
-  
-  switch (protocol) {
-    case 'vmess':
-      link = `vmess://eyJhZGQiOiIxMjcuMC4wLjEiLCJhaWQiOiIwIiwiaG9zdCI6ImV4YW1wbGUuY29tIiwiaWQiOiI4YWQzODhmZi04ZDgyLTQxOGMtOWM0NC1mYmIzYTU4MGMxZmIiLCJuZXQiOiJ0Y3AiLCJwYXRoIjoiLyIsInBvcnQiOiIke3Jvdy5wb3J0fSIsInBzIjoiJHtyb3cucmVtYXJrfSIsInRscyI6IiIsInR5cGUiOiJub25lIiwidiI6IjIifQ==`
-      break
-    case 'vless':
-      link = `vless://8ad388ff-8d82-418c-9c44-fbb3a580c1fb@127.0.0.1:${row.port}?encryption=none&security=none&type=tcp&headerType=none#${encodeURIComponent(row.remark)}`
-      break
-    case 'trojan':
-      link = `trojan://password123@example.com:${row.port}?security=tls&sni=example.com&type=tcp#${encodeURIComponent(row.remark)}`
-      break
-    default:
-      link = `${protocol}://127.0.0.1:${row.port}#${encodeURIComponent(row.remark)}`
+  try {
+    const response = await api.get(`/proxies/${row.id}/link`)
+    const result = unwrapApiData(response)
+    if (result?.link) {
+      return result.link
+    }
+    throw new Error('API返回链接为空')
+  } catch (apiError) {
+    console.error('API获取链接失败:', apiError)
+    ElMessage.warning('使用本地生成的链接')
+    return getLocalGeneratedLink(row)
   }
-  
-  return link
-  
-  // 实际的API调用替代方案
-  /*
-  const response = await api.get(`/api/inbounds/${row.id}/link`)
-  if (response.data && response.data.link) {
-    return response.data.link
-  } else {
-    throw new Error('获取链接失败')
-  }
-  */
 }
 
 // 显示二维码

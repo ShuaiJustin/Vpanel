@@ -15,10 +15,29 @@ export const usePauseStore = defineStore('pause', () => {
   const loading = ref(false)
   const error = ref(null)
 
+  const normalizeCannotPauseReason = (reason) => {
+    const raw = String(reason || '').trim()
+    if (!raw) return ''
+
+    const map = {
+      'No active subscription': '当前无有效订阅',
+      'Pause feature is disabled': '暂停功能未开启',
+      'Subscription is already paused': '订阅已处于暂停状态',
+      'Failed to verify user': '用户校验失败',
+      'Failed to check pause status': '暂停状态检查失败',
+      'Failed to check pause frequency': '暂停次数检查失败'
+    }
+
+    if (map[raw]) return map[raw]
+    const limitMatch = raw.match(/^Maximum\\s+(\\d+)\\s+pause\\(s\\) per billing cycle reached$/i)
+    if (limitMatch) return `当前计费周期最多可暂停 ${limitMatch[1]} 次，已达到上限`
+    return raw
+  }
+
   // Computed
   const isPaused = computed(() => status.value?.is_paused || false)
   const canPause = computed(() => status.value?.can_pause || false)
-  const cannotPauseReason = computed(() => status.value?.cannot_pause_reason || '')
+  const cannotPauseReason = computed(() => normalizeCannotPauseReason(status.value?.cannot_pause_reason))
   const remainingPauses = computed(() => status.value?.remaining_pauses || 0)
   const maxDuration = computed(() => status.value?.max_duration_days || 30)
   const activePause = computed(() => status.value?.pause || null)

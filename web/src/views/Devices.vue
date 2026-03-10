@@ -186,11 +186,12 @@ const fetchDevices = async () => {
   loading.value = true
   try {
     const response = await api.get('/user/devices')
-    devices.value = (response.devices || response || []).map(d => ({
+    const payload = response?.data ?? response ?? {}
+    devices.value = (payload.devices || []).map(d => ({
       ...d,
       kicking: false
     }))
-    maxDevices.value = response.maxDevices || 0
+    maxDevices.value = Number(payload.max_devices ?? payload.maxDevices ?? 0)
   } catch (error) {
     console.error('Failed to fetch devices:', error)
     ElMessage.error('获取设备列表失败')
