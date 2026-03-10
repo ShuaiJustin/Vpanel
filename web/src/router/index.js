@@ -250,6 +250,10 @@ const routes = [
           roles: ['admin']
         }
       },
+      {
+        path: 'ip-restrictions',
+        redirect: '/admin/ip-restriction'
+      },
       // 商业化管理
       {
         path: 'plans',
