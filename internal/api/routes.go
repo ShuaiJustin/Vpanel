@@ -886,7 +886,7 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 	ticketService := ticket.NewService(r.repos.Ticket, r.repos.User)
 	announcementService := announcement.NewService(r.repos.Announcement)
 	helpService := help.NewService(r.repos.HelpArticle)
-	portalNodeService := portalnode.NewService(r.repos.Proxy, r.repos.User)
+	portalNodeService := portalnode.NewService(r.repos.Proxy, r.repos.User, r.repos.Node)
 	statsService := stats.NewService(r.repos.Traffic, r.repos.User)
 
 	// Create portal handlers

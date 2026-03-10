@@ -2,8 +2,11 @@
 package handlers
 
 import (
+	"fmt"
+	"net"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -95,9 +98,7 @@ type TestLatencyRequest struct {
 	NodeIDs []int64 `json:"node_ids"`
 }
 
-// TestLatency tests latency to specified nodes.
-// Note: This is a placeholder - actual latency testing would require
-// client-side implementation or server-side ping functionality.
+// TestLatency tests TCP latency to a node host:port.
 func (h *PortalNodeHandler) TestLatency(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -113,12 +114,38 @@ func (h *PortalNodeHandler) TestLatency(c *gin.Context) {
 		return
 	}
 
-	// In a real implementation, this would perform actual latency testing
-	// For now, return a placeholder response
+	if nodeInfo.Host == "" || nodeInfo.Port <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"node_id": nodeInfo.ID,
+			"host":    nodeInfo.Host,
+			"latency": -1,
+			"message": "节点地址无效",
+		})
+		return
+	}
+
+	target := fmt.Sprintf("%s:%d", nodeInfo.Host, nodeInfo.Port)
+	start := time.Now()
+	conn, dialErr := net.DialTimeout("tcp", target, 3*time.Second)
+	if dialErr != nil {
+		c.JSON(http.StatusBadGateway, gin.H{
+			"node_id": nodeInfo.ID,
+			"host":    nodeInfo.Host,
+			"latency": -1,
+			"message": "连接失败",
+		})
+		return
+	}
+	_ = conn.Close()
+	latency := int(time.Since(start).Milliseconds())
+	if latency < 1 {
+		latency = 1
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"node_id": nodeInfo.ID,
 		"host":    nodeInfo.Host,
-		"latency": -1, // -1 indicates not tested
-		"message": "延迟测试需要客户端实现",
+		"latency": latency,
+		"message": "ok",
 	})
 }

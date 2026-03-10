@@ -7,19 +7,22 @@ import (
 	"strings"
 
 	"v/internal/database/repository"
+	proxylib "v/internal/proxy"
 )
 
 // Service provides node operations for the user portal.
 type Service struct {
 	proxyRepo repository.ProxyRepository
 	userRepo  repository.UserRepository
+	nodeRepo  repository.NodeRepository
 }
 
 // NewService creates a new node service.
-func NewService(proxyRepo repository.ProxyRepository, userRepo repository.UserRepository) *Service {
+func NewService(proxyRepo repository.ProxyRepository, userRepo repository.UserRepository, nodeRepo repository.NodeRepository) *Service {
 	return &Service{
 		proxyRepo: proxyRepo,
 		userRepo:  userRepo,
+		nodeRepo:  nodeRepo,
 	}
 }
 
@@ -62,7 +65,7 @@ func (s *Service) ListNodes(ctx context.Context, userID int64, filter *NodeFilte
 			continue
 		}
 
-		node := proxyToNode(p)
+		node := s.proxyToNode(ctx, p)
 
 		// Apply filters
 		if filter != nil {
@@ -89,7 +92,7 @@ func (s *Service) ListAllNodes(ctx context.Context, filter *NodeFilter) ([]*Node
 
 	nodes := make([]*Node, 0, len(proxies))
 	for _, p := range proxies {
-		node := proxyToNode(p)
+		node := s.proxyToNode(ctx, p)
 
 		// Apply filters
 		if filter != nil {
@@ -113,7 +116,7 @@ func (s *Service) GetNode(ctx context.Context, id int64) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	return proxyToNode(proxy), nil
+	return s.proxyToNode(ctx, proxy), nil
 }
 
 // SortNodes sorts nodes by the specified criteria.
@@ -217,13 +220,31 @@ func GetAvailableProtocols(nodes []*Node) []string {
 	return protocols
 }
 
-// proxyToNode converts a Proxy to a Node.
-func proxyToNode(p *repository.Proxy) *Node {
+// proxyToNode converts a Proxy to a Node and resolves a client-connectable host.
+func (s *Service) proxyToNode(ctx context.Context, p *repository.Proxy) *Node {
+	resolvedHost := ""
+	if p.Settings != nil {
+		if explicitServer, ok := p.Settings["server"].(string); ok {
+			resolvedHost = proxylib.NormalizeShareHost(explicitServer)
+		}
+	}
+	if resolvedHost == "" && p.NodeID != nil && s.nodeRepo != nil {
+		if n, err := s.nodeRepo.GetByID(ctx, *p.NodeID); err == nil {
+			resolvedHost = proxylib.NormalizeShareHost(n.Address)
+		}
+	}
+	if resolvedHost == "" {
+		resolvedHost = proxylib.ResolveServerAddress(p.Host, p.Settings)
+	}
+	if resolvedHost == "" {
+		resolvedHost = p.Host
+	}
+
 	node := &Node{
 		ID:       p.ID,
 		Name:     p.Name,
 		Protocol: p.Protocol,
-		Host:     p.Host,
+		Host:     resolvedHost,
 		Port:     p.Port,
 		Status:   "online", // Default to online if enabled
 		Load:     0,
