@@ -13,11 +13,12 @@ import (
 )
 
 type ProxyHandler struct {
-	proxyManager proxy.Manager
-	proxyRepo    repository.ProxyRepository
-	nodeRepo     repository.NodeRepository
-	trafficRepo  repository.TrafficRepository
-	logger       logger.Logger
+	proxyManager    proxy.Manager
+	proxyRepo       repository.ProxyRepository
+	nodeRepo        repository.NodeRepository
+	trafficRepo     repository.TrafficRepository
+	recoveryTracker *NodeRecoveryTracker
+	logger          logger.Logger
 }
 
 func NewProxyHandler(proxyManager proxy.Manager, proxyRepo repository.ProxyRepository, log logger.Logger) *ProxyHandler {
@@ -42,6 +43,19 @@ func NewProxyHandlerWithTraffic(proxyManager proxy.Manager, proxyRepo repository
 func (h *ProxyHandler) WithNodeRepository(nodeRepo repository.NodeRepository) *ProxyHandler {
 	h.nodeRepo = nodeRepo
 	return h
+}
+
+// WithRecoveryTracker injects recovery tracker for node config sync commands.
+func (h *ProxyHandler) WithRecoveryTracker(recoveryTracker *NodeRecoveryTracker) *ProxyHandler {
+	h.recoveryTracker = recoveryTracker
+	return h
+}
+
+func (h *ProxyHandler) queueNodeConfigSync(nodeID *int64, source, reason string) {
+	if h == nil || h.recoveryTracker == nil || nodeID == nil || *nodeID <= 0 {
+		return
+	}
+	h.recoveryTracker.QueueConfigSyncCommand(*nodeID, source, reason)
 }
 
 type ProxyResponse struct {
@@ -207,6 +221,7 @@ func (h *ProxyHandler) Create(c *gin.Context) {
 	}
 
 	h.logger.Info("proxy created", logger.F("proxy_id", proxyModel.ID), logger.F("user_id", userID))
+	h.queueNodeConfigSync(proxyModel.NodeID, "proxy_create", "proxy created")
 
 	c.JSON(http.StatusCreated, ProxyResponse{
 		ID:        proxyModel.ID,
@@ -353,6 +368,7 @@ func (h *ProxyHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update proxy"})
 		return
 	}
+	h.queueNodeConfigSync(p.NodeID, "proxy_update", "proxy updated")
 
 	c.JSON(http.StatusOK, ProxyResponse{
 		ID:        p.ID,
@@ -399,6 +415,7 @@ func (h *ProxyHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete proxy"})
 		return
 	}
+	h.queueNodeConfigSync(p.NodeID, "proxy_delete", "proxy deleted")
 
 	userID, _, _ := getUserFromContext(c)
 	h.logger.Info("proxy deleted", logger.F("proxy_id", id), logger.F("user_id", userID))
@@ -515,6 +532,7 @@ func (h *ProxyHandler) Toggle(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to toggle proxy"})
 		return
 	}
+	h.queueNodeConfigSync(p.NodeID, "proxy_toggle", "proxy toggled")
 
 	c.JSON(http.StatusOK, gin.H{"enabled": p.Enabled})
 }
@@ -553,6 +571,7 @@ func (h *ProxyHandler) Start(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start proxy"})
 		return
 	}
+	h.queueNodeConfigSync(p.NodeID, "proxy_start", "proxy started")
 
 	userID, _, _ := getUserFromContext(c)
 	h.logger.Info("proxy started", logger.F("proxy_id", id), logger.F("user_id", userID))
@@ -594,6 +613,7 @@ func (h *ProxyHandler) Stop(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to stop proxy"})
 		return
 	}
+	h.queueNodeConfigSync(p.NodeID, "proxy_stop", "proxy stopped")
 
 	userID, _, _ := getUserFromContext(c)
 	h.logger.Info("proxy stopped", logger.F("proxy_id", id), logger.F("user_id", userID))

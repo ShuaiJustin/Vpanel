@@ -56,10 +56,10 @@ func (h *SubscriptionHandler) GetLink(c *gin.Context) {
 		return
 	}
 
-	info, err := h.service.GetSubscriptionInfo(c.Request.Context(), userID.(int64))
+	info, err := h.service.GetSubscriptionInfoWithBaseURL(c.Request.Context(), userID.(int64), subscriptionBaseURLFromRequest(c))
 	if err != nil {
-		h.logger.Error("failed to get subscription info", 
-			logger.F("error", err), 
+		h.logger.Error("failed to get subscription info",
+			logger.F("error", err),
 			logger.F("error_type", fmt.Sprintf("%T", err)),
 			logger.UserID(userID.(int64)))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get subscription info"})
@@ -84,7 +84,6 @@ func (h *SubscriptionHandler) GetLink(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-
 // GetInfo returns detailed subscription information for the current user.
 // GET /api/subscription/info
 func (h *SubscriptionHandler) GetInfo(c *gin.Context) {
@@ -94,7 +93,7 @@ func (h *SubscriptionHandler) GetInfo(c *gin.Context) {
 		return
 	}
 
-	info, err := h.service.GetSubscriptionInfo(c.Request.Context(), userID.(int64))
+	info, err := h.service.GetSubscriptionInfoWithBaseURL(c.Request.Context(), userID.(int64), subscriptionBaseURLFromRequest(c))
 	if err != nil {
 		h.logger.Error("failed to get subscription info", logger.F("error", err), logger.UserID(userID.(int64)))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get subscription info"})
@@ -123,7 +122,7 @@ func (h *SubscriptionHandler) Regenerate(c *gin.Context) {
 	h.logger.Info("subscription token regenerated", logger.UserID(userID.(int64)))
 
 	// Get full subscription info
-	info, err := h.service.GetSubscriptionInfo(c.Request.Context(), userID.(int64))
+	info, err := h.service.GetSubscriptionInfoWithBaseURL(c.Request.Context(), userID.(int64), subscriptionBaseURLFromRequest(c))
 	if err != nil {
 		// Return basic info if we can't get full info
 		c.JSON(http.StatusOK, gin.H{
@@ -135,6 +134,31 @@ func (h *SubscriptionHandler) Regenerate(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, info)
+}
+
+func subscriptionBaseURLFromRequest(c *gin.Context) string {
+	if c == nil || c.Request == nil {
+		return ""
+	}
+
+	scheme := "http"
+	if xfProto := strings.TrimSpace(c.GetHeader("X-Forwarded-Proto")); xfProto != "" {
+		scheme = strings.Split(xfProto, ",")[0]
+	} else if c.Request.TLS != nil {
+		scheme = "https"
+	}
+
+	host := strings.TrimSpace(c.GetHeader("X-Forwarded-Host"))
+	if host == "" {
+		host = strings.TrimSpace(c.Request.Host)
+	}
+	host = strings.Split(host, ",")[0]
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("%s://%s", scheme, host)
 }
 
 // GetContent returns subscription content by token.
@@ -227,7 +251,6 @@ func (h *SubscriptionHandler) serveSubscriptionContent(c *gin.Context, sub *repo
 	// Return content
 	c.Data(http.StatusOK, contentType, content)
 }
-
 
 // detectFormat detects the subscription format from query param or User-Agent.
 func (h *SubscriptionHandler) detectFormat(c *gin.Context) subscription.ClientFormat {
@@ -384,12 +407,12 @@ func (h *SubscriptionHandler) AdminList(c *gin.Context) {
 			AccessCount: sub.AccessCount,
 			LastIP:      sub.LastIP,
 		}
-		
+
 		// Add username if User relation is loaded
 		if sub.User != nil {
 			items[i].Username = sub.User.Username
 		}
-		
+
 		if sub.LastAccessAt != nil {
 			items[i].LastAccessAt = sub.LastAccessAt.Format("2006-01-02T15:04:05Z")
 		}

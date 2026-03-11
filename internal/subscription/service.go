@@ -119,7 +119,6 @@ func (s *Service) GenerateShortCode() (string, error) {
 	return string(bytes), nil
 }
 
-
 // ValidateToken validates a subscription token and returns the subscription if valid.
 func (s *Service) ValidateToken(ctx context.Context, token string) (*repository.Subscription, error) {
 	subscription, err := s.subscriptionRepo.GetByToken(ctx, token)
@@ -228,15 +227,25 @@ func (s *Service) RegenerateToken(ctx context.Context, userID int64) (*repositor
 
 // GetSubscriptionInfo returns subscription information for display.
 func (s *Service) GetSubscriptionInfo(ctx context.Context, userID int64) (*SubscriptionInfo, error) {
+	return s.GetSubscriptionInfoWithBaseURL(ctx, userID, "")
+}
+
+// GetSubscriptionInfoWithBaseURL returns subscription information using request-aware base URL when provided.
+func (s *Service) GetSubscriptionInfoWithBaseURL(ctx context.Context, userID int64, baseURLOverride string) (*SubscriptionInfo, error) {
 	subscription, err := s.GetOrCreateSubscription(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	baseLink := fmt.Sprintf("%s/api/subscription/%s", s.baseURL, subscription.Token)
+	baseURL := strings.TrimSuffix(strings.TrimSpace(baseURLOverride), "/")
+	if baseURL == "" {
+		baseURL = strings.TrimSuffix(strings.TrimSpace(s.baseURL), "/")
+	}
+
+	baseLink := fmt.Sprintf("%s/api/subscription/%s", baseURL, subscription.Token)
 	shortLink := ""
 	if subscription.ShortCode != "" {
-		shortLink = fmt.Sprintf("%s/s/%s", s.baseURL, subscription.ShortCode)
+		shortLink = fmt.Sprintf("%s/s/%s", baseURL, subscription.ShortCode)
 	}
 
 	formats := s.buildFormatLinks(baseLink)
@@ -448,7 +457,6 @@ func (s *Service) ListAllSubscriptions(ctx context.Context, filter *repository.S
 	return s.subscriptionRepo.ListAll(ctx, filter)
 }
 
-
 // GenerateContent generates subscription content for a user in the specified format.
 func (s *Service) GenerateContent(ctx context.Context, userID int64, format ClientFormat, options *ContentOptions) ([]byte, string, string, error) {
 	// Get user's enabled proxies
@@ -548,8 +556,8 @@ type v2rayNGenerator struct{}
 func (g *v2rayNGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
 	return generateV2rayN(proxies, options)
 }
-func (g *v2rayNGenerator) ContentType() string     { return "text/plain; charset=utf-8" }
-func (g *v2rayNGenerator) FileExtension() string   { return "txt" }
+func (g *v2rayNGenerator) ContentType() string            { return "text/plain; charset=utf-8" }
+func (g *v2rayNGenerator) FileExtension() string          { return "txt" }
 func (g *v2rayNGenerator) SupportsProtocol(p string) bool { return true }
 
 type clashGenerator struct{}
@@ -557,8 +565,8 @@ type clashGenerator struct{}
 func (g *clashGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
 	return generateClash(proxies, options)
 }
-func (g *clashGenerator) ContentType() string     { return "text/yaml; charset=utf-8" }
-func (g *clashGenerator) FileExtension() string   { return "yaml" }
+func (g *clashGenerator) ContentType() string            { return "text/yaml; charset=utf-8" }
+func (g *clashGenerator) FileExtension() string          { return "yaml" }
 func (g *clashGenerator) SupportsProtocol(p string) bool { return true }
 
 type clashMetaGenerator struct{}
@@ -566,8 +574,8 @@ type clashMetaGenerator struct{}
 func (g *clashMetaGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
 	return generateClashMeta(proxies, options)
 }
-func (g *clashMetaGenerator) ContentType() string     { return "text/yaml; charset=utf-8" }
-func (g *clashMetaGenerator) FileExtension() string   { return "yaml" }
+func (g *clashMetaGenerator) ContentType() string            { return "text/yaml; charset=utf-8" }
+func (g *clashMetaGenerator) FileExtension() string          { return "yaml" }
 func (g *clashMetaGenerator) SupportsProtocol(p string) bool { return true }
 
 type shadowrocketGenerator struct{}
@@ -575,8 +583,8 @@ type shadowrocketGenerator struct{}
 func (g *shadowrocketGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
 	return generateShadowrocket(proxies, options)
 }
-func (g *shadowrocketGenerator) ContentType() string     { return "text/plain; charset=utf-8" }
-func (g *shadowrocketGenerator) FileExtension() string   { return "txt" }
+func (g *shadowrocketGenerator) ContentType() string            { return "text/plain; charset=utf-8" }
+func (g *shadowrocketGenerator) FileExtension() string          { return "txt" }
 func (g *shadowrocketGenerator) SupportsProtocol(p string) bool { return true }
 
 type surgeGenerator struct{}
@@ -584,8 +592,8 @@ type surgeGenerator struct{}
 func (g *surgeGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
 	return generateSurge(proxies, options)
 }
-func (g *surgeGenerator) ContentType() string     { return "text/plain; charset=utf-8" }
-func (g *surgeGenerator) FileExtension() string   { return "conf" }
+func (g *surgeGenerator) ContentType() string            { return "text/plain; charset=utf-8" }
+func (g *surgeGenerator) FileExtension() string          { return "conf" }
 func (g *surgeGenerator) SupportsProtocol(p string) bool { return true }
 
 type quantumultXGenerator struct{}
@@ -593,8 +601,8 @@ type quantumultXGenerator struct{}
 func (g *quantumultXGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
 	return generateQuantumultX(proxies, options)
 }
-func (g *quantumultXGenerator) ContentType() string     { return "text/plain; charset=utf-8" }
-func (g *quantumultXGenerator) FileExtension() string   { return "conf" }
+func (g *quantumultXGenerator) ContentType() string            { return "text/plain; charset=utf-8" }
+func (g *quantumultXGenerator) FileExtension() string          { return "conf" }
 func (g *quantumultXGenerator) SupportsProtocol(p string) bool { return true }
 
 type singboxGenerator struct{}
@@ -602,6 +610,6 @@ type singboxGenerator struct{}
 func (g *singboxGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
 	return generateSingbox(proxies, options)
 }
-func (g *singboxGenerator) ContentType() string     { return "application/json; charset=utf-8" }
-func (g *singboxGenerator) FileExtension() string   { return "json" }
+func (g *singboxGenerator) ContentType() string            { return "application/json; charset=utf-8" }
+func (g *singboxGenerator) FileExtension() string          { return "json" }
 func (g *singboxGenerator) SupportsProtocol(p string) bool { return true }

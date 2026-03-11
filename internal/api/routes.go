@@ -203,6 +203,7 @@ func (r *Router) Setup() {
 	nodeTrafficService := node.NewTrafficService(r.repos.NodeTraffic, r.repos.NodeGroup, r.logger)
 	nodeDeployService := node.NewRemoteDeployService(r.logger, r.repos.Node)
 	nodeRecoveryTracker := handlers.NewNodeRecoveryTracker(r.logger)
+	proxyHandler.WithRecoveryTracker(nodeRecoveryTracker)
 
 	// Create Xray config generator for nodes
 	configGenerator := xray.NewConfigGenerator(r.repos.Proxy, r.repos.Certificate, r.logger)

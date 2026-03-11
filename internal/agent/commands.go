@@ -209,6 +209,13 @@ func (e *CommandExecutor) executeConfigSync(ctx context.Context, cmd *Command) *
 		return result
 	}
 
+	// Ensure Xray is running after applying config so new inbounds are actually listening.
+	if err := e.agent.ensureXrayRunning(ctx); err != nil {
+		result.Success = false
+		result.Message = fmt.Sprintf("config updated but failed to start xray: %v", err)
+		return result
+	}
+
 	result.Success = true
 	result.Message = "Configuration synced successfully"
 	return result

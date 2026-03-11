@@ -10,6 +10,7 @@ import (
 
 const (
 	commandTypeXrayStart        = "xray_start"
+	commandTypeConfigSync       = "config_sync"
 	xrayRecoveryCommandCooldown = 20 * time.Second
 	maxNodeRecoveryEvents       = 12
 )
@@ -54,6 +55,17 @@ func (t *NodeRecoveryTracker) QueueXrayRecoveryCommand(nodeID int64, source, rea
 		return false
 	}
 	return t.enqueueCommand(nodeID, commandTypeXrayStart, source, reason, map[string]any{
+		"reason":    reason,
+		"queued_at": time.Now().Unix(),
+		"source":    source,
+	})
+}
+
+func (t *NodeRecoveryTracker) QueueConfigSyncCommand(nodeID int64, source, reason string) bool {
+	if t == nil || nodeID <= 0 {
+		return false
+	}
+	return t.enqueueCommand(nodeID, commandTypeConfigSync, source, reason, map[string]any{
 		"reason":    reason,
 		"queued_at": time.Now().Unix(),
 		"source":    source,
