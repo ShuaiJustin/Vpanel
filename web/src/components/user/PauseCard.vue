@@ -47,10 +47,13 @@
 
       <!-- 未暂停状态 -->
       <template v-else>
-        <div class="pause-status active">
-          <el-icon class="status-icon"><CircleCheck /></el-icon>
+        <div class="pause-status" :class="noSubscription ? 'inactive' : 'active'">
+          <el-icon class="status-icon">
+            <CircleCloseFilled v-if="noSubscription" />
+            <CircleCheck v-else />
+          </el-icon>
           <div class="status-info">
-            <h4>订阅正常</h4>
+            <h4>{{ noSubscription ? '无有效订阅' : '订阅正常' }}</h4>
             <p v-if="pauseStore.canPause">
               本周期剩余 {{ pauseStore.remainingPauses }} 次暂停机会
             </p>
@@ -119,10 +122,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { 
-  VideoPause, VideoPlay, Clock, CircleCheck 
+  VideoPause, VideoPlay, Clock, CircleCheck, CircleCloseFilled
 } from '@element-plus/icons-vue'
 import { usePauseStore } from '@/stores/pause'
 
@@ -132,6 +135,8 @@ const pauseStore = usePauseStore()
 const showPauseDialog = ref(false)
 const pausing = ref(false)
 const resuming = ref(false)
+const noSubscriptionReason = '当前无有效订阅'
+const noSubscription = computed(() => !pauseStore.isPaused && pauseStore.cannotPauseReason === noSubscriptionReason)
 
 // Methods
 function formatDate(dateStr) {
@@ -221,6 +226,10 @@ onMounted(() => {
   background: rgba(103, 194, 58, 0.1);
 }
 
+.pause-status.inactive {
+  background: rgba(245, 108, 108, 0.1);
+}
+
 .status-icon {
   font-size: 32px;
   flex-shrink: 0;
@@ -232,6 +241,10 @@ onMounted(() => {
 
 .pause-status.active .status-icon {
   color: #67c23a;
+}
+
+.pause-status.inactive .status-icon {
+  color: #f56c6c;
 }
 
 .status-info h4 {

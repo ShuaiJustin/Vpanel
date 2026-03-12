@@ -197,12 +197,14 @@ import {
 } from '@element-plus/icons-vue'
 import { useUserPortalStore } from '@/stores/userPortal'
 import { useSubscriptionStore } from '@/stores/subscription'
+import { usePauseStore } from '@/stores/pause'
 import PauseCard from '@/components/user/PauseCard.vue'
 import QRCode from 'qrcode'
 
 const router = useRouter()
 const userStore = useUserPortalStore()
 const subscriptionStore = useSubscriptionStore()
+const pauseStore = usePauseStore()
 
 // 引用
 const qrcodeCanvas = ref(null)
@@ -240,6 +242,9 @@ const subscriptionUrl = computed(() => {
 })
 
 const subscriptionStatus = computed(() => {
+  if (pauseStore.cannotPauseReason === '当前无有效订阅') {
+    return { type: 'info', label: '无有效订阅' }
+  }
   const status = userStore.status
   if (status === 'active') return { type: 'success', label: '正常' }
   if (status === 'expired') return { type: 'warning', label: '已过期' }
@@ -274,6 +279,11 @@ async function loadSubscription() {
   try {
     await userStore.fetchProfile()
     await subscriptionStore.fetchLink()
+    try {
+      await pauseStore.fetchPauseStatus()
+    } catch (pauseError) {
+      console.warn('加载暂停状态失败:', pauseError)
+    }
     await generateQRCode()
   } catch (error) {
     console.error('加载订阅失败:', error)
