@@ -449,14 +449,14 @@ function validateTLSDomain(rule, value, callback) {
 const agentConfigExample = computed(() => {
   return `# agent.yaml
 panel:
-  address: "${window.location.origin}"
-  token: "${createdToken.value}"
+  url: "${window.location.origin}"
   
 node:
   name: "${form.name}"
+  token: "${createdToken.value}"
   
 xray:
-  config_path: "/etc/xray/config.json"`;
+  config_path: "/usr/local/etc/xray/config.json"`;
 });
 
 const fetchGroups = async () => {

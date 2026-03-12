@@ -5,6 +5,7 @@ package agent
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -62,7 +63,7 @@ func DefaultConfig() *Config {
 			Token: "",
 		},
 		Panel: PanelConfig{
-			URL:               "http://localhost:8080",
+			URL:               "",
 			TLSSkipVerify:     false,
 			ConnectTimeout:    10 * time.Second,
 			ReconnectInterval: 5 * time.Second,
@@ -70,7 +71,7 @@ func DefaultConfig() *Config {
 		},
 		Xray: XrayConfig{
 			BinaryPath: "xray",
-			ConfigPath: "/etc/xray/config.json",
+			ConfigPath: "/usr/local/etc/xray/config.json",
 			BackupDir:  "/tmp/xray-backups",
 		},
 		Health: HealthConfig{
@@ -170,10 +171,27 @@ func (c *Config) Validate() error {
 	if c.Panel.URL == "" {
 		return fmt.Errorf("panel URL is required")
 	}
+	if isLoopbackPanelURL(c.Panel.URL) && !isTrue(os.Getenv("AGENT_ALLOW_LOCAL_PANEL")) {
+		return fmt.Errorf("panel URL cannot be localhost/127.0.0.1 in production node mode")
+	}
 
 	if c.Health.Port <= 0 || c.Health.Port > 65535 {
 		return fmt.Errorf("health port must be between 1 and 65535")
 	}
 
 	return nil
+}
+
+func isLoopbackPanelURL(raw string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(raw))
+	return strings.Contains(normalized, "localhost") || strings.Contains(normalized, "127.0.0.1")
+}
+
+func isTrue(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "y", "on":
+		return true
+	default:
+		return false
+	}
 }

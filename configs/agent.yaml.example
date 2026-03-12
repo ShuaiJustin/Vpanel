@@ -10,7 +10,7 @@ node:
 # Panel Server connection
 panel:
   # Panel Server URL
-  url: "http://localhost:8080"
+  url: "http://YOUR_PANEL_HOST:13212"
   # Skip TLS certificate verification (not recommended for production)
   tls_skip_verify: false
   # Connection timeout
@@ -25,7 +25,7 @@ xray:
   # Path to Xray binary
   binary_path: "xray"
   # Path to Xray configuration file
-  config_path: "/etc/xray/config.json"
+  config_path: "/usr/local/etc/xray/config.json"
   # Directory for configuration backups
   backup_dir: "/tmp/xray-backups"
 

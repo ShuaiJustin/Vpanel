@@ -842,7 +842,7 @@ panel:
 
 xray:
   binary_path: "/usr/local/bin/xray"
-  config_path: "/etc/xray/config.json"
+  config_path: "/usr/local/etc/xray/config.json"
 
 health:
   port: 18443
@@ -1205,7 +1205,7 @@ panel:
 
 xray:
   binary_path: "/usr/local/bin/xray"
-  config_path: "/etc/xray/config.json"
+  config_path: "/usr/local/etc/xray/config.json"
 
 health:
   port: 18443
