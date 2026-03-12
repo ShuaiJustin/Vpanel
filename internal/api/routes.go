@@ -47,17 +47,18 @@ import (
 
 // Router manages API routes.
 type Router struct {
-	engine             *gin.Engine
-	config             *config.Config
-	logger             logger.Logger
-	authService        *auth.Service
-	proxyManager       proxy.Manager
-	repos              *repository.Repositories
-	settingsService    *settings.Service
-	xrayManager        xray.Manager
-	logService         *logservice.Service
-	certificateService CertificateService
-	nodeHealthChecker  *node.HealthChecker
+	engine              *gin.Engine
+	config              *config.Config
+	logger              logger.Logger
+	authService         *auth.Service
+	proxyManager        proxy.Manager
+	repos               *repository.Repositories
+	settingsService     *settings.Service
+	xrayManager         xray.Manager
+	logService          *logservice.Service
+	certificateService  CertificateService
+	nodeHealthChecker   *node.HealthChecker
+	nodeRecoveryTracker *handlers.NodeRecoveryTracker
 }
 
 // CertificateService defines the interface for certificate operations.
@@ -96,17 +97,18 @@ func NewRouter(
 	}, log)
 
 	return &Router{
-		engine:             engine,
-		config:             cfg,
-		logger:             log,
-		authService:        authService,
-		proxyManager:       proxyManager,
-		repos:              repos,
-		settingsService:    settingsService,
-		xrayManager:        xrayManager,
-		logService:         logService,
-		certificateService: certService,
-		nodeHealthChecker:  nil, // 将在 Setup() 中初始化
+		engine:              engine,
+		config:              cfg,
+		logger:              log,
+		authService:         authService,
+		proxyManager:        proxyManager,
+		repos:               repos,
+		settingsService:     settingsService,
+		xrayManager:         xrayManager,
+		logService:          logService,
+		certificateService:  certService,
+		nodeHealthChecker:   nil, // 将在 Setup() 中初始化
+		nodeRecoveryTracker: nil,
 	}
 }
 
@@ -202,16 +204,16 @@ func (r *Router) Setup() {
 	r.nodeHealthChecker = node.NewHealthChecker(nil, r.repos.Node, r.repos.Certificate, r.repos.HealthCheck, r.logger)
 	nodeTrafficService := node.NewTrafficService(r.repos.NodeTraffic, r.repos.NodeGroup, r.logger)
 	nodeDeployService := node.NewRemoteDeployService(r.logger, r.repos.Node)
-	nodeRecoveryTracker := handlers.NewNodeRecoveryTracker(r.logger)
-	proxyHandler.WithRecoveryTracker(nodeRecoveryTracker)
+	r.nodeRecoveryTracker = handlers.NewNodeRecoveryTracker(r.logger)
+	proxyHandler.WithRecoveryTracker(r.nodeRecoveryTracker)
 
 	// Create Xray config generator for nodes
 	configGenerator := xray.NewConfigGenerator(r.repos.Proxy, r.repos.Certificate, r.logger)
 	nodeConfigTestHandler := handlers.NewNodeConfigTestHandler(configGenerator, r.logger)
-	nodeAgentHandler := handlers.NewNodeAgentHandler(nodeService, r.repos.Node, configGenerator, nodeRecoveryTracker, r.logger)
+	nodeAgentHandler := handlers.NewNodeAgentHandler(nodeService, r.repos.Node, configGenerator, r.nodeRecoveryTracker, r.logger)
 
 	// Create node management handlers
-	nodeHandler := handlers.NewNodeHandler(nodeService, nodeDeployService, nodeRecoveryTracker, r.logger)
+	nodeHandler := handlers.NewNodeHandler(nodeService, nodeDeployService, r.nodeRecoveryTracker, r.logger)
 	nodeGroupHandler := handlers.NewNodeGroupHandler(nodeGroupService, r.logger)
 	nodeHealthHandler := handlers.NewNodeHealthHandler(r.nodeHealthChecker, r.repos.HealthCheck, r.repos.Node, r.logger)
 	nodeStatsHandler := handlers.NewNodeStatsHandler(nodeTrafficService, nodeService, nodeGroupService, r.logger)
@@ -893,7 +895,7 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 	// Create portal handlers
 	portalAuthHandler := handlers.NewPortalAuthHandler(portalAuthService, r.authService, r.repos.User, r.repos.Proxy, r.logger)
 	portalDashboardHandler := handlers.NewPortalDashboardHandler(r.repos.User, statsService, announcementService, r.logger)
-	portalNodeHandler := handlers.NewPortalNodeHandler(portalNodeService, r.logger)
+	portalNodeHandler := handlers.NewPortalNodeHandler(portalNodeService, r.nodeRecoveryTracker, r.logger)
 	portalTicketHandler := handlers.NewPortalTicketHandler(ticketService, r.logger)
 	portalAnnouncementHandler := handlers.NewPortalAnnouncementHandler(announcementService, r.logger)
 	portalStatsHandler := handlers.NewPortalStatsHandler(statsService, r.logger)

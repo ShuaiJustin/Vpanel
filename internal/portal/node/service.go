@@ -34,9 +34,10 @@ type Node struct {
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
 	Region   string `json:"region"`
-	Status   string `json:"status"` // online, offline, maintenance
-	Load     int    `json:"load"`   // 0-100 percentage
+	Status   string `json:"status"`            // online, offline, maintenance
+	Load     int    `json:"load"`              // 0-100 percentage
 	Latency  int    `json:"latency,omitempty"` // milliseconds, -1 if not tested
+	NodeID   *int64 `json:"-"`                 // underlying deployed node ID (not exposed to portal clients)
 }
 
 // NodeFilter represents filter options for listing nodes.
@@ -249,6 +250,7 @@ func (s *Service) proxyToNode(ctx context.Context, p *repository.Proxy) *Node {
 		Status:   "online", // Default to online if enabled
 		Load:     0,
 		Latency:  -1, // Not tested
+		NodeID:   p.NodeID,
 	}
 
 	// Extract region from settings if available
