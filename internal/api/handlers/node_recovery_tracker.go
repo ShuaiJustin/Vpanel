@@ -65,11 +65,9 @@ func (t *NodeRecoveryTracker) QueueConfigSyncCommand(nodeID int64, source, reaso
 	if t == nil || nodeID <= 0 {
 		return false
 	}
-	return t.enqueueCommand(nodeID, commandTypeConfigSync, source, reason, map[string]any{
-		"reason":    reason,
-		"queued_at": time.Now().Unix(),
-		"source":    source,
-	})
+	// config_sync should not carry recovery metadata payload. The agent treats
+	// payload as xray config and may overwrite config.json if non-config data is sent.
+	return t.enqueueCommand(nodeID, commandTypeConfigSync, source, reason, nil)
 }
 
 func (t *NodeRecoveryTracker) enqueueCommand(nodeID int64, commandType, source, reason string, payload any) bool {

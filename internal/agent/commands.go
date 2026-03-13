@@ -2,6 +2,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -176,18 +177,22 @@ func (e *CommandExecutor) executeXrayStatus(ctx context.Context, cmd *Command) *
 func (e *CommandExecutor) executeConfigSync(ctx context.Context, cmd *Command) *CommandResult {
 	result := &CommandResult{CommandID: cmd.ID}
 
-	// Parse config from payload
 	var config json.RawMessage
-	if cmd.Payload != nil {
+	if len(bytes.TrimSpace(cmd.Payload)) > 0 && string(bytes.TrimSpace(cmd.Payload)) != "null" {
 		if err := json.Unmarshal(cmd.Payload, &config); err != nil {
-			result.Success = false
-			result.Message = fmt.Sprintf("invalid config payload: %v", err)
-			return result
+			e.logger.Warn("config_sync payload parse failed, falling back to panel sync",
+				logger.F("command_id", cmd.ID),
+				logger.F("error", err.Error()))
+			config = nil
 		}
 	}
 
-	// If no config in payload, fetch from Panel
-	if config == nil {
+	if !isLikelyXrayConfig(config) {
+		if len(bytes.TrimSpace(cmd.Payload)) > 0 && string(bytes.TrimSpace(cmd.Payload)) != "null" {
+			e.logger.Warn("config_sync payload is not a valid xray config, falling back to panel sync",
+				logger.F("command_id", cmd.ID))
+		}
+
 		e.agent.mu.RLock()
 		nodeID := e.agent.nodeID
 		e.agent.mu.RUnlock()
@@ -196,6 +201,11 @@ func (e *CommandExecutor) executeConfigSync(ctx context.Context, cmd *Command) *
 		if err != nil {
 			result.Success = false
 			result.Message = fmt.Sprintf("failed to fetch config from Panel: %v", err)
+			return result
+		}
+		if !isLikelyXrayConfig(fetchedConfig) {
+			result.Success = false
+			result.Message = "panel returned invalid xray config payload"
 			return result
 		}
 		config = fetchedConfig
@@ -219,6 +229,22 @@ func (e *CommandExecutor) executeConfigSync(ctx context.Context, cmd *Command) *
 	result.Success = true
 	result.Message = "Configuration synced successfully"
 	return result
+}
+
+func isLikelyXrayConfig(config json.RawMessage) bool {
+	trimmed := bytes.TrimSpace(config)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return false
+	}
+
+	var cfg map[string]json.RawMessage
+	if err := json.Unmarshal(trimmed, &cfg); err != nil {
+		return false
+	}
+
+	_, hasInbounds := cfg["inbounds"]
+	_, hasOutbounds := cfg["outbounds"]
+	return hasInbounds && hasOutbounds
 }
 
 // executeConfigGet returns the current configuration.
