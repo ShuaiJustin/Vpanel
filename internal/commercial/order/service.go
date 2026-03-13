@@ -87,6 +87,7 @@ func DefaultConfig() *Config {
 type Service struct {
 	orderRepo repository.OrderRepository
 	planRepo  repository.PlanRepository
+	userRepo  repository.UserRepository
 	logger    logger.Logger
 	config    *Config
 	mu        sync.Mutex
@@ -110,6 +111,12 @@ func NewService(
 		config:    config,
 		orderNos:  make(map[string]bool),
 	}
+}
+
+// WithUserRepository enables plan activation on successful payment.
+func (s *Service) WithUserRepository(userRepo repository.UserRepository) *Service {
+	s.userRepo = userRepo
+	return s
 }
 
 // GenerateOrderNo generates a unique order number.
@@ -294,6 +301,11 @@ func (s *Service) MarkPaid(ctx context.Context, orderNo string, paymentNo string
 		return err
 	}
 
+	if err := s.applyPlanToUser(ctx, order); err != nil {
+		s.logger.Error("Failed to apply plan after payment", logger.Err(err), logger.F("orderNo", orderNo), logger.F("user_id", order.UserID))
+		return err
+	}
+
 	return nil
 }
 
@@ -419,4 +431,34 @@ func (s *Service) toOrder(ro *repository.Order) *Order {
 		CreatedAt:      ro.CreatedAt,
 		UpdatedAt:      ro.UpdatedAt,
 	}
+}
+
+func (s *Service) applyPlanToUser(ctx context.Context, ord *repository.Order) error {
+	if s.userRepo == nil {
+		return nil
+	}
+
+	plan, err := s.planRepo.GetByID(ctx, ord.PlanID)
+	if err != nil {
+		return err
+	}
+
+	user, err := s.userRepo.GetByID(ctx, ord.UserID)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	baseExpireAt := now
+	if user.ExpiresAt != nil && user.ExpiresAt.After(now) {
+		baseExpireAt = *user.ExpiresAt
+	}
+	newExpireAt := baseExpireAt.AddDate(0, 0, plan.Duration)
+
+	user.Enabled = true
+	user.TrafficUsed = 0
+	user.TrafficLimit = plan.TrafficLimit
+	user.ExpiresAt = &newExpireAt
+
+	return s.userRepo.Update(ctx, user)
 }

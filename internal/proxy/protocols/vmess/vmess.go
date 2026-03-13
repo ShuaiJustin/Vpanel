@@ -35,7 +35,7 @@ func (p *Protocol) GenerateConfig(settings *proxy.Settings) (json.RawMessage, er
 	alterId := settings.GetInt("alterId")
 	security := settings.GetString("security")
 	if security == "" {
-		security = "auto"
+		security = "none"
 	}
 
 	config := map[string]any{
@@ -169,7 +169,7 @@ func (p *Protocol) DefaultSettings() map[string]any {
 		"uuid":     uuid.New().String(),
 		"alterId":  0,
 		"network":  "tcp",
-		"security": "auto",
+		"security": "none",
 	}
 }
 

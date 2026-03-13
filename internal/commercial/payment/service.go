@@ -6,25 +6,28 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
+	"v/internal/commercial/balance"
 	"v/internal/commercial/order"
 	"v/internal/logger"
 )
 
 // Common errors
 var (
-	ErrGatewayNotFound    = errors.New("payment gateway not found")
-	ErrOrderNotFound      = errors.New("order not found")
-	ErrOrderNotPending    = errors.New("order is not pending")
-	ErrPaymentFailed      = errors.New("payment failed")
-	ErrRefundFailed       = errors.New("refund failed")
-	ErrDuplicateCallback  = errors.New("duplicate callback")
+	ErrGatewayNotFound   = errors.New("payment gateway not found")
+	ErrOrderNotFound     = errors.New("order not found")
+	ErrOrderNotPending   = errors.New("order is not pending")
+	ErrPaymentFailed     = errors.New("payment failed")
+	ErrRefundFailed      = errors.New("refund failed")
+	ErrDuplicateCallback = errors.New("duplicate callback")
 )
 
 // Service provides payment management operations.
 type Service struct {
 	gateways     map[string]PaymentGateway
 	orderService *order.Service
+	balanceSvc   *balance.Service
 	logger       logger.Logger
 	mu           sync.RWMutex
 
@@ -41,6 +44,12 @@ func NewService(orderService *order.Service, log logger.Logger) *Service {
 		logger:             log,
 		processedCallbacks: make(map[string]bool),
 	}
+}
+
+// WithBalanceService enables direct balance payments without an external gateway.
+func (s *Service) WithBalanceService(balanceSvc *balance.Service) *Service {
+	s.balanceSvc = balanceSvc
+	return s
 }
 
 // RegisterGateway registers a payment gateway.
@@ -72,6 +81,9 @@ func (s *Service) ListGateways() []string {
 	for name := range s.gateways {
 		names = append(names, name)
 	}
+	if s.balanceSvc != nil {
+		names = append(names, "balance")
+	}
 	return names
 }
 
@@ -86,6 +98,10 @@ func (s *Service) CreatePayment(ctx context.Context, orderNo string, method stri
 	// Check order status
 	if ord.Status != order.StatusPending {
 		return nil, ErrOrderNotPending
+	}
+
+	if method == "balance" {
+		return s.createBalancePayment(ctx, ord)
 	}
 
 	// Get gateway
@@ -117,6 +133,40 @@ func (s *Service) CreatePayment(ctx context.Context, orderNo string, method stri
 		logger.F("method", method))
 
 	return request, nil
+}
+
+func (s *Service) createBalancePayment(ctx context.Context, ord *order.Order) (*PaymentRequest, error) {
+	if s.balanceSvc == nil {
+		return nil, ErrGatewayNotFound
+	}
+
+	if err := s.balanceSvc.Deduct(ctx, ord.UserID, ord.PayAmount, &ord.ID, fmt.Sprintf("Balance payment for order %s", ord.OrderNo)); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrPaymentFailed, err)
+	}
+
+	paymentNo := fmt.Sprintf("BALANCE-%d", time.Now().UnixNano())
+	if err := s.orderService.MarkPaid(ctx, ord.OrderNo, paymentNo); err != nil {
+		_ = s.balanceSvc.Refund(ctx, ord.UserID, ord.PayAmount, &ord.ID, "Rollback failed balance payment")
+		return nil, err
+	}
+
+	if updatedOrder, err := s.orderService.GetByOrderNo(ctx, ord.OrderNo); err == nil {
+		_ = s.orderService.Complete(ctx, updatedOrder.ID)
+	}
+
+	s.logger.Info("Balance payment completed",
+		logger.F("orderNo", ord.OrderNo),
+		logger.F("user_id", ord.UserID),
+		logger.F("amount", ord.PayAmount))
+
+	return &PaymentRequest{
+		ExpireTime: time.Now(),
+		Extra: map[string]string{
+			"method":     "balance",
+			"payment_no": paymentNo,
+			"status":     order.StatusCompleted,
+		},
+	}, nil
 }
 
 // HandleCallback handles a payment callback.

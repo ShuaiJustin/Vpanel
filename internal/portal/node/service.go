@@ -54,10 +54,15 @@ type SortOption struct {
 
 // ListNodes retrieves available nodes for a user with optional filtering.
 func (s *Service) ListNodes(ctx context.Context, userID int64, filter *NodeFilter) ([]*Node, error) {
-	// Get user's proxies
 	proxies, err := s.proxyRepo.GetByUserID(ctx, userID, 1000, 0)
 	if err != nil {
 		return nil, err
+	}
+	if len(proxies) == 0 {
+		proxies, err = s.proxyRepo.GetEnabled(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	nodes := make([]*Node, 0, len(proxies))

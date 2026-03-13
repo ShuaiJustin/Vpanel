@@ -9,8 +9,8 @@ import (
 	"v/internal/auth"
 	"v/internal/database/repository"
 	"v/internal/logger"
-	pkgerrors "v/pkg/errors"
 	portalauth "v/internal/portal/auth"
+	pkgerrors "v/pkg/errors"
 )
 
 // PortalAuthHandler handles portal authentication requests.
@@ -246,6 +246,9 @@ func (h *PortalAuthHandler) GetProfile(c *gin.Context) {
 	availableNodes := 0
 	if h.proxyRepo != nil {
 		proxies, err := h.proxyRepo.GetByUserID(c.Request.Context(), userID.(int64), 1000, 0)
+		if err == nil && len(proxies) == 0 {
+			proxies, err = h.proxyRepo.GetEnabled(c.Request.Context())
+		}
 		if err == nil {
 			for _, proxy := range proxies {
 				if proxy.Enabled {

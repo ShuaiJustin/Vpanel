@@ -333,8 +333,7 @@ func (s *Service) DetectClientFormat(userAgent string) ClientFormat {
 
 // GetUserEnabledProxies returns all enabled proxies for a user.
 func (s *Service) GetUserEnabledProxies(ctx context.Context, userID int64) ([]*repository.Proxy, error) {
-	// Get all proxies for the user (with a large limit to get all)
-	proxies, err := s.proxyRepo.GetByUserID(ctx, userID, 10000, 0)
+	proxies, err := s.getAccessibleProxies(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -378,6 +377,19 @@ func (s *Service) GetUserEnabledProxies(ctx context.Context, userID int64) ([]*r
 	}
 
 	return enabledProxies, nil
+}
+
+func (s *Service) getAccessibleProxies(ctx context.Context, userID int64) ([]*repository.Proxy, error) {
+	proxies, err := s.proxyRepo.GetByUserID(ctx, userID, 10000, 0)
+	if err != nil {
+		return nil, err
+	}
+	if len(proxies) > 0 {
+		return proxies, nil
+	}
+
+	// Shared-node deployments expose global enabled proxies rather than per-user copies.
+	return s.proxyRepo.GetEnabled(ctx)
 }
 
 // FilterProxies filters proxies based on content options.

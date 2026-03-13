@@ -1158,7 +1158,7 @@ const buildProxyPayload = () => {
         alterId: inboundForm.vmess_aid,
         ...transportPayload,
         ...(selectedNodeShareServer ? { server: selectedNodeShareServer } : {}),
-        security: tlsSettingsEnabled.value ? 'tls' : 'auto',
+        security: tlsSettingsEnabled.value ? 'tls' : 'none',
         ...tlsPayload
       }
       break

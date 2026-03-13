@@ -171,8 +171,8 @@ func (r *Router) Setup() {
 	planService := plan.NewService(r.repos.Plan, r.logger)
 	balanceService := balance.NewService(r.repos.Balance, r.logger)
 	couponService := coupon.NewService(r.repos.Coupon, r.logger)
-	orderService := order.NewService(r.repos.Order, r.repos.Plan, r.logger, nil)
-	paymentService := payment.NewService(orderService, r.logger)
+	orderService := order.NewService(r.repos.Order, r.repos.Plan, r.logger, nil).WithUserRepository(r.repos.User)
+	paymentService := payment.NewService(orderService, r.logger).WithBalanceService(balanceService)
 
 	// Create payment retry service
 	retryService := payment.NewRetryService(r.repos.Order, paymentService, nil, r.logger)
