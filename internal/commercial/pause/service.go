@@ -11,11 +11,13 @@ import (
 	"v/pkg/errors"
 )
 
+const permanentPauseRemainingDays = -1
+
 // Config holds pause service configuration.
 type Config struct {
-	Enabled        bool   `json:"enabled"`
-	MaxDuration    int    `json:"max_duration"`     // days, default 30
-	MaxPerCycle    int    `json:"max_per_cycle"`    // times per billing cycle, default 1
+	Enabled        bool    `json:"enabled"`
+	MaxDuration    int     `json:"max_duration"`     // days, default 30
+	MaxPerCycle    int     `json:"max_per_cycle"`    // times per billing cycle, default 1
 	AllowedPlanIDs []int64 `json:"allowed_plan_ids"` // empty = all plans
 }
 
@@ -38,12 +40,12 @@ type PauseResult struct {
 
 // PauseStatus represents the current pause status for a user.
 type PauseStatus struct {
-	IsPaused         bool                          `json:"is_paused"`
-	Pause            *repository.SubscriptionPause `json:"pause,omitempty"`
-	CanPause         bool                          `json:"can_pause"`
-	CannotPauseReason string                       `json:"cannot_pause_reason,omitempty"`
-	RemainingPauses  int                           `json:"remaining_pauses"`
-	MaxDuration      int                           `json:"max_duration_days"`
+	IsPaused          bool                          `json:"is_paused"`
+	Pause             *repository.SubscriptionPause `json:"pause,omitempty"`
+	CanPause          bool                          `json:"can_pause"`
+	CannotPauseReason string                        `json:"cannot_pause_reason,omitempty"`
+	RemainingPauses   int                           `json:"remaining_pauses"`
+	MaxDuration       int                           `json:"max_duration_days"`
 }
 
 // Service provides subscription pause operations.
@@ -125,8 +127,8 @@ func (s *Service) CanPause(ctx context.Context, userID int64) (bool, string) {
 		return false, "用户校验失败"
 	}
 
-	// Check if user has an active subscription
-	if user.ExpiresAt == nil || user.ExpiresAt.Before(time.Now()) {
+	// Permanent subscriptions are also valid. Only an explicit expiration in the past is invalid.
+	if user.ExpiresAt != nil && user.ExpiresAt.Before(time.Now()) {
 		return false, "当前无有效订阅"
 	}
 
@@ -209,6 +211,8 @@ func (s *Service) Pause(ctx context.Context, userID int64) (*PauseResult, error)
 		if remainingDays < 1 {
 			remainingDays = 1 // At least 1 day
 		}
+	} else if user.ExpiresAt == nil {
+		remainingDays = permanentPauseRemainingDays
 	}
 
 	remainingTraffic := user.TrafficLimit - user.TrafficUsed
@@ -274,10 +278,14 @@ func (s *Service) Resume(ctx context.Context, userID int64) error {
 
 	// Calculate new expiration date
 	now := time.Now()
-	newExpiresAt := now.AddDate(0, 0, pause.RemainingDays)
+	var newExpiresAt *time.Time
+	if pause.RemainingDays >= 0 {
+		resumeAt := now.AddDate(0, 0, pause.RemainingDays)
+		newExpiresAt = &resumeAt
+	}
 
 	// Update user
-	user.ExpiresAt = &newExpiresAt
+	user.ExpiresAt = newExpiresAt
 	// Restore traffic (reset used traffic based on remaining)
 	if user.TrafficLimit > 0 {
 		user.TrafficUsed = user.TrafficLimit - pause.RemainingTraffic

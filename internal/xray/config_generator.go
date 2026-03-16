@@ -12,6 +12,11 @@ import (
 	apperrors "v/pkg/errors"
 )
 
+const (
+	apiInboundPortBase = 63000
+	apiInboundPortSpan = 2048
+)
+
 // ConfigGenerator generates Xray configurations for nodes.
 type ConfigGenerator struct {
 	proxyRepo repository.ProxyRepository
@@ -181,7 +186,7 @@ func (g *ConfigGenerator) GenerateForNode(ctx context.Context, nodeID int64) (*X
 				StatsOutboundDownlink: true,
 			},
 		},
-		Inbounds:  g.generateInbounds(ctx, allProxies),
+		Inbounds:  g.generateInbounds(ctx, nodeID, allProxies),
 		Outbounds: g.generateOutbounds(),
 		Routing:   g.generateRouting(),
 	}
@@ -190,13 +195,15 @@ func (g *ConfigGenerator) GenerateForNode(ctx context.Context, nodeID int64) (*X
 }
 
 // generateInbounds generates inbound configurations from proxies.
-func (g *ConfigGenerator) generateInbounds(ctx context.Context, proxies []*repository.Proxy) []InboundConfig {
+func (g *ConfigGenerator) generateInbounds(ctx context.Context, nodeID int64, proxies []*repository.Proxy) []InboundConfig {
+	apiPort := resolveAPIInboundPort(nodeID, proxies)
+
 	inbounds := []InboundConfig{
 		// API inbound for stats
 		{
 			Tag:      "api",
 			Listen:   "127.0.0.1",
-			Port:     62789,
+			Port:     apiPort,
 			Protocol: "dokodemo-door",
 			Settings: map[string]any{
 				"address": "127.0.0.1",
@@ -213,6 +220,31 @@ func (g *ConfigGenerator) generateInbounds(ctx context.Context, proxies []*repos
 	}
 
 	return inbounds
+}
+
+func resolveAPIInboundPort(nodeID int64, proxies []*repository.Proxy) int {
+	usedPorts := make(map[int]struct{}, len(proxies))
+	for _, proxy := range proxies {
+		if proxy == nil || proxy.Port <= 0 {
+			continue
+		}
+		usedPorts[proxy.Port] = struct{}{}
+	}
+
+	startOffset := 0
+	if nodeID > 0 {
+		startOffset = int(nodeID % apiInboundPortSpan)
+	}
+
+	for i := 0; i < apiInboundPortSpan; i++ {
+		candidate := apiInboundPortBase + ((startOffset + i) % apiInboundPortSpan)
+		if _, exists := usedPorts[candidate]; exists {
+			continue
+		}
+		return candidate
+	}
+
+	return apiInboundPortBase
 }
 
 // proxyToInbound converts a proxy to an Xray inbound configuration.

@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"runtime"
 	"strconv"
@@ -103,6 +104,10 @@ type CommandResultRequest struct {
 	Success   bool   `json:"success"`
 	Message   string `json:"message"`
 	Data      any    `json:"data,omitempty"`
+}
+
+type nodeSyncStatusUpdater interface {
+	UpdateSyncStatus(ctx context.Context, id int64, status string, syncedAt *time.Time) error
 }
 
 // Register handles node registration requests.
@@ -320,6 +325,14 @@ func (h *NodeAgentHandler) ReportCommandResult(c *gin.Context) {
 		logger.F("success", req.Success),
 		logger.F("message", req.Message))
 
+	if err := updateNodeSyncStatusFromCommandResult(c.Request.Context(), h.nodeRepo, nodeData.ID, commandType, req.Success); err != nil {
+		h.logger.Error("Failed to update node sync status from command result",
+			logger.F("node_id", nodeData.ID),
+			logger.F("command_id", req.CommandID),
+			logger.F("command_type", commandType),
+			logger.F("error", err.Error()))
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Result received",
@@ -456,4 +469,23 @@ func truncateToken(token string) string {
 		return "***"
 	}
 	return token[:4] + "..." + token[len(token)-4:]
+}
+
+func updateNodeSyncStatusFromCommandResult(
+	ctx context.Context,
+	nodeRepo nodeSyncStatusUpdater,
+	nodeID int64,
+	commandType string,
+	success bool,
+) error {
+	if nodeRepo == nil || nodeID <= 0 || commandType != commandTypeConfigSync {
+		return nil
+	}
+
+	if success {
+		syncedAt := time.Now()
+		return nodeRepo.UpdateSyncStatus(ctx, nodeID, repository.NodeSyncStatusSynced, &syncedAt)
+	}
+
+	return nodeRepo.UpdateSyncStatus(ctx, nodeID, repository.NodeSyncStatusFailed, nil)
 }

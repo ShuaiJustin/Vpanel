@@ -1,102 +1,130 @@
 #!/bin/sh
 set -e
 
-# V Panel Docker Entrypoint Script
+APP_ROOT="/app"
+CONFIG_DIR="${APP_ROOT}/configs"
+DATA_DIR="${APP_ROOT}/data"
+LOG_DIR="${APP_ROOT}/logs"
+XRAY_DIR="${APP_ROOT}/xray"
+DEFAULT_DB_PATH="${DATA_DIR}/v.db"
+DB_PATH="${V_DB_PATH:-${DEFAULT_DB_PATH}}"
+ACME_HOME="${HOME}/.acme.sh"
+ACME_SCRIPT="${ACME_HOME}/acme.sh"
+ACME_INSTALLER="/tmp/acme.sh"
 
-echo "Starting V Panel..."
+log() {
+    echo "$@"
+}
 
-# 安装 acme.sh（如果未安装）
-if [ ! -f "$HOME/.acme.sh/acme.sh" ]; then
-    echo "Installing acme.sh..."
-    ACME_INSTALL_SCRIPT="/tmp/acme-install.sh"
-    if wget -q -O "$ACME_INSTALL_SCRIPT" -t 3 -T 10 https://get.acme.sh; then
-        # 不使用示例邮箱（example.com 会被 Let's Encrypt 拒绝）
-        if [ -n "${ACME_EMAIL}" ]; then
-            sh "$ACME_INSTALL_SCRIPT" email="${ACME_EMAIL}" || true
-        else
-            sh "$ACME_INSTALL_SCRIPT" || true
-        fi
-        rm -f "$ACME_INSTALL_SCRIPT"
-    else
-        rm -f "$ACME_INSTALL_SCRIPT"
-        echo "⚠ acme.sh script download failed, will retry on first certificate request"
+install_acme() {
+    if [ "${VPANEL_ACME_AUTO_INSTALL:-1}" = "0" ]; then
+        log "Skipping acme.sh bootstrap because VPANEL_ACME_AUTO_INSTALL=0"
+        return
     fi
 
-    if [ -f "$HOME/.acme.sh/acme.sh" ]; then
-        echo "✓ acme.sh installed successfully"
-        # 设置默认 CA
-        "$HOME/.acme.sh/acme.sh" --set-default-ca --server letsencrypt 2>/dev/null || true
-    else
-        echo "⚠ acme.sh installation failed, will retry on first certificate request"
+    if [ -f "${ACME_SCRIPT}" ]; then
+        return
     fi
-fi
 
-# 生产环境安全检查
-if [ "${V_SERVER_MODE}" = "release" ]; then
-    echo "Production mode detected, performing security checks..."
-    
-    # 检查 JWT Secret
+    log "Installing acme.sh..."
+    mkdir -p "${ACME_HOME}"
+
+    if ! wget -q -O "${ACME_INSTALLER}" -t 2 -T 10 https://raw.githubusercontent.com/acmesh-official/acme.sh/master/acme.sh; then
+        rm -f "${ACME_INSTALLER}"
+        log "⚠ acme.sh script download failed, will retry on first certificate request"
+        return
+    fi
+
+    if [ -n "${ACME_EMAIL}" ]; then
+        sh "${ACME_INSTALLER}" --install --home "${ACME_HOME}" --accountemail "${ACME_EMAIL}" >/tmp/acme-install.log 2>&1 || true
+    else
+        sh "${ACME_INSTALLER}" --install --home "${ACME_HOME}" >/tmp/acme-install.log 2>&1 || true
+    fi
+
+    rm -f "${ACME_INSTALLER}"
+
+    if [ -f "${ACME_SCRIPT}" ]; then
+        log "✓ acme.sh installed successfully"
+        "${ACME_SCRIPT}" --set-default-ca --server letsencrypt >/dev/null 2>&1 || true
+        return
+    fi
+
+    log "⚠ acme.sh installation failed, will retry on first certificate request"
+    if [ -f /tmp/acme-install.log ]; then
+        tail -n 20 /tmp/acme-install.log || true
+    fi
+}
+
+validate_release_settings() {
+    if [ "${V_SERVER_MODE}" != "release" ]; then
+        return
+    fi
+
+    log "Production mode detected, performing security checks..."
+
     if [ -z "${V_JWT_SECRET}" ] || \
        [ "${V_JWT_SECRET}" = "CHANGE_ME_OR_AUTO_GENERATE_ON_FIRST_START" ] || \
        [ "${V_JWT_SECRET}" = "CHANGE_ME_OR_SYSTEM_WILL_REFUSE_TO_START" ] || \
        [ "${V_JWT_SECRET}" = "your-secure-jwt-secret-change-me" ] || \
        [ "${V_JWT_SECRET}" = "change-me-in-production" ]; then
-        echo "ERROR: JWT_SECRET is not configured or using default value!"
-        echo "Please set a secure JWT_SECRET in your .env file"
-        echo "Generate one with: openssl rand -base64 32"
+        log "ERROR: JWT_SECRET is not configured or using default value!"
+        log "Please set a secure JWT_SECRET in your .env file"
+        log "Generate one with: openssl rand -base64 32"
         exit 1
     fi
-    
-    # 检查 JWT Secret 长度
+
     JWT_LEN=$(echo -n "${V_JWT_SECRET}" | wc -c | tr -d ' ')
     if [ "${JWT_LEN}" -lt 32 ]; then
-        echo "ERROR: JWT_SECRET is too short (${JWT_LEN} chars, minimum 32 required)"
+        log "ERROR: JWT_SECRET is too short (${JWT_LEN} chars, minimum 32 required)"
         exit 1
     fi
-    
-    # 检查管理员密码
+
     if [ -z "${V_ADMIN_PASS}" ] || \
        [ "${V_ADMIN_PASS}" = "CHANGE_ME_OR_AUTO_GENERATE_ON_FIRST_START" ] || \
        [ "${V_ADMIN_PASS}" = "CHANGE_ME_OR_SYSTEM_WILL_REFUSE_TO_START" ] || \
        [ "${V_ADMIN_PASS}" = "admin123" ] || \
        [ "${V_ADMIN_PASS}" = "your-secure-admin-password" ]; then
-        echo "ERROR: Admin password is not configured or using default value!"
-        echo "Please set a secure password in your .env file"
+        log "ERROR: Admin password is not configured or using default value!"
+        log "Please set a secure password in your .env file"
         exit 1
     fi
-    
-    # 检查密码长度
+
     PASS_LEN=$(echo -n "${V_ADMIN_PASS}" | wc -c | tr -d ' ')
     if [ "${PASS_LEN}" -lt 12 ]; then
-        echo "ERROR: Admin password is too short (${PASS_LEN} chars, minimum 12 required)"
+        log "ERROR: Admin password is too short (${PASS_LEN} chars, minimum 12 required)"
         exit 1
     fi
-    
-    echo "✓ Security checks passed"
-fi
 
-# Create config from example if not exists
-if [ ! -f /app/configs/config.yaml ]; then
-    echo "Creating default configuration..."
-    cp /app/configs/config.yaml.example /app/configs/config.yaml
-fi
+    log "✓ Security checks passed"
+}
 
-# Ensure data directory exists and has correct permissions
-mkdir -p /app/data /app/logs
+prepare_runtime() {
+    mkdir -p "${CONFIG_DIR}" "${DATA_DIR}" "${LOG_DIR}" "${XRAY_DIR}" "$(dirname "${DB_PATH}")"
 
-# Initialize database if needed
-if [ ! -f /app/data/v.db ]; then
-    echo "Initializing database..."
-    touch /app/data/v.db
-fi
+    if [ ! -f "${CONFIG_DIR}/config.yaml" ]; then
+        log "Creating default configuration..."
+        cp "${CONFIG_DIR}/config.yaml.example" "${CONFIG_DIR}/config.yaml"
+    fi
 
-# Print startup information
-echo "Configuration:"
-echo "  Server Host: ${V_SERVER_HOST:-0.0.0.0}"
-echo "  Server Port: ${V_SERVER_PORT:-8080}"
-echo "  Server Mode: ${V_SERVER_MODE:-release}"
-echo "  Log Level: ${V_LOG_LEVEL:-info}"
-echo "  Database: ${V_DB_PATH:-/app/data/v.db}"
+    if [ ! -f "${DB_PATH}" ]; then
+        log "Initializing database..."
+        touch "${DB_PATH}"
+    fi
+}
 
-# Execute the main command
+print_config() {
+    log "Configuration:"
+    log "  Server Host: ${V_SERVER_HOST:-0.0.0.0}"
+    log "  Server Port: ${V_SERVER_PORT:-8080}"
+    log "  Server Mode: ${V_SERVER_MODE:-release}"
+    log "  Log Level: ${V_LOG_LEVEL:-info}"
+    log "  Database: ${DB_PATH}"
+}
+
+log "Starting V Panel..."
+install_acme
+validate_release_settings
+prepare_runtime
+print_config
+
 exec "$@"

@@ -26,7 +26,7 @@
         <div class="pause-details">
           <div class="detail-item">
             <span class="label">剩余天数</span>
-            <span class="value">{{ pauseStore.activePause?.remaining_days || 0 }} 天</span>
+            <span class="value">{{ formatRemainingDays(pauseStore.activePause?.remaining_days) }}</span>
           </div>
           <div class="detail-item">
             <span class="label">剩余流量</span>
@@ -161,6 +161,11 @@ function formatTraffic(bytes) {
     i++
   }
   return `${size.toFixed(2)} ${units[i]}`
+}
+
+function formatRemainingDays(days) {
+  if (typeof days === 'number' && days < 0) return '永久'
+  return `${days || 0} 天`
 }
 
 async function handlePause() {
