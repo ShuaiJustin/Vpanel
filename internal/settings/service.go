@@ -25,10 +25,13 @@ type SystemSettings struct {
 	PanelAPIDomain string `json:"panel_api_domain"` // 面板 API 域名
 
 	// SMTP settings
-	SMTPHost     string `json:"smtp_host"`
-	SMTPPort     int    `json:"smtp_port"`
-	SMTPUser     string `json:"smtp_user"`
-	SMTPPassword string `json:"-"` // Hidden in JSON responses
+	SMTPHost               string `json:"smtp_host"`
+	SMTPPort               int    `json:"smtp_port"`
+	SMTPUser               string `json:"smtp_user"`
+	SMTPFrom               string `json:"smtp_from"`
+	SMTPAlertEmail         string `json:"smtp_alert_email"`
+	SMTPPassword           string `json:"-"` // Hidden in JSON responses
+	SMTPPasswordConfigured bool   `json:"smtp_password_configured"`
 
 	// Telegram settings
 	TelegramBotToken string `json:"-"` // Hidden in JSON responses
@@ -211,8 +214,15 @@ func (s *Service) GetSystemSettings(ctx context.Context) (*SystemSettings, error
 	if v, ok := allSettings["smtp_user"]; ok {
 		settings.SMTPUser = v
 	}
+	if v, ok := allSettings["smtp_from"]; ok {
+		settings.SMTPFrom = v
+	}
+	if v, ok := allSettings["smtp_alert_email"]; ok {
+		settings.SMTPAlertEmail = v
+	}
 	if v, ok := allSettings["smtp_password"]; ok {
 		settings.SMTPPassword = v
+		settings.SMTPPasswordConfigured = v != ""
 	}
 	if v, ok := allSettings["telegram_bot_token"]; ok {
 		settings.TelegramBotToken = v
@@ -317,6 +327,8 @@ func (s *Service) UpdateSystemSettings(ctx context.Context, settings *SystemSett
 		updates["smtp_port"] = string(data)
 	}
 	updates["smtp_user"] = settings.SMTPUser
+	updates["smtp_from"] = settings.SMTPFrom
+	updates["smtp_alert_email"] = settings.SMTPAlertEmail
 	if settings.SMTPPassword != "" {
 		updates["smtp_password"] = settings.SMTPPassword
 	}

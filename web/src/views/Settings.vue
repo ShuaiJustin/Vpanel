@@ -124,6 +124,64 @@
         </el-form>
       </el-tab-pane>
 
+      <el-tab-pane label="邮箱配置" name="email">
+        <el-form :model="emailForm" label-width="140px" class="settings-form">
+          <el-alert
+            title="邮箱配置用于注册验证、密码重置和系统提醒"
+            type="info"
+            :closable="false"
+            show-icon
+            style="margin-bottom: 20px"
+          />
+
+          <el-form-item label="SMTP 服务器">
+            <el-input v-model="emailForm.host" placeholder="例如：smtp.qq.com" />
+          </el-form-item>
+          <el-form-item label="SMTP 端口">
+            <el-input-number v-model="emailForm.port" :min="1" :max="65535" />
+            <div class="form-tips">常见端口为 465 / 587 / 25</div>
+          </el-form-item>
+          <el-form-item label="SMTP 用户名">
+            <el-input v-model="emailForm.user" placeholder="通常为邮箱地址" />
+          </el-form-item>
+          <el-form-item label="发件邮箱">
+            <el-input
+              v-model="emailForm.from"
+              placeholder="留空则默认使用 SMTP 用户名"
+            />
+            <div class="form-tips">用于注册验证、重置密码等系统邮件的发件人地址</div>
+          </el-form-item>
+          <el-form-item label="告警收件邮箱">
+            <el-input
+              v-model="emailForm.alertEmail"
+              placeholder="留空则默认发到 SMTP 用户名"
+            />
+            <div class="form-tips">用于节点异常、系统提醒等后台告警邮件</div>
+          </el-form-item>
+          <el-form-item label="SMTP 密码">
+            <el-input
+              v-model="emailForm.password"
+              type="password"
+              show-password
+              :placeholder="emailForm.passwordConfigured ? '已配置，留空则保持不变' : '请输入 SMTP 密码或授权码'"
+            />
+          </el-form-item>
+          <el-form-item label="测试收件邮箱">
+            <el-input
+              v-model="emailForm.testTo"
+              placeholder="留空则发送到告警收件邮箱或 SMTP 用户名"
+            />
+          </el-form-item>
+
+          <el-divider></el-divider>
+          <el-form-item>
+            <el-button type="primary" :loading="emailForm.saving" @click="saveEmailSettings">保存邮箱配置</el-button>
+            <el-button :loading="emailForm.loading" @click="loadEmailSettings">刷新</el-button>
+            <el-button type="success" :loading="emailForm.testing" @click="testEmailSettings">发送测试邮件</el-button>
+          </el-form-item>
+        </el-form>
+      </el-tab-pane>
+
       <el-tab-pane label="支付设置" name="payment">
         <el-form :model="paymentForm" label-width="140px" class="settings-form">
           <el-alert
@@ -833,6 +891,20 @@ const logForm = reactive({
   enableOperationLog: true
 })
 
+const emailForm = reactive({
+  loading: false,
+  saving: false,
+  testing: false,
+  host: '',
+  port: 587,
+  user: '',
+  from: '',
+  alertEmail: '',
+  password: '',
+  passwordConfigured: false,
+  testTo: ''
+})
+
 const paymentForm = reactive({
   loading: false,
   saving: false,
@@ -1218,6 +1290,7 @@ onMounted(async () => {
     // 加载Xray版本和支付设置
     await Promise.allSettled([
       refreshXrayVersions(),
+      loadEmailSettings(),
       loadPaymentSettings()
     ]);
     
@@ -1644,6 +1717,70 @@ const saveLogSettings = async () => {
     ElMessage.success('日志配置保存成功')
   } catch (error) {
     ElMessage.error('保存失败：' + error.message)
+  }
+}
+
+const applyEmailSettings = (settings) => {
+  emailForm.host = settings?.smtp_host || ''
+  emailForm.port = settings?.smtp_port || 587
+  emailForm.user = settings?.smtp_user || ''
+  emailForm.from = settings?.smtp_from || ''
+  emailForm.alertEmail = settings?.smtp_alert_email || ''
+  emailForm.password = ''
+  emailForm.passwordConfigured = settings?.smtp_password_configured ?? false
+}
+
+const loadEmailSettings = async () => {
+  emailForm.loading = true
+  try {
+    const response = await api.get('/settings')
+    applyEmailSettings(response?.data || {})
+  } catch (error) {
+    console.error('Failed to load email settings:', error)
+    ElMessage.error('加载邮箱配置失败')
+  } finally {
+    emailForm.loading = false
+  }
+}
+
+const saveEmailSettings = async () => {
+  emailForm.saving = true
+  try {
+    const payload = {
+      smtp_host: emailForm.host.trim(),
+      smtp_port: emailForm.port,
+      smtp_user: emailForm.user.trim(),
+      smtp_from: emailForm.from.trim(),
+      smtp_alert_email: emailForm.alertEmail.trim()
+    }
+
+    if (emailForm.password.trim()) {
+      payload.smtp_password = emailForm.password.trim()
+    }
+
+    const response = await api.put('/settings', payload)
+    applyEmailSettings(response?.data || {})
+    ElMessage.success('邮箱配置保存成功')
+  } catch (error) {
+    console.error('Failed to save email settings:', error)
+    ElMessage.error(error.message || '保存邮箱配置失败')
+  } finally {
+    emailForm.saving = false
+  }
+}
+
+const testEmailSettings = async () => {
+  emailForm.testing = true
+  try {
+    await api.post('/settings/test-email', {
+      to: emailForm.testTo.trim()
+    })
+    ElMessage.success('测试邮件已发送，请检查收件箱')
+  } catch (error) {
+    console.error('Failed to send test email:', error)
+    ElMessage.error(error.message || '发送测试邮件失败')
+  } finally {
+    emailForm.testing = false
   }
 }
 

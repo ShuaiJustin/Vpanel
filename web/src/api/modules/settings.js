@@ -19,6 +19,14 @@ export const settingsApi = {
   update: (data) => api.put('/settings', data),
 
   /**
+   * 发送测试邮件
+   * @param {Object} data - 测试邮件参数
+   * @param {string} [data.to] - 收件人邮箱
+   * @returns {Promise<Object>} 发送结果
+   */
+  testEmail: (data) => api.post('/settings/test-email', data),
+
+  /**
    * 创建设置备份
    * @returns {Promise<Object>} 备份信息
    */

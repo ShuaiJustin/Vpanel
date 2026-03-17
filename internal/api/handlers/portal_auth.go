@@ -3,6 +3,8 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -19,9 +21,31 @@ type PortalAuthHandler struct {
 	authService       *auth.Service
 	userRepo          repository.UserRepository
 	proxyRepo         repository.ProxyRepository
+	emailSender       portalEmailSender
+	baseURL           string
 	rateLimiter       *portalauth.RateLimiter
 	rateLimitConfig   portalauth.RateLimitConfig
 	logger            logger.Logger
+}
+
+type portalEmailSender interface {
+	CanSendEmail() bool
+	SendEmail(to, subject, body string) error
+}
+
+func (h *PortalAuthHandler) updateLastLogin(ctx *gin.Context, userID int64) {
+	user, err := h.userRepo.GetByID(ctx.Request.Context(), userID)
+	if err != nil {
+		h.logger.Warn("failed to load user for last login update", logger.F("user_id", userID), logger.F("error", err))
+		return
+	}
+
+	now := time.Now().UTC()
+	user.LastLoginAt = &now
+	user.LastLoginIP = ctx.ClientIP()
+	if err := h.userRepo.Update(ctx.Request.Context(), user); err != nil {
+		h.logger.Warn("failed to update portal user last login", logger.F("user_id", userID), logger.F("error", err))
+	}
 }
 
 // NewPortalAuthHandler creates a new PortalAuthHandler.
@@ -41,6 +65,37 @@ func NewPortalAuthHandler(
 		rateLimitConfig:   portalauth.DefaultRateLimitConfig(),
 		logger:            log,
 	}
+}
+
+// WithEmailSender configures a mail sender for verification and reset emails.
+func (h *PortalAuthHandler) WithEmailSender(sender portalEmailSender, baseURL string) *PortalAuthHandler {
+	h.emailSender = sender
+	h.baseURL = strings.TrimSuffix(baseURL, "/")
+	return h
+}
+
+func (h *PortalAuthHandler) sendVerificationEmail(email, token string) error {
+	if h.emailSender == nil || !h.emailSender.CanSendEmail() || email == "" || token == "" || h.baseURL == "" {
+		return nil
+	}
+
+	verifyURL := h.baseURL + "/user/login?verify_email_token=" + token
+	subject := "请验证您的邮箱"
+	body := "欢迎注册 V Panel。\n\n请点击以下链接验证您的邮箱（24 小时内有效）：\n" + verifyURL + "\n\n如果这不是您的操作，请忽略此邮件。"
+
+	return h.emailSender.SendEmail(email, subject, body)
+}
+
+func (h *PortalAuthHandler) sendPasswordResetEmail(email, token string) error {
+	if h.emailSender == nil || !h.emailSender.CanSendEmail() || email == "" || token == "" || h.baseURL == "" {
+		return nil
+	}
+
+	resetURL := h.baseURL + "/user/reset-password?token=" + token
+	subject := "重置您的密码"
+	body := "我们收到了您的密码重置请求。\n\n请点击以下链接设置新密码（1 小时内有效）：\n" + resetURL + "\n\n如果这不是您的操作，请忽略此邮件。"
+
+	return h.emailSender.SendEmail(email, subject, body)
 }
 
 // PortalRegisterRequest represents a registration request.
@@ -72,10 +127,23 @@ func (h *PortalAuthHandler) Register(c *gin.Context) {
 		return
 	}
 
+	emailVerificationSent := false
+	if h.emailSender != nil && h.emailSender.CanSendEmail() {
+		token, tokenErr := h.portalAuthService.CreateEmailVerificationToken(c.Request.Context(), result.UserID, result.Email)
+		if tokenErr != nil {
+			h.logger.Warn("failed to create email verification token", logger.F("user_id", result.UserID), logger.F("error", tokenErr))
+		} else if err := h.sendVerificationEmail(result.Email, token); err != nil {
+			h.logger.Warn("failed to send verification email", logger.F("user_id", result.UserID), logger.F("error", err))
+		} else {
+			emailVerificationSent = true
+		}
+	}
+
 	h.logger.Info("user registered via portal", logger.F("user_id", result.UserID), logger.F("username", result.Username))
 
 	c.JSON(http.StatusCreated, gin.H{
-		"message": "注册成功",
+		"message":                 "注册成功",
+		"need_email_verification": emailVerificationSent,
 		"user": gin.H{
 			"id":       result.UserID,
 			"username": result.Username,
@@ -129,6 +197,7 @@ func (h *PortalAuthHandler) Login(c *gin.Context) {
 	}
 
 	h.logger.Info("user logged in via portal", logger.F("user_id", result.UserID))
+	h.updateLastLogin(c, result.UserID)
 
 	c.JSON(http.StatusOK, gin.H{
 		"token": result.Token,
@@ -170,9 +239,11 @@ func (h *PortalAuthHandler) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	// In production, send email with token
-	// For now, just return success (don't reveal if email exists)
-	_ = token
+	if token != "" {
+		if err := h.sendPasswordResetEmail(req.Email, token); err != nil {
+			h.logger.Warn("failed to send password reset email", logger.F("email", req.Email), logger.F("error", err))
+		}
+	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "如果该邮箱已注册，您将收到密码重置邮件"})
 }
@@ -431,6 +502,8 @@ func (h *PortalAuthHandler) Verify2FALogin(c *gin.Context) {
 		h.handleError(c, err)
 		return
 	}
+
+	h.updateLastLogin(c, result.UserID)
 
 	c.JSON(http.StatusOK, gin.H{
 		"token": result.Token,

@@ -15,12 +15,12 @@ import (
 type NotificationType string
 
 const (
-	NotificationNewDevice         NotificationType = "new_device"
-	NotificationIPLimitReached    NotificationType = "ip_limit_reached"
-	NotificationSuspiciousIP      NotificationType = "suspicious_ip"
-	NotificationDeviceKicked      NotificationType = "device_kicked"
-	NotificationAutoBlacklisted   NotificationType = "auto_blacklisted"
-	NotificationNodeStatusChange  NotificationType = "node_status_change"
+	NotificationNewDevice        NotificationType = "new_device"
+	NotificationIPLimitReached   NotificationType = "ip_limit_reached"
+	NotificationSuspiciousIP     NotificationType = "suspicious_ip"
+	NotificationDeviceKicked     NotificationType = "device_kicked"
+	NotificationAutoBlacklisted  NotificationType = "auto_blacklisted"
+	NotificationNodeStatusChange NotificationType = "node_status_change"
 )
 
 // NotificationChannel represents the notification channel
@@ -39,6 +39,7 @@ type NotificationConfig struct {
 	SMTPUser     string
 	SMTPPassword string
 	SMTPFrom     string
+	AdminEmail   string
 
 	// Telegram settings
 	TelegramBotToken string
@@ -94,6 +95,29 @@ func (s *Service) UpdateConfig(config *NotificationConfig) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.config = config
+}
+
+// CanSendEmail returns whether SMTP is configured well enough to send email.
+func (s *Service) CanSendEmail() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.config != nil &&
+		strings.TrimSpace(s.config.SMTPHost) != "" &&
+		s.config.SMTPPort > 0 &&
+		strings.TrimSpace(s.config.SMTPUser) != "" &&
+		strings.TrimSpace(s.config.SMTPPassword) != ""
+}
+
+// SendEmail sends a plain text email using the current SMTP configuration.
+func (s *Service) SendEmail(to, subject, body string) error {
+	if strings.TrimSpace(to) == "" {
+		return fmt.Errorf("recipient email is required")
+	}
+	if !s.CanSendEmail() {
+		return fmt.Errorf("SMTP not configured")
+	}
+	return s.sendEmail(to, subject, body)
 }
 
 // NotifyNewDevice sends notification when a new device connects
@@ -285,9 +309,27 @@ func (s *Service) sendToAdmin(subject, message string) error {
 		return nil
 	}
 
-	// Only send via Telegram for admin notifications
+	var errs []string
+
+	adminEmail := strings.TrimSpace(config.AdminEmail)
+	if adminEmail == "" {
+		adminEmail = strings.TrimSpace(config.SMTPUser)
+	}
+
+	if config.EnabledChannels[ChannelEmail] && adminEmail != "" {
+		if err := s.sendEmail(adminEmail, subject, message); err != nil {
+			errs = append(errs, fmt.Sprintf("email: %v", err))
+		}
+	}
+
 	if config.EnabledChannels[ChannelTelegram] {
-		return s.sendTelegram("🔔 " + subject + "\n\n" + message)
+		if err := s.sendTelegram("🔔 " + subject + "\n\n" + message); err != nil {
+			errs = append(errs, fmt.Sprintf("telegram: %v", err))
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("notification errors: %s", strings.Join(errs, "; "))
 	}
 	return nil
 }

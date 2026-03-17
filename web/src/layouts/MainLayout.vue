@@ -7,9 +7,9 @@
       </div>
       <el-menu
         class="sidebar-menu"
-        background-color="#2b3a4d"
-        text-color="#fff"
-        active-text-color="#409EFF"
+        background-color="#17212b"
+        text-color="#d6deea"
+        active-text-color="#ffffff"
         :default-active="activeMenu"
         :collapse="isCollapse"
         router
@@ -62,6 +62,7 @@
           <el-menu-item index="/admin/coupons">优惠券管理</el-menu-item>
           <el-menu-item index="/admin/gift-cards">礼品卡管理</el-menu-item>
           <el-menu-item index="/admin/trials">试用管理</el-menu-item>
+          <el-menu-item index="/admin/payment-settings">支付配置</el-menu-item>
           <el-menu-item index="/admin/reports">财务报表</el-menu-item>
         </el-sub-menu>
 
@@ -137,7 +138,6 @@ import {
   Setting,
   Fold,
   Expand,
-  ArrowDown,
   Link,
   ShoppingCart,
   Sunny,
@@ -196,6 +196,14 @@ const confirmLogout = () => {
 
 <style scoped>
 .app-container {
+  --sidebar-bg: #17212b;
+  --sidebar-surface: #1e2a36;
+  --sidebar-hover: #243244;
+  --sidebar-nested: #141d27;
+  --sidebar-text: #d6deea;
+  --sidebar-muted: #9fb0c3;
+  --sidebar-active: #3b82f6;
+  --sidebar-active-shadow: rgba(59, 130, 246, 0.28);
   display: flex;
   height: 100vh;
 }
@@ -203,12 +211,12 @@ const confirmLogout = () => {
 .sidebar {
   width: 200px;
   height: 100%;
-  background-color: #2b3a4d;
-  color: #fff;
+  background: linear-gradient(180deg, var(--sidebar-surface) 0%, var(--sidebar-bg) 100%);
+  color: var(--sidebar-text);
   transition: all 0.3s;
   overflow-y: auto;
   flex-shrink: 0;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
 }
 
 .sidebar.collapsed {
@@ -220,14 +228,16 @@ const confirmLogout = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #263445;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background-color: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
 }
 
 .logo h1 {
   font-size: 18px;
-  font-weight: 500;
-  color: #fff;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #f8fafc;
   margin: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -245,31 +255,53 @@ const confirmLogout = () => {
   height: 50px;
   line-height: 50px;
   font-size: 14px;
+  color: var(--sidebar-text) !important;
+  border-radius: 12px;
+  margin: 6px 10px;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
 
 :deep(.el-sub-menu__title) {
   height: 50px;
   line-height: 50px;
   font-size: 14px;
+  color: var(--sidebar-text) !important;
+  border-radius: 12px;
+  margin: 6px 10px;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 :deep(.el-menu-item.is-active) {
-  background-color: #1890ff !important;
-  color: white !important;
+  background: linear-gradient(135deg, var(--sidebar-active) 0%, #2563eb 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 24px var(--sidebar-active-shadow);
 }
 
 :deep(.el-menu-item:hover) {
-  background-color: #263445 !important;
+  background-color: var(--sidebar-hover) !important;
+  color: #ffffff !important;
 }
 
 :deep(.el-sub-menu__title:hover) {
-  background-color: #263445 !important;
+  background-color: var(--sidebar-hover) !important;
+  color: #ffffff !important;
 }
 
 :deep(.el-sub-menu .el-menu-item) {
   min-width: 200px;
   padding-left: 40px !important;
-  background-color: #1f2d3d;
+  background-color: var(--sidebar-nested);
+  color: var(--sidebar-muted) !important;
+}
+
+:deep(.el-sub-menu.is-opened > .el-sub-menu__title) {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+  color: #ffffff !important;
+}
+
+:deep(.el-menu-item [class^='el-icon']),
+:deep(.el-sub-menu__title [class^='el-icon']) {
+  color: inherit;
 }
 
 .main-content {
@@ -325,17 +357,6 @@ const confirmLogout = () => {
 .dropdown-link:hover {
   background-color: #f5f7fa;
   border-color: #e6e6e6;
-}
-
-.username {
-  margin: 0 8px;
-  font-weight: 500;
-}
-
-.user-avatar {
-  background-color: #1890ff !important;
-  color: white !important;
-  font-weight: bold;
 }
 
 .content {
@@ -396,7 +417,7 @@ const confirmLogout = () => {
 }
 
 .user-avatar {
-  background-color: #1890ff !important;
+  background-color: var(--sidebar-active) !important;
   color: white !important;
   font-weight: bold;
 }
@@ -427,17 +448,24 @@ const confirmLogout = () => {
 
 /* 深色模式样式 */
 .app-container.dark-mode {
+  --sidebar-bg: #0f172a;
+  --sidebar-surface: #162033;
+  --sidebar-hover: #1d2a3d;
+  --sidebar-nested: #101827;
+  --sidebar-text: #dbe6f2;
+  --sidebar-muted: #9aaec3;
+  --sidebar-active: #60a5fa;
+  --sidebar-active-shadow: rgba(96, 165, 250, 0.2);
   background-color: #1a1a1a;
 }
 
 .dark-mode .sidebar {
-  background-color: #242424;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
 }
 
 .dark-mode .logo {
-  background-color: #1a1a1a;
-  border-bottom-color: rgba(255, 255, 255, 0.1);
+  background-color: rgba(255, 255, 255, 0.03);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
 }
 
 .dark-mode .logo h1 {
@@ -445,46 +473,46 @@ const confirmLogout = () => {
 }
 
 .dark-mode .sidebar-menu {
-  background-color: #242424;
+  background-color: transparent;
 }
 
 .dark-mode :deep(.el-menu) {
-  background-color: #242424;
+  background-color: transparent;
 }
 
 .dark-mode :deep(.el-menu-item) {
-  background-color: #242424;
-  color: #cfd3dc;
+  background-color: transparent;
+  color: var(--sidebar-text) !important;
 }
 
 .dark-mode :deep(.el-menu-item:hover) {
-  background-color: #1f1f1f !important;
-  color: #409eff;
+  background-color: var(--sidebar-hover) !important;
+  color: #ffffff !important;
 }
 
 .dark-mode :deep(.el-menu-item.is-active) {
-  background-color: #1890ff !important;
+  background: linear-gradient(135deg, var(--sidebar-active) 0%, #3b82f6 100%) !important;
   color: white !important;
 }
 
 .dark-mode :deep(.el-sub-menu__title) {
-  background-color: #242424;
-  color: #cfd3dc;
+  background-color: transparent;
+  color: var(--sidebar-text) !important;
 }
 
 .dark-mode :deep(.el-sub-menu__title:hover) {
-  background-color: #1f1f1f !important;
-  color: #409eff;
+  background-color: var(--sidebar-hover) !important;
+  color: #ffffff !important;
 }
 
 .dark-mode :deep(.el-sub-menu .el-menu-item) {
-  background-color: #1a1a1a;
-  color: #a3a6ad;
+  background-color: var(--sidebar-nested);
+  color: var(--sidebar-muted) !important;
 }
 
 .dark-mode :deep(.el-sub-menu .el-menu-item:hover) {
-  background-color: #1f1f1f !important;
-  color: #409eff;
+  background-color: var(--sidebar-hover) !important;
+  color: #ffffff !important;
 }
 
 .dark-mode .header {

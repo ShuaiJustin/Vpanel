@@ -295,6 +295,35 @@ func TestSettingsService_PaymentSettingsPersistence(t *testing.T) {
 	assert.True(t, readSettings.PaymentWeChatSandbox)
 }
 
+func TestSettingsService_SMTPSettingsPersistence(t *testing.T) {
+	repo := newMockSettingsRepository()
+	service := NewService(repo)
+	ctx := context.Background()
+
+	newSettings := &SystemSettings{
+		SMTPHost:       "smtp.example.com",
+		SMTPPort:       587,
+		SMTPUser:       "mailer@example.com",
+		SMTPFrom:       "noreply@example.com",
+		SMTPAlertEmail: "ops@example.com",
+		SMTPPassword:   "super-secret-password",
+	}
+
+	err := service.UpdateSystemSettings(ctx, newSettings)
+	require.NoError(t, err)
+
+	readSettings, err := service.GetSystemSettings(ctx)
+	require.NoError(t, err)
+
+	assert.Equal(t, "smtp.example.com", readSettings.SMTPHost)
+	assert.Equal(t, 587, readSettings.SMTPPort)
+	assert.Equal(t, "mailer@example.com", readSettings.SMTPUser)
+	assert.Equal(t, "noreply@example.com", readSettings.SMTPFrom)
+	assert.Equal(t, "ops@example.com", readSettings.SMTPAlertEmail)
+	assert.Equal(t, "super-secret-password", readSettings.SMTPPassword)
+	assert.True(t, readSettings.SMTPPasswordConfigured)
+}
+
 func TestSettingsService_CacheInvalidation(t *testing.T) {
 	repo := newMockSettingsRepository()
 	service := NewService(repo)

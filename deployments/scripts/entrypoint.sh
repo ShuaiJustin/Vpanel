@@ -2,18 +2,64 @@
 set -e
 
 APP_ROOT="/app"
-CONFIG_DIR="${APP_ROOT}/configs"
-DATA_DIR="${APP_ROOT}/data"
-LOG_DIR="${APP_ROOT}/logs"
-XRAY_DIR="${APP_ROOT}/xray"
+DEFAULT_CONFIG_PATH="${APP_ROOT}/configs/config.yaml"
+CONFIG_PATH="${VPANEL_CONFIG_PATH:-${DEFAULT_CONFIG_PATH}}"
+CONFIG_DIR="$(dirname "${CONFIG_PATH}")"
+DEFAULT_DATA_DIR="${APP_ROOT}/data"
+DEFAULT_LOG_DIR="${APP_ROOT}/logs"
+DEFAULT_XRAY_DIR="${APP_ROOT}/xray"
+DATA_DIR="${VPANEL_DATA_DIR:-${DEFAULT_DATA_DIR}}"
+LOG_DIR="${VPANEL_LOG_DIR:-${DEFAULT_LOG_DIR}}"
+XRAY_DIR="${VPANEL_XRAY_DIR:-${DEFAULT_XRAY_DIR}}"
 DEFAULT_DB_PATH="${DATA_DIR}/v.db"
 DB_PATH="${V_DB_PATH:-${DEFAULT_DB_PATH}}"
 ACME_HOME="${HOME}/.acme.sh"
 ACME_SCRIPT="${ACME_HOME}/acme.sh"
 ACME_INSTALLER="/tmp/acme.sh"
+CONFIG_TEMPLATE_PATH="${APP_ROOT}/configs/config.yaml.example"
+RUN_USER="vpanel"
 
 log() {
     echo "$@"
+}
+
+ensure_writable_dir() {
+    target="$1"
+    mkdir -p "${target}"
+
+    probe="${target}/.write-test.$$"
+    if ! touch "${probe}" >/dev/null 2>&1; then
+        log "ERROR: ${target} is not writable"
+        exit 1
+    fi
+
+    rm -f "${probe}"
+}
+
+ensure_writable_file() {
+    target="$1"
+    parent="$(dirname "${target}")"
+
+    ensure_writable_dir "${parent}"
+
+    if [ -f "${target}" ] && [ ! -w "${target}" ]; then
+        log "ERROR: ${target} is not writable"
+        exit 1
+    fi
+}
+
+fix_runtime_ownership() {
+    if [ "$(id -u)" -ne 0 ]; then
+        return
+    fi
+
+    mkdir -p "${CONFIG_DIR}" "${DATA_DIR}" "${LOG_DIR}" "${XRAY_DIR}" "$(dirname "${DB_PATH}")"
+
+    chown -R "${RUN_USER}:${RUN_USER}" "${DATA_DIR}" "${LOG_DIR}" "${XRAY_DIR}" "$(dirname "${DB_PATH}")"
+
+    if [ -e "${CONFIG_DIR}" ]; then
+        chown -R "${RUN_USER}:${RUN_USER}" "${CONFIG_DIR}"
+    fi
 }
 
 install_acme() {
@@ -99,16 +145,28 @@ validate_release_settings() {
 }
 
 prepare_runtime() {
-    mkdir -p "${CONFIG_DIR}" "${DATA_DIR}" "${LOG_DIR}" "${XRAY_DIR}" "$(dirname "${DB_PATH}")"
+    fix_runtime_ownership
 
-    if [ ! -f "${CONFIG_DIR}/config.yaml" ]; then
+    ensure_writable_dir "${CONFIG_DIR}"
+    ensure_writable_dir "${DATA_DIR}"
+    ensure_writable_dir "${LOG_DIR}"
+    ensure_writable_dir "${XRAY_DIR}"
+    ensure_writable_file "${DB_PATH}"
+
+    if [ ! -f "${CONFIG_PATH}" ]; then
         log "Creating default configuration..."
-        cp "${CONFIG_DIR}/config.yaml.example" "${CONFIG_DIR}/config.yaml"
+        cp "${CONFIG_TEMPLATE_PATH}" "${CONFIG_PATH}"
+        if [ "$(id -u)" -eq 0 ]; then
+            chown "${RUN_USER}:${RUN_USER}" "${CONFIG_PATH}"
+        fi
     fi
 
     if [ ! -f "${DB_PATH}" ]; then
         log "Initializing database..."
         touch "${DB_PATH}"
+        if [ "$(id -u)" -eq 0 ]; then
+            chown "${RUN_USER}:${RUN_USER}" "${DB_PATH}"
+        fi
     fi
 }
 
@@ -118,7 +176,11 @@ print_config() {
     log "  Server Port: ${V_SERVER_PORT:-8080}"
     log "  Server Mode: ${V_SERVER_MODE:-release}"
     log "  Log Level: ${V_LOG_LEVEL:-info}"
+    log "  Config File: ${CONFIG_PATH}"
     log "  Database: ${DB_PATH}"
+    log "  Data Dir: ${DATA_DIR}"
+    log "  Log Dir: ${LOG_DIR}"
+    log "  Xray Dir: ${XRAY_DIR}"
 }
 
 log "Starting V Panel..."
@@ -126,5 +188,18 @@ install_acme
 validate_release_settings
 prepare_runtime
 print_config
+
+if [ "$#" -ge 1 ] && [ "$1" = "${APP_ROOT}/v-panel" ]; then
+    if [ "$#" -ge 2 ] && [ "${2}" = "-config" ]; then
+        shift 2
+    else
+        shift 1
+    fi
+    set -- "${APP_ROOT}/v-panel" -config "${CONFIG_PATH}" "$@"
+fi
+
+if [ "$(id -u)" -eq 0 ]; then
+    exec su-exec "${RUN_USER}" "$@"
+fi
 
 exec "$@"

@@ -68,6 +68,7 @@ RUN mkdir -p /app/bin && \
 FROM alpine:3.19
 
 ARG ALPINE_MIRROR=mirrors.aliyun.com
+ARG APP_HOME=/app
 
 RUN sed -i "s/dl-cdn.alpinelinux.org/${ALPINE_MIRROR}/g" /etc/apk/repositories
 
@@ -77,6 +78,7 @@ RUN apk add --no-cache \
     sqlite \
     wget \
     bash \
+    su-exec \
     openssl \
     socat \
     && rm -rf /var/cache/apk/*
@@ -84,35 +86,39 @@ RUN apk add --no-cache \
 RUN addgroup -g 1000 vpanel && \
     adduser -u 1000 -G vpanel -s /bin/sh -D vpanel
 
-WORKDIR /app
-
-COPY --from=backend-builder /app/v-panel /app/v-panel
-COPY --from=backend-builder /app/bin /app/bin
-COPY --from=frontend-builder /app/web/dist /app/web/dist
-COPY Docs /app/Docs
-COPY configs/config.yaml.example /app/configs/config.yaml.example
-COPY configs/xray.json.example /app/configs/xray.json.example
-COPY deployments/scripts/entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
-
-RUN mkdir -p /app/data /app/logs /app/xray && \
-    chown -R vpanel:vpanel /app
-
-USER vpanel
-
-EXPOSE 8080
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health
-
-ENV V_SERVER_HOST=0.0.0.0 \
+ENV APP_HOME=${APP_HOME} \
+    VPANEL_CONFIG_PATH=${APP_HOME}/configs/config.yaml \
+    VPANEL_DATA_DIR=${APP_HOME}/data \
+    VPANEL_LOG_DIR=${APP_HOME}/logs \
+    VPANEL_XRAY_DIR=${APP_HOME}/xray \
+    V_SERVER_HOST=0.0.0.0 \
     V_SERVER_PORT=8080 \
-    V_SERVER_STATIC_PATH=/app/web/dist \
-    V_DB_PATH=/app/data/v.db \
+    V_SERVER_STATIC_PATH=${APP_HOME}/web/dist \
+    V_DB_PATH=${APP_HOME}/data/v.db \
     V_LOG_LEVEL=info \
     V_LOG_FORMAT=json \
     VPANEL_ACME_AUTO_INSTALL=0 \
     TZ=UTC
+
+WORKDIR ${APP_HOME}
+
+COPY --from=backend-builder --chown=vpanel:vpanel /app/v-panel ${APP_HOME}/v-panel
+COPY --from=backend-builder --chown=vpanel:vpanel /app/bin ${APP_HOME}/bin
+COPY --from=frontend-builder --chown=vpanel:vpanel /app/web/dist ${APP_HOME}/web/dist
+COPY --chown=vpanel:vpanel Docs ${APP_HOME}/Docs
+COPY --chown=vpanel:vpanel configs/config.yaml.example ${APP_HOME}/configs/config.yaml.example
+COPY --chown=vpanel:vpanel configs/xray.json.example ${APP_HOME}/configs/xray.json.example
+COPY --chown=vpanel:vpanel deployments/scripts/entrypoint.sh ${APP_HOME}/entrypoint.sh
+RUN chmod +x ${APP_HOME}/entrypoint.sh
+
+RUN mkdir -p ${APP_HOME}/data ${APP_HOME}/logs ${APP_HOME}/xray
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:8080/health
+
+STOPSIGNAL SIGTERM
 
 VOLUME ["/app/data", "/app/logs"]
 

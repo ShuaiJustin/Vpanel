@@ -3,7 +3,9 @@ package handlers
 
 import (
 	"context"
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -19,6 +21,7 @@ type SettingsHandler struct {
 	settingsService *settings.Service
 	validateHook    func(context.Context, *settings.SystemSettings) error
 	afterSaveHook   func(context.Context, *settings.SystemSettings) error
+	testEmailHook   func(context.Context, *settings.SystemSettings, string) error
 }
 
 // NewSettingsHandler creates a new SettingsHandler.
@@ -38,6 +41,12 @@ func (h *SettingsHandler) WithValidateHook(hook func(context.Context, *settings.
 // WithAfterSaveHook registers an optional hook executed after settings are saved.
 func (h *SettingsHandler) WithAfterSaveHook(hook func(context.Context, *settings.SystemSettings) error) *SettingsHandler {
 	h.afterSaveHook = hook
+	return h
+}
+
+// WithTestEmailHook registers an optional hook for sending a test email.
+func (h *SettingsHandler) WithTestEmailHook(hook func(context.Context, *settings.SystemSettings, string) error) *SettingsHandler {
+	h.testEmailHook = hook
 	return h
 }
 
@@ -75,10 +84,12 @@ type UpdateSettingsRequest struct {
 	PanelAPIDomain *string `json:"panel_api_domain"`
 
 	// SMTP settings
-	SMTPHost     *string `json:"smtp_host"`
-	SMTPPort     *int    `json:"smtp_port"`
-	SMTPUser     *string `json:"smtp_user"`
-	SMTPPassword *string `json:"smtp_password"`
+	SMTPHost       *string `json:"smtp_host"`
+	SMTPPort       *int    `json:"smtp_port"`
+	SMTPUser       *string `json:"smtp_user"`
+	SMTPFrom       *string `json:"smtp_from"`
+	SMTPAlertEmail *string `json:"smtp_alert_email"`
+	SMTPPassword   *string `json:"smtp_password"`
 
 	// Telegram settings
 	TelegramBotToken *string `json:"telegram_bot_token"`
@@ -169,6 +180,12 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 	if req.SMTPUser != nil {
 		currentSettings.SMTPUser = *req.SMTPUser
 	}
+	if req.SMTPFrom != nil {
+		currentSettings.SMTPFrom = *req.SMTPFrom
+	}
+	if req.SMTPAlertEmail != nil {
+		currentSettings.SMTPAlertEmail = *req.SMTPAlertEmail
+	}
 	if req.SMTPPassword != nil {
 		currentSettings.SMTPPassword = *req.SMTPPassword
 	}
@@ -230,6 +247,10 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 		currentSettings.XrayConfigTemplate = *req.XrayConfigTemplate
 	}
 
+	currentSettings.SMTPPasswordConfigured = strings.TrimSpace(currentSettings.SMTPPassword) != ""
+	currentSettings.PaymentAlipayPrivateKeyConfigured = strings.TrimSpace(currentSettings.PaymentAlipayPrivateKey) != ""
+	currentSettings.PaymentWeChatAPIKeyConfigured = strings.TrimSpace(currentSettings.PaymentWeChatAPIKey) != ""
+
 	if h.validateHook != nil {
 		if err := h.validateHook(ctx, currentSettings); err != nil {
 			middleware.RespondWithError(c, errors.NewValidationError("invalid settings", map[string]interface{}{
@@ -260,6 +281,59 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 		"code":    200,
 		"message": "settings updated",
 		"data":    currentSettings,
+	})
+}
+
+// TestEmailRequest represents a test email request.
+type TestEmailRequest struct {
+	To string `json:"to"`
+}
+
+// TestEmail sends a test email using the current SMTP configuration.
+func (h *SettingsHandler) TestEmail(c *gin.Context) {
+	if h.testEmailHook == nil {
+		middleware.RespondWithError(c, errors.NewInternalError("test email unavailable", nil))
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	var req TestEmailRequest
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&req); err != nil && err != io.EOF {
+			middleware.RespondWithError(c, errors.NewValidationError("invalid request", map[string]interface{}{
+				"error": err.Error(),
+			}))
+			return
+		}
+	}
+
+	systemSettings, err := h.settingsService.GetSystemSettings(ctx)
+	if err != nil {
+		h.logger.Error("Failed to get settings for test email", logger.F("error", err))
+		middleware.RespondWithError(c, errors.NewDatabaseError("get settings", err))
+		return
+	}
+
+	if err := h.testEmailHook(ctx, systemSettings, req.To); err != nil {
+		h.logger.Error("Failed to send test email", logger.F("error", err))
+		lowerMessage := strings.ToLower(err.Error())
+		if strings.Contains(lowerMessage, "smtp") ||
+			strings.Contains(lowerMessage, "recipient") ||
+			strings.Contains(lowerMessage, "invalid") ||
+			strings.Contains(lowerMessage, "required") {
+			middleware.RespondWithError(c, errors.NewValidationError("invalid email settings", map[string]interface{}{
+				"error": err.Error(),
+			}))
+			return
+		}
+		middleware.RespondWithError(c, errors.NewInternalError("send test email", err))
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "测试邮件发送成功",
 	})
 }
 

@@ -210,6 +210,10 @@ docker run -d \
 | `V_SERVER_PORT` | 服务端口（留空自动生成） | 随机 10000-65000 |
 | `V_SERVER_MODE` | 运行模式 (debug/release) | release |
 | `V_SERVER_PUBLIC_URL` | 面板公网地址，用于支付回调等外部地址生成 | - |
+| `VPANEL_CONFIG_PATH` | 容器内配置文件路径 | /app/configs/config.yaml |
+| `VPANEL_DATA_DIR` | 容器内数据目录 | /app/data |
+| `VPANEL_LOG_DIR` | 容器内日志目录 | /app/logs |
+| `VPANEL_XRAY_DIR` | 容器内 Xray 目录 | /app/xray |
 | `V_JWT_SECRET` | JWT 密钥 | - |
 | `V_ADMIN_USER` | 管理员用户名 | admin |
 | `V_ADMIN_PASS` | 管理员密码 | admin123 |

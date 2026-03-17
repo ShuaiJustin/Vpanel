@@ -101,6 +101,8 @@ VERSION=latest
 V_SERVER_PORT=8080
 V_SERVER_MODE=release
 V_SERVER_PUBLIC_URL=https://panel.example.com
+VPANEL_CONFIG_PATH=/app/configs/config.yaml
+V_DB_PATH=/app/data/v.db
 
 # 认证配置（重要：请修改）
 V_JWT_SECRET=your-secure-jwt-secret-change-me
@@ -129,6 +131,13 @@ TZ=Asia/Shanghai
 - 支付宝：`/api/payments/callback/alipay`
 - 微信：`/api/payments/callback/wechat`
 - 支付完成返回页：`/user/orders`
+
+如果你需要自定义容器内目录，Compose 现在支持：
+- `VPANEL_CONFIG_PATH`
+- `VPANEL_DATA_DIR`
+- `VPANEL_LOG_DIR`
+- `VPANEL_XRAY_DIR`
+- `V_DB_PATH`
 
 ### 常用命令
 

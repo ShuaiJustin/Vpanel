@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -34,6 +35,7 @@ import (
 	logservice "v/internal/log"
 	"v/internal/logger"
 	"v/internal/node"
+	"v/internal/notification"
 	"v/internal/portal/announcement"
 	portalauth "v/internal/portal/auth"
 	"v/internal/portal/help"
@@ -55,6 +57,7 @@ type Router struct {
 	proxyManager        proxy.Manager
 	repos               *repository.Repositories
 	settingsService     *settings.Service
+	notificationService *notification.Service
 	xrayManager         xray.Manager
 	logService          *logservice.Service
 	certificateService  CertificateService
@@ -105,6 +108,7 @@ func NewRouter(
 		proxyManager:        proxyManager,
 		repos:               repos,
 		settingsService:     settingsService,
+		notificationService: notification.NewService(&notification.NotificationConfig{}),
 		xrayManager:         xrayManager,
 		logService:          logService,
 		certificateService:  certService,
@@ -176,12 +180,19 @@ func (r *Router) Setup() {
 	paymentService := payment.NewService(orderService, r.logger).WithBalanceService(balanceService)
 	r.registerConfiguredPaymentGateways(paymentService)
 	r.loadStoredPaymentSettings(context.Background(), paymentService)
+	r.loadStoredNotificationSettings(context.Background())
 	settingsHandler.
 		WithValidateHook(func(ctx context.Context, systemSettings *settings.SystemSettings) error {
-			return r.validatePaymentSettings(systemSettings)
+			return r.validateSystemSettings(systemSettings)
 		}).
 		WithAfterSaveHook(func(ctx context.Context, systemSettings *settings.SystemSettings) error {
-			return r.applyPaymentSettings(paymentService, systemSettings)
+			if err := r.applyPaymentSettings(paymentService, systemSettings); err != nil {
+				return err
+			}
+			return r.applyNotificationSettings(systemSettings)
+		}).
+		WithTestEmailHook(func(ctx context.Context, systemSettings *settings.SystemSettings, to string) error {
+			return r.sendTestEmail(systemSettings, to)
 		})
 
 	// Create payment retry service
@@ -212,6 +223,7 @@ func (r *Router) Setup() {
 	)
 	nodeGroupService := node.NewGroupService(r.repos.NodeGroup, r.repos.Node, r.logger)
 	r.nodeHealthChecker = node.NewHealthChecker(nil, r.repos.Node, r.repos.Certificate, r.repos.HealthCheck, r.logger)
+	r.nodeHealthChecker.SetNotificationService(r.notificationService)
 	nodeTrafficService := node.NewTrafficService(r.repos.NodeTraffic, r.repos.NodeGroup, r.logger)
 	nodeDeployService := node.NewRemoteDeployService(r.logger, r.repos.Node)
 	r.nodeRecoveryTracker = handlers.NewNodeRecoveryTracker(r.logger)
@@ -408,6 +420,7 @@ func (r *Router) Setup() {
 			{
 				settingsRoutes.GET("", settingsHandler.GetSettings)
 				settingsRoutes.PUT("", settingsHandler.UpdateSettings)
+				settingsRoutes.POST("/test-email", settingsHandler.TestEmail)
 				settingsRoutes.POST("/backup", settingsHandler.BackupSettings)
 				settingsRoutes.POST("/restore", settingsHandler.RestoreSettings)
 				settingsRoutes.GET("/xray", settingsHandler.GetXraySettings)
@@ -887,6 +900,148 @@ func (r *Router) Setup() {
 	}
 }
 
+func (r *Router) validateSystemSettings(systemSettings *settings.SystemSettings) error {
+	if err := r.validatePaymentSettings(systemSettings); err != nil {
+		return err
+	}
+	return r.validateEmailSettings(systemSettings)
+}
+
+func (r *Router) loadStoredNotificationSettings(ctx context.Context) {
+	if r.notificationService == nil || r.settingsService == nil {
+		return
+	}
+
+	systemSettings, err := r.settingsService.GetSystemSettings(ctx)
+	if err != nil {
+		r.logger.Warn("Failed to load persisted notification settings", logger.Err(err))
+		return
+	}
+
+	if err := r.applyNotificationSettings(systemSettings); err != nil {
+		r.logger.Warn("Failed to apply persisted notification settings", logger.Err(err))
+	}
+}
+
+func (r *Router) validateEmailSettings(systemSettings *settings.SystemSettings) error {
+	if systemSettings == nil {
+		return nil
+	}
+
+	hasEmailConfig := strings.TrimSpace(systemSettings.SMTPHost) != "" ||
+		strings.TrimSpace(systemSettings.SMTPUser) != "" ||
+		strings.TrimSpace(systemSettings.SMTPFrom) != "" ||
+		strings.TrimSpace(systemSettings.SMTPAlertEmail) != "" ||
+		strings.TrimSpace(systemSettings.SMTPPassword) != "" ||
+		systemSettings.SMTPPort != 0
+
+	if !hasEmailConfig {
+		return nil
+	}
+
+	if strings.TrimSpace(systemSettings.SMTPHost) == "" {
+		return fmt.Errorf("smtp host is required")
+	}
+	if systemSettings.SMTPPort < 1 || systemSettings.SMTPPort > 65535 {
+		return fmt.Errorf("smtp port must be between 1 and 65535")
+	}
+	if strings.TrimSpace(systemSettings.SMTPUser) == "" {
+		return fmt.Errorf("smtp user is required")
+	}
+	if strings.TrimSpace(systemSettings.SMTPPassword) == "" {
+		return fmt.Errorf("smtp password is required")
+	}
+	if systemSettings.SMTPFrom != "" {
+		if _, err := mail.ParseAddress(systemSettings.SMTPFrom); err != nil {
+			return fmt.Errorf("smtp from address is invalid")
+		}
+	}
+	if systemSettings.SMTPAlertEmail != "" {
+		if _, err := mail.ParseAddress(systemSettings.SMTPAlertEmail); err != nil {
+			return fmt.Errorf("alert email is invalid")
+		}
+	}
+
+	return nil
+}
+
+func (r *Router) applyNotificationSettings(systemSettings *settings.SystemSettings) error {
+	if r.notificationService == nil {
+		return nil
+	}
+
+	r.notificationService.UpdateConfig(r.buildNotificationConfig(systemSettings))
+	if r.nodeHealthChecker != nil {
+		r.nodeHealthChecker.SetNotificationService(r.notificationService)
+	}
+
+	return nil
+}
+
+func (r *Router) sendTestEmail(systemSettings *settings.SystemSettings, to string) error {
+	if err := r.validateEmailSettings(systemSettings); err != nil {
+		return err
+	}
+	if r.notificationService == nil {
+		return fmt.Errorf("notification service is unavailable")
+	}
+
+	r.notificationService.UpdateConfig(r.buildNotificationConfig(systemSettings))
+
+	recipient := strings.TrimSpace(firstNonEmpty(to, systemSettings.SMTPAlertEmail, systemSettings.SMTPUser))
+	if recipient == "" {
+		return fmt.Errorf("test email recipient is required")
+	}
+
+	baseURL := r.config.GetBaseURL()
+	if baseURL == "" && systemSettings != nil {
+		baseURL = strings.TrimSpace(systemSettings.PanelAPIDomain)
+	}
+
+	subject := "V Panel 测试邮件"
+	body := "这是一封来自 V Panel 的测试邮件。\n\n如果您收到此邮件，说明当前 SMTP 配置可用。"
+	if baseURL != "" {
+		body += "\n\n当前面板地址: " + baseURL
+	}
+
+	return r.notificationService.SendEmail(recipient, subject, body)
+}
+
+func (r *Router) buildNotificationConfig(systemSettings *settings.SystemSettings) *notification.NotificationConfig {
+	if systemSettings == nil {
+		return &notification.NotificationConfig{
+			EnabledTypes:    map[notification.NotificationType]bool{},
+			EnabledChannels: map[notification.NotificationChannel]bool{},
+		}
+	}
+
+	emailEnabled := allNonEmpty(systemSettings.SMTPHost, systemSettings.SMTPUser, systemSettings.SMTPPassword) && systemSettings.SMTPPort > 0
+	telegramEnabled := allNonEmpty(systemSettings.TelegramBotToken, systemSettings.TelegramChatID)
+
+	return &notification.NotificationConfig{
+		SMTPHost:         strings.TrimSpace(systemSettings.SMTPHost),
+		SMTPPort:         systemSettings.SMTPPort,
+		SMTPUser:         strings.TrimSpace(systemSettings.SMTPUser),
+		SMTPPassword:     systemSettings.SMTPPassword,
+		SMTPFrom:         firstNonEmpty(systemSettings.SMTPFrom, systemSettings.SMTPUser),
+		AdminEmail:       firstNonEmpty(systemSettings.SMTPAlertEmail, systemSettings.SMTPUser),
+		TelegramBotToken: strings.TrimSpace(systemSettings.TelegramBotToken),
+		TelegramChatID:   strings.TrimSpace(systemSettings.TelegramChatID),
+		EnabledTypes: map[notification.NotificationType]bool{
+			notification.NotificationNewDevice:        true,
+			notification.NotificationIPLimitReached:   true,
+			notification.NotificationSuspiciousIP:     true,
+			notification.NotificationDeviceKicked:     true,
+			notification.NotificationAutoBlacklisted:  true,
+			notification.NotificationNodeStatusChange: true,
+		},
+		EnabledChannels: map[notification.NotificationChannel]bool{
+			notification.ChannelEmail:    emailEnabled,
+			notification.ChannelTelegram: telegramEnabled,
+		},
+	}
+}
+
 func (r *Router) registerConfiguredPaymentGateways(paymentService *payment.Service) {
 	if paymentService == nil {
 		return
@@ -1089,7 +1244,8 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 	statsService := stats.NewService(r.repos.Traffic, r.repos.User)
 
 	// Create portal handlers
-	portalAuthHandler := handlers.NewPortalAuthHandler(portalAuthService, r.authService, r.repos.User, r.repos.Proxy, r.logger)
+	portalAuthHandler := handlers.NewPortalAuthHandler(portalAuthService, r.authService, r.repos.User, r.repos.Proxy, r.logger).
+		WithEmailSender(r.notificationService, r.config.GetBaseURL())
 	portalDashboardHandler := handlers.NewPortalDashboardHandler(r.repos.User, statsService, announcementService, r.logger)
 	portalNodeHandler := handlers.NewPortalNodeHandler(portalNodeService, r.nodeRecoveryTracker, r.logger)
 	portalTicketHandler := handlers.NewPortalTicketHandler(ticketService, r.logger)

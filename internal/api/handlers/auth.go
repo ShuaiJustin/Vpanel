@@ -2,9 +2,11 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -64,6 +66,80 @@ type UserResponse struct {
 	Role      string `json:"role"`
 	Status    bool   `json:"status"`
 	CreatedAt string `json:"created_at"`
+	LastLogin string `json:"last_login,omitempty"`
+}
+
+func buildUserResponse(user *repository.User) UserResponse {
+	response := UserResponse{
+		ID:        user.ID,
+		Username:  user.Username,
+		Email:     user.Email,
+		Role:      user.Role,
+		Status:    user.Enabled,
+		CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z"),
+	}
+
+	if user.LastLoginAt != nil {
+		response.LastLogin = user.LastLoginAt.Format("2006-01-02T15:04:05Z")
+	}
+
+	return response
+}
+
+func (h *AuthHandler) listAllUsers(ctx context.Context) ([]*repository.User, error) {
+	total, err := h.userRepo.Count(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if total == 0 {
+		return []*repository.User{}, nil
+	}
+	return h.userRepo.List(ctx, int(total), 0)
+}
+
+func (h *AuthHandler) countEnabledAdmins(ctx context.Context) (int, error) {
+	users, err := h.listAllUsers(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	count := 0
+	for _, user := range users {
+		if user.Enabled && user.Role == "admin" {
+			count++
+		}
+	}
+
+	return count, nil
+}
+
+func (h *AuthHandler) ensureEnabledAdminRemains(ctx *gin.Context, user *repository.User, nextRole string, nextEnabled bool, action string) bool {
+	if user.Role != "admin" || !user.Enabled || (nextRole == "admin" && nextEnabled) {
+		return true
+	}
+
+	adminCount, err := h.countEnabledAdmins(ctx.Request.Context())
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify admin protection"})
+		return false
+	}
+
+	if adminCount <= 1 {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Cannot " + action + " the last enabled admin"})
+		return false
+	}
+
+	return true
+}
+
+func (h *AuthHandler) updateLastLogin(ctx context.Context, user *repository.User, ip string) {
+	now := time.Now().UTC()
+	user.LastLoginAt = &now
+	user.LastLoginIP = ip
+
+	if err := h.userRepo.Update(ctx, user); err != nil {
+		h.logger.Warn("failed to update user last login", logger.F("user_id", user.ID), logger.F("error", err))
+	}
 }
 
 // Login handles user login.
@@ -133,6 +209,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	// Record successful login
 	recordLogin(true)
+	h.updateLastLogin(c.Request.Context(), user, clientIP)
 
 	h.logger.Info("user logged in", logger.F("username", req.Username), logger.F("user_id", user.ID))
 
@@ -140,14 +217,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		Token:        token,
 		RefreshToken: refreshToken,
 		ExpiresIn:    3600, // 1 hour
-		User: &UserResponse{
-			ID:        user.ID,
-			Username:  user.Username,
-			Email:     user.Email,
-			Role:      user.Role,
-			Status:    user.Enabled,
-			CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		},
+		User:         func() *UserResponse { resp := buildUserResponse(user); return &resp }(),
 	})
 }
 
@@ -195,14 +265,7 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		Token:        token,
 		RefreshToken: refreshToken,
 		ExpiresIn:    3600,
-		User: &UserResponse{
-			ID:        user.ID,
-			Username:  user.Username,
-			Email:     user.Email,
-			Role:      user.Role,
-			Status:    user.Enabled,
-			CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		},
+		User:         func() *UserResponse { resp := buildUserResponse(user); return &resp }(),
 	})
 }
 
@@ -227,14 +290,7 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, UserResponse{
-		ID:        user.ID,
-		Username:  user.Username,
-		Email:     user.Email,
-		Role:      user.Role,
-		Status:    user.Enabled,
-		CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z"),
-	})
+	c.JSON(http.StatusOK, buildUserResponse(user))
 }
 
 // ChangePasswordRequest represents a password change request.
@@ -284,7 +340,21 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 
 // ListUsers returns all users (admin only).
 func (h *AuthHandler) ListUsers(c *gin.Context) {
-	users, err := h.userRepo.List(c.Request.Context(), 100, 0)
+	total, err := h.userRepo.Count(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count users"})
+		return
+	}
+
+	if total == 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"users": []UserResponse{},
+			"total": 0,
+		})
+		return
+	}
+
+	users, err := h.userRepo.List(c.Request.Context(), int(total), 0)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list users"})
 		return
@@ -292,17 +362,13 @@ func (h *AuthHandler) ListUsers(c *gin.Context) {
 
 	response := make([]UserResponse, len(users))
 	for i, user := range users {
-		response[i] = UserResponse{
-			ID:        user.ID,
-			Username:  user.Username,
-			Email:     user.Email,
-			Role:      user.Role,
-			Status:    user.Enabled,
-			CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		}
+		response[i] = buildUserResponse(user)
 	}
 
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, gin.H{
+		"users": response,
+		"total": total,
+	})
 }
 
 // CreateUserRequest represents a create user request.
@@ -362,14 +428,7 @@ func (h *AuthHandler) CreateUser(c *gin.Context) {
 
 	h.logger.Info("user created", logger.F("username", req.Username), logger.F("user_id", user.ID))
 
-	c.JSON(http.StatusCreated, UserResponse{
-		ID:        user.ID,
-		Username:  user.Username,
-		Email:     user.Email,
-		Role:      user.Role,
-		Status:    user.Enabled,
-		CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z"),
-	})
+	c.JSON(http.StatusCreated, buildUserResponse(user))
 }
 
 // GetUser returns a user by ID (admin only).
@@ -390,22 +449,15 @@ func (h *AuthHandler) GetUser(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, UserResponse{
-		ID:        user.ID,
-		Username:  user.Username,
-		Email:     user.Email,
-		Role:      user.Role,
-		Status:    user.Enabled,
-		CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z"),
-	})
+	c.JSON(http.StatusOK, buildUserResponse(user))
 }
 
 // UpdateUserRequest represents an update user request.
 type UpdateUserRequest struct {
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Role     string `json:"role"`
-	Password string `json:"password"`
+	Username *string `json:"username"`
+	Email    *string `json:"email"`
+	Role     *string `json:"role"`
+	Password *string `json:"password"`
 }
 
 // UpdateUser updates a user (admin only).
@@ -433,27 +485,50 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 	}
 
 	// Update fields
-	if req.Username != "" && req.Username != user.Username {
-		// Check if new username is already taken
-		existing, _ := h.userRepo.GetByUsername(c.Request.Context(), req.Username)
-		if existing != nil && existing.ID != id {
-			c.JSON(http.StatusConflict, errors.NewConflictError("user", "username", req.Username).ToResponse(""))
+	if req.Username != nil {
+		username := strings.TrimSpace(*req.Username)
+		if username == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Username cannot be empty"})
 			return
 		}
-		user.Username = req.Username
+
+		// Check if new username is already taken
+		existing, _ := h.userRepo.GetByUsername(c.Request.Context(), username)
+		if existing != nil && existing.ID != id {
+			c.JSON(http.StatusConflict, errors.NewConflictError("user", "username", username).ToResponse(""))
+			return
+		}
+
+		user.Username = username
 	}
-	if req.Email != "" {
-		if !isValidEmail(req.Email) {
+	if req.Email != nil {
+		email := strings.TrimSpace(*req.Email)
+		if email != "" && !isValidEmail(email) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid email format"})
 			return
 		}
-		user.Email = req.Email
+
+		user.Email = email
 	}
-	if req.Role != "" {
-		user.Role = req.Role
+	if req.Role != nil {
+		role := strings.TrimSpace(*req.Role)
+		if role == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Role cannot be empty"})
+			return
+		}
+		if !h.ensureEnabledAdminRemains(c, user, role, user.Enabled, "demote") {
+			return
+		}
+
+		user.Role = role
 	}
-	if req.Password != "" {
-		passwordHash, err := h.authService.HashPassword(req.Password)
+	if req.Password != nil && *req.Password != "" {
+		if len(*req.Password) < 6 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 6 characters"})
+			return
+		}
+
+		passwordHash, err := h.authService.HashPassword(*req.Password)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
 			return
@@ -468,14 +543,7 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 
 	h.logger.Info("user updated", logger.F("user_id", id))
 
-	c.JSON(http.StatusOK, UserResponse{
-		ID:        user.ID,
-		Username:  user.Username,
-		Email:     user.Email,
-		Role:      user.Role,
-		Status:    user.Enabled,
-		CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z"),
-	})
+	c.JSON(http.StatusOK, buildUserResponse(user))
 }
 
 // DeleteUser deletes a user (admin only).
@@ -490,6 +558,20 @@ func (h *AuthHandler) DeleteUser(c *gin.Context) {
 	currentUserID, _ := c.Get("user_id")
 	if currentUserID.(int64) == id {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot delete yourself"})
+		return
+	}
+
+	user, err := h.userRepo.GetByID(c.Request.Context(), id)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user"})
+		return
+	}
+
+	if !h.ensureEnabledAdminRemains(c, user, user.Role, false, "delete") {
 		return
 	}
 
@@ -566,6 +648,10 @@ func (h *AuthHandler) DisableUser(c *gin.Context) {
 
 	if !user.Enabled {
 		c.JSON(http.StatusOK, gin.H{"message": "User is already disabled"})
+		return
+	}
+
+	if !h.ensureEnabledAdminRemains(c, user, user.Role, false, "disable") {
 		return
 	}
 
@@ -721,9 +807,18 @@ func (h *AuthHandler) UpdateUserExtended(c *gin.Context) {
 		user.Email = req.Email
 	}
 	if req.Role != "" {
+		if !h.ensureEnabledAdminRemains(c, user, req.Role, user.Enabled, "demote") {
+			return
+		}
+
 		user.Role = req.Role
 	}
 	if req.Password != "" {
+		if len(req.Password) < 6 {
+			c.JSON(http.StatusBadRequest, errors.NewValidationError("Password must be at least 6 characters", nil).ToResponse(""))
+			return
+		}
+
 		passwordHash, err := h.authService.HashPassword(req.Password)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, errors.NewInternalError("Failed to hash password", err).ToResponse(""))
@@ -732,6 +827,10 @@ func (h *AuthHandler) UpdateUserExtended(c *gin.Context) {
 		user.PasswordHash = passwordHash
 	}
 	if req.Enabled != nil {
+		if !h.ensureEnabledAdminRemains(c, user, user.Role, *req.Enabled, "disable") {
+			return
+		}
+
 		user.Enabled = *req.Enabled
 	}
 	if req.TrafficLimit != nil {

@@ -115,11 +115,12 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock, Key } from '@element-plus/icons-vue'
 import { useUserPortalStore } from '@/stores/userPortal'
+import { verifyEmail as verifyPortalEmail } from '@/api/modules/portal/auth'
 
 const router = useRouter()
 const route = useRoute()
@@ -252,6 +253,25 @@ function cancelTwoFA() {
   twoFAForm.code = ''
   useBackupCode.value = false
 }
+
+onMounted(async () => {
+  const token = route.query.verify_email_token
+  if (!token || typeof token !== 'string') {
+    return
+  }
+
+  try {
+    await verifyPortalEmail(token)
+    ElMessage.success('邮箱验证成功，现在可以登录了')
+  } catch (error) {
+    const message = error.response?.data?.message || error.message || '邮箱验证失败'
+    ElMessage.error(message)
+  } finally {
+    const query = { ...route.query }
+    delete query.verify_email_token
+    router.replace({ path: route.path, query })
+  }
+})
 </script>
 
 <style scoped>
