@@ -211,8 +211,8 @@ async function handleSearch() {
   loading.value = true
 
   try {
-    const response = await helpApi.search({ q: searchQuery.value })
-    searchResults.value = response.articles || []
+    const response = await helpApi.searchArticles({ q: searchQuery.value })
+    searchResults.value = response.results || response.articles || []
   } catch (error) {
     ElMessage.error('搜索失败')
   } finally {
@@ -252,11 +252,11 @@ async function loadInitialData() {
   loading.value = true
   try {
     // 加载精选文章
-    const featuredResponse = await helpApi.getArticles({ featured: true, limit: 4 })
+    const featuredResponse = await helpApi.getFeaturedArticles(4)
     featuredArticles.value = featuredResponse.articles || []
 
-    // 加载热门文章
-    const popularResponse = await helpApi.getArticles({ sort: 'popular', limit: 5 })
+    // 暂时使用最新文章填充热门区域，避免调用不存在的排序接口
+    const popularResponse = await helpApi.getArticles({ limit: 5 })
     popularArticles.value = popularResponse.articles || []
 
     // 加载分类统计
@@ -284,6 +284,7 @@ onMounted(() => {
   padding: 20px;
   max-width: 1000px;
   margin: 0 auto;
+  box-sizing: border-box;
 }
 
 /* 搜索区域 */
@@ -313,6 +314,7 @@ onMounted(() => {
   gap: 12px;
   max-width: 600px;
   margin: 0 auto;
+  align-items: stretch;
 }
 
 .search-box .el-input {
@@ -398,6 +400,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .view-count {
@@ -599,6 +602,7 @@ onMounted(() => {
   flex: 1;
   font-size: 14px;
   color: #303133;
+  min-width: 0;
 }
 
 .popular-views {
@@ -632,14 +636,83 @@ onMounted(() => {
 
 /* 响应式 */
 @media (max-width: 768px) {
+  .help-center-page {
+    padding: 0;
+  }
+
+  .search-section {
+    padding: 28px 16px;
+    margin-bottom: 24px;
+    border-radius: 16px;
+  }
+
+  .search-title {
+    font-size: 24px;
+  }
+
   .search-box {
     flex-direction: column;
+  }
+
+  .results-header,
+  .category-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .featured-grid,
+  .categories-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .article-item,
+  .featured-card,
+  .category-card,
+  .popular-item {
+    padding: 16px;
+  }
+
+  .category-card {
+    align-items: flex-start;
+  }
+
+  .category-arrow {
+    display: none;
+  }
+
+  .popular-item {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .popular-views {
+    width: 100%;
+    margin-left: 36px;
   }
 
   .support-content {
     flex-direction: column;
     text-align: center;
     gap: 16px;
+  }
+
+  .support-content :deep(.el-button) {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .search-title {
+    font-size: 22px;
+  }
+
+  .search-subtitle {
+    margin-bottom: 18px;
+  }
+
+  .section-title {
+    font-size: 17px;
   }
 }
 </style>

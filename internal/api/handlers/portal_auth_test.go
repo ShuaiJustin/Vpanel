@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -343,6 +344,27 @@ func (m *portalMockLogger) With(fields ...logger.Field) logger.Logger { return m
 func (m *portalMockLogger) SetLevel(level logger.Level)              {}
 func (m *portalMockLogger) GetLevel() logger.Level                   { return logger.InfoLevel }
 
+type portalMockEmailSender struct {
+	sent []portalSentEmail
+}
+
+type portalSentEmail struct {
+	to      string
+	subject string
+	body    string
+}
+
+func (m *portalMockEmailSender) CanSendEmail() bool { return true }
+
+func (m *portalMockEmailSender) SendEmail(to, subject, body string) error {
+	m.sent = append(m.sent, portalSentEmail{
+		to:      to,
+		subject: subject,
+		body:    body,
+	})
+	return nil
+}
+
 func TestPortalAuthHandler_Register(t *testing.T) {
 	router, _, userRepo := setupPortalTestRouter()
 	
@@ -406,6 +428,43 @@ func TestPortalAuthHandler_Register(t *testing.T) {
 	// Verify user was created
 	if len(userRepo.users) != 1 {
 		t.Errorf("Expected 1 user to be created, got %d", len(userRepo.users))
+	}
+}
+
+func TestPortalAuthHandler_RegisterUsesRequestHostForVerificationEmailWhenBaseURLIsLocal(t *testing.T) {
+	router, handler, _ := setupPortalTestRouter()
+	emailSender := &portalMockEmailSender{}
+	handler.WithEmailSender(emailSender, "http://localhost:8080")
+
+	body := map[string]interface{}{
+		"username": "verifyuser",
+		"email":    "verify@example.com",
+		"password": "password123",
+	}
+
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("failed to marshal request body: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/portal/auth/register", bytes.NewBuffer(jsonBody))
+	req.Host = "shcrystal.top:13212"
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Forwarded-Proto", "http")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected status 201, got %d", w.Code)
+	}
+
+	if len(emailSender.sent) != 1 {
+		t.Fatalf("expected one verification email, got %d", len(emailSender.sent))
+	}
+
+	if !strings.Contains(emailSender.sent[0].body, "http://shcrystal.top:13212/user/login?verify_email_token=") {
+		t.Fatalf("expected verification link to use request host, got %q", emailSender.sent[0].body)
 	}
 }
 

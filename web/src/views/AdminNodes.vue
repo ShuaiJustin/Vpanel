@@ -784,6 +784,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted } from "vue";
+import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
   Plus,
@@ -804,6 +805,7 @@ import { certificatesApi } from "@/api";
 import { nodesApi } from "@/api/modules/nodes";
 
 const nodeStore = useNodeStore();
+const router = useRouter();
 
 const pagination = reactive({ page: 1, pageSize: 20 });
 const dialogVisible = ref(false);
@@ -1473,8 +1475,7 @@ const deleteNode = async (node) => {
 };
 
 const viewNodeDetail = async (node) => {
-  currentNode.value = node;
-  detailDialogVisible.value = true;
+  router.push(`/admin/nodes/${node.id}`);
 };
 
 const showTokenDialog = (node) => {

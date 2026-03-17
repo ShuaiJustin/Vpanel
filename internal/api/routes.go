@@ -734,6 +734,9 @@ func (r *Router) Setup() {
 				// Remote deployment
 				adminNodes.POST("/:id/deploy", nodeDeployHandler.DeployAgent)
 				adminNodes.GET("/:id/deploy/script", nodeDeployHandler.GetDeployScript)
+				adminNodes.POST("/:id/core/start", nodeHandler.StartCore)
+				adminNodes.POST("/:id/core/restart", nodeHandler.RestartCore)
+				adminNodes.POST("/:id/core/sync-config", nodeHandler.SyncCoreConfig)
 
 				// Health check routes
 				adminNodes.POST("/:id/health-check", nodeHealthHandler.CheckNode)
@@ -1025,6 +1028,7 @@ func (r *Router) buildNotificationConfig(systemSettings *settings.SystemSettings
 		SMTPPassword:     systemSettings.SMTPPassword,
 		SMTPFrom:         firstNonEmpty(systemSettings.SMTPFrom, systemSettings.SMTPUser),
 		AdminEmail:       firstNonEmpty(systemSettings.SMTPAlertEmail, systemSettings.SMTPUser),
+		SiteName:         firstNonEmpty(systemSettings.SiteName, "V Panel"),
 		TelegramBotToken: strings.TrimSpace(systemSettings.TelegramBotToken),
 		TelegramChatID:   strings.TrimSpace(systemSettings.TelegramChatID),
 		EnabledTypes: map[notification.NotificationType]bool{
@@ -1270,6 +1274,17 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 			portalAuth.POST("/2fa/login", portalAuthHandler.Verify2FALogin)
 		}
 
+		// Public help center routes
+		portalHelp := portal.Group("/help")
+		{
+			portalHelp.GET("/articles", portalHelpHandler.ListArticles)
+			portalHelp.GET("/articles/:slug", portalHelpHandler.GetArticle)
+			portalHelp.GET("/search", portalHelpHandler.SearchArticles)
+			portalHelp.GET("/featured", portalHelpHandler.GetFeaturedArticles)
+			portalHelp.GET("/categories", portalHelpHandler.GetCategories)
+			portalHelp.POST("/articles/:slug/helpful", portalHelpHandler.MarkHelpful)
+		}
+
 		// Protected portal routes
 		portalProtected := portal.Group("")
 		portalProtected.Use(portalAuthMiddleware.Authenticate())
@@ -1313,13 +1328,6 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 			portalProtected.GET("/stats/daily", portalStatsHandler.GetDailyTraffic)
 			portalProtected.GET("/stats/export", portalStatsHandler.ExportStats)
 
-			// Help routes
-			portalProtected.GET("/help/articles", portalHelpHandler.ListArticles)
-			portalProtected.GET("/help/articles/:slug", portalHelpHandler.GetArticle)
-			portalProtected.GET("/help/search", portalHelpHandler.SearchArticles)
-			portalProtected.GET("/help/featured", portalHelpHandler.GetFeaturedArticles)
-			portalProtected.GET("/help/categories", portalHelpHandler.GetCategories)
-			portalProtected.POST("/help/articles/:slug/helpful", portalHelpHandler.MarkHelpful)
 		}
 	}
 }

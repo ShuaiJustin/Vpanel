@@ -32,9 +32,9 @@
         <div class="footer-links">
           <router-link to="/user/help">帮助中心</router-link>
           <span class="divider">|</span>
-          <a href="#" @click.prevent="showTerms">服务条款</a>
+          <router-link to="/user/terms">服务条款</router-link>
           <span class="divider">|</span>
-          <a href="#" @click.prevent="showPrivacy">隐私政策</a>
+          <router-link to="/user/privacy">隐私政策</router-link>
         </div>
         <div class="footer-copyright">
           © {{ currentYear }} V Panel. All rights reserved.
@@ -55,7 +55,6 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
 import { Sunny, Moon } from '@element-plus/icons-vue'
 
 const isDarkMode = ref(false)
@@ -65,14 +64,6 @@ const toggleTheme = () => {
   isDarkMode.value = !isDarkMode.value
   localStorage.setItem('userTheme', isDarkMode.value ? 'dark' : 'light')
   document.documentElement.classList.toggle('dark', isDarkMode.value)
-}
-
-const showTerms = () => {
-  router.push('/user/terms')
-}
-
-const showPrivacy = () => {
-  router.push('/user/privacy')
 }
 
 onMounted(() => {

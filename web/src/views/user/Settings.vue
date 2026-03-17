@@ -278,6 +278,7 @@ import { ElMessage } from 'element-plus'
 import { User } from '@element-plus/icons-vue'
 import { useUserPortalStore } from '@/stores/userPortal'
 import { useTheme } from '@/composables/useTheme'
+import { copyText } from '@/utils/clipboard'
 
 const userStore = useUserPortalStore()
 const { themeMode, setTheme, THEME_MODES } = useTheme()
@@ -469,10 +470,14 @@ async function confirmTwoFactor() {
   }
 }
 
-function copyBackupCodes() {
-  navigator.clipboard.writeText(backupCodes.value.join('\n'))
-    .then(() => ElMessage.success('备份码已复制'))
-    .catch(() => ElMessage.error('复制失败'))
+async function copyBackupCodes() {
+  try {
+    await copyText(backupCodes.value.join('\n'))
+    ElMessage.success('备份码已复制')
+  } catch (error) {
+    console.error('复制备份码失败:', error)
+    ElMessage.error('复制失败')
+  }
 }
 
 function showSessions() {

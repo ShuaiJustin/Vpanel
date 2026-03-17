@@ -199,6 +199,7 @@ const acceptAndClose = () => {
   padding: 40px 20px;
   background: #fff;
   min-height: 100vh;
+  box-sizing: border-box;
 }
 
 .privacy-header {
@@ -222,6 +223,8 @@ const acceptAndClose = () => {
 .privacy-content {
   line-height: 1.8;
   color: #333;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .privacy-content section {
@@ -274,11 +277,71 @@ const acceptAndClose = () => {
   margin-top: 40px;
   padding-top: 20px;
   border-top: 2px solid #e0e0e0;
-  text-align: center;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .privacy-footer .el-button {
-  margin: 0 10px;
   min-width: 120px;
+}
+
+@media (max-width: 768px) {
+  .privacy-container {
+    padding: 24px 16px;
+  }
+
+  .privacy-header {
+    margin-bottom: 28px;
+  }
+
+  .privacy-header h1 {
+    font-size: 28px;
+  }
+
+  .privacy-content section {
+    margin-bottom: 24px;
+  }
+
+  .privacy-content h2 {
+    font-size: 22px;
+  }
+
+  .privacy-content h3 {
+    font-size: 17px;
+  }
+
+  .privacy-content p {
+    text-align: left;
+  }
+
+  .privacy-content ul {
+    margin-left: 0;
+    padding-left: 18px;
+  }
+}
+
+@media (max-width: 480px) {
+  .privacy-container {
+    padding: 20px 12px;
+  }
+
+  .privacy-header h1 {
+    font-size: 24px;
+  }
+
+  .privacy-content h2 {
+    font-size: 20px;
+  }
+
+  .privacy-footer {
+    flex-direction: column;
+  }
+
+  .privacy-footer .el-button {
+    width: 100%;
+    margin-left: 0;
+  }
 }
 </style>

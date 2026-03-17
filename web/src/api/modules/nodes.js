@@ -186,6 +186,27 @@ export const nodesApi = {
   getInstallStatus: (id) => api.get(`/admin/nodes/${id}/install-status`),
 
   /**
+   * 启动节点内核
+   * @param {number|string} id - 节点 ID
+   * @returns {Promise<Object>} 队列结果
+   */
+  startCore: (id) => api.post(`/admin/nodes/${id}/core/start`),
+
+  /**
+   * 重启节点内核
+   * @param {number|string} id - 节点 ID
+   * @returns {Promise<Object>} 队列结果
+   */
+  restartCore: (id) => api.post(`/admin/nodes/${id}/core/restart`),
+
+  /**
+   * 同步节点配置
+   * @param {number|string} id - 节点 ID
+   * @returns {Promise<Object>} 队列结果
+   */
+  syncCoreConfig: (id) => api.post(`/admin/nodes/${id}/core/sync-config`),
+
+  /**
    * 获取部署脚本
    * @param {number|string} id - 节点 ID
    * @param {string} panelUrl - 面板 URL (可选)

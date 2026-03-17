@@ -298,6 +298,48 @@ export const useNodeStore = defineStore('node', () => {
     }
   }
 
+  const startNodeCore = async (id) => {
+    loading.value = true
+    error.value = null
+
+    try {
+      return await nodesApi.startCore(id)
+    } catch (err) {
+      error.value = err.message || '启动节点内核失败'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const restartNodeCore = async (id) => {
+    loading.value = true
+    error.value = null
+
+    try {
+      return await nodesApi.restartCore(id)
+    } catch (err) {
+      error.value = err.message || '重启节点内核失败'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const syncNodeCoreConfig = async (id) => {
+    loading.value = true
+    error.value = null
+
+    try {
+      return await nodesApi.syncCoreConfig(id)
+    } catch (err) {
+      error.value = err.message || '同步节点配置失败'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   // 统计和健康
   const fetchStatistics = async () => {
     try {
@@ -410,6 +452,9 @@ export const useNodeStore = defineStore('node', () => {
     generateToken,
     rotateToken,
     revokeToken,
+    startNodeCore,
+    restartNodeCore,
+    syncNodeCoreConfig,
     fetchStatistics,
     fetchClusterHealth,
     getNodeTraffic,

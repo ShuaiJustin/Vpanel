@@ -141,10 +141,60 @@
           </div>
         </el-card>
 
-        <!-- Xray 恢复记录 -->
+        <!-- 内核管理 -->
         <el-card shadow="never" class="info-card">
           <template #header>
-            <span>Xray 恢复记录</span>
+            <span>内核管理</span>
+          </template>
+          <div class="status-item">
+            <span class="status-label">内核类型</span>
+            <el-tag size="small">Xray</el-tag>
+          </div>
+          <div class="status-item">
+            <span class="status-label">运行状态</span>
+            <el-tag :type="node?.xray_running ? 'success' : 'danger'" size="small">
+              {{ node?.xray_running ? '运行中' : '已停止' }}
+            </el-tag>
+          </div>
+          <div class="status-item status-item-top">
+            <span class="status-label">当前版本</span>
+            <div class="core-version">{{ formatCoreVersion(node?.xray_version) }}</div>
+          </div>
+          <div class="status-item">
+            <span class="status-label">最后心跳</span>
+            <span>{{ formatTime(node?.last_seen_at) }}</span>
+          </div>
+          <div class="core-actions">
+            <el-button plain @click="refreshData">
+              刷新状态
+            </el-button>
+            <el-button
+              v-if="!node?.xray_running"
+              type="success"
+              @click="startCore"
+              :loading="coreActionLoading === 'start'"
+            >
+              启动内核
+            </el-button>
+            <el-button
+              v-else
+              type="warning"
+              @click="restartCore"
+              :loading="coreActionLoading === 'restart'"
+            >
+              重启内核
+            </el-button>
+            <el-button type="primary" @click="syncConfig" :loading="syncing">
+              同步配置
+            </el-button>
+          </div>
+          <div class="core-tip">节点命令会进入队列，并在节点下一次心跳时执行。</div>
+        </el-card>
+
+        <!-- 内核操作记录 -->
+        <el-card shadow="never" class="info-card">
+          <template #header>
+            <span>内核操作记录</span>
           </template>
           <div v-if="recentRecoveryEvents.length" class="recovery-events">
             <div
@@ -158,6 +208,7 @@
                 </el-tag>
                 <span class="recovery-time">{{ formatTime(event.updated_at || event.created_at) }}</span>
               </div>
+              <div class="recovery-command">{{ getRecoveryCommandText(event.command_type) }}</div>
               <div class="recovery-reason">{{ event.reason || '未提供原因' }}</div>
               <div class="recovery-meta">
                 来源：{{ getRecoverySourceText(event.source) }}
@@ -191,9 +242,6 @@
             <span>快捷操作</span>
           </template>
           <div class="quick-actions">
-            <el-button type="primary" plain @click="syncConfig" :loading="syncing">
-              同步配置
-            </el-button>
             <el-button type="warning" plain @click="showTokenDialog">
               管理 Token
             </el-button>
@@ -261,6 +309,7 @@ const nodeStore = useNodeStore()
 
 const loading = ref(false)
 const syncing = ref(false)
+const coreActionLoading = ref('')
 const tokenDialogVisible = ref(false)
 const tokenLoading = ref(false)
 const currentToken = ref('')
@@ -323,8 +372,18 @@ const getRecoveryStatusText = (status) => {
 }
 
 const getRecoverySourceText = (source) => {
-  const texts = { heartbeat: '节点心跳', health_checker: '健康检查器' }
+  const texts = { heartbeat: '节点心跳', health_checker: '健康检查器', admin: '管理员', portal_ping: '用户入口探测' }
   return texts[source] || source || '系统'
+}
+
+const getRecoveryCommandText = (commandType) => {
+  const texts = {
+    xray_start: '启动 Xray',
+    xray_restart: '重启 Xray',
+    xray_status: '刷新 Xray 状态',
+    config_sync: '同步节点配置'
+  }
+  return texts[commandType] || commandType || '未知命令'
 }
 
 const formatTime = (time) => {
@@ -341,6 +400,11 @@ const formatBytes = (bytes) => {
     i++
   }
   return `${bytes.toFixed(2)} ${units[i]}`
+}
+
+const formatCoreVersion = (version) => {
+  if (!version) return '-'
+  return String(version).split('\n')[0]
 }
 
 const parseTags = (tags) => {
@@ -425,14 +489,53 @@ const editNode = () => {
 }
 
 const syncConfig = async () => {
+  if (!node.value) return
   syncing.value = true
   try {
-    // 调用同步 API
-    ElMessage.success('配置同步已触发')
+    const response = await nodeStore.syncNodeCoreConfig(node.value.id)
+    ElMessage.success(response.message || '配置同步已加入队列')
+    await fetchNode()
   } catch (e) {
     ElMessage.error(e.message || '同步失败')
   } finally {
     syncing.value = false
+  }
+}
+
+const startCore = async () => {
+  if (!node.value) return
+  coreActionLoading.value = 'start'
+  try {
+    const response = await nodeStore.startNodeCore(node.value.id)
+    ElMessage.success(response.message || '启动命令已加入队列')
+    await fetchNode()
+  } catch (e) {
+    ElMessage.error(e.message || '启动节点内核失败')
+  } finally {
+    coreActionLoading.value = ''
+  }
+}
+
+const restartCore = async () => {
+  if (!node.value) return
+  try {
+    await ElMessageBox.confirm(
+      `确定要重启节点 "${node.value.name}" 的 Xray 内核吗？`,
+      '重启确认',
+      { type: 'warning' }
+    )
+  } catch {
+    return
+  }
+  coreActionLoading.value = 'restart'
+  try {
+    const response = await nodeStore.restartNodeCore(node.value.id)
+    ElMessage.success(response.message || '重启命令已加入队列')
+    await fetchNode()
+  } catch (e) {
+    ElMessage.error(e.message || '重启节点内核失败')
+  } finally {
+    coreActionLoading.value = ''
   }
 }
 
@@ -592,6 +695,10 @@ onMounted(async () => {
   border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
+.status-item-top {
+  align-items: flex-start;
+}
+
 .status-item:last-child {
   border-bottom: none;
 }
@@ -612,6 +719,29 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.core-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.core-tip {
+  margin-top: 12px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.core-version {
+  max-width: 60%;
+  color: var(--el-text-color-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: right;
+  word-break: break-word;
 }
 
 .quick-actions .el-button {
@@ -698,6 +828,13 @@ onMounted(async () => {
   color: var(--el-text-color-primary);
   margin-bottom: 6px;
   word-break: break-word;
+}
+
+.recovery-command {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-color-primary);
+  margin-bottom: 6px;
 }
 
 .recovery-meta {

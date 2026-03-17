@@ -93,8 +93,9 @@
       <div class="footer-container">
         <div class="footer-links">
           <router-link to="/user/help">帮助中心</router-link>
-          <a href="#" @click.prevent="showTerms">服务条款</a>
-          <a href="#" @click.prevent="showContact">联系我们</a>
+          <router-link to="/user/terms">服务条款</router-link>
+          <router-link to="/user/privacy">隐私政策</router-link>
+          <button type="button" class="footer-link-button" @click="showContact">联系我们</button>
         </div>
         <div class="footer-copyright">
           © {{ currentYear }} V Panel. All rights reserved.
@@ -266,10 +267,6 @@ const handleLogout = () => {
   showMobileMenu.value = false
 }
 
-const showTerms = () => {
-  router.push('/user/terms')
-}
-
 const showContact = () => {
   ElMessage.info('联系我们页面开发中')
 }
@@ -324,6 +321,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 40px;
+  min-width: 0;
 }
 
 .logo {
@@ -367,6 +365,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .notification-badge {
@@ -429,16 +428,24 @@ onMounted(() => {
 .footer-links {
   display: flex;
   gap: 24px;
+  flex-wrap: wrap;
 }
 
-.footer-links a {
+.footer-links a,
+.footer-link-button {
   color: var(--color-text-secondary);
   text-decoration: none;
   font-size: 14px;
   transition: color 0.2s;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
 }
 
-.footer-links a:hover {
+.footer-links a:hover,
+.footer-link-button:hover {
   color: var(--color-primary);
 }
 
@@ -522,6 +529,16 @@ onMounted(() => {
 
 /* 响应式 */
 @media (max-width: 768px) {
+  .header-container {
+    height: 56px;
+    padding: 0 12px;
+    gap: 12px;
+  }
+
+  .header-left {
+    gap: 0;
+  }
+
   .desktop-nav {
     display: none;
   }
@@ -529,19 +546,46 @@ onMounted(() => {
   .mobile-menu-btn {
     display: flex;
   }
-  
-  .user-dropdown-trigger .username {
+
+  .user-dropdown-trigger {
     display: none;
+  }
+
+  .header-right {
+    gap: 8px;
   }
   
   .footer-container {
     flex-direction: column;
     gap: 12px;
     text-align: center;
+    padding: 0 12px;
+  }
+
+  .footer-links {
+    justify-content: center;
+    gap: 10px 18px;
   }
   
   .user-main {
     padding: 16px 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .header-container {
+    padding: 8px 12px;
+    height: auto;
+    min-height: 56px;
+  }
+
+  .logo-text {
+    font-size: 18px;
+  }
+
+  .footer-links {
+    flex-direction: column;
+    gap: 10px;
   }
 }
 </style>

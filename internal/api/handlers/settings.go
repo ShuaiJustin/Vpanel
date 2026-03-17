@@ -310,13 +310,13 @@ func (h *SettingsHandler) TestEmail(c *gin.Context) {
 
 	systemSettings, err := h.settingsService.GetSystemSettings(ctx)
 	if err != nil {
-		h.logger.Error("Failed to get settings for test email", logger.F("error", err))
+		h.logger.Error("Failed to get settings for test email", logger.Err(err))
 		middleware.RespondWithError(c, errors.NewDatabaseError("get settings", err))
 		return
 	}
 
 	if err := h.testEmailHook(ctx, systemSettings, req.To); err != nil {
-		h.logger.Error("Failed to send test email", logger.F("error", err))
+		h.logger.Error("Failed to send test email", logger.Err(err))
 		lowerMessage := strings.ToLower(err.Error())
 		if strings.Contains(lowerMessage, "smtp") ||
 			strings.Contains(lowerMessage, "recipient") ||

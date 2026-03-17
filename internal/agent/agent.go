@@ -603,6 +603,40 @@ func (a *Agent) ensureXrayRunning(ctx context.Context) error {
 	return a.startXrayDirect(ctx)
 }
 
+func (a *Agent) restartXray(ctx context.Context) error {
+	if runtime.GOOS == "linux" {
+		a.logger.Info("尝试通过 systemctl 重启 Xray...")
+		cmd := exec.CommandContext(ctx, "systemctl", "restart", "xray")
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			a.logger.Warn("systemctl 重启失败",
+				logger.F("error", err.Error()),
+				logger.F("output", string(output)))
+		} else {
+			time.Sleep(2 * time.Second)
+			if a.isXrayRunning() {
+				a.logger.Info("Xray 服务通过 systemctl 重启成功")
+				return nil
+			}
+			a.logger.Warn("systemctl 重启完成，但 Xray 仍未运行，尝试回退到直接拉起")
+		}
+	}
+
+	if err := a.xrayManager.Restart(ctx); err != nil {
+		a.logger.Warn("直接重启 Xray 失败，尝试兜底拉起",
+			logger.F("error", err.Error()))
+	} else {
+		time.Sleep(2 * time.Second)
+		if a.isXrayRunning() {
+			a.logger.Info("Xray 直接重启成功")
+			return nil
+		}
+		a.logger.Warn("直接重启完成，但 Xray 仍未运行，尝试兜底拉起")
+	}
+
+	return a.ensureXrayRunning(ctx)
+}
+
 func (a *Agent) resolveXrayBinaryPath() string {
 	if path := strings.TrimSpace(a.config.Xray.BinaryPath); path != "" {
 		return path

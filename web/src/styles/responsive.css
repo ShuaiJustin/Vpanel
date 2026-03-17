@@ -1,0 +1,139 @@
+html,
+body,
+#app {
+  width: 100%;
+  max-width: 100%;
+}
+
+.page-container,
+.content,
+.user-main,
+.mobile-main {
+  max-width: 100%;
+}
+
+@media (max-width: 1024px) {
+  .el-dialog {
+    width: min(720px, calc(100vw - 24px)) !important;
+    max-width: calc(100vw - 24px);
+  }
+
+  .el-message-box,
+  .el-notification {
+    width: min(420px, calc(100vw - 24px)) !important;
+  }
+
+  .el-pagination {
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .el-tabs__nav-wrap,
+  .el-tabs__nav-scroll {
+    overflow-x: auto;
+  }
+
+  .el-form--inline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .el-form--inline .el-form-item {
+    margin-right: 0 !important;
+    margin-bottom: 0 !important;
+  }
+}
+
+@media (max-width: 768px) {
+  body {
+    overflow-x: hidden;
+  }
+
+  .page-container {
+    padding: 12px;
+    min-height: auto;
+  }
+
+  .content,
+  .user-main,
+  .mobile-main {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .el-card {
+    margin-bottom: 12px;
+    border-radius: 12px;
+  }
+
+  .el-card__header,
+  .el-card__body,
+  .el-dialog__header,
+  .el-dialog__body,
+  .el-drawer__body {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .el-form--inline {
+    display: block;
+  }
+
+  .el-form--inline .el-form-item {
+    display: flex;
+    width: 100%;
+    margin-bottom: 12px !important;
+    margin-right: 0 !important;
+  }
+
+  .el-form-item__content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .el-input,
+  .el-select,
+  .el-cascader,
+  .el-input-number,
+  .el-date-editor {
+    max-width: 100%;
+  }
+
+  .el-form--inline .el-input,
+  .el-form--inline .el-select,
+  .el-form--inline .el-cascader,
+  .el-form--inline .el-input-number,
+  .el-form--inline .el-date-editor {
+    width: 100% !important;
+  }
+
+  .el-dialog {
+    margin: 12px auto !important;
+  }
+
+  .el-dialog__body {
+    max-height: calc(100vh - 180px);
+    overflow: auto;
+  }
+
+  .el-table {
+    font-size: 12px;
+  }
+
+  .el-table__body-wrapper,
+  .el-table__header-wrapper,
+  .el-table__footer-wrapper {
+    overflow-x: auto;
+  }
+
+  .el-button + .el-button {
+    margin-left: 8px;
+  }
+
+  .el-message {
+    min-width: auto;
+    width: calc(100vw - 24px);
+  }
+}

@@ -267,7 +267,15 @@
         </el-form>
       </el-tab-pane>
       
-      <el-tab-pane label="Xray内核配置" name="xray">
+      <el-tab-pane label="面板本地Xray" name="xray">
+        <el-alert
+          v-if="xraySettings.currentVersion === '未安装' && !xraySettings.running"
+          type="info"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 16px;"
+          title="这里管理的是面板服务器本地 Xray，不是远程节点内核。Docker 或远程节点部署下显示“未安装”通常是正常现象。"
+        />
         <el-form label-width="120px" class="settings-form">
           <el-form-item label="当前版本">
             <div class="version-info">

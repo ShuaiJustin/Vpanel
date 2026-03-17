@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"runtime"
 	"strconv"
@@ -332,11 +333,91 @@ func (h *NodeAgentHandler) ReportCommandResult(c *gin.Context) {
 			logger.F("command_type", commandType),
 			logger.F("error", err.Error()))
 	}
+	if err := updateNodeXrayStatusFromCommandResult(c.Request.Context(), h.nodeRepo, nodeData.ID, commandType, req.Success, req.Data); err != nil {
+		h.logger.Error("Failed to update node xray status from command result",
+			logger.F("node_id", nodeData.ID),
+			logger.F("command_id", req.CommandID),
+			logger.F("command_type", commandType),
+			logger.F("error", err.Error()))
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Result received",
 	})
+}
+
+type nodeXrayStatusUpdater interface {
+	UpdateXrayStatus(ctx context.Context, id int64, xrayRunning bool, xrayVersion string) error
+}
+
+type commandReportedXrayStatus struct {
+	Running bool   `json:"running"`
+	Version string `json:"version"`
+}
+
+func updateNodeXrayStatusFromCommandResult(ctx context.Context, updater nodeXrayStatusUpdater, nodeID int64, commandType string, success bool, data any) error {
+	if updater == nil || nodeID <= 0 || !success {
+		return nil
+	}
+
+	switch commandType {
+	case commandTypeXrayStart, commandTypeXrayRestart, commandTypeXrayStatus:
+		status, ok := extractReportedXrayStatus(data)
+		if !ok {
+			return nil
+		}
+		return updater.UpdateXrayStatus(ctx, nodeID, status.Running, status.Version)
+	case "xray_stop":
+		return updater.UpdateXrayStatus(ctx, nodeID, false, "")
+	default:
+		return nil
+	}
+}
+
+func extractReportedXrayStatus(data any) (*commandReportedXrayStatus, bool) {
+	if data == nil {
+		return nil, false
+	}
+
+	switch value := data.(type) {
+	case map[string]any:
+		status := &commandReportedXrayStatus{
+			Version: stringValueFromAny(value["version"]),
+		}
+		running, ok := boolValueFromAny(value["running"])
+		if !ok {
+			return nil, false
+		}
+		status.Running = running
+		return status, true
+	default:
+		raw, err := json.Marshal(value)
+		if err != nil {
+			return nil, false
+		}
+		var status commandReportedXrayStatus
+		if err := json.Unmarshal(raw, &status); err != nil {
+			return nil, false
+		}
+		return &status, true
+	}
+}
+
+func boolValueFromAny(value any) (bool, bool) {
+	switch v := value.(type) {
+	case bool:
+		return v, true
+	default:
+		return false, false
+	}
+}
+
+func stringValueFromAny(value any) string {
+	if str, ok := value.(string); ok {
+		return str
+	}
+	return ""
 }
 
 // GetConfig returns the configuration for a node.

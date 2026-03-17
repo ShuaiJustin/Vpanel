@@ -1,7 +1,23 @@
 <template>
-  <div class="app-container" :class="{ 'dark-mode': isDark }">
+  <div class="app-container" :class="{ 'dark-mode': isDark, 'is-mobile': isMobile }">
+    <transition name="overlay-fade">
+      <button
+        v-if="isMobile && isMobileMenuOpen"
+        class="sidebar-overlay"
+        type="button"
+        aria-label="关闭导航菜单"
+        @click="closeMobileMenu"
+      />
+    </transition>
     <!-- 侧边栏 -->
-    <div class="sidebar">
+    <div
+      class="sidebar"
+      :class="{
+        collapsed: isCollapse && !isMobile,
+        'is-mobile': isMobile,
+        'mobile-open': isMobileMenuOpen
+      }"
+    >
       <div class="logo">
         <h1>V 管理面板</h1>
       </div>
@@ -11,7 +27,7 @@
         text-color="#d6deea"
         active-text-color="#ffffff"
         :default-active="activeMenu"
-        :collapse="isCollapse"
+        :collapse="!isMobile && isCollapse"
         router
       >
         <el-menu-item index="/admin/dashboard">
@@ -95,19 +111,36 @@
       <!-- 顶部栏 -->
       <header class="header">
         <div class="header-left">
-          <el-icon
+          <el-button
+            text
             class="collapse-btn"
             @click="toggleSidebar"
           >
-            <Fold v-if="!isCollapse" />
-            <Expand v-else />
-          </el-icon>
+            <el-icon>
+              <Menu v-if="isMobile" />
+              <Fold v-else-if="!isCollapse" />
+              <Expand v-else />
+            </el-icon>
+          </el-button>
+          <span v-if="isMobile" class="header-title">{{ currentTitle }}</span>
         </div>
         <div class="header-right">
           <el-button circle @click="toggleTheme" class="theme-toggle-btn" title="切换主题">
             <el-icon><Sunny v-if="isDark" /><Moon v-else /></el-icon>
           </el-button>
-          <div class="user-info">
+          <el-dropdown v-if="isMobile" trigger="click" @command="handleMobileUserCommand">
+            <el-button circle class="mobile-user-menu-btn">
+              <el-icon><User /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="profile">个人资料</el-dropdown-item>
+                <el-dropdown-item command="password">修改密码</el-dropdown-item>
+                <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <div v-else class="user-info">
             <el-avatar size="small" class="user-avatar">{{ username.charAt(0).toUpperCase() }}</el-avatar>
             <span class="username">{{ username }}</span>
             <el-button link size="small" @click="goToProfile" class="user-action-btn">个人资料</el-button>
@@ -126,7 +159,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import {
@@ -139,21 +172,26 @@ import {
   Fold,
   Expand,
   Link,
+  Menu,
   ShoppingCart,
   Sunny,
   Moon
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useTheme } from '@/composables/useTheme'
+import { useViewport } from '@/composables/useViewport'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
 const { isDark, toggleDarkMode } = useTheme()
+const { isMobile } = useViewport({ mobileBreakpoint: 1024, tabletBreakpoint: 1280 })
 
 const isCollapse = ref(false)
+const isMobileMenuOpen = ref(false)
 const username = computed(() => userStore.user?.username || '管理员')
 const activeMenu = computed(() => route.path)
+const currentTitle = computed(() => route.meta?.title || 'V 管理面板')
 
 // Check if user is admin
 const isAdmin = computed(() => {
@@ -163,7 +201,16 @@ const isAdmin = computed(() => {
 
 // 切换侧边栏
 const toggleSidebar = () => {
+  if (isMobile.value) {
+    isMobileMenuOpen.value = !isMobileMenuOpen.value
+    return
+  }
+
   isCollapse.value = !isCollapse.value
+}
+
+const closeMobileMenu = () => {
+  isMobileMenuOpen.value = false
 }
 
 // 切换主题
@@ -181,6 +228,22 @@ const goToChangePassword = () => {
   router.push('/admin/change-password')
 }
 
+const handleMobileUserCommand = (command) => {
+  if (command === 'profile') {
+    goToProfile()
+    return
+  }
+
+  if (command === 'password') {
+    goToChangePassword()
+    return
+  }
+
+  if (command === 'logout') {
+    confirmLogout()
+  }
+}
+
 // 确认退出登录
 const confirmLogout = () => {
   ElMessageBox.confirm('确定要退出登录吗?', '提示', {
@@ -192,6 +255,21 @@ const confirmLogout = () => {
     router.push('/user/login')
   }).catch(() => {})
 }
+
+watch(
+  () => route.fullPath,
+  () => {
+    if (isMobile.value) {
+      closeMobileMenu()
+    }
+  }
+)
+
+watch(isMobile, mobile => {
+  if (!mobile) {
+    closeMobileMenu()
+  }
+})
 </script>
 
 <style scoped>
@@ -205,18 +283,27 @@ const confirmLogout = () => {
   --sidebar-active: #3b82f6;
   --sidebar-active-shadow: rgba(59, 130, 246, 0.28);
   display: flex;
-  height: 100vh;
+  min-height: 100vh;
+}
+
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  border: 0;
+  background: rgba(15, 23, 42, 0.55);
+  z-index: 1000;
 }
 
 .sidebar {
   width: 200px;
-  height: 100%;
+  height: 100vh;
   background: linear-gradient(180deg, var(--sidebar-surface) 0%, var(--sidebar-bg) 100%);
   color: var(--sidebar-text);
   transition: all 0.3s;
   overflow-y: auto;
   flex-shrink: 0;
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+  z-index: 1001;
 }
 
 .sidebar.collapsed {
@@ -319,21 +406,34 @@ const confirmLogout = () => {
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
+  position: sticky;
+  top: 0;
+  z-index: 900;
 }
 
 .header-left, .header-right {
   display: flex;
   align-items: center;
+  min-width: 0;
 }
 
 .collapse-btn {
   font-size: 20px;
-  cursor: pointer;
   transition: all 0.3s;
+  margin-left: -8px;
 }
 
 .collapse-btn:hover {
   color: #409EFF;
+}
+
+.header-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* User dropdown styles */
@@ -362,7 +462,7 @@ const confirmLogout = () => {
 .content {
   flex: 1;
   padding: 20px;
-  overflow-y: auto;
+  overflow: auto;
   background-color: #f0f2f5;
 }
 
@@ -412,6 +512,10 @@ const confirmLogout = () => {
   background-color: transparent;
 }
 
+.mobile-user-menu-btn {
+  border: none;
+}
+
 .theme-toggle-btn:hover {
   background-color: #f5f7fa;
 }
@@ -444,6 +548,58 @@ const confirmLogout = () => {
 .logout-btn:hover {
   color: #f56c6c;
   opacity: 0.8;
+}
+
+@media (max-width: 1024px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: min(82vw, 320px);
+    transform: translateX(-100%);
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .main-content {
+    width: 100%;
+  }
+
+  .header {
+    padding: 0 12px;
+  }
+
+  .content {
+    padding: 12px;
+  }
+
+  .theme-toggle-btn {
+    margin-right: 8px;
+  }
+}
+
+@media (max-width: 640px) {
+  .header {
+    min-height: 56px;
+    height: auto;
+    gap: 8px;
+  }
+
+  .content {
+    padding: 10px;
+  }
+}
+
+.overlay-fade-enter-active,
+.overlay-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.overlay-fade-enter-from,
+.overlay-fade-leave-to {
+  opacity: 0;
 }
 
 /* 深色模式样式 */

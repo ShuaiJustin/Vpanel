@@ -160,6 +160,7 @@ const acceptAndClose = () => {
   padding: 40px 20px;
   background: #fff;
   min-height: 100vh;
+  box-sizing: border-box;
 }
 
 .terms-header {
@@ -183,6 +184,8 @@ const acceptAndClose = () => {
 .terms-content {
   line-height: 1.8;
   color: #333;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .terms-content section {
@@ -222,11 +225,71 @@ const acceptAndClose = () => {
   margin-top: 40px;
   padding-top: 20px;
   border-top: 2px solid #e0e0e0;
-  text-align: center;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .terms-footer .el-button {
-  margin: 0 10px;
   min-width: 120px;
+}
+
+@media (max-width: 768px) {
+  .terms-container {
+    padding: 24px 16px;
+  }
+
+  .terms-header {
+    margin-bottom: 28px;
+  }
+
+  .terms-header h1 {
+    font-size: 28px;
+  }
+
+  .terms-content section {
+    margin-bottom: 24px;
+  }
+
+  .terms-content h2 {
+    font-size: 22px;
+  }
+
+  .terms-content h3 {
+    font-size: 17px;
+  }
+
+  .terms-content p {
+    text-align: left;
+  }
+
+  .terms-content ul {
+    margin-left: 0;
+    padding-left: 18px;
+  }
+}
+
+@media (max-width: 480px) {
+  .terms-container {
+    padding: 20px 12px;
+  }
+
+  .terms-header h1 {
+    font-size: 24px;
+  }
+
+  .terms-content h2 {
+    font-size: 20px;
+  }
+
+  .terms-footer {
+    flex-direction: column;
+  }
+
+  .terms-footer .el-button {
+    width: 100%;
+    margin-left: 0;
+  }
 }
 </style>

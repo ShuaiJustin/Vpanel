@@ -42,6 +42,7 @@ import { ElMessage } from 'element-plus'
 import { Loading, WarningFilled, CopyDocument } from '@element-plus/icons-vue'
 import QRCode from 'qrcode'
 import api from '@/api/index'
+import { copyText } from '@/utils/clipboard'
 
 const props = defineProps({
   proxyId: {
@@ -104,37 +105,11 @@ const copyLink = async () => {
   if (!shareLink.value) return
   
   try {
-    // 现代浏览器API
-    await navigator.clipboard.writeText(shareLink.value)
+    await copyText(shareLink.value)
     ElMessage.success('已复制到剪贴板')
   } catch (err) {
-    console.error('clipboard API失败:', err)
-    
-    // 备用复制方法
-    try {
-      // 创建文本区域
-      const textarea = document.createElement('textarea')
-      textarea.value = shareLink.value
-      textarea.style.position = 'fixed'  // 确保在屏幕外
-      textarea.style.left = '-9999px'
-      textarea.style.top = '0'
-      document.body.appendChild(textarea)
-      
-      // 选择并执行复制命令
-      textarea.focus()
-      textarea.select()
-      const successful = document.execCommand('copy')
-      document.body.removeChild(textarea)
-      
-      if (successful) {
-        ElMessage.success('已复制到剪贴板')
-      } else {
-        throw new Error('execCommand复制失败')
-      }
-    } catch (fallbackErr) {
-      console.error('备用复制方法失败:', fallbackErr)
-      ElMessage.error('复制失败，请手动复制链接')
-    }
+    console.error('复制链接失败:', err)
+    ElMessage.error('复制失败，请手动复制链接')
   }
 }
 

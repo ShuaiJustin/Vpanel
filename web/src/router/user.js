@@ -4,7 +4,7 @@
  */
 
 // 用户前台布局组件
-const UserLayout = () => import(/* webpackChunkName: "user-layout" */ '../layouts/UserLayout.vue')
+const UserLayout = () => import(/* webpackChunkName: "user-layout" */ '../layouts/ResponsiveUserLayout.vue')
 const AuthLayout = () => import(/* webpackChunkName: "user-auth" */ '../layouts/AuthLayout.vue')
 
 // 用户认证页面
@@ -261,7 +261,8 @@ export const userRoutes = [
         name: 'user-terms',
         component: Terms,
         meta: {
-          title: '服务条款'
+          title: '服务条款',
+          requiresUserAuth: false
         }
       },
       {
@@ -269,7 +270,8 @@ export const userRoutes = [
         name: 'user-privacy',
         component: Privacy,
         meta: {
-          title: '隐私政策'
+          title: '隐私政策',
+          requiresUserAuth: false
         }
       }
     ]

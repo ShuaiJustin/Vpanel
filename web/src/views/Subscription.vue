@@ -163,6 +163,7 @@ import { ElMessage } from 'element-plus'
 import { DocumentCopy, Grid, Link, Warning } from '@element-plus/icons-vue'
 import { useSubscriptionStore } from '@/stores/subscription'
 import QRCode from 'qrcode'
+import { copyText } from '@/utils/clipboard'
 
 const subscriptionStore = useSubscriptionStore()
 
@@ -192,17 +193,11 @@ const fetchSubscription = async () => {
 
 const copyLink = async (linkToCopy) => {
   try {
-    await navigator.clipboard.writeText(linkToCopy)
+    await copyText(linkToCopy)
     ElMessage.success('链接已复制到剪贴板')
   } catch (error) {
-    // 降级方案
-    const textarea = document.createElement('textarea')
-    textarea.value = linkToCopy
-    document.body.appendChild(textarea)
-    textarea.select()
-    document.execCommand('copy')
-    document.body.removeChild(textarea)
-    ElMessage.success('链接已复制到剪贴板')
+    console.error('复制订阅链接失败:', error)
+    ElMessage.error('复制失败，请手动复制链接')
   }
 }
 

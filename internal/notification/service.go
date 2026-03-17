@@ -2,9 +2,15 @@ package notification
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime"
+	"mime/quotedprintable"
+	"net"
 	"net/http"
+	"net/mail"
 	"net/smtp"
 	"strings"
 	"sync"
@@ -40,6 +46,7 @@ type NotificationConfig struct {
 	SMTPPassword string
 	SMTPFrom     string
 	AdminEmail   string
+	SiteName     string
 
 	// Telegram settings
 	TelegramBotToken string
@@ -344,18 +351,190 @@ func (s *Service) sendEmail(to, subject, body string) error {
 		return fmt.Errorf("SMTP not configured")
 	}
 
-	from := config.SMTPFrom
-	if from == "" {
-		from = config.SMTPUser
+	msg, envelopeFrom, rcptTo, err := buildSMTPMessage(config, to, subject, body)
+	if err != nil {
+		return err
 	}
 
-	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s",
-		from, to, subject, body)
+	client, closeFn, err := newSMTPClient(config)
+	if err != nil {
+		return err
+	}
+	defer closeFn()
 
+	if config.SMTPUser != "" && config.SMTPPassword != "" {
+		auth := smtp.PlainAuth("", config.SMTPUser, config.SMTPPassword, config.SMTPHost)
+		if err := client.Auth(auth); err != nil {
+			return fmt.Errorf("SMTP auth failed: %w", err)
+		}
+	}
+
+	if err := client.Mail(envelopeFrom); err != nil {
+		return fmt.Errorf("SMTP MAIL FROM failed: %w", err)
+	}
+	if err := client.Rcpt(rcptTo); err != nil {
+		return fmt.Errorf("SMTP RCPT TO failed: %w", err)
+	}
+
+	writer, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("SMTP DATA failed: %w", err)
+	}
+	if _, err := writer.Write(msg); err != nil {
+		_ = writer.Close()
+		return fmt.Errorf("SMTP message write failed: %w", err)
+	}
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("SMTP message close failed: %w", err)
+	}
+
+	if err := client.Quit(); err != nil {
+		return fmt.Errorf("SMTP QUIT failed: %w", err)
+	}
+
+	return nil
+}
+
+func buildSMTPMessage(config *NotificationConfig, to, subject, body string) ([]byte, string, string, error) {
+	if config == nil {
+		return nil, "", "", fmt.Errorf("notification config is nil")
+	}
+
+	from := strings.TrimSpace(config.SMTPFrom)
+	if from == "" {
+		from = strings.TrimSpace(config.SMTPUser)
+	}
+	if from == "" {
+		return nil, "", "", fmt.Errorf("SMTP sender address is empty")
+	}
+
+	fromAddress, err := normalizeEmailAddress(from)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("invalid sender address: %w", err)
+	}
+
+	toAddress, err := normalizeEmailAddress(to)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("invalid recipient address: %w", err)
+	}
+
+	messageIDDomain := emailDomain(fromAddress)
+	if messageIDDomain == "" {
+		messageIDDomain = strings.Trim(strings.TrimSpace(config.SMTPHost), "[]")
+	}
+	if messageIDDomain == "" {
+		messageIDDomain = "localhost"
+	}
+
+	fromHeader := (&mail.Address{
+		Name:    strings.TrimSpace(config.SiteName),
+		Address: fromAddress,
+	}).String()
+	if strings.TrimSpace(config.SiteName) == "" {
+		fromHeader = (&mail.Address{Address: fromAddress}).String()
+	}
+
+	headers := []string{
+		"From: " + fromHeader,
+		"To: " + (&mail.Address{Address: toAddress}).String(),
+		"Subject: " + mime.QEncoding.Encode("UTF-8", subject),
+		"Date: " + time.Now().UTC().Format(time.RFC1123Z),
+		fmt.Sprintf("Message-ID: <%d@%s>", time.Now().UTC().UnixNano(), messageIDDomain),
+		"MIME-Version: 1.0",
+		"Content-Type: text/plain; charset=UTF-8",
+		"Content-Transfer-Encoding: quoted-printable",
+	}
+
+	var msg bytes.Buffer
+	for _, header := range headers {
+		msg.WriteString(header)
+		msg.WriteString("\r\n")
+	}
+	msg.WriteString("\r\n")
+
+	qpWriter := quotedprintable.NewWriter(&msg)
+	if _, err := io.WriteString(qpWriter, body); err != nil {
+		return nil, "", "", fmt.Errorf("failed to encode email body: %w", err)
+	}
+	if err := qpWriter.Close(); err != nil {
+		return nil, "", "", fmt.Errorf("failed to finalize email body: %w", err)
+	}
+
+	return msg.Bytes(), fromAddress, toAddress, nil
+}
+
+func normalizeEmailAddress(rawAddress string) (string, error) {
+	address, err := mail.ParseAddress(strings.TrimSpace(rawAddress))
+	if err != nil {
+		return "", err
+	}
+
+	return address.Address, nil
+}
+
+func emailDomain(address string) string {
+	parts := strings.Split(strings.TrimSpace(address), "@")
+	if len(parts) != 2 {
+		return ""
+	}
+
+	return strings.TrimSpace(parts[1])
+}
+
+func newSMTPClient(config *NotificationConfig) (*smtp.Client, func(), error) {
 	addr := fmt.Sprintf("%s:%d", config.SMTPHost, config.SMTPPort)
-	auth := smtp.PlainAuth("", config.SMTPUser, config.SMTPPassword, config.SMTPHost)
+	dialer := &net.Dialer{Timeout: 15 * time.Second}
 
-	return smtp.SendMail(addr, auth, from, []string{to}, []byte(msg))
+	if config.SMTPPort == 465 {
+		conn, err := tls.DialWithDialer(dialer, "tcp", addr, &tls.Config{
+			ServerName: config.SMTPHost,
+			MinVersion: tls.VersionTLS12,
+		})
+		if err != nil {
+			return nil, func() {}, fmt.Errorf("SMTP TLS dial failed: %w", err)
+		}
+		if err := conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
+			_ = conn.Close()
+			return nil, func() {}, fmt.Errorf("SMTP deadline setup failed: %w", err)
+		}
+		client, err := smtp.NewClient(conn, config.SMTPHost)
+		if err != nil {
+			_ = conn.Close()
+			return nil, func() {}, fmt.Errorf("SMTP client init failed: %w", err)
+		}
+		return client, func() {
+			_ = client.Close()
+		}, nil
+	}
+
+	conn, err := dialer.Dial("tcp", addr)
+	if err != nil {
+		return nil, func() {}, fmt.Errorf("SMTP dial failed: %w", err)
+	}
+	if err := conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
+		_ = conn.Close()
+		return nil, func() {}, fmt.Errorf("SMTP deadline setup failed: %w", err)
+	}
+
+	client, err := smtp.NewClient(conn, config.SMTPHost)
+	if err != nil {
+		_ = conn.Close()
+		return nil, func() {}, fmt.Errorf("SMTP client init failed: %w", err)
+	}
+
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		if err := client.StartTLS(&tls.Config{
+			ServerName: config.SMTPHost,
+			MinVersion: tls.VersionTLS12,
+		}); err != nil {
+			_ = client.Close()
+			return nil, func() {}, fmt.Errorf("SMTP STARTTLS failed: %w", err)
+		}
+	}
+
+	return client, func() {
+		_ = client.Close()
+	}, nil
 }
 
 // sendTelegram sends a Telegram notification

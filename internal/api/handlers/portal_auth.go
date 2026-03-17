@@ -2,7 +2,10 @@
 package handlers
 
 import (
+	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -74,24 +77,97 @@ func (h *PortalAuthHandler) WithEmailSender(sender portalEmailSender, baseURL st
 	return h
 }
 
-func (h *PortalAuthHandler) sendVerificationEmail(email, token string) error {
-	if h.emailSender == nil || !h.emailSender.CanSendEmail() || email == "" || token == "" || h.baseURL == "" {
+func normalizePortalHost(rawHost string) string {
+	host := strings.TrimSpace(strings.Split(rawHost, ",")[0])
+	if host == "" {
+		return ""
+	}
+
+	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+		host = parsedHost
+	}
+
+	return strings.Trim(strings.ToLower(host), "[]")
+}
+
+func isLocalPortalHost(host string) bool {
+	switch normalizePortalHost(host) {
+	case "", "localhost", "127.0.0.1", "0.0.0.0", "::1":
+		return true
+	default:
+		return false
+	}
+}
+
+func isLocalPortalBaseURL(rawBaseURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(rawBaseURL))
+	if err != nil {
+		return false
+	}
+
+	return isLocalPortalHost(parsed.Host)
+}
+
+func requestPortalBaseURL(c *gin.Context) string {
+	if c == nil || c.Request == nil {
+		return ""
+	}
+
+	host := strings.TrimSpace(strings.Split(c.GetHeader("X-Forwarded-Host"), ",")[0])
+	if host == "" {
+		host = strings.TrimSpace(c.Request.Host)
+	}
+	if host == "" || isLocalPortalHost(host) {
+		return ""
+	}
+
+	scheme := strings.TrimSpace(strings.Split(c.GetHeader("X-Forwarded-Proto"), ",")[0])
+	if scheme == "" {
+		if strings.EqualFold(c.GetHeader("X-Forwarded-Ssl"), "on") {
+			scheme = "https"
+		} else if c.Request.TLS != nil {
+			scheme = "https"
+		} else {
+			scheme = "http"
+		}
+	}
+
+	return fmt.Sprintf("%s://%s", strings.ToLower(scheme), host)
+}
+
+func (h *PortalAuthHandler) resolvePortalBaseURL(c *gin.Context) string {
+	configuredBaseURL := strings.TrimSuffix(strings.TrimSpace(h.baseURL), "/")
+	if configuredBaseURL != "" && !isLocalPortalBaseURL(configuredBaseURL) {
+		return configuredBaseURL
+	}
+
+	if requestBaseURL := requestPortalBaseURL(c); requestBaseURL != "" {
+		return strings.TrimSuffix(requestBaseURL, "/")
+	}
+
+	return configuredBaseURL
+}
+
+func (h *PortalAuthHandler) sendVerificationEmail(c *gin.Context, email, token string) error {
+	baseURL := h.resolvePortalBaseURL(c)
+	if h.emailSender == nil || !h.emailSender.CanSendEmail() || email == "" || token == "" || baseURL == "" {
 		return nil
 	}
 
-	verifyURL := h.baseURL + "/user/login?verify_email_token=" + token
+	verifyURL := baseURL + "/user/login?verify_email_token=" + token
 	subject := "请验证您的邮箱"
 	body := "欢迎注册 V Panel。\n\n请点击以下链接验证您的邮箱（24 小时内有效）：\n" + verifyURL + "\n\n如果这不是您的操作，请忽略此邮件。"
 
 	return h.emailSender.SendEmail(email, subject, body)
 }
 
-func (h *PortalAuthHandler) sendPasswordResetEmail(email, token string) error {
-	if h.emailSender == nil || !h.emailSender.CanSendEmail() || email == "" || token == "" || h.baseURL == "" {
+func (h *PortalAuthHandler) sendPasswordResetEmail(c *gin.Context, email, token string) error {
+	baseURL := h.resolvePortalBaseURL(c)
+	if h.emailSender == nil || !h.emailSender.CanSendEmail() || email == "" || token == "" || baseURL == "" {
 		return nil
 	}
 
-	resetURL := h.baseURL + "/user/reset-password?token=" + token
+	resetURL := baseURL + "/user/reset-password?token=" + token
 	subject := "重置您的密码"
 	body := "我们收到了您的密码重置请求。\n\n请点击以下链接设置新密码（1 小时内有效）：\n" + resetURL + "\n\n如果这不是您的操作，请忽略此邮件。"
 
@@ -132,7 +208,7 @@ func (h *PortalAuthHandler) Register(c *gin.Context) {
 		token, tokenErr := h.portalAuthService.CreateEmailVerificationToken(c.Request.Context(), result.UserID, result.Email)
 		if tokenErr != nil {
 			h.logger.Warn("failed to create email verification token", logger.F("user_id", result.UserID), logger.F("error", tokenErr))
-		} else if err := h.sendVerificationEmail(result.Email, token); err != nil {
+			} else if err := h.sendVerificationEmail(c, result.Email, token); err != nil {
 			h.logger.Warn("failed to send verification email", logger.F("user_id", result.UserID), logger.F("error", err))
 		} else {
 			emailVerificationSent = true
@@ -240,7 +316,7 @@ func (h *PortalAuthHandler) ForgotPassword(c *gin.Context) {
 	}
 
 	if token != "" {
-		if err := h.sendPasswordResetEmail(req.Email, token); err != nil {
+			if err := h.sendPasswordResetEmail(c, req.Email, token); err != nil {
 			h.logger.Warn("failed to send password reset email", logger.F("email", req.Email), logger.F("error", err))
 		}
 	}

@@ -120,11 +120,12 @@ func (h *PortalHelpHandler) SearchArticles(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"results": results,
-		"total":   total,
-		"query":   query,
-		"limit":   limit,
-		"offset":  offset,
+		"results":  results,
+		"articles": results,
+		"total":    total,
+		"query":    query,
+		"limit":    limit,
+		"offset":   offset,
 	})
 }
 

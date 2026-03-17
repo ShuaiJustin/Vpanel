@@ -13,7 +13,7 @@
         </el-button>
         <span class="header-title">{{ pageTitle }}</span>
       </div>
-      <div class="header-right">
+      <div v-if="showPortalActions" class="header-right">
         <el-badge :value="unreadCount" :hidden="unreadCount === 0" :max="99">
           <el-button link class="header-btn" @click="goToAnnouncements">
             <el-icon><Bell /></el-icon>
@@ -26,7 +26,7 @@
     </header>
 
     <!-- 主内容区 -->
-    <main class="mobile-main">
+    <main class="mobile-main" :class="{ 'with-tabbar': showTabbar }">
       <router-view v-slot="{ Component }">
         <transition name="slide" mode="out-in">
           <component :is="Component" />
@@ -35,7 +35,7 @@
     </main>
 
     <!-- 底部导航栏 -->
-    <nav class="mobile-tabbar">
+    <nav v-if="showTabbar" class="mobile-tabbar">
       <div 
         v-for="item in tabItems" 
         :key="item.path"
@@ -80,10 +80,21 @@ const pageTitle = computed(() => {
   return route.meta?.title || 'V Panel'
 })
 
+const hasPortalSession = computed(() => {
+  route.fullPath
+  return Boolean(sessionStorage.getItem('userToken') || localStorage.getItem('userToken'))
+})
+
+const showPortalActions = computed(() => hasPortalSession.value)
+const showTabbar = computed(() => hasPortalSession.value)
+
 const showBackButton = computed(() => {
-  // 在详情页显示返回按钮
   const detailPaths = ['/user/announcements/', '/user/tickets/', '/user/help/']
-  return detailPaths.some(p => route.path.startsWith(p) && route.path !== p.slice(0, -1))
+  const standalonePages = ['/user/terms', '/user/privacy']
+  return (
+    standalonePages.includes(route.path) ||
+    detailPaths.some(p => route.path.startsWith(p) && route.path !== p.slice(0, -1))
+  )
 })
 
 const unreadCount = computed(() => {
@@ -100,7 +111,17 @@ function navigateTo(path) {
 }
 
 function goBack() {
-  router.back()
+  if (window.history.length > 1) {
+    router.back()
+    return
+  }
+
+  if (route.path.startsWith('/user/help')) {
+    router.push('/user/help')
+    return
+  }
+
+  router.push(hasPortalSession.value ? '/user/dashboard' : '/user/login')
 }
 
 function goToAnnouncements() {
@@ -169,9 +190,13 @@ function goToSettings() {
 /* 主内容区 */
 .mobile-main {
   flex: 1;
-  padding: 50px 0 60px 0;
+  padding: 50px 0 16px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.mobile-main.with-tabbar {
+  padding-bottom: 60px;
 }
 
 /* 底部导航栏 */

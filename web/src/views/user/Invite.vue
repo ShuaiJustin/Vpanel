@@ -167,6 +167,7 @@ import { ElMessage } from 'element-plus'
 import { CopyDocument, Download } from '@element-plus/icons-vue'
 import { useInviteStore } from '@/stores/invite'
 import QRCode from 'qrcode'
+import { copyText } from '@/utils/clipboard'
 
 const inviteStore = useInviteStore()
 
@@ -205,16 +206,24 @@ const generateQRCode = async () => {
   }
 }
 
-const copyCode = () => {
-  navigator.clipboard.writeText(code.value)
-    .then(() => ElMessage.success('邀请码已复制'))
-    .catch(() => ElMessage.error('复制失败'))
+const copyCode = async () => {
+  try {
+    await copyText(code.value)
+    ElMessage.success('邀请码已复制')
+  } catch (error) {
+    console.error('复制邀请码失败:', error)
+    ElMessage.error('复制失败')
+  }
 }
 
-const copyLink = () => {
-  navigator.clipboard.writeText(inviteLink.value)
-    .then(() => ElMessage.success('邀请链接已复制'))
-    .catch(() => ElMessage.error('复制失败'))
+const copyLink = async () => {
+  try {
+    await copyText(inviteLink.value)
+    ElMessage.success('邀请链接已复制')
+  } catch (error) {
+    console.error('复制邀请链接失败:', error)
+    ElMessage.error('复制失败')
+  }
 }
 
 const downloadQR = () => {

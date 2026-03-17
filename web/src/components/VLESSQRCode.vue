@@ -90,6 +90,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Loading, Warning, View, Hide, DocumentCopy, Download, Refresh } from '@element-plus/icons-vue'
 import QRCode from 'qrcode'
+import { copyText } from '@/utils/clipboard'
 
 const props = defineProps({
   // 连接名称
@@ -299,7 +300,7 @@ const copyLink = async () => {
   }
   
   try {
-    await navigator.clipboard.writeText(shareLink.value)
+    await copyText(shareLink.value)
     ElMessage.success('链接已复制到剪贴板')
   } catch (err) {
     console.error('复制失败:', err)

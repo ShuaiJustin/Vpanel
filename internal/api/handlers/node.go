@@ -23,6 +23,8 @@ type NodeHandler struct {
 	logger          logger.Logger
 }
 
+type queueNodeCommandFunc func(nodeID int64, source, reason string) (Command, bool)
+
 // NewNodeHandler creates a new node handler.
 func NewNodeHandler(nodeService *node.Service, deployService *node.RemoteDeployService, recoveryTracker *NodeRecoveryTracker, log logger.Logger) *NodeHandler {
 	return &NodeHandler{
@@ -859,6 +861,94 @@ func (h *NodeHandler) UpdateStatus(c *gin.Context) {
 	h.logger.Info("Node status updated", logger.F("node_id", id), logger.F("status", req.Status))
 
 	c.JSON(http.StatusOK, gin.H{"message": "Status updated successfully"})
+}
+
+func (h *NodeHandler) queueNodeCommand(c *gin.Context, commandType, reason, successMessage string, queueFunc queueNodeCommandFunc) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid node ID"})
+		return
+	}
+
+	if _, err := h.nodeService.GetByID(c.Request.Context(), id); err != nil {
+		if err == node.ErrNodeNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Node not found"})
+			return
+		}
+		h.logger.Error("Failed to get node for command dispatch", logger.Err(err), logger.F("id", id), logger.F("command_type", commandType))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get node"})
+		return
+	}
+
+	if h.recoveryTracker == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Node command queue is unavailable"})
+		return
+	}
+
+	cmd, queued := queueFunc(id, "admin", reason)
+	if !queued {
+		c.JSON(http.StatusConflict, gin.H{
+			"error":        "A similar command is already pending or was queued recently",
+			"command_type": commandType,
+		})
+		return
+	}
+
+	h.logger.Info("Node command queued by admin",
+		logger.F("node_id", id),
+		logger.F("command_id", cmd.ID),
+		logger.F("command_type", cmd.Type))
+
+	c.JSON(http.StatusAccepted, gin.H{
+		"success":      true,
+		"queued":       true,
+		"node_id":      id,
+		"command_id":   cmd.ID,
+		"command_type": cmd.Type,
+		"message":      successMessage,
+	})
+}
+
+// StartCore queues a node-local Xray start command.
+// POST /api/admin/nodes/:id/core/start
+func (h *NodeHandler) StartCore(c *gin.Context) {
+	h.queueNodeCommand(
+		c,
+		commandTypeXrayStart,
+		"管理员手动启动节点 Xray 内核",
+		"启动命令已加入队列，将在节点下一次心跳时执行",
+		func(nodeID int64, source, reason string) (Command, bool) {
+			return h.recoveryTracker.QueueXrayStartCommand(nodeID, source, reason)
+		},
+	)
+}
+
+// RestartCore queues a node-local Xray restart command.
+// POST /api/admin/nodes/:id/core/restart
+func (h *NodeHandler) RestartCore(c *gin.Context) {
+	h.queueNodeCommand(
+		c,
+		commandTypeXrayRestart,
+		"管理员手动重启节点 Xray 内核",
+		"重启命令已加入队列，将在节点下一次心跳时执行",
+		func(nodeID int64, source, reason string) (Command, bool) {
+			return h.recoveryTracker.QueueXrayRestartCommand(nodeID, source, reason)
+		},
+	)
+}
+
+// SyncCoreConfig queues a config_sync command for a node.
+// POST /api/admin/nodes/:id/core/sync-config
+func (h *NodeHandler) SyncCoreConfig(c *gin.Context) {
+	h.queueNodeCommand(
+		c,
+		commandTypeConfigSync,
+		"管理员手动同步节点配置",
+		"配置同步命令已加入队列，将在节点下一次心跳时执行",
+		func(nodeID int64, source, reason string) (Command, bool) {
+			return h.recoveryTracker.QueueConfigSyncCommandDetailed(nodeID, source, reason)
+		},
+	)
 }
 
 // GetXrayConfig returns the Xray configuration for a node.

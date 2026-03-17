@@ -200,6 +200,7 @@ import { useSubscriptionStore } from '@/stores/subscription'
 import { usePauseStore } from '@/stores/pause'
 import PauseCard from '@/components/user/PauseCard.vue'
 import QRCode from 'qrcode'
+import { copyText } from '@/utils/clipboard'
 
 const router = useRouter()
 const userStore = useUserPortalStore()
@@ -311,26 +312,19 @@ async function generateQRCode() {
   }
 }
 
-function copyUrl() {
+async function copyUrl() {
   if (!subscriptionUrl.value) {
     ElMessage.warning('订阅链接未加载')
     return
   }
-  
-  navigator.clipboard.writeText(subscriptionUrl.value)
-    .then(() => {
-      ElMessage.success('订阅链接已复制')
-    })
-    .catch(() => {
-      // Fallback
-      const textarea = document.createElement('textarea')
-      textarea.value = subscriptionUrl.value
-      document.body.appendChild(textarea)
-      textarea.select()
-      document.execCommand('copy')
-      document.body.removeChild(textarea)
-      ElMessage.success('订阅链接已复制')
-    })
+
+  try {
+    await copyText(subscriptionUrl.value)
+    ElMessage.success('订阅链接已复制')
+  } catch (error) {
+    console.error('复制订阅链接失败:', error)
+    ElMessage.error('复制失败，请手动复制链接')
+  }
 }
 
 function downloadQRCode() {

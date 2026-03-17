@@ -10,6 +10,8 @@ import (
 
 const (
 	commandTypeXrayStart        = "xray_start"
+	commandTypeXrayRestart      = "xray_restart"
+	commandTypeXrayStatus       = "xray_status"
 	commandTypeConfigSync       = "config_sync"
 	xrayRecoveryCommandCooldown = 20 * time.Second
 	maxNodeRecoveryEvents       = 12
@@ -54,11 +56,12 @@ func (t *NodeRecoveryTracker) QueueXrayRecoveryCommand(nodeID int64, source, rea
 	if t == nil || nodeID <= 0 {
 		return false
 	}
-	return t.enqueueCommand(nodeID, commandTypeXrayStart, source, reason, map[string]any{
+	_, queued := t.queueCommand(nodeID, commandTypeXrayStart, source, reason, map[string]any{
 		"reason":    reason,
 		"queued_at": time.Now().Unix(),
 		"source":    source,
 	})
+	return queued
 }
 
 func (t *NodeRecoveryTracker) QueueConfigSyncCommand(nodeID int64, source, reason string) bool {
@@ -67,15 +70,44 @@ func (t *NodeRecoveryTracker) QueueConfigSyncCommand(nodeID int64, source, reaso
 	}
 	// config_sync should not carry recovery metadata payload. The agent treats
 	// payload as xray config and may overwrite config.json if non-config data is sent.
-	return t.enqueueCommand(nodeID, commandTypeConfigSync, source, reason, nil)
+	_, queued := t.queueCommand(nodeID, commandTypeConfigSync, source, reason, nil)
+	return queued
 }
 
-func (t *NodeRecoveryTracker) enqueueCommand(nodeID int64, commandType, source, reason string, payload any) bool {
+func (t *NodeRecoveryTracker) QueueXrayStartCommand(nodeID int64, source, reason string) (Command, bool) {
+	if t == nil || nodeID <= 0 {
+		return Command{}, false
+	}
+	return t.queueCommand(nodeID, commandTypeXrayStart, source, reason, nil)
+}
+
+func (t *NodeRecoveryTracker) QueueXrayRestartCommand(nodeID int64, source, reason string) (Command, bool) {
+	if t == nil || nodeID <= 0 {
+		return Command{}, false
+	}
+	return t.queueCommand(nodeID, commandTypeXrayRestart, source, reason, nil)
+}
+
+func (t *NodeRecoveryTracker) QueueXrayStatusCommand(nodeID int64, source, reason string) (Command, bool) {
+	if t == nil || nodeID <= 0 {
+		return Command{}, false
+	}
+	return t.queueCommand(nodeID, commandTypeXrayStatus, source, reason, nil)
+}
+
+func (t *NodeRecoveryTracker) QueueConfigSyncCommandDetailed(nodeID int64, source, reason string) (Command, bool) {
+	if t == nil || nodeID <= 0 {
+		return Command{}, false
+	}
+	return t.queueCommand(nodeID, commandTypeConfigSync, source, reason, nil)
+}
+
+func (t *NodeRecoveryTracker) queueCommand(nodeID int64, commandType, source, reason string, payload any) (Command, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	if t.hasPendingOrInflightCommandLocked(nodeID, commandType) {
-		return false
+		return Command{}, false
 	}
 
 	nodeCooldowns, ok := t.lastQueuedCommands[nodeID]
@@ -84,7 +116,7 @@ func (t *NodeRecoveryTracker) enqueueCommand(nodeID int64, commandType, source, 
 		t.lastQueuedCommands[nodeID] = nodeCooldowns
 	}
 	if queuedAt, ok := nodeCooldowns[commandType]; ok && time.Since(queuedAt) < xrayRecoveryCommandCooldown {
-		return false
+		return Command{}, false
 	}
 
 	now := time.Now().Format(time.RFC3339)
@@ -101,17 +133,17 @@ func (t *NodeRecoveryTracker) enqueueCommand(nodeID int64, commandType, source, 
 		Source:      source,
 		Reason:      reason,
 		Status:      "queued",
-		Message:     "已加入恢复队列，等待节点心跳领取",
+		Message:     "已加入命令队列，等待节点心跳领取",
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	})
 
-	t.logger.Info("Queued node recovery command",
+	t.logger.Info("Queued node command",
 		logger.F("node_id", nodeID),
 		logger.F("command_id", cmd.ID),
 		logger.F("command_type", commandType),
 		logger.F("source", source))
-	return true
+	return cmd, true
 }
 
 func (t *NodeRecoveryTracker) GetPendingCommands(nodeID int64) []Command {

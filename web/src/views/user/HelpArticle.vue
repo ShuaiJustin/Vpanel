@@ -198,6 +198,7 @@ onMounted(() => {
   padding: 20px;
   max-width: 800px;
   margin: 0 auto;
+  box-sizing: border-box;
 }
 
 .back-bar {
@@ -236,6 +237,7 @@ onMounted(() => {
   align-items: center;
   gap: 16px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 
 .view-count {
@@ -257,6 +259,7 @@ onMounted(() => {
 .article-info {
   display: flex;
   gap: 20px;
+  flex-wrap: wrap;
 }
 
 .info-item {
@@ -272,6 +275,8 @@ onMounted(() => {
   font-size: 15px;
   color: #606266;
   line-height: 1.8;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .article-content :deep(h1),
@@ -346,9 +351,11 @@ onMounted(() => {
 }
 
 .article-content :deep(table) {
+  display: block;
   width: 100%;
   border-collapse: collapse;
   margin: 16px 0;
+  overflow-x: auto;
 }
 
 .article-content :deep(th),
@@ -398,6 +405,7 @@ onMounted(() => {
 .feedback-buttons {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 /* 相关文章 */
@@ -430,16 +438,43 @@ onMounted(() => {
 
 .related-title {
   font-size: 14px;
+  flex: 1;
+  min-width: 0;
 }
 
 /* 响应式 */
 @media (max-width: 768px) {
+  .help-article-page {
+    padding: 0;
+  }
+
   .article-title {
     font-size: 20px;
   }
 
   .article-feedback {
     flex-direction: column;
+    align-items: stretch;
+  }
+
+  .feedback-buttons {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .feedback-buttons :deep(.el-button) {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .related-item {
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .article-card :deep(.el-card__body),
+  .related-card :deep(.el-card__body) {
+    padding: 18px;
   }
 }
 </style>
