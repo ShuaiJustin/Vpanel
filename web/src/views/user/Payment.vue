@@ -78,7 +78,7 @@
         <template #header>
           <span>支付方式</span>
         </template>
-        <div class="payment-methods">
+        <div v-if="paymentMethods.length > 0" class="payment-methods">
           <div
             v-for="method in paymentMethods"
             :key="method.value"
@@ -90,6 +90,7 @@
             <span>{{ method.label }}</span>
           </div>
         </div>
+        <el-empty v-else description="当前未配置可用的在线支付方式" />
       </el-card>
 
       <!-- 支付金额 -->
@@ -149,20 +150,19 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { CreditCard, Wallet } from '@element-plus/icons-vue'
 import { useOrderStore } from '@/stores/order'
 import { useBalanceStore } from '@/stores/balance'
-import { usePlanStore } from '@/stores/plan'
+import { paymentsApi } from '@/api'
 import QRCode from 'qrcode'
 
 const route = useRoute()
 const router = useRouter()
 const orderStore = useOrderStore()
 const balanceStore = useBalanceStore()
-const planStore = usePlanStore()
 
 // 引用
 const qrcodeCanvas = ref(null)
@@ -179,11 +179,12 @@ const showQRDialog = ref(false)
 const polling = ref(false)
 const pollProgress = ref(0)
 
-// 支付方式
-const paymentMethods = [
-  { value: 'alipay', label: '支付宝', icon: CreditCard },
-  { value: 'wechat', label: '微信支付', icon: Wallet }
-]
+const paymentMethods = ref([])
+
+const paymentMethodMeta = {
+  alipay: { label: '支付宝', icon: CreditCard },
+  wechat: { label: '微信支付', icon: Wallet }
+}
 
 // 计算属性
 const order = computed(() => orderStore.currentOrder)
@@ -210,12 +211,35 @@ const finalAmount = computed(() => {
 })
 
 const selectedMethodLabel = computed(() => {
-  const method = paymentMethods.find(m => m.value === selectedMethod.value)
+  const method = paymentMethods.value.find(m => m.value === selectedMethod.value)
   return method?.label || ''
 })
 
 // 方法
 const formatPrice = (price) => (price / 100).toFixed(2)
+
+const fetchPaymentMethods = async () => {
+  try {
+    const response = await paymentsApi.getMethods()
+    const methods = (response.methods || [])
+      .filter(method => method !== 'balance')
+      .map(method => ({
+        value: method,
+        label: paymentMethodMeta[method]?.label || method,
+        icon: paymentMethodMeta[method]?.icon || CreditCard
+      }))
+
+    paymentMethods.value = methods
+
+    if (!methods.some(method => method.value === selectedMethod.value)) {
+      selectedMethod.value = methods[0]?.value || ''
+    }
+  } catch (error) {
+    paymentMethods.value = []
+    selectedMethod.value = ''
+    console.error('Failed to fetch payment methods:', error)
+  }
+}
 
 const initOrder = async () => {
   loading.value = true
@@ -236,7 +260,10 @@ const initOrder = async () => {
     }
 
     // 获取用户余额
-    await balanceStore.fetchBalance()
+    await Promise.all([
+      balanceStore.fetchBalance(),
+      fetchPaymentMethods()
+    ])
   } catch (error) {
     ElMessage.error(error || '加载订单失败')
     router.push({ name: 'user-plans' })
@@ -300,10 +327,12 @@ const handlePay = async () => {
       finalAmount.value > 0 ? selectedMethod.value : 'balance'
     )
 
-    if (paymentData.payment?.payment_url) {
+    const qrPayload = paymentData.payment?.qrcode_data || paymentData.payment?.payment_url
+
+    if (qrPayload) {
       // 显示支付二维码
       showQRDialog.value = true
-      await generateQRCode(paymentData.payment.payment_url)
+      await generateQRCode(qrPayload)
       startPolling()
     } else {
       // 余额支付成功

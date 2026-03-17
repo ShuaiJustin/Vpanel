@@ -60,6 +60,17 @@ func (s *Service) RegisterGateway(gateway PaymentGateway) {
 	s.logger.Info("Registered payment gateway", logger.F("name", gateway.Name()))
 }
 
+// ReplaceGateways replaces all externally registered gateways.
+func (s *Service) ReplaceGateways(gateways map[string]PaymentGateway) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.gateways = make(map[string]PaymentGateway, len(gateways))
+	for name, gateway := range gateways {
+		s.gateways[name] = gateway
+	}
+}
+
 // GetGateway returns a payment gateway by name.
 func (s *Service) GetGateway(name string) (PaymentGateway, error) {
 	s.mu.RLock()
@@ -88,7 +99,7 @@ func (s *Service) ListGateways() []string {
 }
 
 // CreatePayment creates a payment for an order.
-func (s *Service) CreatePayment(ctx context.Context, orderNo string, method string) (*PaymentRequest, error) {
+func (s *Service) CreatePayment(ctx context.Context, orderNo string, method string, clientIP string) (*PaymentRequest, error) {
 	// Get order
 	ord, err := s.orderService.GetByOrderNo(ctx, orderNo)
 	if err != nil {
@@ -111,11 +122,16 @@ func (s *Service) CreatePayment(ctx context.Context, orderNo string, method stri
 	}
 
 	// Create payment order
+	if clientIP == "" {
+		clientIP = "127.0.0.1"
+	}
+
 	paymentOrder := &PaymentOrder{
 		OrderNo:     ord.OrderNo,
 		Amount:      ord.PayAmount,
 		Subject:     fmt.Sprintf("Order %s", ord.OrderNo),
 		Description: fmt.Sprintf("Payment for order %s", ord.OrderNo),
+		ClientIP:    clientIP,
 	}
 
 	// Create payment

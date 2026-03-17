@@ -18,11 +18,11 @@ type SystemSettings struct {
 	DefaultExpiryDays   int    `json:"default_expiry_days"`
 
 	// Panel settings
-	PanelAccessIP   string `json:"panel_access_ip"`   // 面板访问 IP
-	PanelPort       int    `json:"panel_port"`        // 面板监听端口
-	PanelCertPath   string `json:"panel_cert_path"`   // 面板证书公钥路径
-	PanelKeyPath    string `json:"panel_key_path"`    // 面板证书私钥路径
-	PanelAPIDomain  string `json:"panel_api_domain"`  // 面板 API 域名
+	PanelAccessIP  string `json:"panel_access_ip"`  // 面板访问 IP
+	PanelPort      int    `json:"panel_port"`       // 面板监听端口
+	PanelCertPath  string `json:"panel_cert_path"`  // 面板证书公钥路径
+	PanelKeyPath   string `json:"panel_key_path"`   // 面板证书私钥路径
+	PanelAPIDomain string `json:"panel_api_domain"` // 面板 API 域名
 
 	// SMTP settings
 	SMTPHost     string `json:"smtp_host"`
@@ -38,6 +38,23 @@ type SystemSettings struct {
 	RateLimitEnabled  bool `json:"rate_limit_enabled"`
 	RateLimitRequests int  `json:"rate_limit_requests"`
 	RateLimitWindow   int  `json:"rate_limit_window"`
+
+	// Payment settings
+	PaymentAlipayEnabled              bool   `json:"payment_alipay_enabled"`
+	PaymentAlipayAppID                string `json:"payment_alipay_app_id"`
+	PaymentAlipayPrivateKey           string `json:"-"`
+	PaymentAlipayPrivateKeyConfigured bool   `json:"payment_alipay_private_key_configured"`
+	PaymentAlipayPublicKey            string `json:"payment_alipay_public_key"`
+	PaymentAlipayNotifyURL            string `json:"payment_alipay_notify_url"`
+	PaymentAlipayReturnURL            string `json:"payment_alipay_return_url"`
+	PaymentAlipaySandbox              bool   `json:"payment_alipay_sandbox"`
+	PaymentWeChatEnabled              bool   `json:"payment_wechat_enabled"`
+	PaymentWeChatAppID                string `json:"payment_wechat_app_id"`
+	PaymentWeChatMchID                string `json:"payment_wechat_mch_id"`
+	PaymentWeChatAPIKey               string `json:"-"`
+	PaymentWeChatAPIKeyConfigured     bool   `json:"payment_wechat_api_key_configured"`
+	PaymentWeChatNotifyURL            string `json:"payment_wechat_notify_url"`
+	PaymentWeChatSandbox              bool   `json:"payment_wechat_sandbox"`
 
 	// Xray settings
 	XrayConfigTemplate string `json:"xray_config_template"`
@@ -218,6 +235,47 @@ func (s *Service) GetSystemSettings(ctx context.Context) (*SystemSettings, error
 			settings.RateLimitWindow = window
 		}
 	}
+	if v, ok := allSettings["payment_alipay_enabled"]; ok {
+		settings.PaymentAlipayEnabled = v == "true"
+	}
+	if v, ok := allSettings["payment_alipay_app_id"]; ok {
+		settings.PaymentAlipayAppID = v
+	}
+	if v, ok := allSettings["payment_alipay_private_key"]; ok {
+		settings.PaymentAlipayPrivateKey = v
+		settings.PaymentAlipayPrivateKeyConfigured = v != ""
+	}
+	if v, ok := allSettings["payment_alipay_public_key"]; ok {
+		settings.PaymentAlipayPublicKey = v
+	}
+	if v, ok := allSettings["payment_alipay_notify_url"]; ok {
+		settings.PaymentAlipayNotifyURL = v
+	}
+	if v, ok := allSettings["payment_alipay_return_url"]; ok {
+		settings.PaymentAlipayReturnURL = v
+	}
+	if v, ok := allSettings["payment_alipay_sandbox"]; ok {
+		settings.PaymentAlipaySandbox = v == "true"
+	}
+	if v, ok := allSettings["payment_wechat_enabled"]; ok {
+		settings.PaymentWeChatEnabled = v == "true"
+	}
+	if v, ok := allSettings["payment_wechat_app_id"]; ok {
+		settings.PaymentWeChatAppID = v
+	}
+	if v, ok := allSettings["payment_wechat_mch_id"]; ok {
+		settings.PaymentWeChatMchID = v
+	}
+	if v, ok := allSettings["payment_wechat_api_key"]; ok {
+		settings.PaymentWeChatAPIKey = v
+		settings.PaymentWeChatAPIKeyConfigured = v != ""
+	}
+	if v, ok := allSettings["payment_wechat_notify_url"]; ok {
+		settings.PaymentWeChatNotifyURL = v
+	}
+	if v, ok := allSettings["payment_wechat_sandbox"]; ok {
+		settings.PaymentWeChatSandbox = v == "true"
+	}
 	if v, ok := allSettings["xray_config_template"]; ok {
 		settings.XrayConfigTemplate = v
 	}
@@ -275,6 +333,20 @@ func (s *Service) UpdateSystemSettings(ctx context.Context, settings *SystemSett
 	if data, err := json.Marshal(settings.RateLimitWindow); err == nil {
 		updates["rate_limit_window"] = string(data)
 	}
+
+	updates["payment_alipay_enabled"] = boolToString(settings.PaymentAlipayEnabled)
+	updates["payment_alipay_app_id"] = settings.PaymentAlipayAppID
+	updates["payment_alipay_private_key"] = settings.PaymentAlipayPrivateKey
+	updates["payment_alipay_public_key"] = settings.PaymentAlipayPublicKey
+	updates["payment_alipay_notify_url"] = settings.PaymentAlipayNotifyURL
+	updates["payment_alipay_return_url"] = settings.PaymentAlipayReturnURL
+	updates["payment_alipay_sandbox"] = boolToString(settings.PaymentAlipaySandbox)
+	updates["payment_wechat_enabled"] = boolToString(settings.PaymentWeChatEnabled)
+	updates["payment_wechat_app_id"] = settings.PaymentWeChatAppID
+	updates["payment_wechat_mch_id"] = settings.PaymentWeChatMchID
+	updates["payment_wechat_api_key"] = settings.PaymentWeChatAPIKey
+	updates["payment_wechat_notify_url"] = settings.PaymentWeChatNotifyURL
+	updates["payment_wechat_sandbox"] = boolToString(settings.PaymentWeChatSandbox)
 
 	updates["xray_config_template"] = settings.XrayConfigTemplate
 

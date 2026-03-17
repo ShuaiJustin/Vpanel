@@ -100,11 +100,22 @@ VERSION=latest
 # 服务端口
 V_SERVER_PORT=8080
 V_SERVER_MODE=release
+V_SERVER_PUBLIC_URL=https://panel.example.com
 
 # 认证配置（重要：请修改）
 V_JWT_SECRET=your-secure-jwt-secret-change-me
 V_ADMIN_USER=admin
 V_ADMIN_PASS=your-secure-admin-password
+
+# 支付网关（可选）
+V_PAYMENT_ALIPAY_ENABLED=false
+V_PAYMENT_ALIPAY_APP_ID=
+V_PAYMENT_ALIPAY_PRIVATE_KEY=
+V_PAYMENT_ALIPAY_PUBLIC_KEY=
+V_PAYMENT_WECHAT_ENABLED=false
+V_PAYMENT_WECHAT_APP_ID=
+V_PAYMENT_WECHAT_MCH_ID=
+V_PAYMENT_WECHAT_API_KEY=
 
 # 日志配置
 V_LOG_LEVEL=info
@@ -113,6 +124,11 @@ V_LOG_FORMAT=json
 # 时区
 TZ=Asia/Shanghai
 ```
+
+支付回调地址默认基于 `V_SERVER_PUBLIC_URL` 自动生成：
+- 支付宝：`/api/payments/callback/alipay`
+- 微信：`/api/payments/callback/wechat`
+- 支付完成返回页：`/user/orders`
 
 ### 常用命令
 

@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -61,12 +62,16 @@ func (h *PaymentHandler) CreatePayment(c *gin.Context) {
 		return
 	}
 
-	result, err := h.paymentService.CreatePayment(c.Request.Context(), req.OrderNo, req.Method)
+	result, err := h.paymentService.CreatePayment(c.Request.Context(), req.OrderNo, req.Method, c.ClientIP())
 	if err != nil {
 		h.logger.Error("Failed to create payment", logger.Err(err))
+		message := "Failed to create payment"
+		if errors.Is(err, payment.ErrGatewayNotFound) {
+			message = "Selected payment method is not available"
+		}
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code":    "PAYMENT_ERROR",
-			"message": "Failed to create payment",
+			"message": message,
 		})
 		return
 	}
@@ -80,7 +85,6 @@ func (h *PaymentHandler) CreatePayment(c *gin.Context) {
 		},
 	})
 }
-
 
 // HandleCallback handles payment callbacks from payment gateways.
 func (h *PaymentHandler) HandleCallback(c *gin.Context) {
@@ -118,7 +122,7 @@ func (h *PaymentHandler) HandleCallback(c *gin.Context) {
 // GetPaymentStatus returns the payment status for an order.
 func (h *PaymentHandler) GetPaymentStatus(c *gin.Context) {
 	orderNo := c.Param("orderNo")
-	
+
 	if orderNo == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code":    "VALIDATION_ERROR",
@@ -139,7 +143,6 @@ func (h *PaymentHandler) GetPaymentStatus(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"status": status})
 }
-
 
 // SwitchPaymentMethodRequest represents a request to switch payment method.
 type SwitchPaymentMethodRequest struct {

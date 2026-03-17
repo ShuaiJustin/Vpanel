@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -16,6 +17,8 @@ import (
 type SettingsHandler struct {
 	logger          logger.Logger
 	settingsService *settings.Service
+	validateHook    func(context.Context, *settings.SystemSettings) error
+	afterSaveHook   func(context.Context, *settings.SystemSettings) error
 }
 
 // NewSettingsHandler creates a new SettingsHandler.
@@ -24,6 +27,18 @@ func NewSettingsHandler(log logger.Logger, settingsService *settings.Service) *S
 		logger:          log,
 		settingsService: settingsService,
 	}
+}
+
+// WithValidateHook registers an optional settings validation hook.
+func (h *SettingsHandler) WithValidateHook(hook func(context.Context, *settings.SystemSettings) error) *SettingsHandler {
+	h.validateHook = hook
+	return h
+}
+
+// WithAfterSaveHook registers an optional hook executed after settings are saved.
+func (h *SettingsHandler) WithAfterSaveHook(hook func(context.Context, *settings.SystemSettings) error) *SettingsHandler {
+	h.afterSaveHook = hook
+	return h
 }
 
 // GetSettings returns all system settings.
@@ -73,6 +88,21 @@ type UpdateSettingsRequest struct {
 	RateLimitEnabled  *bool `json:"rate_limit_enabled"`
 	RateLimitRequests *int  `json:"rate_limit_requests"`
 	RateLimitWindow   *int  `json:"rate_limit_window"`
+
+	// Payment settings
+	PaymentAlipayEnabled    *bool   `json:"payment_alipay_enabled"`
+	PaymentAlipayAppID      *string `json:"payment_alipay_app_id"`
+	PaymentAlipayPrivateKey *string `json:"payment_alipay_private_key"`
+	PaymentAlipayPublicKey  *string `json:"payment_alipay_public_key"`
+	PaymentAlipayNotifyURL  *string `json:"payment_alipay_notify_url"`
+	PaymentAlipayReturnURL  *string `json:"payment_alipay_return_url"`
+	PaymentAlipaySandbox    *bool   `json:"payment_alipay_sandbox"`
+	PaymentWeChatEnabled    *bool   `json:"payment_wechat_enabled"`
+	PaymentWeChatAppID      *string `json:"payment_wechat_app_id"`
+	PaymentWeChatMchID      *string `json:"payment_wechat_mch_id"`
+	PaymentWeChatAPIKey     *string `json:"payment_wechat_api_key"`
+	PaymentWeChatNotifyURL  *string `json:"payment_wechat_notify_url"`
+	PaymentWeChatSandbox    *bool   `json:"payment_wechat_sandbox"`
 
 	// Xray settings
 	XrayConfigTemplate *string `json:"xray_config_template"`
@@ -157,8 +187,56 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 	if req.RateLimitWindow != nil {
 		currentSettings.RateLimitWindow = *req.RateLimitWindow
 	}
+	if req.PaymentAlipayEnabled != nil {
+		currentSettings.PaymentAlipayEnabled = *req.PaymentAlipayEnabled
+	}
+	if req.PaymentAlipayAppID != nil {
+		currentSettings.PaymentAlipayAppID = *req.PaymentAlipayAppID
+	}
+	if req.PaymentAlipayPrivateKey != nil {
+		currentSettings.PaymentAlipayPrivateKey = *req.PaymentAlipayPrivateKey
+	}
+	if req.PaymentAlipayPublicKey != nil {
+		currentSettings.PaymentAlipayPublicKey = *req.PaymentAlipayPublicKey
+	}
+	if req.PaymentAlipayNotifyURL != nil {
+		currentSettings.PaymentAlipayNotifyURL = *req.PaymentAlipayNotifyURL
+	}
+	if req.PaymentAlipayReturnURL != nil {
+		currentSettings.PaymentAlipayReturnURL = *req.PaymentAlipayReturnURL
+	}
+	if req.PaymentAlipaySandbox != nil {
+		currentSettings.PaymentAlipaySandbox = *req.PaymentAlipaySandbox
+	}
+	if req.PaymentWeChatEnabled != nil {
+		currentSettings.PaymentWeChatEnabled = *req.PaymentWeChatEnabled
+	}
+	if req.PaymentWeChatAppID != nil {
+		currentSettings.PaymentWeChatAppID = *req.PaymentWeChatAppID
+	}
+	if req.PaymentWeChatMchID != nil {
+		currentSettings.PaymentWeChatMchID = *req.PaymentWeChatMchID
+	}
+	if req.PaymentWeChatAPIKey != nil {
+		currentSettings.PaymentWeChatAPIKey = *req.PaymentWeChatAPIKey
+	}
+	if req.PaymentWeChatNotifyURL != nil {
+		currentSettings.PaymentWeChatNotifyURL = *req.PaymentWeChatNotifyURL
+	}
+	if req.PaymentWeChatSandbox != nil {
+		currentSettings.PaymentWeChatSandbox = *req.PaymentWeChatSandbox
+	}
 	if req.XrayConfigTemplate != nil {
 		currentSettings.XrayConfigTemplate = *req.XrayConfigTemplate
+	}
+
+	if h.validateHook != nil {
+		if err := h.validateHook(ctx, currentSettings); err != nil {
+			middleware.RespondWithError(c, errors.NewValidationError("invalid settings", map[string]interface{}{
+				"error": err.Error(),
+			}))
+			return
+		}
 	}
 
 	// Save updated settings
@@ -166,6 +244,14 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 		h.logger.Error("Failed to update settings", logger.F("error", err))
 		middleware.RespondWithError(c, errors.NewDatabaseError("update settings", err))
 		return
+	}
+
+	if h.afterSaveHook != nil {
+		if err := h.afterSaveHook(ctx, currentSettings); err != nil {
+			h.logger.Error("Failed to apply settings after save", logger.F("error", err))
+			middleware.RespondWithError(c, errors.NewInternalError("apply settings", err))
+			return
+		}
 	}
 
 	h.logger.Info("Settings updated")
@@ -227,7 +313,6 @@ func (h *SettingsHandler) RestoreSettings(c *gin.Context) {
 		"message": "settings restored",
 	})
 }
-
 
 // XraySettingsRequest represents Xray settings request.
 type XraySettingsRequest struct {

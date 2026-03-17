@@ -63,15 +63,15 @@ const (
 
 // FailedPaymentStats represents statistics about failed payments.
 type FailedPaymentStats struct {
-	TotalFailed       int64   `json:"total_failed"`
-	PendingRetry      int64   `json:"pending_retry"`
-	RetryExhausted    int64   `json:"retry_exhausted"`
-	RecoveredByRetry  int64   `json:"recovered_by_retry"`
-	FailureRate       float64 `json:"failure_rate"`
-	RecoveryRate      float64 `json:"recovery_rate"`
-	AvgRetryAttempts  float64 `json:"avg_retry_attempts"`
-	FailuresByMethod  map[string]int64 `json:"failures_by_method"`
-	FailuresByReason  map[string]int64 `json:"failures_by_reason"`
+	TotalFailed      int64            `json:"total_failed"`
+	PendingRetry     int64            `json:"pending_retry"`
+	RetryExhausted   int64            `json:"retry_exhausted"`
+	RecoveredByRetry int64            `json:"recovered_by_retry"`
+	FailureRate      float64          `json:"failure_rate"`
+	RecoveryRate     float64          `json:"recovery_rate"`
+	AvgRetryAttempts float64          `json:"avg_retry_attempts"`
+	FailuresByMethod map[string]int64 `json:"failures_by_method"`
+	FailuresByReason map[string]int64 `json:"failures_by_reason"`
 }
 
 // RetryService provides payment retry functionality.
@@ -231,7 +231,7 @@ func (s *RetryService) ExecuteRetry(ctx context.Context, orderID int64, paymentM
 	}
 
 	// Attempt payment
-	_, err = s.paymentService.CreatePayment(ctx, order.OrderNo, method)
+	_, err = s.paymentService.CreatePayment(ctx, order.OrderNo, method, "")
 	if err != nil {
 		s.RecordFailure(ctx, orderID, order.OrderNo, err.Error())
 		return err

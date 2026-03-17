@@ -44,6 +44,37 @@ auth:
   # Default admin password (change this after first login!)
   admin_password: "admin123"
 
+# Payment configuration
+payment:
+  alipay:
+    # Enable Alipay payment gateway
+    enabled: false
+    # Alipay application ID
+    app_id: ""
+    # Merchant RSA private key (PEM)
+    private_key: ""
+    # Alipay RSA public key (PEM)
+    alipay_public_key: ""
+    # Optional callback URL override
+    notify_url: ""
+    # Optional browser return URL override
+    return_url: ""
+    # Use Alipay sandbox
+    is_sandbox: false
+  wechat:
+    # Enable WeChat Pay gateway
+    enabled: false
+    # WeChat application ID
+    app_id: ""
+    # WeChat merchant ID
+    mch_id: ""
+    # WeChat API key
+    api_key: ""
+    # Optional callback URL override
+    notify_url: ""
+    # Use WeChat sandbox
+    is_sandbox: false
+
 # Xray configuration
 xray:
   # Path to Xray binary directory

@@ -251,6 +251,50 @@ func TestSettingsService_UpdateSystemSettings(t *testing.T) {
 	assert.Equal(t, false, readSettings.RateLimitEnabled)
 }
 
+func TestSettingsService_PaymentSettingsPersistence(t *testing.T) {
+	repo := newMockSettingsRepository()
+	service := NewService(repo)
+	ctx := context.Background()
+
+	newSettings := &SystemSettings{
+		PaymentAlipayEnabled:    true,
+		PaymentAlipayAppID:      "alipay-app",
+		PaymentAlipayPrivateKey: "alipay-private-key",
+		PaymentAlipayPublicKey:  "alipay-public-key",
+		PaymentAlipayNotifyURL:  "https://panel.example.com/api/payments/callback/alipay",
+		PaymentAlipayReturnURL:  "https://panel.example.com/user/orders",
+		PaymentAlipaySandbox:    true,
+		PaymentWeChatEnabled:    true,
+		PaymentWeChatAppID:      "wechat-app",
+		PaymentWeChatMchID:      "wechat-mch",
+		PaymentWeChatAPIKey:     "wechat-api-key",
+		PaymentWeChatNotifyURL:  "https://panel.example.com/api/payments/callback/wechat",
+		PaymentWeChatSandbox:    true,
+	}
+
+	err := service.UpdateSystemSettings(ctx, newSettings)
+	require.NoError(t, err)
+
+	readSettings, err := service.GetSystemSettings(ctx)
+	require.NoError(t, err)
+
+	assert.True(t, readSettings.PaymentAlipayEnabled)
+	assert.Equal(t, "alipay-app", readSettings.PaymentAlipayAppID)
+	assert.Equal(t, "alipay-private-key", readSettings.PaymentAlipayPrivateKey)
+	assert.True(t, readSettings.PaymentAlipayPrivateKeyConfigured)
+	assert.Equal(t, "alipay-public-key", readSettings.PaymentAlipayPublicKey)
+	assert.Equal(t, "https://panel.example.com/api/payments/callback/alipay", readSettings.PaymentAlipayNotifyURL)
+	assert.Equal(t, "https://panel.example.com/user/orders", readSettings.PaymentAlipayReturnURL)
+	assert.True(t, readSettings.PaymentAlipaySandbox)
+	assert.True(t, readSettings.PaymentWeChatEnabled)
+	assert.Equal(t, "wechat-app", readSettings.PaymentWeChatAppID)
+	assert.Equal(t, "wechat-mch", readSettings.PaymentWeChatMchID)
+	assert.Equal(t, "wechat-api-key", readSettings.PaymentWeChatAPIKey)
+	assert.True(t, readSettings.PaymentWeChatAPIKeyConfigured)
+	assert.Equal(t, "https://panel.example.com/api/payments/callback/wechat", readSettings.PaymentWeChatNotifyURL)
+	assert.True(t, readSettings.PaymentWeChatSandbox)
+}
+
 func TestSettingsService_CacheInvalidation(t *testing.T) {
 	repo := newMockSettingsRepository()
 	service := NewService(repo)

@@ -123,6 +123,91 @@
           </el-form-item>
         </el-form>
       </el-tab-pane>
+
+      <el-tab-pane label="支付设置" name="payment">
+        <el-form :model="paymentForm" label-width="140px" class="settings-form">
+          <el-alert
+            title="支付设置保存后立即生效"
+            type="info"
+            :closable="false"
+            show-icon
+            style="margin-bottom: 20px"
+          />
+
+          <el-divider content-position="left">支付宝</el-divider>
+          <el-form-item label="启用支付宝">
+            <el-switch v-model="paymentForm.alipayEnabled" />
+          </el-form-item>
+          <el-form-item label="App ID">
+            <el-input v-model="paymentForm.alipayAppId" placeholder="请输入支付宝 App ID" />
+          </el-form-item>
+          <el-form-item label="商户私钥">
+            <el-input
+              v-model="paymentForm.alipayPrivateKey"
+              type="textarea"
+              :rows="4"
+              :placeholder="paymentForm.alipayPrivateKeyConfigured ? '已配置，留空则保持不变' : '请输入支付宝 RSA 私钥 PEM 内容'"
+            />
+          </el-form-item>
+          <el-form-item label="支付宝公钥">
+            <el-input
+              v-model="paymentForm.alipayPublicKey"
+              type="textarea"
+              :rows="4"
+              placeholder="请输入支付宝公钥 PEM 内容"
+            />
+          </el-form-item>
+          <el-form-item label="通知地址">
+            <el-input
+              v-model="paymentForm.alipayNotifyUrl"
+              placeholder="留空则自动使用面板公网地址 + /api/payments/callback/alipay"
+            />
+          </el-form-item>
+          <el-form-item label="返回地址">
+            <el-input
+              v-model="paymentForm.alipayReturnUrl"
+              placeholder="留空则自动使用面板公网地址 + /user/orders"
+            />
+          </el-form-item>
+          <el-form-item label="沙箱模式">
+            <el-switch v-model="paymentForm.alipaySandbox" />
+          </el-form-item>
+
+          <el-divider content-position="left">微信支付</el-divider>
+          <el-form-item label="启用微信支付">
+            <el-switch v-model="paymentForm.wechatEnabled" />
+          </el-form-item>
+          <el-form-item label="App ID">
+            <el-input v-model="paymentForm.wechatAppId" placeholder="请输入微信支付 App ID" />
+          </el-form-item>
+          <el-form-item label="商户号">
+            <el-input v-model="paymentForm.wechatMchId" placeholder="请输入微信支付商户号" />
+          </el-form-item>
+          <el-form-item label="API Key">
+            <el-input
+              v-model="paymentForm.wechatApiKey"
+              type="password"
+              show-password
+              :placeholder="paymentForm.wechatApiKeyConfigured ? '已配置，留空则保持不变' : '请输入微信支付 API Key'"
+            />
+          </el-form-item>
+          <el-form-item label="通知地址">
+            <el-input
+              v-model="paymentForm.wechatNotifyUrl"
+              placeholder="留空则自动使用面板公网地址 + /api/payments/callback/wechat"
+            />
+          </el-form-item>
+          <el-form-item label="沙箱模式">
+            <el-switch v-model="paymentForm.wechatSandbox" />
+          </el-form-item>
+
+          <el-divider></el-divider>
+          <el-form-item>
+            <el-button type="primary" :loading="paymentForm.saving" @click="savePaymentSettings">保存支付设置</el-button>
+            <el-button :loading="paymentForm.loading" @click="loadPaymentSettings">刷新</el-button>
+          </el-form-item>
+        </el-form>
+      </el-tab-pane>
       
       <el-tab-pane label="Xray内核配置" name="xray">
         <el-form label-width="120px" class="settings-form">
@@ -748,6 +833,26 @@ const logForm = reactive({
   enableOperationLog: true
 })
 
+const paymentForm = reactive({
+  loading: false,
+  saving: false,
+  alipayEnabled: false,
+  alipayAppId: '',
+  alipayPrivateKey: '',
+  alipayPrivateKeyConfigured: false,
+  alipayPublicKey: '',
+  alipayNotifyUrl: '',
+  alipayReturnUrl: '',
+  alipaySandbox: false,
+  wechatEnabled: false,
+  wechatAppId: '',
+  wechatMchId: '',
+  wechatApiKey: '',
+  wechatApiKeyConfigured: false,
+  wechatNotifyUrl: '',
+  wechatSandbox: false
+})
+
 const adminForm = reactive({
   username: 'admin',
   currentPassword: '',
@@ -1110,8 +1215,11 @@ onMounted(async () => {
     // 设置加载状态
     xraySettings.loading = true;
     
-    // 加载Xray版本和设置
-    await refreshXrayVersions();
+    // 加载Xray版本和支付设置
+    await Promise.allSettled([
+      refreshXrayVersions(),
+      loadPaymentSettings()
+    ]);
     
     console.log('Initial xraySettings:', { ...xraySettings });
   } catch (error) {
@@ -1536,6 +1644,72 @@ const saveLogSettings = async () => {
     ElMessage.success('日志配置保存成功')
   } catch (error) {
     ElMessage.error('保存失败：' + error.message)
+  }
+}
+
+const applyPaymentSettings = (settings) => {
+  paymentForm.alipayEnabled = settings?.payment_alipay_enabled ?? false
+  paymentForm.alipayAppId = settings?.payment_alipay_app_id || ''
+  paymentForm.alipayPrivateKey = ''
+  paymentForm.alipayPrivateKeyConfigured = settings?.payment_alipay_private_key_configured ?? false
+  paymentForm.alipayPublicKey = settings?.payment_alipay_public_key || ''
+  paymentForm.alipayNotifyUrl = settings?.payment_alipay_notify_url || ''
+  paymentForm.alipayReturnUrl = settings?.payment_alipay_return_url || ''
+  paymentForm.alipaySandbox = settings?.payment_alipay_sandbox ?? false
+  paymentForm.wechatEnabled = settings?.payment_wechat_enabled ?? false
+  paymentForm.wechatAppId = settings?.payment_wechat_app_id || ''
+  paymentForm.wechatMchId = settings?.payment_wechat_mch_id || ''
+  paymentForm.wechatApiKey = ''
+  paymentForm.wechatApiKeyConfigured = settings?.payment_wechat_api_key_configured ?? false
+  paymentForm.wechatNotifyUrl = settings?.payment_wechat_notify_url || ''
+  paymentForm.wechatSandbox = settings?.payment_wechat_sandbox ?? false
+}
+
+const loadPaymentSettings = async () => {
+  paymentForm.loading = true
+  try {
+    const response = await api.get('/settings')
+    applyPaymentSettings(response?.data || {})
+  } catch (error) {
+    console.error('Failed to load payment settings:', error)
+    ElMessage.error('加载支付设置失败')
+  } finally {
+    paymentForm.loading = false
+  }
+}
+
+const savePaymentSettings = async () => {
+  paymentForm.saving = true
+  try {
+    const payload = {
+      payment_alipay_enabled: paymentForm.alipayEnabled,
+      payment_alipay_app_id: paymentForm.alipayAppId.trim(),
+      payment_alipay_public_key: paymentForm.alipayPublicKey.trim(),
+      payment_alipay_notify_url: paymentForm.alipayNotifyUrl.trim(),
+      payment_alipay_return_url: paymentForm.alipayReturnUrl.trim(),
+      payment_alipay_sandbox: paymentForm.alipaySandbox,
+      payment_wechat_enabled: paymentForm.wechatEnabled,
+      payment_wechat_app_id: paymentForm.wechatAppId.trim(),
+      payment_wechat_mch_id: paymentForm.wechatMchId.trim(),
+      payment_wechat_notify_url: paymentForm.wechatNotifyUrl.trim(),
+      payment_wechat_sandbox: paymentForm.wechatSandbox
+    }
+
+    if (paymentForm.alipayPrivateKey.trim()) {
+      payload.payment_alipay_private_key = paymentForm.alipayPrivateKey.trim()
+    }
+    if (paymentForm.wechatApiKey.trim()) {
+      payload.payment_wechat_api_key = paymentForm.wechatApiKey.trim()
+    }
+
+    const response = await api.put('/settings', payload)
+    applyPaymentSettings(response?.data || {})
+    ElMessage.success('支付设置保存成功')
+  } catch (error) {
+    console.error('Failed to save payment settings:', error)
+    ElMessage.error(error.message || '保存支付设置失败')
+  } finally {
+    paymentForm.saving = false
   }
 }
 

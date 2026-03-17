@@ -3,6 +3,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -173,6 +174,15 @@ func (r *Router) Setup() {
 	couponService := coupon.NewService(r.repos.Coupon, r.logger)
 	orderService := order.NewService(r.repos.Order, r.repos.Plan, r.logger, nil).WithUserRepository(r.repos.User)
 	paymentService := payment.NewService(orderService, r.logger).WithBalanceService(balanceService)
+	r.registerConfiguredPaymentGateways(paymentService)
+	r.loadStoredPaymentSettings(context.Background(), paymentService)
+	settingsHandler.
+		WithValidateHook(func(ctx context.Context, systemSettings *settings.SystemSettings) error {
+			return r.validatePaymentSettings(systemSettings)
+		}).
+		WithAfterSaveHook(func(ctx context.Context, systemSettings *settings.SystemSettings) error {
+			return r.applyPaymentSettings(paymentService, systemSettings)
+		})
 
 	// Create payment retry service
 	retryService := payment.NewRetryService(r.repos.Order, paymentService, nil, r.logger)
@@ -875,6 +885,192 @@ func (r *Router) Setup() {
 			c.File(staticPath + "/index.html")
 		})
 	}
+}
+
+func (r *Router) registerConfiguredPaymentGateways(paymentService *payment.Service) {
+	if paymentService == nil {
+		return
+	}
+
+	gateways, err := r.buildPaymentGateways(nil)
+	if err != nil {
+		r.logger.Warn("Failed to initialize payment gateways from static config", logger.Err(err))
+		return
+	}
+
+	paymentService.ReplaceGateways(gateways)
+}
+
+func (r *Router) loadStoredPaymentSettings(ctx context.Context, paymentService *payment.Service) {
+	if paymentService == nil || r.settingsService == nil {
+		return
+	}
+
+	allSettings, err := r.settingsService.GetAll(ctx)
+	if err != nil {
+		r.logger.Warn("Failed to load persisted payment settings", logger.Err(err))
+		return
+	}
+
+	if !hasStoredPaymentSettings(allSettings) {
+		return
+	}
+
+	systemSettings, err := r.settingsService.GetSystemSettings(ctx)
+	if err != nil {
+		r.logger.Warn("Failed to hydrate persisted payment settings", logger.Err(err))
+		return
+	}
+
+	if err := r.applyPaymentSettings(paymentService, systemSettings); err != nil {
+		r.logger.Warn("Failed to apply persisted payment settings", logger.Err(err))
+	}
+}
+
+func (r *Router) validatePaymentSettings(systemSettings *settings.SystemSettings) error {
+	_, err := r.buildPaymentGateways(systemSettings)
+	return err
+}
+
+func (r *Router) applyPaymentSettings(paymentService *payment.Service, systemSettings *settings.SystemSettings) error {
+	if paymentService == nil {
+		return nil
+	}
+
+	gateways, err := r.buildPaymentGateways(systemSettings)
+	if err != nil {
+		return err
+	}
+
+	paymentService.ReplaceGateways(gateways)
+	return nil
+}
+
+func (r *Router) buildPaymentGateways(systemSettings *settings.SystemSettings) (map[string]payment.PaymentGateway, error) {
+	baseURL := strings.TrimSuffix(r.config.GetBaseURL(), "/")
+	cfg := mergePaymentSettings(r.config.Payment, systemSettings)
+	gateways := make(map[string]payment.PaymentGateway)
+
+	if cfg.Alipay.Enabled {
+		if !allNonEmpty(cfg.Alipay.AppID, cfg.Alipay.PrivateKey, cfg.Alipay.AlipayPublicKey) {
+			return nil, fmt.Errorf("alipay is enabled but configuration is incomplete")
+		}
+
+		gateway, err := payment.NewAlipayGateway(&payment.AlipayConfig{
+			AppID:           cfg.Alipay.AppID,
+			PrivateKey:      cfg.Alipay.PrivateKey,
+			AlipayPublicKey: cfg.Alipay.AlipayPublicKey,
+			NotifyURL:       firstNonEmpty(cfg.Alipay.NotifyURL, paymentNotifyURL(baseURL, "alipay")),
+			ReturnURL:       firstNonEmpty(cfg.Alipay.ReturnURL, paymentReturnURL(baseURL)),
+			IsSandbox:       cfg.Alipay.IsSandbox,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize alipay gateway: %w", err)
+		}
+
+		gateways[gateway.Name()] = gateway
+	}
+
+	if cfg.WeChat.Enabled {
+		if !allNonEmpty(cfg.WeChat.AppID, cfg.WeChat.MchID, cfg.WeChat.APIKey) {
+			return nil, fmt.Errorf("wechat is enabled but configuration is incomplete")
+		}
+
+		gateway, err := payment.NewWeChatGateway(&payment.WeChatConfig{
+			AppID:     cfg.WeChat.AppID,
+			MchID:     cfg.WeChat.MchID,
+			APIKey:    cfg.WeChat.APIKey,
+			NotifyURL: firstNonEmpty(cfg.WeChat.NotifyURL, paymentNotifyURL(baseURL, "wechat")),
+			IsSandbox: cfg.WeChat.IsSandbox,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize wechat gateway: %w", err)
+		}
+
+		gateways[gateway.Name()] = gateway
+	}
+
+	return gateways, nil
+}
+
+func paymentNotifyURL(baseURL string, method string) string {
+	if baseURL == "" {
+		return ""
+	}
+	return baseURL + "/api/payments/callback/" + method
+}
+
+func paymentReturnURL(baseURL string) string {
+	if baseURL == "" {
+		return ""
+	}
+	return baseURL + "/user/orders"
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func allNonEmpty(values ...string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) == "" {
+			return false
+		}
+	}
+	return true
+}
+
+func hasStoredPaymentSettings(allSettings map[string]string) bool {
+	for _, key := range []string{
+		"payment_alipay_enabled",
+		"payment_alipay_app_id",
+		"payment_alipay_private_key",
+		"payment_alipay_public_key",
+		"payment_alipay_notify_url",
+		"payment_alipay_return_url",
+		"payment_alipay_sandbox",
+		"payment_wechat_enabled",
+		"payment_wechat_app_id",
+		"payment_wechat_mch_id",
+		"payment_wechat_api_key",
+		"payment_wechat_notify_url",
+		"payment_wechat_sandbox",
+	} {
+		if _, exists := allSettings[key]; exists {
+			return true
+		}
+	}
+	return false
+}
+
+func mergePaymentSettings(base config.PaymentConfig, systemSettings *settings.SystemSettings) config.PaymentConfig {
+	if systemSettings == nil {
+		return base
+	}
+
+	merged := base
+	merged.Alipay.Enabled = systemSettings.PaymentAlipayEnabled
+	merged.Alipay.AppID = firstNonEmpty(systemSettings.PaymentAlipayAppID, merged.Alipay.AppID)
+	merged.Alipay.PrivateKey = firstNonEmpty(systemSettings.PaymentAlipayPrivateKey, merged.Alipay.PrivateKey)
+	merged.Alipay.AlipayPublicKey = firstNonEmpty(systemSettings.PaymentAlipayPublicKey, merged.Alipay.AlipayPublicKey)
+	merged.Alipay.NotifyURL = firstNonEmpty(systemSettings.PaymentAlipayNotifyURL, merged.Alipay.NotifyURL)
+	merged.Alipay.ReturnURL = firstNonEmpty(systemSettings.PaymentAlipayReturnURL, merged.Alipay.ReturnURL)
+	merged.Alipay.IsSandbox = systemSettings.PaymentAlipaySandbox
+
+	merged.WeChat.Enabled = systemSettings.PaymentWeChatEnabled
+	merged.WeChat.AppID = firstNonEmpty(systemSettings.PaymentWeChatAppID, merged.WeChat.AppID)
+	merged.WeChat.MchID = firstNonEmpty(systemSettings.PaymentWeChatMchID, merged.WeChat.MchID)
+	merged.WeChat.APIKey = firstNonEmpty(systemSettings.PaymentWeChatAPIKey, merged.WeChat.APIKey)
+	merged.WeChat.NotifyURL = firstNonEmpty(systemSettings.PaymentWeChatNotifyURL, merged.WeChat.NotifyURL)
+	merged.WeChat.IsSandbox = systemSettings.PaymentWeChatSandbox
+
+	return merged
 }
 
 // Engine returns the underlying Gin engine.

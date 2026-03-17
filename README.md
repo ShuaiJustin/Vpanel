@@ -209,11 +209,20 @@ docker run -d \
 |------|------|--------|
 | `V_SERVER_PORT` | 服务端口（留空自动生成） | 随机 10000-65000 |
 | `V_SERVER_MODE` | 运行模式 (debug/release) | release |
+| `V_SERVER_PUBLIC_URL` | 面板公网地址，用于支付回调等外部地址生成 | - |
 | `V_JWT_SECRET` | JWT 密钥 | - |
 | `V_ADMIN_USER` | 管理员用户名 | admin |
 | `V_ADMIN_PASS` | 管理员密码 | admin123 |
 | `V_LOG_LEVEL` | 日志级别 | info |
 | `V_DB_PATH` | 数据库路径 | /app/data/v.db |
+| `V_PAYMENT_ALIPAY_ENABLED` | 是否启用支付宝 | false |
+| `V_PAYMENT_ALIPAY_APP_ID` | 支付宝应用 ID | - |
+| `V_PAYMENT_ALIPAY_PRIVATE_KEY` | 支付宝商户私钥 | - |
+| `V_PAYMENT_ALIPAY_PUBLIC_KEY` | 支付宝公钥 | - |
+| `V_PAYMENT_WECHAT_ENABLED` | 是否启用微信支付 | false |
+| `V_PAYMENT_WECHAT_APP_ID` | 微信应用 ID | - |
+| `V_PAYMENT_WECHAT_MCH_ID` | 微信商户号 | - |
+| `V_PAYMENT_WECHAT_API_KEY` | 微信 API Key | - |
 
 ## Node Agent 部署
 

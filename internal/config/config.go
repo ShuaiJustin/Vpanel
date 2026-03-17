@@ -21,6 +21,7 @@ type Config struct {
 	Server      ServerConfig      `yaml:"server"`
 	Database    DatabaseConfig    `yaml:"database"`
 	Auth        AuthConfig        `yaml:"auth"`
+	Payment     PaymentConfig     `yaml:"payment"`
 	Xray        XrayConfig        `yaml:"xray"`
 	Log         LogConfig         `yaml:"log"`
 	Certificate CertificateConfig `yaml:"certificate"`
@@ -60,6 +61,33 @@ type AuthConfig struct {
 	RefreshTokenExpiry time.Duration `yaml:"refresh_token_expiry" env:"V_REFRESH_TOKEN_EXPIRY" default:"168h"`
 	AdminUsername      string        `yaml:"admin_username" env:"V_ADMIN_USER" default:"admin"`
 	AdminPassword      string        `yaml:"admin_password" env:"V_ADMIN_PASS" default:"admin123"`
+}
+
+// PaymentConfig contains external payment gateway settings.
+type PaymentConfig struct {
+	Alipay PaymentAlipayConfig `yaml:"alipay"`
+	WeChat PaymentWeChatConfig `yaml:"wechat"`
+}
+
+// PaymentAlipayConfig contains Alipay settings.
+type PaymentAlipayConfig struct {
+	Enabled         bool   `yaml:"enabled" env:"V_PAYMENT_ALIPAY_ENABLED" default:"false"`
+	AppID           string `yaml:"app_id" env:"V_PAYMENT_ALIPAY_APP_ID" default:""`
+	PrivateKey      string `yaml:"private_key" env:"V_PAYMENT_ALIPAY_PRIVATE_KEY" default:""`
+	AlipayPublicKey string `yaml:"alipay_public_key" env:"V_PAYMENT_ALIPAY_PUBLIC_KEY" default:""`
+	NotifyURL       string `yaml:"notify_url" env:"V_PAYMENT_ALIPAY_NOTIFY_URL" default:""`
+	ReturnURL       string `yaml:"return_url" env:"V_PAYMENT_ALIPAY_RETURN_URL" default:""`
+	IsSandbox       bool   `yaml:"is_sandbox" env:"V_PAYMENT_ALIPAY_SANDBOX" default:"false"`
+}
+
+// PaymentWeChatConfig contains WeChat Pay settings.
+type PaymentWeChatConfig struct {
+	Enabled   bool   `yaml:"enabled" env:"V_PAYMENT_WECHAT_ENABLED" default:"false"`
+	AppID     string `yaml:"app_id" env:"V_PAYMENT_WECHAT_APP_ID" default:""`
+	MchID     string `yaml:"mch_id" env:"V_PAYMENT_WECHAT_MCH_ID" default:""`
+	APIKey    string `yaml:"api_key" env:"V_PAYMENT_WECHAT_API_KEY" default:""`
+	NotifyURL string `yaml:"notify_url" env:"V_PAYMENT_WECHAT_NOTIFY_URL" default:""`
+	IsSandbox bool   `yaml:"is_sandbox" env:"V_PAYMENT_WECHAT_SANDBOX" default:"false"`
 }
 
 // XrayConfig contains Xray-core settings.
@@ -409,17 +437,17 @@ func (cfg *Config) GetBaseURL() string {
 	if cfg.Server.PublicURL != "" {
 		return strings.TrimSuffix(cfg.Server.PublicURL, "/")
 	}
-	
+
 	scheme := "http"
 	if cfg.Server.TLSCert != "" && cfg.Server.TLSKey != "" {
 		scheme = "https"
 	}
-	
+
 	host := cfg.Server.Host
 	if host == "0.0.0.0" {
 		host = "localhost"
 	}
-	
+
 	return fmt.Sprintf("%s://%s:%d", scheme, host, cfg.Server.Port)
 }
 
@@ -585,7 +613,6 @@ func EnsureDataDir(dbPath string) error {
 	dir := filepath.Dir(dbPath)
 	return os.MkdirAll(dir, 0755)
 }
-
 
 // Load loads configuration from the specified path.
 func Load(configPath string) (*Config, error) {
