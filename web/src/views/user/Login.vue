@@ -134,7 +134,7 @@ const twoFAFormRef = ref(null)
 const loading = ref(false)
 const show2FA = ref(false)
 const useBackupCode = ref(false)
-const tempToken = ref(null)
+const pendingUserId = ref(null)
 
 // 登录表单
 const loginForm = reactive({
@@ -188,7 +188,8 @@ async function handleLogin() {
     
     // 检查是否需要 2FA 验证
     if (response.requires_2fa) {
-      tempToken.value = response.temp_token
+      pendingUserId.value = response.user_id
+      twoFAForm.code = ''
       show2FA.value = true
       ElMessage.info('请完成两步验证')
       return
@@ -206,7 +207,16 @@ async function handleLogin() {
       router.push(redirect)
     }
   } catch (error) {
-    const message = error.response?.data?.message || error.message || '登录失败'
+    let message = error.response?.data?.error || error.response?.data?.message || error.message || '登录失败'
+    if (error?.status === 404) {
+      message = '账号不存在，请检查邮箱/用户名是否正确'
+    } else if (error?.status === 401) {
+      message = '密码错误，请重新输入'
+    } else if (error?.status === 403) {
+      message = error.message || '账号已被禁用，请联系管理员'
+    } else if (error?.status === 429) {
+      message = '登录尝试过于频繁，请稍后再试'
+    }
     ElMessage.error(message)
   } finally {
     loading.value = false
@@ -221,11 +231,13 @@ async function handle2FAVerify() {
     await twoFAFormRef.value.validate()
     loading.value = true
     
-    const response = await userStore.login({
-      temp_token: tempToken.value,
-      two_factor_code: twoFAForm.code,
-      is_backup_code: useBackupCode.value
-    })
+    const response = await userStore.completeTwoFactorLogin(
+      {
+        user_id: pendingUserId.value,
+        code: twoFAForm.code.trim()
+      },
+      loginForm.remember
+    )
     
     ElMessage.success('登录成功')
     
@@ -239,7 +251,7 @@ async function handle2FAVerify() {
       router.push(redirect)
     }
   } catch (error) {
-    const message = error.response?.data?.message || error.message || '验证失败'
+    const message = error.response?.data?.error || error.response?.data?.message || error.message || '验证失败'
     ElMessage.error(message)
   } finally {
     loading.value = false
@@ -249,7 +261,7 @@ async function handle2FAVerify() {
 // 取消 2FA 验证
 function cancelTwoFA() {
   show2FA.value = false
-  tempToken.value = null
+  pendingUserId.value = null
   twoFAForm.code = ''
   useBackupCode.value = false
 }

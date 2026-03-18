@@ -10,16 +10,17 @@
       />
     </transition>
     <!-- 侧边栏 -->
-    <div
-      class="sidebar"
-      :class="{
-        collapsed: isCollapse && !isMobile,
-        'is-mobile': isMobile,
+      <div
+        class="sidebar"
+        :class="{
+          collapsed: isCollapse && !isMobile,
+          'is-mobile': isMobile,
         'mobile-open': isMobileMenuOpen
       }"
-    >
-      <div class="logo">
-        <h1>V 管理面板</h1>
+      >
+      <div class="logo" :class="{ collapsed: isCollapse && !isMobile }">
+        <span v-if="isCollapse && !isMobile" class="logo-short">V</span>
+        <h1 v-else>V 管理面板</h1>
       </div>
       <el-menu
         class="sidebar-menu"
@@ -330,6 +331,30 @@ watch(isMobile, mobile => {
   overflow: hidden;
 }
 
+.logo-short {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--sidebar-active) 0%, #2563eb 100%);
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  box-shadow: 0 10px 24px var(--sidebar-active-shadow);
+}
+
+.logo.collapsed {
+  justify-content: center;
+}
+
+.sidebar.collapsed :deep(.el-menu-item),
+.sidebar.collapsed :deep(.el-sub-menu__title) {
+  margin: 6px 8px;
+}
+
 .sidebar-menu {
   border-right: none;
 }
@@ -626,6 +651,10 @@ watch(isMobile, mobile => {
 
 .dark-mode .logo h1 {
   color: #e5eaf3;
+}
+
+.dark-mode .logo-short {
+  background: linear-gradient(135deg, var(--sidebar-active) 0%, #3b82f6 100%);
 }
 
 .dark-mode .sidebar-menu {

@@ -142,12 +142,13 @@
 
 <script setup>
 import { ref, reactive, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock, Message, Ticket, CircleCheck } from '@element-plus/icons-vue'
 import { useUserPortalStore } from '@/stores/userPortal'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserPortalStore()
 
 // 表单引用
@@ -165,7 +166,7 @@ const registerForm = reactive({
   email: '',
   password: '',
   confirmPassword: '',
-  inviteCode: '',
+  inviteCode: typeof route.query.ref === 'string' ? route.query.ref : '',
   agreement: false
 })
 
@@ -237,7 +238,7 @@ const validateAgreement = (rule, value, callback) => {
 const registerRules = {
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
-    { min: 3, max: 20, message: '用户名长度应为 3-20 个字符', trigger: 'blur' },
+    { min: 3, max: 50, message: '用户名长度应为 3-50 个字符', trigger: 'blur' },
     { pattern: /^[a-zA-Z0-9_]+$/, message: '用户名只能包含字母、数字和下划线', trigger: 'blur' }
   ],
   email: [
@@ -267,16 +268,16 @@ async function handleRegister() {
     loading.value = true
     
     const response = await userStore.register({
-      username: registerForm.username,
-      email: registerForm.email,
+      username: registerForm.username.trim(),
+      email: registerForm.email.trim().toLowerCase(),
       password: registerForm.password,
-      invite_code: registerForm.inviteCode || undefined
+      invite_code: registerForm.inviteCode?.trim() || undefined
     })
     
     needEmailVerification.value = response.need_email_verification !== false
     showSuccessDialog.value = true
   } catch (error) {
-    const message = error.response?.data?.message || error.message || '注册失败'
+    const message = error.response?.data?.error || error.response?.data?.message || error.message || '注册失败'
     ElMessage.error(message)
   } finally {
     loading.value = false

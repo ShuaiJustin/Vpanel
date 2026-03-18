@@ -53,8 +53,8 @@
           </el-form-item>
           
           <el-form-item>
-            <el-button type="primary" @click="changePassword">确认修改</el-button>
-            <el-button @click="resetForm">重置</el-button>
+            <el-button type="primary" :loading="saving" @click="changePassword">确认修改</el-button>
+            <el-button :disabled="saving" @click="resetForm">重置</el-button>
           </el-form-item>
         </el-form>
         
@@ -75,11 +75,14 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 
+const router = useRouter()
 const userStore = useUserStore()
 const passwordFormRef = ref(null)
+const saving = ref(false)
 
 const passwordForm = ref({
   currentPassword: '',
@@ -91,6 +94,11 @@ const validatePass = (rule, value, callback) => {
   if (value === '') {
     callback(new Error('请输入密码'))
   } else {
+    if (value === passwordForm.value.currentPassword) {
+      callback(new Error('新密码不能与当前密码相同'))
+      return
+    }
+
     // 密码强度验证
     const hasUpperCase = /[A-Z]/.test(value)
     const hasLowerCase = /[a-z]/.test(value)
@@ -180,27 +188,26 @@ const passwordStrengthClass = computed(() => {
 
 const changePassword = async () => {
   if (!passwordFormRef.value) return
-  
-  await passwordFormRef.value.validate(async (valid) => {
-    if (valid) {
-      try {
-        // TODO: 替换为实际 API 调用
-        await new Promise(resolve => setTimeout(resolve, 500))
-        
-        // 调用 store 方法更新密码
-        await userStore.changePassword({
-          currentPassword: passwordForm.value.currentPassword,
-          newPassword: passwordForm.value.newPassword
-        })
-        
-        ElMessage.success('密码修改成功，请使用新密码重新登录')
-        resetForm()
-      } catch (error) {
-        console.error('修改密码失败:', error)
-        ElMessage.error('修改密码失败，请检查当前密码是否正确')
-      }
-    }
-  })
+
+  const valid = await passwordFormRef.value.validate().catch(() => false)
+  if (!valid) return
+
+  saving.value = true
+  try {
+    await userStore.changePassword({
+      currentPassword: passwordForm.value.currentPassword,
+      newPassword: passwordForm.value.newPassword
+    })
+
+    ElMessage.success('密码修改成功，请重新登录')
+    resetForm()
+    userStore.logout()
+    router.replace('/admin/login')
+  } catch (error) {
+    ElMessage.error(typeof error === 'string' ? error : '修改密码失败，请检查当前密码是否正确')
+  } finally {
+    saving.value = false
+  }
 }
 
 const resetForm = () => {
@@ -325,4 +332,4 @@ const resetForm = () => {
   color: #909399;
   line-height: 1.8;
 }
-</style> 
+</style>

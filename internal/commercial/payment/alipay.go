@@ -30,12 +30,12 @@ type AlipayGateway struct {
 
 // AlipayConfig holds Alipay gateway configuration.
 type AlipayConfig struct {
-	AppID            string `json:"app_id"`
-	PrivateKey       string `json:"private_key"`        // RSA private key (PEM format)
-	AlipayPublicKey  string `json:"alipay_public_key"`  // Alipay public key (PEM format)
-	NotifyURL        string `json:"notify_url"`
-	ReturnURL        string `json:"return_url"`
-	IsSandbox        bool   `json:"is_sandbox"`
+	AppID           string `json:"app_id"`
+	PrivateKey      string `json:"private_key"`       // RSA private key (PEM format)
+	AlipayPublicKey string `json:"alipay_public_key"` // Alipay public key (PEM format)
+	NotifyURL       string `json:"notify_url"`
+	ReturnURL       string `json:"return_url"`
+	IsSandbox       bool   `json:"is_sandbox"`
 }
 
 // NewAlipayGateway creates a new Alipay gateway.
@@ -150,6 +150,9 @@ func (g *AlipayGateway) VerifyCallback(data []byte, signature string) (*PaymentR
 	if callbackSign == "" && signature != "" {
 		callbackSign = signature
 	}
+	if callbackSign == "" {
+		return nil, errors.New("missing callback signature")
+	}
 
 	// Remove sign and sign_type from params for verification
 	params := make(map[string]string)
@@ -160,13 +163,11 @@ func (g *AlipayGateway) VerifyCallback(data []byte, signature string) (*PaymentR
 	}
 
 	// Verify signature
-	if g.publicKey != nil && callbackSign != "" {
-		if err := g.verify(params, callbackSign); err != nil {
-			return &PaymentResult{
-				Success: false,
-				Error:   "signature verification failed",
-			}, nil
-		}
+	if g.publicKey == nil {
+		return nil, errors.New("alipay public key not configured")
+	}
+	if err := g.verify(params, callbackSign); err != nil {
+		return nil, fmt.Errorf("signature verification failed: %w", err)
 	}
 
 	// Check trade status
@@ -352,11 +353,11 @@ func (g *AlipayGateway) Refund(paymentNo string, amount int64, reason string) (*
 
 	var result struct {
 		AlipayTradeRefundResponse struct {
-			Code         string `json:"code"`
-			Msg          string `json:"msg"`
-			TradeNo      string `json:"trade_no"`
-			RefundFee    string `json:"refund_fee"`
-			FundChange   string `json:"fund_change"`
+			Code       string `json:"code"`
+			Msg        string `json:"msg"`
+			TradeNo    string `json:"trade_no"`
+			RefundFee  string `json:"refund_fee"`
+			FundChange string `json:"fund_change"`
 		} `json:"alipay_trade_refund_response"`
 	}
 

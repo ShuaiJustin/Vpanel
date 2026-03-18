@@ -340,6 +340,7 @@ func (r *Router) Setup() {
 			// Auth routes (protected)
 			protected.POST("/auth/logout", authHandler.Logout)
 			protected.GET("/auth/me", authHandler.GetCurrentUser)
+			protected.PUT("/auth/me", authHandler.UpdateCurrentUser)
 			protected.PUT("/auth/password", authHandler.ChangePassword)
 
 			// Proxy routes - with access control for traffic limits and expiration

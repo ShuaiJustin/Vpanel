@@ -32,13 +32,17 @@ func NewService(userRepo repository.UserRepository, authTokenRepo repository.Aut
 // Email validation regex (RFC 5322 simplified)
 var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
 // ValidateEmail validates an email address format.
 // Returns true if the email is valid according to RFC 5322 (simplified).
 func ValidateEmail(email string) bool {
 	if email == "" {
 		return false
 	}
-	email = strings.TrimSpace(email)
+	email = normalizeEmail(email)
 	if len(email) > 254 {
 		return false
 	}
@@ -70,7 +74,6 @@ func ValidatePassword(password string) bool {
 	return hasLetter && hasNumber
 }
 
-
 // ValidationError represents a validation error.
 type ValidationError struct {
 	Field   string `json:"field"`
@@ -98,7 +101,7 @@ func (r *RegisterRequest) Validate() []ValidationError {
 	}
 
 	// Validate email
-	r.Email = strings.TrimSpace(r.Email)
+	r.Email = normalizeEmail(r.Email)
 	if r.Email == "" {
 		errs = append(errs, ValidationError{Field: "email", Message: "邮箱不能为空"})
 	} else if !ValidateEmail(r.Email) {
@@ -127,6 +130,9 @@ func (r *LoginRequest) Validate() []ValidationError {
 	var errs []ValidationError
 
 	r.Username = strings.TrimSpace(r.Username)
+	if ValidateEmail(r.Username) {
+		r.Username = normalizeEmail(r.Username)
+	}
 	if r.Username == "" {
 		errs = append(errs, ValidationError{Field: "username", Message: "用户名或邮箱不能为空"})
 	}
@@ -196,7 +202,6 @@ func (s *Service) CheckUsernameExists(ctx context.Context, username string) (boo
 	return true, nil
 }
 
-
 // RegisterResult represents the result of a registration.
 type RegisterResult struct {
 	UserID            int64  `json:"user_id"`
@@ -221,8 +226,14 @@ func (s *Service) Register(ctx context.Context, req *RegisterRequest, inviteRequ
 		return nil, errors.NewConflictError("user", "username", req.Username)
 	}
 
-	// Check if email exists (need to implement in user repo)
-	// For now, we'll skip this check as it requires extending the user repository
+	// Check if email exists
+	existingUser, err := s.userRepo.GetByEmail(ctx, req.Email)
+	if err != nil && !errors.IsNotFound(err) {
+		return nil, err
+	}
+	if existingUser != nil {
+		return nil, errors.New(errors.ErrCodeConflict, "该邮箱已被注册")
+	}
 
 	// Validate invite code if required
 	if inviteRequired && req.InviteCode != "" {
@@ -370,9 +381,9 @@ type RateLimiter struct {
 }
 
 type loginAttempts struct {
-	count     int
-	firstAt   time.Time
-	lockedAt  *time.Time
+	count    int
+	firstAt  time.Time
+	lockedAt *time.Time
 }
 
 // NewRateLimiter creates a new rate limiter.
@@ -487,8 +498,10 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest, ip string, rateL
 	var err error
 
 	if ValidateEmail(req.Username) {
+		req.Username = normalizeEmail(req.Username)
 		user, err = s.userRepo.GetByEmail(ctx, req.Username)
 	} else {
+		req.Username = strings.TrimSpace(req.Username)
 		user, err = s.userRepo.GetByUsername(ctx, req.Username)
 	}
 
@@ -497,7 +510,7 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest, ip string, rateL
 			if rateLimiter != nil {
 				rateLimiter.RecordFailedAttempt(ip, config)
 			}
-			return nil, errors.NewUnauthorizedError("用户名或密码错误")
+			return nil, errors.NewNotFoundError("user", req.Username)
 		}
 		return nil, err
 	}
@@ -696,7 +709,6 @@ func (s *Service) Disable2FA(ctx context.Context, userID int64, password string,
 	return nil
 }
 
-
 // RequestPasswordResetRequest represents a password reset request.
 type RequestPasswordResetRequest struct {
 	Email string `json:"email"`
@@ -706,7 +718,7 @@ type RequestPasswordResetRequest struct {
 func (r *RequestPasswordResetRequest) Validate() []ValidationError {
 	var errs []ValidationError
 
-	r.Email = strings.TrimSpace(r.Email)
+	r.Email = normalizeEmail(r.Email)
 	if r.Email == "" {
 		errs = append(errs, ValidationError{Field: "email", Message: "邮箱不能为空"})
 	} else if !ValidateEmail(r.Email) {

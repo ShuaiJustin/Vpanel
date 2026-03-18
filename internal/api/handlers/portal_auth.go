@@ -208,7 +208,7 @@ func (h *PortalAuthHandler) Register(c *gin.Context) {
 		token, tokenErr := h.portalAuthService.CreateEmailVerificationToken(c.Request.Context(), result.UserID, result.Email)
 		if tokenErr != nil {
 			h.logger.Warn("failed to create email verification token", logger.F("user_id", result.UserID), logger.F("error", tokenErr))
-			} else if err := h.sendVerificationEmail(c, result.Email, token); err != nil {
+		} else if err := h.sendVerificationEmail(c, result.Email, token); err != nil {
 			h.logger.Warn("failed to send verification email", logger.F("user_id", result.UserID), logger.F("error", err))
 		} else {
 			emailVerificationSent = true
@@ -259,7 +259,7 @@ func (h *PortalAuthHandler) Login(c *gin.Context) {
 		h.authService.GenerateToken,
 	)
 	if err != nil {
-		h.handleError(c, err)
+		h.handleLoginError(c, err)
 		return
 	}
 
@@ -284,6 +284,46 @@ func (h *PortalAuthHandler) Login(c *gin.Context) {
 			"role":     result.Role,
 		},
 	})
+}
+
+func (h *PortalAuthHandler) handleLoginError(c *gin.Context, err error) {
+	if appErr, ok := pkgerrors.AsAppError(err); ok {
+		switch appErr.Code {
+		case pkgerrors.ErrCodeValidation, pkgerrors.ErrCodeBadRequest:
+			c.JSON(http.StatusBadRequest, gin.H{"error": appErr.Message})
+		case pkgerrors.ErrCodeUnauthorized:
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "密码错误，请重新输入"})
+		case pkgerrors.ErrCodeForbidden:
+			c.JSON(http.StatusForbidden, gin.H{"error": appErr.Message})
+		case pkgerrors.ErrCodeRateLimit:
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "登录尝试过于频繁，请稍后再试"})
+		case pkgerrors.ErrCodeNotFound:
+			c.JSON(http.StatusNotFound, gin.H{"error": "账号不存在，请检查邮箱/用户名是否正确"})
+		default:
+			h.logger.Error("portal login error", logger.F("error", err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器内部错误，请稍后重试"})
+		}
+		return
+	}
+
+	errStr := err.Error()
+	switch {
+	case contains(errStr, "validation"):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
+	case contains(errStr, "unauthorized"), contains(errStr, "密码错误"), contains(errStr, "invalid credentials"):
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "密码错误，请重新输入"})
+	case contains(errStr, "forbidden"), contains(errStr, "禁用"), contains(errStr, "disabled"):
+		c.JSON(http.StatusForbidden, gin.H{"error": "账号已被禁用，请联系管理员"})
+	case contains(errStr, "rate limit"), contains(errStr, "过于频繁"), contains(errStr, "too many"):
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "登录尝试过于频繁，请稍后再试"})
+	case contains(errStr, "not found"):
+		c.JSON(http.StatusNotFound, gin.H{"error": "账号不存在，请检查邮箱/用户名是否正确"})
+	case contains(errStr, "expired"), contains(errStr, "过期"):
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "账号已过期，请续费"})
+	default:
+		h.logger.Error("portal login error", logger.F("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器内部错误，请稍后重试"})
+	}
 }
 
 // Logout handles user logout.
@@ -316,8 +356,8 @@ func (h *PortalAuthHandler) ForgotPassword(c *gin.Context) {
 	}
 
 	if token != "" {
-			if err := h.sendPasswordResetEmail(c, req.Email, token); err != nil {
-			h.logger.Warn("failed to send password reset email", logger.F("email", req.Email), logger.F("error", err))
+		if err := h.sendPasswordResetEmail(c, resetReq.Email, token); err != nil {
+			h.logger.Warn("failed to send password reset email", logger.F("email", resetReq.Email), logger.F("error", err))
 		}
 	}
 
@@ -627,8 +667,7 @@ func (h *PortalAuthHandler) handleError(c *gin.Context, err error) {
 		case pkgerrors.ErrCodeValidation, pkgerrors.ErrCodeBadRequest:
 			c.JSON(http.StatusBadRequest, gin.H{"error": appErr.Message})
 		case pkgerrors.ErrCodeUnauthorized:
-			// 统一认证失败提示
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "用户名或密码错误"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": firstNonEmpty(appErr.Message, "未授权操作")})
 		case pkgerrors.ErrCodeForbidden:
 			c.JSON(http.StatusForbidden, gin.H{"error": appErr.Message})
 		case pkgerrors.ErrCodeConflict:
@@ -636,8 +675,7 @@ func (h *PortalAuthHandler) handleError(c *gin.Context, err error) {
 		case pkgerrors.ErrCodeRateLimit:
 			c.JSON(http.StatusTooManyRequests, gin.H{"error": "登录尝试过于频繁，请稍后再试"})
 		case pkgerrors.ErrCodeNotFound:
-			// 不暴露用户是否存在
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "用户名或密码错误"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "请求的资源不存在或已失效"})
 		default:
 			h.logger.Error("portal auth error", logger.F("error", err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器内部错误，请稍后重试"})
@@ -650,8 +688,8 @@ func (h *PortalAuthHandler) handleError(c *gin.Context, err error) {
 	switch {
 	case contains(errStr, "validation"):
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
-	case contains(errStr, "unauthorized"), contains(errStr, "密码错误"), contains(errStr, "invalid credentials"):
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户名或密码错误"})
+	case contains(errStr, "unauthorized"), contains(errStr, "密码错误"), contains(errStr, "验证码错误"), contains(errStr, "备份码错误"), contains(errStr, "invalid credentials"):
+		c.JSON(http.StatusUnauthorized, gin.H{"error": errStr})
 	case contains(errStr, "forbidden"), contains(errStr, "禁用"), contains(errStr, "disabled"):
 		c.JSON(http.StatusForbidden, gin.H{"error": "账号已被禁用，请联系管理员"})
 	case contains(errStr, "conflict"), contains(errStr, "已存在"), contains(errStr, "already exists"):
@@ -659,14 +697,22 @@ func (h *PortalAuthHandler) handleError(c *gin.Context, err error) {
 	case contains(errStr, "rate limit"), contains(errStr, "过于频繁"), contains(errStr, "too many"):
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": "登录尝试过于频繁，请稍后再试"})
 	case contains(errStr, "not found"):
-		// 不暴露用户是否存在
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户名或密码错误"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "请求的资源不存在或已失效"})
 	case contains(errStr, "expired"), contains(errStr, "过期"):
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "账号已过期，请续费"})
 	default:
 		h.logger.Error("portal auth error", logger.F("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器内部错误，请稍后重试"})
 	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func contains(s, substr string) bool {

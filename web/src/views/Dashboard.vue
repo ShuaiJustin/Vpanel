@@ -8,7 +8,7 @@
       </div>
       <div class="stats-cards">
         <el-row :gutter="20">
-          <el-col :span="8">
+          <el-col :xs="24" :sm="12" :lg="8">
             <el-card shadow="hover" class="stats-card cpu-card">
               <template #header>
                 <div class="card-header">
@@ -17,7 +17,12 @@
                 </div>
               </template>
               <div class="stats-progress">
-                <el-progress type="dashboard" :percentage="Math.min(Math.round(systemStats.cpu), 100)" :color="getCpuColor"></el-progress>
+                <el-progress
+                  type="dashboard"
+                  :width="isMobile ? 108 : 126"
+                  :percentage="Math.min(Math.round(systemStats.cpu), 100)"
+                  :color="getCpuColor"
+                />
               </div>
               <div class="stats-details" v-if="cpuInfo.model">
                 <p>核心数: {{ cpuInfo.cores }}</p>
@@ -26,7 +31,7 @@
             </el-card>
           </el-col>
           
-          <el-col :span="8">
+          <el-col :xs="24" :sm="12" :lg="8">
             <el-card shadow="hover" class="stats-card memory-card">
               <template #header>
                 <div class="card-header">
@@ -35,7 +40,12 @@
                 </div>
               </template>
               <div class="stats-progress">
-                <el-progress type="dashboard" :percentage="Math.min(Math.round(systemStats.memory), 100)" :color="getMemoryColor"></el-progress>
+                <el-progress
+                  type="dashboard"
+                  :width="isMobile ? 108 : 126"
+                  :percentage="Math.min(Math.round(systemStats.memory), 100)"
+                  :color="getMemoryColor"
+                />
               </div>
               <div class="stats-details" v-if="memoryInfo.total">
                 <p>已用: {{ formatBytes(memoryInfo.used) }}</p>
@@ -44,7 +54,7 @@
             </el-card>
           </el-col>
           
-          <el-col :span="8">
+          <el-col :xs="24" :sm="12" :lg="8">
             <el-card shadow="hover" class="stats-card disk-card">
               <template #header>
                 <div class="card-header">
@@ -53,7 +63,12 @@
                 </div>
               </template>
               <div class="stats-progress">
-                <el-progress type="dashboard" :percentage="Math.min(Math.round(systemStats.disk), 100)" :color="getDiskColor"></el-progress>
+                <el-progress
+                  type="dashboard"
+                  :width="isMobile ? 108 : 126"
+                  :percentage="Math.min(Math.round(systemStats.disk), 100)"
+                  :color="getDiskColor"
+                />
               </div>
               <div class="stats-details" v-if="diskInfo.total">
                 <p>已用: {{ formatBytes(diskInfo.used) }}</p>
@@ -71,7 +86,7 @@
         <span class="panel-title">系统信息</span>
       </div>
       <div class="system-info-content">
-        <el-descriptions border :column="3">
+        <el-descriptions border :column="isMobile ? 1 : 3">
           <el-descriptions-item label="操作系统">{{ systemInfo.os }}</el-descriptions-item>
           <el-descriptions-item label="主机名">{{ systemInfo.hostname }}</el-descriptions-item>
           <el-descriptions-item label="运行时间">{{ systemInfo.uptime }}</el-descriptions-item>
@@ -86,7 +101,7 @@
     <div class="panel-box">
       <div class="panel-header">
         <span class="panel-title">流量统计</span>
-        <el-radio-group v-model="trafficPeriod" size="small" @change="changeTrafficPeriod">
+        <el-radio-group v-model="trafficPeriod" class="period-switch" size="small" @change="changeTrafficPeriod">
           <el-radio-button value="today">今日</el-radio-button>
           <el-radio-button value="week">本周</el-radio-button>
           <el-radio-button value="month">本月</el-radio-button>
@@ -94,7 +109,7 @@
       </div>
       <div class="traffic-stats">
         <el-row :gutter="20">
-          <el-col :span="12">
+          <el-col :xs="24" :lg="12">
             <el-card shadow="hover" class="traffic-card">
               <template #header>
                 <div class="card-header">
@@ -107,13 +122,13 @@
                   <div class="traffic-label">总流量</div>
                 </div>
                 <div class="traffic-chart">
-                  <el-progress type="circle" :percentage="Math.min(trafficStats.percentage, 100)" :width="120"></el-progress>
+                  <el-progress type="circle" :percentage="Math.min(trafficStats.percentage, 100)" :width="isMobile ? 96 : 120"></el-progress>
                 </div>
               </div>
             </el-card>
           </el-col>
           
-          <el-col :span="12">
+          <el-col :xs="24" :lg="12">
             <el-card shadow="hover" class="traffic-card">
               <template #header>
                 <div class="card-header">
@@ -149,7 +164,7 @@
       </div>
       <div class="protocols-stats">
         <el-row :gutter="20">
-          <el-col :span="12">
+          <el-col :xs="24" :lg="12">
             <el-card shadow="hover" class="protocol-card">
               <template #header>
                 <div class="card-header">
@@ -177,7 +192,7 @@
             </el-card>
           </el-col>
           
-          <el-col :span="12">
+          <el-col :xs="24" :lg="12">
             <el-card shadow="hover" class="protocol-card">
               <template #header>
                 <div class="card-header">
@@ -209,6 +224,9 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { systemApi } from '@/api'
 import api from '@/api'
+import { useViewport } from '@/composables/useViewport'
+
+const { isMobile } = useViewport()
 
 // 系统状态数据
 const systemStats = ref({
@@ -458,6 +476,20 @@ onUnmounted(() => {
   padding: 20px;
 }
 
+.system-info-content,
+.protocol-list,
+.protocol-chart {
+  overflow-x: auto;
+}
+
+.period-switch {
+  flex-shrink: 0;
+}
+
+.protocol-list :deep(.el-table) {
+  min-width: 320px;
+}
+
 .stats-card {
   height: auto;
   min-height: 240px;
@@ -640,5 +672,59 @@ onUnmounted(() => {
   font-size: 12px;
   margin-top: 2px;
   color: var(--el-text-color-regular, #666);
+}
+
+@media (max-width: 768px) {
+  .panel-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .stats-cards,
+  .traffic-stats,
+  .protocols-stats,
+  .system-info-content {
+    padding: 14px;
+  }
+
+  .stats-card,
+  .traffic-card,
+  .protocol-card {
+    height: auto;
+    min-height: auto;
+  }
+
+  .traffic-info {
+    flex-direction: column;
+    gap: 16px;
+    height: auto;
+    padding: 8px 0;
+  }
+
+  .traffic-data {
+    padding: 0;
+  }
+
+  .traffic-details {
+    height: auto;
+    padding: 4px 0;
+  }
+
+  .traffic-value {
+    font-size: 20px;
+  }
+
+  .period-switch {
+    width: 100%;
+  }
+
+  .period-switch :deep(.el-radio-button) {
+    flex: 1;
+  }
+
+  .period-switch :deep(.el-radio-button__inner) {
+    width: 100%;
+  }
 }
 </style>

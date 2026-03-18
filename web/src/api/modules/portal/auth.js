@@ -31,6 +31,17 @@ export function login(data) {
 }
 
 /**
+ * 完成两步验证登录
+ * @param {Object} data - 验证数据
+ * @param {number} data.user_id - 用户 ID
+ * @param {string} data.code - 验证码或备份码
+ * @returns {Promise}
+ */
+export function verify2FALogin(data) {
+  return api.post(`${BASE_URL}/2fa/login`, data)
+}
+
+/**
  * 用户登出
  * @returns {Promise}
  */
@@ -146,6 +157,7 @@ export function revokeSession(sessionId) {
 export default {
   register,
   login,
+  verify2FALogin,
   logout,
   forgotPassword,
   resetPassword,

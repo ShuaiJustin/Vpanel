@@ -115,6 +115,36 @@ func TestUserRepository_GetByUsername(t *testing.T) {
 	}
 }
 
+func TestUserRepository_GetByEmailIsCaseInsensitive(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewUserRepository(db)
+	ctx := context.Background()
+
+	user := &User{
+		Username:     "emailcaseuser",
+		PasswordHash: "hashedpassword",
+		Email:        "CaseUser@Example.com",
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	if err := repo.Create(ctx, user); err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	found, err := repo.GetByEmail(ctx, "caseuser@example.com")
+	if err != nil {
+		t.Fatalf("Failed to get user by normalized email: %v", err)
+	}
+
+	if found.ID != user.ID {
+		t.Errorf("Expected user ID %d, got %d", user.ID, found.ID)
+	}
+
+	if found.Email != "caseuser@example.com" {
+		t.Errorf("Expected normalized email caseuser@example.com, got %s", found.Email)
+	}
+}
+
 func TestUserRepository_Update(t *testing.T) {
 	db := setupTestDB(t)
 	repo := NewUserRepository(db)

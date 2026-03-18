@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +22,8 @@ var (
 	ErrPaymentFailed     = errors.New("payment failed")
 	ErrRefundFailed      = errors.New("refund failed")
 	ErrDuplicateCallback = errors.New("duplicate callback")
+	ErrInvalidCallback   = errors.New("invalid payment callback")
+	ErrAmountMismatch    = errors.New("payment amount mismatch")
 )
 
 // Service provides payment management operations.
@@ -209,23 +212,49 @@ func (s *Service) HandleCallback(ctx context.Context, method string, data []byte
 		return nil
 	}
 
+	orderNo := strings.TrimSpace(result.OrderNo)
+	paymentNo := strings.TrimSpace(result.PaymentNo)
+	if orderNo == "" || paymentNo == "" {
+		return ErrInvalidCallback
+	}
+
+	ord, err := s.orderService.GetByOrderNo(ctx, orderNo)
+	if err != nil {
+		return ErrOrderNotFound
+	}
+
+	if result.Amount > 0 && ord.PayAmount != result.Amount {
+		s.logger.Warn("Payment callback amount mismatch",
+			logger.F("orderNo", orderNo),
+			logger.F("expected", ord.PayAmount),
+			logger.F("actual", result.Amount))
+		return ErrAmountMismatch
+	}
+
+	if ord.PaymentNo == paymentNo && (ord.Status == order.StatusPaid || ord.Status == order.StatusCompleted) {
+		s.logger.Info("Duplicate callback ignored after persisted payment lookup",
+			logger.F("orderNo", orderNo),
+			logger.F("paymentNo", paymentNo))
+		return nil
+	}
+
 	// Check for duplicate callback (idempotency)
-	callbackKey := fmt.Sprintf("%s:%s", method, result.PaymentNo)
+	callbackKey := fmt.Sprintf("%s:%s", method, paymentNo)
 	s.callbackMu.Lock()
 	if s.processedCallbacks[callbackKey] {
 		s.callbackMu.Unlock()
 		s.logger.Info("Duplicate callback ignored",
-			logger.F("paymentNo", result.PaymentNo))
+			logger.F("paymentNo", paymentNo))
 		return nil // Idempotent - return success
 	}
 	s.processedCallbacks[callbackKey] = true
 	s.callbackMu.Unlock()
 
 	// Mark order as paid
-	if err := s.orderService.MarkPaid(ctx, result.OrderNo, result.PaymentNo); err != nil {
+	if err := s.orderService.MarkPaid(ctx, orderNo, paymentNo); err != nil {
 		s.logger.Error("Failed to mark order as paid",
 			logger.Err(err),
-			logger.F("orderNo", result.OrderNo))
+			logger.F("orderNo", orderNo))
 		// Remove from processed to allow retry
 		s.callbackMu.Lock()
 		delete(s.processedCallbacks, callbackKey)
@@ -234,8 +263,8 @@ func (s *Service) HandleCallback(ctx context.Context, method string, data []byte
 	}
 
 	s.logger.Info("Payment callback processed",
-		logger.F("orderNo", result.OrderNo),
-		logger.F("paymentNo", result.PaymentNo),
+		logger.F("orderNo", orderNo),
+		logger.F("paymentNo", paymentNo),
 		logger.F("amount", result.Amount))
 
 	return nil

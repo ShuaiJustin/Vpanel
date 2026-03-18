@@ -3,6 +3,7 @@ package repository
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -22,6 +23,9 @@ func NewUserRepository(db *gorm.DB) UserRepository {
 
 // Create creates a new user.
 func (r *userRepository) Create(ctx context.Context, user *User) error {
+	if user.Email != "" {
+		user.Email = strings.ToLower(strings.TrimSpace(user.Email))
+	}
 	result := r.db.WithContext(ctx).Create(user)
 	if result.Error != nil {
 		return errors.NewDatabaseError("failed to create user", result.Error)
@@ -58,10 +62,11 @@ func (r *userRepository) GetByUsername(ctx context.Context, username string) (*U
 // GetByEmail retrieves a user by email.
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*User, error) {
 	var user User
-	result := r.db.WithContext(ctx).Where("email = ?", email).First(&user)
+	normalizedEmail := strings.ToLower(strings.TrimSpace(email))
+	result := r.db.WithContext(ctx).Where("LOWER(TRIM(email)) = ?", normalizedEmail).First(&user)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
-			return nil, errors.NewNotFoundError("user", email)
+			return nil, errors.NewNotFoundError("user", normalizedEmail)
 		}
 		return nil, errors.NewDatabaseError("failed to get user", result.Error)
 	}
@@ -70,6 +75,9 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*User, e
 
 // Update updates a user.
 func (r *userRepository) Update(ctx context.Context, user *User) error {
+	if user.Email != "" {
+		user.Email = strings.ToLower(strings.TrimSpace(user.Email))
+	}
 	result := r.db.WithContext(ctx).Save(user)
 	if result.Error != nil {
 		return errors.NewDatabaseError("failed to update user", result.Error)

@@ -19,9 +19,27 @@
             <el-icon><Bell /></el-icon>
           </el-button>
         </el-badge>
-        <el-button link class="header-btn" @click="goToSettings">
-          <el-icon><User /></el-icon>
-        </el-button>
+        <el-dropdown trigger="click" placement="bottom-end" @command="handleAction">
+          <el-button link class="header-btn" aria-label="更多操作">
+            <el-icon><MoreFilled /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="settings">
+                <el-icon><Setting /></el-icon>
+                个人设置
+              </el-dropdown-item>
+              <el-dropdown-item command="help">
+                <el-icon><QuestionFilled /></el-icon>
+                帮助中心
+              </el-dropdown-item>
+              <el-dropdown-item divided command="logout">
+                <el-icon><SwitchButton /></el-icon>
+                退出登录
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </header>
 
@@ -55,15 +73,19 @@
 <script setup>
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
-  ArrowLeft, Bell, User, HomeFilled, Connection, 
-  Link, Download, ChatDotRound, Monitor
+  ArrowLeft, Bell, MoreFilled, Setting, QuestionFilled,
+  SwitchButton, HomeFilled, Connection, Link, Download,
+  ChatDotRound, Monitor
 } from '@element-plus/icons-vue'
 import { usePortalAnnouncementsStore } from '@/stores/portalAnnouncements'
+import { useUserPortalStore } from '@/stores/userPortal'
 
 const router = useRouter()
 const route = useRoute()
 const announcementsStore = usePortalAnnouncementsStore()
+const userStore = useUserPortalStore()
 
 // 底部导航项
 const tabItems = [
@@ -130,6 +152,36 @@ function goToAnnouncements() {
 
 function goToSettings() {
   router.push('/user/settings')
+}
+
+function goToHelp() {
+  router.push('/user/help')
+}
+
+function handleAction(command) {
+  switch (command) {
+    case 'settings':
+      goToSettings()
+      break
+    case 'help':
+      goToHelp()
+      break
+    case 'logout':
+      handleLogout()
+      break
+  }
+}
+
+function handleLogout() {
+  ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(async () => {
+    await userStore.logout()
+    ElMessage.success('已退出登录')
+    router.push('/user/login')
+  }).catch(() => {})
 }
 </script>
 

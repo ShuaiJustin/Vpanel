@@ -6,9 +6,9 @@
         <el-button type="primary" @click="showAddDialog">添加用户</el-button>
         <el-input
           v-model="searchQuery"
+          class="search-input"
           placeholder="搜索用户名或邮箱"
           clearable
-          style="width: 260px"
           @input="handleSearch"
         >
           <template #prefix>
@@ -18,26 +18,27 @@
       </div>
     </div>
 
-    <el-table :data="paginatedUsers" border v-loading="loading" style="width: 100%">
+    <div class="users-table-wrap">
+      <el-table :data="paginatedUsers" border v-loading="loading" class="users-table">
       <el-table-column prop="username" label="用户名" min-width="140" />
-      <el-table-column prop="email" label="邮箱" min-width="220" />
-      <el-table-column prop="role" label="角色" width="100">
+      <el-table-column prop="email" label="邮箱" :min-width="isMobile ? 180 : 220" />
+      <el-table-column prop="role" label="角色" :width="isMobile ? 88 : 100">
         <template #default="{ row }">
           <el-tag :type="row.role === 'admin' ? 'danger' : 'primary'">
             {{ row.role === 'admin' ? '管理员' : '普通用户' }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="created" label="创建时间" width="180" />
-      <el-table-column prop="lastLogin" label="最后登录" width="180" />
-      <el-table-column prop="status" label="状态" width="100">
+      <el-table-column v-if="!isMobile" prop="created" label="创建时间" width="180" />
+      <el-table-column v-if="!isMobile" prop="lastLogin" label="最后登录" width="180" />
+      <el-table-column prop="status" label="状态" :width="isMobile ? 88 : 100">
         <template #default="{ row }">
           <el-tag :type="row.status ? 'success' : 'danger'">
             {{ row.status ? '启用' : '禁用' }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="320" fixed="right">
+      <el-table-column label="操作" :width="isMobile ? 220 : 320" :fixed="isMobile ? false : 'right'">
         <template #default="{ row }">
           <el-space wrap>
             <el-button size="small" type="primary" @click="handleEdit(row)">编辑</el-button>
@@ -53,14 +54,15 @@
           </el-space>
         </template>
       </el-table-column>
-    </el-table>
+      </el-table>
+    </div>
 
     <div class="pagination-container">
       <el-pagination
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
         :page-sizes="[10, 20, 50, 100]"
-        layout="total, sizes, prev, pager, next, jumper"
+        :layout="isMobile ? 'prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
         :total="displayTotal"
         @size-change="handleSizeChange"
         @current-change="handleCurrentChange"
@@ -70,13 +72,13 @@
     <el-dialog
       :title="dialogType === 'add' ? '添加用户' : '编辑用户'"
       v-model="dialogVisible"
-      width="520px"
+      :width="isMobile ? 'calc(100vw - 24px)' : '520px'"
     >
       <el-form
         ref="userFormRef"
         :model="userForm"
         :rules="rules"
-        label-width="100px"
+        :label-width="isMobile ? '72px' : '100px'"
       >
         <el-form-item label="用户名" prop="username">
           <el-input v-model="userForm.username" placeholder="请输入用户名" />
@@ -115,6 +117,9 @@ import { computed, h, nextTick, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import { usersApi } from '@/api'
+import { useViewport } from '@/composables/useViewport'
+
+const { isMobile } = useViewport()
 
 const users = ref([])
 const loading = ref(false)
@@ -408,6 +413,18 @@ onMounted(fetchUsers)
   gap: 12px;
 }
 
+.search-input {
+  width: 260px;
+}
+
+.users-table-wrap {
+  overflow-x: auto;
+}
+
+.users-table {
+  min-width: 760px;
+}
+
 .pagination-container {
   margin-top: 20px;
   display: flex;
@@ -422,5 +439,30 @@ onMounted(fetchUsers)
   background: #f5f7fa;
   color: #111827;
   font-size: 14px;
+}
+
+@media (max-width: 768px) {
+  .users-container {
+    padding: 12px;
+  }
+
+  .page-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .actions {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .search-input {
+    width: 100%;
+  }
+
+  .users-table {
+    min-width: 640px;
+  }
 }
 </style>

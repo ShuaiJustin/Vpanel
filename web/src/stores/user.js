@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import api from '@/api/index'
+import { authApi, usersApi } from '@/api'
 
 export const useUserStore = defineStore('user', () => {
   // 状态
@@ -36,51 +36,39 @@ export const useUserStore = defineStore('user', () => {
     localStorage.removeItem('userRole')
   }
 
+  const extractErrorMessage = (err, fallback) => {
+    if (typeof err === 'string') {
+      return err
+    }
+    return err?.message || err?.error || fallback
+  }
+
   // API方法
   const login = async (credentials) => {
     loading.value = true
     error.value = null
     
     try {
-      console.log('Login attempt:', credentials.username, '********')
-      
-      // 使用配置好的 api 实例
-      const response = await api.post('/auth/login', credentials)
-      
-      console.log('Login response:', response)
-      
-      // 检查响应中是否包含错误信息
-      if (response && response.error) {
-        console.error('Login error from server:', response.error)
-        error.value = response.error
-        throw new Error(response.error)
-      }
-      
-      // 检查响应是否包含必要的数据（api 拦截器已经返回 response.data）
+      const response = await authApi.login(credentials)
+
       if (!response.token || !response.user) {
-        console.error('Invalid login response format:', response)
         error.value = '服务器返回的数据格式不正确'
         throw new Error('服务器返回的数据格式不正确')
       }
       
       const { token: newToken, user: userInfo } = response
-      console.log('Login successful:', userInfo)
       
       setToken(newToken)
       setUser(userInfo)
       return true
     } catch (err) {
-      console.error('Login error:', err)
-      
       // 根据错误类型返回友好的错误消息
       if (err.code === 'UNAUTHORIZED' || err.status === 401) {
         error.value = '用户名或密码错误'
       } else if (err.code === 'NETWORK_ERROR') {
         error.value = '网络连接失败，请检查网络'
-      } else if (err.message) {
-        error.value = err.message
       } else {
-        error.value = '登录失败，请稍后重试'
+        error.value = extractErrorMessage(err, '登录失败，请稍后重试')
       }
       
       throw error.value
@@ -90,7 +78,7 @@ export const useUserStore = defineStore('user', () => {
   }
 
   const logout = () => {
-    // 实际项目中可能需要调用登出API
+    authApi.logout().catch(() => {})
     clearAuth()
   }
 
@@ -101,16 +89,8 @@ export const useUserStore = defineStore('user', () => {
     error.value = null
     
     try {
-      // 使用配置好的 api 实例（已包含认证 token）
-      const response = await api.get('/auth/me')
-      console.log('Get user response:', response)
-      
-      if (response && response.error) {
-        error.value = response.error
-        throw new Error(response.error)
-      }
-      
-      // api 拦截器已经返回 response.data，直接使用 response
+      const response = await authApi.getProfile()
+
       if (!response.id) {
         error.value = '服务器返回的数据格式不正确'
         throw new Error('服务器返回的数据格式不正确')  
@@ -119,16 +99,7 @@ export const useUserStore = defineStore('user', () => {
       setUser(response)
       return user.value
     } catch (err) {
-      console.error('Get user error:', err)
-      
-      if (err.response) {
-        console.error('Error response:', err.response.status, err.response.data)
-        error.value = err.response.data.error || '获取用户信息失败'
-      } else if (err.request) {
-        error.value = '网络错误，服务器未响应'
-      } else {
-        error.value = err.message || '获取用户信息失败'
-      }
+      error.value = extractErrorMessage(err, '获取用户信息失败')
       
       throw error.value
     } finally {
@@ -142,9 +113,7 @@ export const useUserStore = defineStore('user', () => {
     error.value = null
     
     try {
-      console.log('Fetching users with params:', params)
-      const response = await api.get('/users', { params })
-      console.log('Users response:', response)
+      const response = await usersApi.list(params)
       
       // 适配不同的响应格式（api 拦截器已经返回 response.data）
       let users = [];
@@ -173,16 +142,7 @@ export const useUserStore = defineStore('user', () => {
         total
       }
     } catch (err) {
-      console.error('Fetch users error:', err)
-      
-      if (err.response) {
-        console.error('Error response:', err.response.status, err.response.data)
-        error.value = err.response.data.error || '获取用户列表失败'
-      } else if (err.request) {
-        error.value = '网络错误，服务器未响应'
-      } else {
-        error.value = err.message || '获取用户列表失败'
-      }
+      error.value = extractErrorMessage(err, '获取用户列表失败')
       
       throw error.value
     } finally {
@@ -195,19 +155,9 @@ export const useUserStore = defineStore('user', () => {
     error.value = null
     
     try {
-      // TODO: 替换为真实 API 端点
-      // const response = await axios.post('/api/users', userData)
-      const newUser = {
-        ...userData,
-        id: Date.now(),
-        created: new Date().toLocaleString(),
-        lastLogin: '-',
-        status: true
-      }
-      
-      return newUser
+      return await usersApi.create(userData)
     } catch (err) {
-      error.value = err.response?.data?.message || '创建用户失败'
+      error.value = extractErrorMessage(err, '创建用户失败')
       throw error.value
     } finally {
       loading.value = false
@@ -219,11 +169,9 @@ export const useUserStore = defineStore('user', () => {
     error.value = null
     
     try {
-      // TODO: 替换为真实 API 端点
-      // const response = await axios.put(`/api/users/${userId}`, userData)
-      return { ...userData, id: userId }
+      return await usersApi.update(userId, userData)
     } catch (err) {
-      error.value = err.response?.data?.message || '更新用户失败'
+      error.value = extractErrorMessage(err, '更新用户失败')
       throw error.value
     } finally {
       loading.value = false
@@ -235,11 +183,10 @@ export const useUserStore = defineStore('user', () => {
     error.value = null
     
     try {
-      // TODO: 替换为真实 API 端点
-      // await axios.delete(`/api/users/${userId}`)
+      await usersApi.delete(userId)
       return true
     } catch (err) {
-      error.value = err.response?.data?.message || '删除用户失败'
+      error.value = extractErrorMessage(err, '删除用户失败')
       throw error.value
     } finally {
       loading.value = false
@@ -251,11 +198,14 @@ export const useUserStore = defineStore('user', () => {
     error.value = null
     
     try {
-      // TODO: 替换为真实 API 端点
-      // await axios.patch(`/api/users/${userId}/status`, { status })
+      if (status) {
+        await usersApi.enable(userId)
+      } else {
+        await usersApi.disable(userId)
+      }
       return true
     } catch (err) {
-      error.value = err.response?.data?.message || '更新用户状态失败'
+      error.value = extractErrorMessage(err, '更新用户状态失败')
       throw error.value
     } finally {
       loading.value = false
@@ -267,18 +217,11 @@ export const useUserStore = defineStore('user', () => {
     error.value = null
     
     try {
-      // TODO: 替换为真实 API 端点
-      // const response = await axios.put('/api/users/profile', profileData)
-      
-      // 更新本地用户数据
-      user.value = {
-        ...user.value,
-        ...profileData
-      }
-      
-      return user.value
+      const updatedUser = await authApi.updateProfile(profileData)
+      setUser(updatedUser)
+      return updatedUser
     } catch (err) {
-      error.value = err.response?.data?.message || '更新个人资料失败'
+      error.value = extractErrorMessage(err, '更新个人资料失败')
       throw error.value
     } finally {
       loading.value = false
@@ -290,12 +233,13 @@ export const useUserStore = defineStore('user', () => {
     error.value = null
     
     try {
-      // TODO: 替换为真实 API 端点
-      // await axios.post('/api/users/change-password', passwordData)
-      
+      await authApi.changePassword({
+        old_password: passwordData.currentPassword || passwordData.oldPassword,
+        new_password: passwordData.newPassword
+      })
       return true
     } catch (err) {
-      error.value = err.response?.data?.message || '修改密码失败'
+      error.value = extractErrorMessage(err, '修改密码失败')
       throw error.value
     } finally {
       loading.value = false
@@ -327,4 +271,4 @@ export const useUserStore = defineStore('user', () => {
     updateUserProfile,
     changePassword
   }
-}) 
+})

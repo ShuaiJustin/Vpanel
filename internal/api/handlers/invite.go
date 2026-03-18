@@ -57,7 +57,7 @@ type CommissionResponse struct {
 
 // GetInviteCode returns the current user's invite code.
 func (h *InviteHandler) GetInviteCode(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
@@ -81,7 +81,7 @@ func (h *InviteHandler) GetInviteCode(c *gin.Context) {
 
 // GetReferrals returns the current user's referrals.
 func (h *InviteHandler) GetReferrals(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
@@ -117,7 +117,7 @@ func (h *InviteHandler) GetReferrals(c *gin.Context) {
 
 // GetInviteStats returns the current user's invite statistics.
 func (h *InviteHandler) GetInviteStats(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
@@ -135,7 +135,7 @@ func (h *InviteHandler) GetInviteStats(c *gin.Context) {
 
 // GetCommissions returns the current user's commissions.
 func (h *InviteHandler) GetCommissions(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
@@ -175,7 +175,7 @@ func (h *InviteHandler) GetCommissions(c *gin.Context) {
 
 // GetCommissionSummary returns the current user's commission summary.
 func (h *InviteHandler) GetCommissionSummary(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return

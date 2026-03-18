@@ -12,6 +12,8 @@ x-vpanel-environment: &vpanel-environment
   V_SERVER_MODE: ${V_SERVER_MODE:-release}
   V_SERVER_PUBLIC_URL: ${V_SERVER_PUBLIC_URL:-}
   V_SERVER_BASE_URL: ${V_SERVER_BASE_URL:-}
+  V_SERVER_TLS_CERT: ${V_SERVER_TLS_CERT:-}
+  V_SERVER_TLS_KEY: ${V_SERVER_TLS_KEY:-}
   V_SERVER_STATIC_PATH: /app/web/dist
   VPANEL_CONFIG_PATH: ${VPANEL_CONFIG_PATH:-/app/configs/config.yaml}
   VPANEL_DATA_DIR: ${VPANEL_DATA_DIR:-/app/data}
@@ -41,7 +43,11 @@ x-vpanel-environment: &vpanel-environment
   TZ: ${TZ:-UTC}
 
 x-vpanel-healthcheck: &vpanel-healthcheck
-  test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8080/health"]
+  test:
+    [
+      "CMD-SHELL",
+      "scheme=http; extra=''; if [ -n \"$$V_SERVER_TLS_CERT\" ] && [ -n \"$$V_SERVER_TLS_KEY\" ]; then scheme=https; extra='--no-check-certificate'; fi; wget $$extra --no-verbose --tries=1 --spider \"$$scheme://127.0.0.1:8080/health\"",
+    ]
   interval: 30s
   timeout: 10s
   retries: 3
@@ -65,6 +71,7 @@ services:
       - v-panel-data:${VPANEL_DATA_DIR:-/app/data}
       - v-panel-logs:${VPANEL_LOG_DIR:-/app/logs}
       - v-panel-xray:${VPANEL_XRAY_DIR:-/app/xray}
+      - ${VPANEL_CERT_DIR:-./certs}:/app/certs:ro
     healthcheck: *vpanel-healthcheck
     networks:
       - v-panel-network

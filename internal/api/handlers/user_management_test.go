@@ -89,6 +89,144 @@ func TestUpdateUser_AllowsClearingEmail(t *testing.T) {
 	}
 }
 
+func TestUpdateCurrentUser_UpdatesEmailAndNormalizesCase(t *testing.T) {
+	handler, userRepo, authSvc := newUserManagementTestHandler(t)
+	user := createManagedTestUser(t, userRepo, authSvc, &repository.User{
+		Username: "profile-user",
+		Email:    "profile@example.com",
+		Role:     "admin",
+		Enabled:  true,
+	})
+
+	router := gin.New()
+	router.PUT("/auth/me", func(c *gin.Context) {
+		c.Set("user_id", user.ID)
+		handler.UpdateCurrentUser(c)
+	})
+
+	body, _ := json.Marshal(map[string]any{
+		"email": "NewAdmin@Example.com ",
+	})
+	req := httptest.NewRequest(http.MethodPut, "/auth/me", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	updatedUser, err := userRepo.GetByID(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("failed to reload user: %v", err)
+	}
+	if updatedUser.Email != "newadmin@example.com" {
+		t.Fatalf("expected normalized email newadmin@example.com, got %q", updatedUser.Email)
+	}
+}
+
+func TestUpdateCurrentUser_RejectsDuplicateEmail(t *testing.T) {
+	handler, userRepo, authSvc := newUserManagementTestHandler(t)
+	firstUser := createManagedTestUser(t, userRepo, authSvc, &repository.User{
+		Username: "first-user",
+		Email:    "first@example.com",
+		Role:     "admin",
+		Enabled:  true,
+	})
+	createManagedTestUser(t, userRepo, authSvc, &repository.User{
+		Username: "second-user",
+		Email:    "second@example.com",
+		Role:     "user",
+		Enabled:  true,
+	})
+
+	router := gin.New()
+	router.PUT("/auth/me", func(c *gin.Context) {
+		c.Set("user_id", firstUser.ID)
+		handler.UpdateCurrentUser(c)
+	})
+
+	body, _ := json.Marshal(map[string]any{
+		"email": "SECOND@example.com",
+	})
+	req := httptest.NewRequest(http.MethodPut, "/auth/me", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected status 409, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateUser_RejectsDuplicateEmail(t *testing.T) {
+	handler, userRepo, authSvc := newUserManagementTestHandler(t)
+	createManagedTestUser(t, userRepo, authSvc, &repository.User{
+		Username: "existing-user",
+		Email:    "duplicate@example.com",
+		Role:     "user",
+		Enabled:  true,
+	})
+
+	router := gin.New()
+	router.POST("/users", func(c *gin.Context) {
+		c.Set("user_id", int64(999))
+		handler.CreateUser(c)
+	})
+
+	body, _ := json.Marshal(map[string]any{
+		"username": "new-user",
+		"password": "password123",
+		"email":    "Duplicate@example.com",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/users", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected status 409, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateUser_RejectsDuplicateEmail(t *testing.T) {
+	handler, userRepo, authSvc := newUserManagementTestHandler(t)
+	firstUser := createManagedTestUser(t, userRepo, authSvc, &repository.User{
+		Username: "editable-user",
+		Email:    "editable@example.com",
+		Role:     "user",
+		Enabled:  true,
+	})
+	createManagedTestUser(t, userRepo, authSvc, &repository.User{
+		Username: "taken-user",
+		Email:    "taken@example.com",
+		Role:     "user",
+		Enabled:  true,
+	})
+
+	router := gin.New()
+	router.PUT("/users/:id", func(c *gin.Context) {
+		c.Set("user_id", int64(999))
+		handler.UpdateUser(c)
+	})
+
+	body, _ := json.Marshal(map[string]any{
+		"email": "Taken@example.com",
+	})
+	req := httptest.NewRequest(http.MethodPut, "/users/"+strconv.FormatInt(firstUser.ID, 10), bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected status 409, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestUpdateUser_PreventsDemotingLastEnabledAdmin(t *testing.T) {
 	handler, userRepo, authSvc := newUserManagementTestHandler(t)
 	admin := createManagedTestUser(t, userRepo, authSvc, &repository.User{

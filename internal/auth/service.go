@@ -2,8 +2,15 @@
 package auth
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha1"
+	"crypto/subtle"
+	"encoding/base32"
+	"encoding/binary"
+	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -172,14 +179,68 @@ func (s *Service) GenerateTOTPSecret() (string, error) {
 }
 
 // VerifyTOTP verifies a TOTP code against a secret.
-// This is a simplified implementation - in production, use a proper TOTP library.
 func (s *Service) VerifyTOTP(secret, code string) bool {
-	// For a proper implementation, use a library like github.com/pquerna/otp
-	// This is a placeholder that accepts any 6-digit code for testing
+	return verifyTOTPAtTime(secret, code, time.Now().UTC())
+}
+
+func verifyTOTPAtTime(secret, code string, at time.Time) bool {
+	if !isSixDigitCode(code) {
+		return false
+	}
+
+	for offset := -1; offset <= 1; offset++ {
+		candidate, err := generateTOTPCode(secret, at.Add(time.Duration(offset)*30*time.Second))
+		if err != nil {
+			return false
+		}
+		if subtle.ConstantTimeCompare([]byte(candidate), []byte(code)) == 1 {
+			return true
+		}
+	}
+
+	return false
+}
+
+func generateTOTPCode(secret string, at time.Time) (string, error) {
+	normalizedSecret := strings.ToUpper(strings.TrimSpace(secret))
+	if normalizedSecret == "" {
+		return "", fmt.Errorf("missing TOTP secret")
+	}
+
+	decodedSecret, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(normalizedSecret)
+	if err != nil {
+		return "", err
+	}
+
+	counter := uint64(at.UTC().Unix() / 30)
+	var counterBytes [8]byte
+	binary.BigEndian.PutUint64(counterBytes[:], counter)
+
+	mac := hmac.New(sha1.New, decodedSecret)
+	if _, err := mac.Write(counterBytes[:]); err != nil {
+		return "", err
+	}
+	sum := mac.Sum(nil)
+
+	offset := sum[len(sum)-1] & 0x0f
+	binaryCode := (int(sum[offset])&0x7f)<<24 |
+		(int(sum[offset+1])&0xff)<<16 |
+		(int(sum[offset+2])&0xff)<<8 |
+		(int(sum[offset+3]) & 0xff)
+
+	return fmt.Sprintf("%06d", binaryCode%1000000), nil
+}
+
+func isSixDigitCode(code string) bool {
 	if len(code) != 6 {
 		return false
 	}
-	// In production, implement proper TOTP verification
-	// For now, return true for testing purposes if secret is valid
-	return len(secret) > 0
+
+	for _, r := range code {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+
+	return true
 }

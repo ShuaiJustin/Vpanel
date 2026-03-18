@@ -3,8 +3,58 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <h1 class="page-title">客户端下载</h1>
-      <p class="page-subtitle">选择适合您设备的客户端，开始使用服务</p>
+      <p class="page-subtitle">选择适合您设备的客户端，安装后即可导入订阅开始使用</p>
     </div>
+
+    <el-card class="quick-start-card" shadow="never">
+      <div class="quick-start-content">
+        <div class="quick-start-main">
+          <span class="platform-hint">
+            <el-icon><component :is="currentPlatform?.icon || Platform" /></el-icon>
+            当前平台：{{ currentPlatform?.label || '当前设备' }}
+          </span>
+          <h2 class="quick-start-title">
+            {{ recommendedClient ? `${recommendedClient.name} 更适合当前设备` : '先选择合适的客户端' }}
+          </h2>
+          <p class="quick-start-subtitle">
+            {{
+              recommendedClient
+                ? `建议先安装 ${recommendedClient.name}，再复制订阅链接导入。`
+                : '请选择系统平台后，下载客户端并导入订阅。'
+            }}
+          </p>
+          <div v-if="subscriptionLink" class="quick-start-link">
+            <span class="quick-start-link__label">订阅链接</span>
+            <span class="quick-start-link__value">{{ subscriptionLinkPreview }}</span>
+          </div>
+        </div>
+
+        <div class="quick-start-actions">
+          <el-button
+            type="primary"
+            :disabled="!recommendedClient"
+            @click="downloadClient(recommendedClient)"
+          >
+            <el-icon><Download /></el-icon>
+            下载推荐客户端
+          </el-button>
+          <el-button
+            :disabled="!recommendedClient"
+            @click="showTutorial(recommendedClient)"
+          >
+            <el-icon><Document /></el-icon>
+            查看教程
+          </el-button>
+          <el-button @click="copySubscriptionLink">
+            <el-icon><Link /></el-icon>
+            复制订阅链接
+          </el-button>
+          <el-button @click="goToSubscription">
+            前往订阅管理
+          </el-button>
+        </div>
+      </div>
+    </el-card>
 
     <!-- 平台选择 -->
     <div class="platform-tabs">
@@ -27,14 +77,7 @@
           v-for="client in filteredClients" 
           :key="client.name"
           class="client-card"
-          :class="{ recommended: client.recommended }"
         >
-          <!-- 推荐标签 -->
-          <div v-if="client.recommended" class="recommended-badge">
-            <el-icon><Star /></el-icon>
-            推荐
-          </div>
-
           <!-- 客户端信息 -->
           <div class="client-header">
             <div class="client-logo">
@@ -42,8 +85,25 @@
               <el-icon v-else><Box /></el-icon>
             </div>
             <div class="client-info">
-              <h3 class="client-name">{{ client.name }}</h3>
-              <span class="client-version">{{ client.version }}</span>
+              <div class="client-title-row">
+                <h3 class="client-name">{{ client.name }}</h3>
+                <span v-if="client.recommended" class="client-recommend-chip">
+                  <el-icon><Star /></el-icon>
+                  首选
+                </span>
+              </div>
+              <div class="client-meta">
+                <span class="client-version">{{ getClientReleaseLabel(client) }}</span>
+                <el-tag
+                  v-for="badge in getClientBadges(client)"
+                  :key="`${client.platform}-${client.name}-${badge.label}`"
+                  :type="badge.type"
+                  effect="plain"
+                  size="small"
+                >
+                  {{ badge.label }}
+                </el-tag>
+              </div>
             </div>
           </div>
 
@@ -113,7 +173,8 @@
     <el-dialog
       v-model="tutorialVisible"
       :title="`${currentClient?.name} 使用教程`"
-      width="800px"
+      :width="isMobile ? '100%' : '800px'"
+      :fullscreen="isMobile"
       class="tutorial-dialog"
     >
       <div v-if="currentClient" class="tutorial-content">
@@ -156,15 +217,29 @@
                 style="margin-top: 16px"
               >
                 <template #title>
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                    <span>您的订阅链接</span>
-                    <el-button 
-                      size="small" 
-                      @click="goToSubscription"
-                      link
-                    >
-                      前往获取
-                    </el-button>
+                  <div class="subscription-inline">
+                    <div class="subscription-inline__header">
+                      <span>您的订阅链接</span>
+                      <div class="subscription-inline__actions">
+                        <el-button
+                          size="small"
+                          @click="copySubscriptionLink"
+                          link
+                        >
+                          复制链接
+                        </el-button>
+                        <el-button
+                          size="small"
+                          @click="goToSubscription"
+                          link
+                        >
+                          订阅管理
+                        </el-button>
+                      </div>
+                    </div>
+                    <div class="subscription-inline__value">
+                      {{ subscriptionLink || '订阅链接暂未加载，请前往订阅管理获取' }}
+                    </div>
                   </div>
                 </template>
               </el-alert>
@@ -201,18 +276,25 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { useViewport } from '@/composables/useViewport'
+import { useSubscriptionStore } from '@/stores/subscription'
+import { copyText } from '@/utils/clipboard'
 import { 
   Monitor, Iphone, Apple, Platform,
-  Download, Document, Star, Box, InfoFilled
+  Download, Document, Star, Box, InfoFilled, Link
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
+const subscriptionStore = useSubscriptionStore()
+const { isMobile } = useViewport()
 
 // 常量
 const TOTAL_TUTORIAL_STEPS = 3
+const paidClientNames = new Set(['Shadowrocket', 'Quantumult X', 'Surge', 'Loon'])
+const legacyClientNames = new Set(['Clash for Windows', 'Qv2ray', 'SagerNet'])
 
 // 状态
 const selectedPlatform = ref('windows')
@@ -1155,9 +1237,31 @@ const filteredClients = computed(() => {
   return clients.filter(c => c.platform === selectedPlatform.value)
 })
 
+const currentPlatform = computed(() => {
+  return platforms.find(platform => platform.value === selectedPlatform.value) || null
+})
+
+const recommendedClient = computed(() => {
+  return filteredClients.value.find(client => client.recommended) || filteredClients.value[0] || null
+})
+
 const currentTutorial = computed(() => {
   if (!currentClient.value) return defaultTutorial
   return tutorials[currentClient.value.name] || defaultTutorial
+})
+
+const subscriptionLink = computed(() => subscriptionStore.link || '')
+
+const subscriptionLinkPreview = computed(() => {
+  if (!subscriptionLink.value) {
+    return ''
+  }
+
+  if (subscriptionLink.value.length <= 96) {
+    return subscriptionLink.value
+  }
+
+  return `${subscriptionLink.value.slice(0, 64)}...${subscriptionLink.value.slice(-24)}`
 })
 
 const tutorialSteps = computed(() => {
@@ -1170,18 +1274,149 @@ const tutorialSteps = computed(() => {
 })
 
 // 方法
-function downloadClient(client) {
-  if (client.downloadUrl && client.downloadUrl !== '#') {
-    window.open(client.downloadUrl, '_blank')
-  } else {
-    ElMessage.info('下载链接暂不可用')
+function detectPlatform() {
+  if (typeof navigator === 'undefined') {
+    return 'windows'
   }
+
+  const userAgent = (navigator.userAgent || '').toLowerCase()
+  const platform = (navigator.userAgentData?.platform || navigator.platform || '').toLowerCase()
+  const maxTouchPoints = navigator.maxTouchPoints || 0
+
+  if (userAgent.includes('android')) {
+    return 'android'
+  }
+
+  if (/iphone|ipad|ipod/.test(userAgent)) {
+    return 'ios'
+  }
+
+  if (platform.includes('mac') && maxTouchPoints > 1) {
+    return 'ios'
+  }
+
+  if (platform.includes('win')) {
+    return 'windows'
+  }
+
+  if (platform.includes('mac')) {
+    return 'macos'
+  }
+
+  if (platform.includes('linux') || userAgent.includes('linux') || userAgent.includes('x11')) {
+    return 'linux'
+  }
+
+  return 'windows'
+}
+
+function getClientReleaseLabel(client) {
+  const url = client?.downloadUrl || ''
+
+  if (url.includes('apps.apple.com')) {
+    return 'App Store'
+  }
+  if (url.includes('github.com')) {
+    return 'GitHub Releases'
+  }
+  if (url.includes('appcenter.ms')) {
+    return 'App Center'
+  }
+  if (url.includes('archive.org')) {
+    return '归档镜像'
+  }
+  return '官网'
+}
+
+function getClientBadges(client) {
+  const badges = []
+
+  if (legacyClientNames.has(client.name)) {
+    badges.push({ label: '已停更', type: 'warning' })
+  }
+
+  if (paidClientNames.has(client.name)) {
+    badges.push({ label: '付费', type: 'danger' })
+  }
+
+  if (
+    client.platform === 'ios' &&
+    ['Shadowrocket', 'Quantumult X', 'Loon'].includes(client.name)
+  ) {
+    badges.push({ label: '需海外 Apple ID', type: 'info' })
+  }
+
+  return badges
+}
+
+function openExternal(url) {
+  if (typeof window === 'undefined' || !url) {
+    return
+  }
+
+  const openedWindow = window.open(url, '_blank', 'noopener,noreferrer')
+  if (openedWindow) {
+    openedWindow.opener = null
+    return
+  }
+
+  const link = document.createElement('a')
+  link.href = url
+  link.target = '_blank'
+  link.rel = 'noopener noreferrer'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+}
+
+async function ensureSubscriptionLink() {
+  if (subscriptionStore.link) {
+    return subscriptionStore.link
+  }
+
+  const result = await subscriptionStore.fetchLink()
+  return result?.link || ''
+}
+
+function downloadClient(client) {
+  if (!client) {
+    ElMessage.warning('当前没有可用的客户端')
+    return
+  }
+
+  if (!client.downloadUrl || client.downloadUrl === '#') {
+    ElMessage.info('下载链接暂不可用')
+    return
+  }
+
+  openExternal(client.downloadUrl)
+  ElMessage.success(`已为您打开 ${client.name} 下载页`)
 }
 
 function showTutorial(client) {
+  if (!client) {
+    ElMessage.warning('当前没有可用的客户端')
+    return
+  }
   currentClient.value = client
   tutorialStep.value = 0
   tutorialVisible.value = true
+}
+
+async function copySubscriptionLink() {
+  try {
+    const link = await ensureSubscriptionLink()
+    if (!link) {
+      ElMessage.warning('订阅链接暂未生成，请前往订阅管理查看')
+      return
+    }
+
+    await copyText(link)
+    ElMessage.success('订阅链接已复制')
+  } catch (error) {
+    console.error('复制订阅链接失败:', error)
+    ElMessage.error('复制失败，请前往订阅管理手动复制')
+  }
 }
 
 function goToSubscription() {
@@ -1191,6 +1426,16 @@ function goToSubscription() {
     ElMessage.error('跳转失败，请稍后重试')
   })
 }
+
+onMounted(async () => {
+  selectedPlatform.value = detectPlatform()
+
+  try {
+    await ensureSubscriptionLink()
+  } catch (error) {
+    console.warn('下载页预加载订阅链接失败:', error)
+  }
+})
 </script>
 
 <style scoped>
@@ -1215,9 +1460,87 @@ function goToSubscription() {
   margin: 0;
 }
 
+.quick-start-card {
+  margin-bottom: 24px;
+  border: 1px solid #dbeafe;
+  background: linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%);
+}
+
+.quick-start-content {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.quick-start-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.platform-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(64, 158, 255, 0.12);
+  color: #409eff;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.quick-start-title {
+  margin: 14px 0 8px;
+  font-size: 22px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.quick-start-subtitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #606266;
+}
+
+.quick-start-link {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.quick-start-link__label {
+  font-size: 12px;
+  color: #909399;
+}
+
+.quick-start-link__value {
+  display: block;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #303133;
+  word-break: break-all;
+}
+
+.quick-start-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 320px;
+}
+
 /* 平台选择 */
 .platform-tabs {
   margin-bottom: 24px;
+  overflow-x: auto;
+}
+
+.platform-tabs :deep(.el-radio-group) {
+  display: inline-flex;
+  min-width: max-content;
 }
 
 .platform-tabs :deep(.el-radio-button__inner) {
@@ -1240,6 +1563,7 @@ function goToSubscription() {
 .client-card {
   position: relative;
   background: #fff;
+  border: 1px solid #edf2f7;
   border-radius: 12px;
   padding: 24px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
@@ -1247,27 +1571,9 @@ function goToSubscription() {
 }
 
 .client-card:hover {
+  border-color: #d9e3f0;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
   transform: translateY(-2px);
-}
-
-.client-card.recommended {
-  border: 2px solid #409eff;
-}
-
-/* 推荐标签 */
-.recommended-badge {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  background: #409eff;
-  color: #fff;
-  font-size: 12px;
-  border-radius: 12px;
 }
 
 /* 客户端头部 */
@@ -1297,6 +1603,13 @@ function goToSubscription() {
   border-radius: 12px;
 }
 
+.client-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .client-name {
   font-size: 18px;
   font-weight: 600;
@@ -1304,9 +1617,29 @@ function goToSubscription() {
   margin: 0 0 4px 0;
 }
 
+.client-recommend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #eef5ff;
+  color: #3d7fe3;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
 .client-version {
   font-size: 13px;
   color: #909399;
+}
+
+.client-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .client-description {
@@ -1428,6 +1761,32 @@ function goToSubscription() {
   margin: 4px 0;
 }
 
+.subscription-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.subscription-inline__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.subscription-inline__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.subscription-inline__value {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #606266;
+  word-break: break-all;
+}
+
 .tutorial-actions {
   display: flex;
   justify-content: center;
@@ -1439,21 +1798,53 @@ function goToSubscription() {
 
 /* 响应式 */
 @media (max-width: 768px) {
-  .platform-tabs :deep(.el-radio-group) {
-    display: flex;
-    flex-wrap: wrap;
+  .download-page {
+    padding: 16px;
+  }
+
+  .quick-start-content {
+    flex-direction: column;
+  }
+
+  .quick-start-actions {
+    min-width: 0;
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .quick-start-actions .el-button {
+    width: 100%;
+    margin-left: 0;
   }
 
   .clients-grid {
     grid-template-columns: 1fr;
   }
 
-  .tutorial-dialog {
-    width: 95% !important;
+  .client-card {
+    padding: 20px;
+  }
+
+  .client-actions {
+    flex-direction: column;
+  }
+
+  .subscription-inline__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .subscription-inline__actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .tutorial-step-content {
     min-height: 250px;
+  }
+
+  .tutorial-actions {
+    flex-direction: column;
   }
 }
 </style>

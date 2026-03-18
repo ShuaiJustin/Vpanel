@@ -7,9 +7,26 @@ import { ref, computed } from 'vue'
 import { auth as authApi } from '@/api/modules/portal'
 
 export const useUserPortalStore = defineStore('userPortal', () => {
+  function getStoredValue(key) {
+    return sessionStorage.getItem(key) || localStorage.getItem(key)
+  }
+
+  function getAuthStorage(remember) {
+    return remember ? localStorage : sessionStorage
+  }
+
+  function clearPersistedAuth() {
+    for (const storage of [localStorage, sessionStorage]) {
+      storage.removeItem('userToken')
+      storage.removeItem('userInfo')
+      storage.removeItem('token')
+      storage.removeItem('userRole')
+    }
+  }
+
   // 状态
   const user = ref(null)
-  const token = ref(localStorage.getItem('userToken') || null)
+  const token = ref(getStoredValue('userToken'))
   const loading = ref(false)
   const error = ref(null)
 
@@ -37,28 +54,82 @@ export const useUserPortalStore = defineStore('userPortal', () => {
   const twoFactorEnabled = computed(() => user.value?.two_factor_enabled || false)
   const availableNodes = computed(() => user.value?.available_nodes || 0)
 
+  function clearStoredAuth() {
+    token.value = null
+    user.value = null
+    clearPersistedAuth()
+  }
+
   // 方法
   async function login(credentials) {
     loading.value = true
     error.value = null
     try {
       const response = await authApi.login(credentials)
+      if (response.requires_2fa) {
+        return response
+      }
+
+      const storage = getAuthStorage(Boolean(credentials?.remember))
+      const otherStorage = storage === localStorage ? sessionStorage : localStorage
+
       token.value = response.token
       user.value = response.user
-      localStorage.setItem('userToken', response.token)
-      localStorage.setItem('userInfo', JSON.stringify(response.user))
+      storage.setItem('userToken', response.token)
+      storage.setItem('userInfo', JSON.stringify(response.user))
+      otherStorage.removeItem('userToken')
+      otherStorage.removeItem('userInfo')
       
       // 检查用户角色，如果是管理员，同时设置管理员 token
       if (response.user && response.user.role === 'admin') {
-        localStorage.setItem('token', response.token)
-        localStorage.setItem('userRole', 'admin')
+        storage.setItem('token', response.token)
+        storage.setItem('userRole', 'admin')
+        otherStorage.removeItem('token')
+        otherStorage.removeItem('userRole')
       } else {
-        localStorage.setItem('userRole', 'user')
+        storage.setItem('userRole', 'user')
+        otherStorage.removeItem('token')
+        otherStorage.removeItem('userRole')
       }
       
       return response
     } catch (err) {
       error.value = err.message || '登录失败'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function completeTwoFactorLogin(data, remember = false) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await authApi.verify2FALogin(data)
+      const storage = getAuthStorage(remember)
+      const otherStorage = storage === localStorage ? sessionStorage : localStorage
+
+      token.value = response.token
+      user.value = response.user
+      storage.setItem('userToken', response.token)
+      storage.setItem('userInfo', JSON.stringify(response.user))
+      otherStorage.removeItem('userToken')
+      otherStorage.removeItem('userInfo')
+
+      if (response.user && response.user.role === 'admin') {
+        storage.setItem('token', response.token)
+        storage.setItem('userRole', 'admin')
+        otherStorage.removeItem('token')
+        otherStorage.removeItem('userRole')
+      } else {
+        storage.setItem('userRole', 'user')
+        otherStorage.removeItem('token')
+        otherStorage.removeItem('userRole')
+      }
+
+      return response
+    } catch (err) {
+      error.value = err.message || '两步验证失败'
       throw err
     } finally {
       loading.value = false
@@ -85,10 +156,7 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     } catch (err) {
       console.error('Logout error:', err)
     } finally {
-      token.value = null
-      user.value = null
-      localStorage.removeItem('userToken')
-      localStorage.removeItem('userInfo')
+      clearStoredAuth()
     }
   }
 
@@ -166,7 +234,7 @@ export const useUserPortalStore = defineStore('userPortal', () => {
 
   // 初始化：从本地存储恢复用户信息
   function init() {
-    const savedUser = localStorage.getItem('userInfo')
+    const savedUser = getStoredValue('userInfo')
     if (savedUser) {
       try {
         user.value = JSON.parse(savedUser)
@@ -199,6 +267,7 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     availableNodes,
     // 方法
     login,
+    completeTwoFactorLogin,
     register,
     logout,
     fetchProfile,

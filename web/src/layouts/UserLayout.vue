@@ -184,10 +184,12 @@ import {
   SwitchButton
 } from '@element-plus/icons-vue'
 import { useTheme } from '@/composables/useTheme'
+import { useUserPortalStore } from '@/stores/userPortal'
 
 const router = useRouter()
 const route = useRoute()
 const { isDark, toggleDarkMode } = useTheme()
+const userStore = useUserPortalStore()
 
 // 状态
 const showMobileMenu = ref(false)
@@ -258,9 +260,8 @@ const handleLogout = () => {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     type: 'warning'
-  }).then(() => {
-    localStorage.removeItem('userToken')
-    localStorage.removeItem('userInfo')
+  }).then(async () => {
+    await userStore.logout()
     ElMessage.success('已退出登录')
     router.push('/user/login')
   }).catch(() => {})

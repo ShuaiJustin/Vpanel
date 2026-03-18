@@ -24,7 +24,7 @@ func NewInvoiceHandler(invoiceService *invoice.Service, log logger.Logger) *Invo
 
 // ListInvoices returns the current user's invoices.
 func (h *InvoiceHandler) ListInvoices(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
@@ -53,7 +53,7 @@ func (h *InvoiceHandler) DownloadInvoice(c *gin.Context) {
 		return
 	}
 	// Check ownership
-	userID, _ := c.Get("userID")
+	userID, _ := c.Get("user_id")
 	role, _ := c.Get("role")
 	if role != "admin" && inv.UserID != userID.(int64) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})

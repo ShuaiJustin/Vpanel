@@ -13,7 +13,7 @@ type User struct {
 	ID                  int64      `gorm:"primaryKey;autoIncrement"`
 	Username            string     `gorm:"uniqueIndex;size:50;not null"`
 	PasswordHash        string     `gorm:"column:password;size:255;not null"`
-	Email               string     `gorm:"size:100;index"`
+	Email               string     `gorm:"size:100"`
 	Role                string     `gorm:"size:20;default:user;index"`
 	Enabled             bool       `gorm:"default:true;index"`
 	TrafficLimit        int64      `gorm:"default:0"`
@@ -21,12 +21,12 @@ type User struct {
 	ExpiresAt           *time.Time `gorm:"index"`
 	ForcePasswordChange bool       `gorm:"default:false"`
 	// Portal fields
-	EmailVerified    bool       `gorm:"default:false"`
+	EmailVerified    bool `gorm:"default:false"`
 	EmailVerifiedAt  *time.Time
-	TwoFactorEnabled bool       `gorm:"default:false"`
+	TwoFactorEnabled bool `gorm:"default:false"`
 	LastLoginAt      *time.Time
-	LastLoginIP      string     `gorm:"size:45"`
-	TelegramID       string     `gorm:"size:50;index"`
+	LastLoginIP      string `gorm:"size:45"`
+	TelegramID       string `gorm:"size:50;index"`
 	// Commercial fields
 	Balance   int64     `gorm:"default:0"` // User balance in cents
 	CreatedAt time.Time `gorm:"autoCreateTime"`
@@ -73,7 +73,7 @@ type Proxy struct {
 	Remark    string         `gorm:"size:255"`
 	CreatedAt time.Time      `gorm:"autoCreateTime"`
 	UpdatedAt time.Time      `gorm:"autoUpdateTime"`
-	
+
 	// Relations
 	Node *Node `gorm:"foreignKey:NodeID"`
 }
@@ -243,21 +243,21 @@ type AuditLogRepository interface {
 
 // Repositories holds all repository instances.
 type Repositories struct {
-	db           *gorm.DB
-	User         UserRepository
-	Proxy        ProxyRepository
-	Traffic      TrafficRepository
-	LoginHistory LoginHistoryRepository
-	Role         RoleRepository
-	Settings     SettingsRepository
-	AuditLog     AuditLogRepository
-	Log          LogRepository
-	Subscription SubscriptionRepository
-	Ticket       TicketRepository
-	Announcement AnnouncementRepository
-	HelpArticle  HelpArticleRepository
-	AuthToken    AuthTokenRepository
-	Certificate  CertificateRepository
+	db                    *gorm.DB
+	User                  UserRepository
+	Proxy                 ProxyRepository
+	Traffic               TrafficRepository
+	LoginHistory          LoginHistoryRepository
+	Role                  RoleRepository
+	Settings              SettingsRepository
+	AuditLog              AuditLogRepository
+	Log                   LogRepository
+	Subscription          SubscriptionRepository
+	Ticket                TicketRepository
+	Announcement          AnnouncementRepository
+	HelpArticle           HelpArticleRepository
+	AuthToken             AuthTokenRepository
+	Certificate           CertificateRepository
 	CertificateDeployment CertificateDeploymentRepository
 	// Commercial System repositories
 	Plan         PlanRepository
@@ -316,12 +316,12 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		Pause:        NewPauseRepository(db),
 		GiftCard:     NewGiftCardRepository(db),
 		// Multi-Server Management repositories
-		Node:               NewNodeRepository(db),
-		NodeGroup:          NewNodeGroupRepository(db),
-		HealthCheck:        NewHealthCheckRepository(db),
-		UserNodeAssignment: NewUserNodeAssignmentRepository(db),
-		NodeTraffic:        NewNodeTrafficRepository(db),
-		Certificate:        NewCertificateRepository(db),
+		Node:                  NewNodeRepository(db),
+		NodeGroup:             NewNodeGroupRepository(db),
+		HealthCheck:           NewHealthCheckRepository(db),
+		UserNodeAssignment:    NewUserNodeAssignmentRepository(db),
+		NodeTraffic:           NewNodeTrafficRepository(db),
+		Certificate:           NewCertificateRepository(db),
 		CertificateDeployment: NewCertificateDeploymentRepository(db),
 	}
 }

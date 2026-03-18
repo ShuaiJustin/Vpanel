@@ -15,24 +15,24 @@ import (
 	"v/internal/auth"
 	"v/internal/database/repository"
 	"v/internal/logger"
-	"v/pkg/errors"
 	portalauth "v/internal/portal/auth"
+	"v/pkg/errors"
 )
 
 // portalMockUserRepo is a mock implementation of UserRepository for portal testing.
 type portalMockUserRepo struct {
-	users map[int64]*repository.User
+	users      map[int64]*repository.User
 	byUsername map[string]*repository.User
-	byEmail map[string]*repository.User
-	nextID int64
+	byEmail    map[string]*repository.User
+	nextID     int64
 }
 
 func newPortalMockUserRepo() *portalMockUserRepo {
 	return &portalMockUserRepo{
-		users: make(map[int64]*repository.User),
+		users:      make(map[int64]*repository.User),
 		byUsername: make(map[string]*repository.User),
-		byEmail: make(map[string]*repository.User),
-		nextID: 1,
+		byEmail:    make(map[string]*repository.User),
+		nextID:     1,
 	}
 }
 
@@ -44,7 +44,7 @@ func (m *portalMockUserRepo) Create(ctx context.Context, user *repository.User) 
 	m.users[user.ID] = user
 	m.byUsername[user.Username] = user
 	if user.Email != "" {
-		m.byEmail[user.Email] = user
+		m.byEmail[strings.ToLower(user.Email)] = user
 	}
 	return nil
 }
@@ -64,7 +64,7 @@ func (m *portalMockUserRepo) GetByUsername(ctx context.Context, username string)
 }
 
 func (m *portalMockUserRepo) GetByEmail(ctx context.Context, email string) (*repository.User, error) {
-	if user, ok := m.byEmail[email]; ok {
+	if user, ok := m.byEmail[strings.ToLower(strings.TrimSpace(email))]; ok {
 		return user, nil
 	}
 	return nil, errors.NewNotFoundError("user", email)
@@ -75,7 +75,7 @@ func (m *portalMockUserRepo) Update(ctx context.Context, user *repository.User) 
 	m.users[user.ID] = user
 	m.byUsername[user.Username] = user
 	if user.Email != "" {
-		m.byEmail[user.Email] = user
+		m.byEmail[strings.ToLower(user.Email)] = user
 	}
 	return nil
 }
@@ -83,7 +83,7 @@ func (m *portalMockUserRepo) Update(ctx context.Context, user *repository.User) 
 func (m *portalMockUserRepo) Delete(ctx context.Context, id int64) error {
 	if user, ok := m.users[id]; ok {
 		delete(m.byUsername, user.Username)
-		delete(m.byEmail, user.Email)
+		delete(m.byEmail, strings.ToLower(user.Email))
 		delete(m.users, id)
 	}
 	return nil
@@ -281,23 +281,23 @@ func (m *portalMockAuthTokenRepo) VerifyBackupCode(ctx context.Context, userID i
 
 func setupPortalTestRouter() (*gin.Engine, *PortalAuthHandler, *portalMockUserRepo) {
 	gin.SetMode(gin.TestMode)
-	
+
 	userRepo := newPortalMockUserRepo()
 	authTokenRepo := newPortalMockAuthTokenRepo()
-	
+
 	authService := auth.NewService(auth.Config{
-		JWTSecret: "test-secret-key-for-testing",
-		TokenExpiry: time.Hour,
+		JWTSecret:          "test-secret-key-for-testing",
+		TokenExpiry:        time.Hour,
 		RefreshTokenExpiry: 24 * time.Hour,
 	})
-	
+
 	portalAuthService := portalauth.NewService(userRepo, authTokenRepo)
 
 	proxyRepo := &portalMockProxyRepo{}
 	handler := NewPortalAuthHandler(portalAuthService, authService, userRepo, proxyRepo, &portalMockLogger{})
 
 	router := gin.New()
-	
+
 	// Setup routes
 	portal := router.Group("/api/portal")
 	{
@@ -305,44 +305,63 @@ func setupPortalTestRouter() (*gin.Engine, *PortalAuthHandler, *portalMockUserRe
 		{
 			auth.POST("/register", handler.Register)
 			auth.POST("/login", handler.Login)
+			auth.POST("/2fa/login", handler.Verify2FALogin)
 			auth.POST("/forgot-password", handler.ForgotPassword)
 			auth.POST("/reset-password", handler.ResetPassword)
 		}
 	}
-	
+
 	return router, handler, userRepo
 }
 
 type portalMockProxyRepo struct{}
 
 func (m *portalMockProxyRepo) Create(ctx context.Context, proxy *repository.Proxy) error { return nil }
-func (m *portalMockProxyRepo) GetByID(ctx context.Context, id int64) (*repository.Proxy, error) { return nil, nil }
+func (m *portalMockProxyRepo) GetByID(ctx context.Context, id int64) (*repository.Proxy, error) {
+	return nil, nil
+}
 func (m *portalMockProxyRepo) Update(ctx context.Context, proxy *repository.Proxy) error { return nil }
-func (m *portalMockProxyRepo) Delete(ctx context.Context, id int64) error { return nil }
-func (m *portalMockProxyRepo) List(ctx context.Context, limit, offset int) ([]*repository.Proxy, error) { return nil, nil }
-func (m *portalMockProxyRepo) GetByProtocol(ctx context.Context, protocol string) ([]*repository.Proxy, error) { return nil, nil }
-func (m *portalMockProxyRepo) GetEnabled(ctx context.Context) ([]*repository.Proxy, error) { return nil, nil }
-func (m *portalMockProxyRepo) GetByUserID(ctx context.Context, userID int64, limit, offset int) ([]*repository.Proxy, error) { return nil, nil }
-func (m *portalMockProxyRepo) CountByUserID(ctx context.Context, userID int64) (int64, error) { return 0, nil }
-func (m *portalMockProxyRepo) GetByPort(ctx context.Context, port int) (*repository.Proxy, error) { return nil, nil }
-func (m *portalMockProxyRepo) GetByNodeID(ctx context.Context, nodeID int64) ([]*repository.Proxy, error) { return nil, nil }
-func (m *portalMockProxyRepo) EnableByUserID(ctx context.Context, userID int64) error { return nil }
+func (m *portalMockProxyRepo) Delete(ctx context.Context, id int64) error                { return nil }
+func (m *portalMockProxyRepo) List(ctx context.Context, limit, offset int) ([]*repository.Proxy, error) {
+	return nil, nil
+}
+func (m *portalMockProxyRepo) GetByProtocol(ctx context.Context, protocol string) ([]*repository.Proxy, error) {
+	return nil, nil
+}
+func (m *portalMockProxyRepo) GetEnabled(ctx context.Context) ([]*repository.Proxy, error) {
+	return nil, nil
+}
+func (m *portalMockProxyRepo) GetByUserID(ctx context.Context, userID int64, limit, offset int) ([]*repository.Proxy, error) {
+	return nil, nil
+}
+func (m *portalMockProxyRepo) CountByUserID(ctx context.Context, userID int64) (int64, error) {
+	return 0, nil
+}
+func (m *portalMockProxyRepo) GetByPort(ctx context.Context, port int) (*repository.Proxy, error) {
+	return nil, nil
+}
+func (m *portalMockProxyRepo) GetByNodeID(ctx context.Context, nodeID int64) ([]*repository.Proxy, error) {
+	return nil, nil
+}
+func (m *portalMockProxyRepo) EnableByUserID(ctx context.Context, userID int64) error  { return nil }
 func (m *portalMockProxyRepo) DisableByUserID(ctx context.Context, userID int64) error { return nil }
-func (m *portalMockProxyRepo) DeleteByIDs(ctx context.Context, ids []int64) error { return nil }
-func (m *portalMockProxyRepo) Count(ctx context.Context) (int64, error) { return 0, nil }
-func (m *portalMockProxyRepo) CountEnabled(ctx context.Context) (int64, error) { return 0, nil }
-func (m *portalMockProxyRepo) CountByProtocol(ctx context.Context) ([]*repository.ProtocolCount, error) { return nil, nil }
+func (m *portalMockProxyRepo) DeleteByIDs(ctx context.Context, ids []int64) error      { return nil }
+func (m *portalMockProxyRepo) Count(ctx context.Context) (int64, error)                { return 0, nil }
+func (m *portalMockProxyRepo) CountEnabled(ctx context.Context) (int64, error)         { return 0, nil }
+func (m *portalMockProxyRepo) CountByProtocol(ctx context.Context) ([]*repository.ProtocolCount, error) {
+	return nil, nil
+}
 
 type portalMockLogger struct{}
 
-func (m *portalMockLogger) Debug(msg string, fields ...logger.Field) {}
-func (m *portalMockLogger) Info(msg string, fields ...logger.Field)  {}
-func (m *portalMockLogger) Warn(msg string, fields ...logger.Field)  {}
-func (m *portalMockLogger) Error(msg string, fields ...logger.Field) {}
-func (m *portalMockLogger) Fatal(msg string, fields ...logger.Field) {}
+func (m *portalMockLogger) Debug(msg string, fields ...logger.Field)  {}
+func (m *portalMockLogger) Info(msg string, fields ...logger.Field)   {}
+func (m *portalMockLogger) Warn(msg string, fields ...logger.Field)   {}
+func (m *portalMockLogger) Error(msg string, fields ...logger.Field)  {}
+func (m *portalMockLogger) Fatal(msg string, fields ...logger.Field)  {}
 func (m *portalMockLogger) With(fields ...logger.Field) logger.Logger { return m }
-func (m *portalMockLogger) SetLevel(level logger.Level)              {}
-func (m *portalMockLogger) GetLevel() logger.Level                   { return logger.InfoLevel }
+func (m *portalMockLogger) SetLevel(level logger.Level)               {}
+func (m *portalMockLogger) GetLevel() logger.Level                    { return logger.InfoLevel }
 
 type portalMockEmailSender struct {
 	sent []portalSentEmail
@@ -367,7 +386,7 @@ func (m *portalMockEmailSender) SendEmail(to, subject, body string) error {
 
 func TestPortalAuthHandler_Register(t *testing.T) {
 	router, _, userRepo := setupPortalTestRouter()
-	
+
 	tests := []struct {
 		name       string
 		body       map[string]interface{}
@@ -409,22 +428,22 @@ func TestPortalAuthHandler_Register(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body, _ := json.Marshal(tt.body)
 			req := httptest.NewRequest(http.MethodPost, "/api/portal/auth/register", bytes.NewBuffer(body))
 			req.Header.Set("Content-Type", "application/json")
-			
+
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
-			
+
 			if w.Code != tt.wantStatus {
 				t.Errorf("Register() status = %v, want %v, body = %s", w.Code, tt.wantStatus, w.Body.String())
 			}
 		})
 	}
-	
+
 	// Verify user was created
 	if len(userRepo.users) != 1 {
 		t.Errorf("Expected 1 user to be created, got %d", len(userRepo.users))
@@ -470,7 +489,7 @@ func TestPortalAuthHandler_RegisterUsesRequestHostForVerificationEmailWhenBaseUR
 
 func TestPortalAuthHandler_Login(t *testing.T) {
 	router, handler, userRepo := setupPortalTestRouter()
-	
+
 	// Create a test user
 	hashedPassword, _ := handler.authService.HashPassword("password123")
 	userRepo.Create(context.Background(), &repository.User{
@@ -480,11 +499,12 @@ func TestPortalAuthHandler_Login(t *testing.T) {
 		Role:         "user",
 		Enabled:      true,
 	})
-	
+
 	tests := []struct {
 		name       string
 		body       map[string]interface{}
 		wantStatus int
+		wantBody   string
 	}{
 		{
 			name: "successful login",
@@ -501,6 +521,7 @@ func TestPortalAuthHandler_Login(t *testing.T) {
 				"password": "wrongpassword",
 			},
 			wantStatus: http.StatusUnauthorized,
+			wantBody:   "密码错误，请重新输入",
 		},
 		{
 			name: "non-existent user",
@@ -508,23 +529,28 @@ func TestPortalAuthHandler_Login(t *testing.T) {
 				"username": "nonexistent",
 				"password": "password123",
 			},
-			wantStatus: http.StatusUnauthorized,
+			wantStatus: http.StatusNotFound,
+			wantBody:   "账号不存在，请检查邮箱/用户名是否正确",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body, _ := json.Marshal(tt.body)
 			req := httptest.NewRequest(http.MethodPost, "/api/portal/auth/login", bytes.NewBuffer(body))
 			req.Header.Set("Content-Type", "application/json")
-			
+
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
-			
+
 			if w.Code != tt.wantStatus {
 				t.Errorf("Login() status = %v, want %v, body = %s", w.Code, tt.wantStatus, w.Body.String())
 			}
-			
+
+			if tt.wantBody != "" && !strings.Contains(w.Body.String(), tt.wantBody) {
+				t.Errorf("Login() body = %q, want to contain %q", w.Body.String(), tt.wantBody)
+			}
+
 			// Verify token is returned on successful login
 			if tt.wantStatus == http.StatusOK {
 				var response map[string]interface{}
@@ -539,7 +565,7 @@ func TestPortalAuthHandler_Login(t *testing.T) {
 
 func TestPortalAuthHandler_ForgotPassword(t *testing.T) {
 	router, handler, userRepo := setupPortalTestRouter()
-	
+
 	// Create a test user
 	hashedPassword, _ := handler.authService.HashPassword("password123")
 	userRepo.Create(context.Background(), &repository.User{
@@ -549,7 +575,7 @@ func TestPortalAuthHandler_ForgotPassword(t *testing.T) {
 		Role:         "user",
 		Enabled:      true,
 	})
-	
+
 	tests := []struct {
 		name       string
 		body       map[string]interface{}
@@ -577,16 +603,16 @@ func TestPortalAuthHandler_ForgotPassword(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body, _ := json.Marshal(tt.body)
 			req := httptest.NewRequest(http.MethodPost, "/api/portal/auth/forgot-password", bytes.NewBuffer(body))
 			req.Header.Set("Content-Type", "application/json")
-			
+
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
-			
+
 			if w.Code != tt.wantStatus {
 				t.Errorf("ForgotPassword() status = %v, want %v, body = %s", w.Code, tt.wantStatus, w.Body.String())
 			}
@@ -596,7 +622,7 @@ func TestPortalAuthHandler_ForgotPassword(t *testing.T) {
 
 func TestPortalAuthHandler_DuplicateRegistration(t *testing.T) {
 	router, _, _ := setupPortalTestRouter()
-	
+
 	// First registration
 	body1, _ := json.Marshal(map[string]interface{}{
 		"username": "testuser",
@@ -607,11 +633,11 @@ func TestPortalAuthHandler_DuplicateRegistration(t *testing.T) {
 	req1.Header.Set("Content-Type", "application/json")
 	w1 := httptest.NewRecorder()
 	router.ServeHTTP(w1, req1)
-	
+
 	if w1.Code != http.StatusCreated {
 		t.Fatalf("First registration failed: %s", w1.Body.String())
 	}
-	
+
 	// Duplicate registration with same username
 	body2, _ := json.Marshal(map[string]interface{}{
 		"username": "testuser",
@@ -622,9 +648,45 @@ func TestPortalAuthHandler_DuplicateRegistration(t *testing.T) {
 	req2.Header.Set("Content-Type", "application/json")
 	w2 := httptest.NewRecorder()
 	router.ServeHTTP(w2, req2)
-	
+
 	if w2.Code != http.StatusConflict {
 		t.Errorf("Expected conflict for duplicate username, got %d: %s", w2.Code, w2.Body.String())
+	}
+}
+
+func TestPortalAuthHandler_DuplicateEmailRegistration(t *testing.T) {
+	router, _, _ := setupPortalTestRouter()
+
+	body1, _ := json.Marshal(map[string]interface{}{
+		"username": "emailowner",
+		"email":    "owner@example.com",
+		"password": "password123",
+	})
+	req1 := httptest.NewRequest(http.MethodPost, "/api/portal/auth/register", bytes.NewBuffer(body1))
+	req1.Header.Set("Content-Type", "application/json")
+	w1 := httptest.NewRecorder()
+	router.ServeHTTP(w1, req1)
+
+	if w1.Code != http.StatusCreated {
+		t.Fatalf("First registration failed: %s", w1.Body.String())
+	}
+
+	body2, _ := json.Marshal(map[string]interface{}{
+		"username": "anotheruser",
+		"email":    "Owner@example.com",
+		"password": "password123",
+	})
+	req2 := httptest.NewRequest(http.MethodPost, "/api/portal/auth/register", bytes.NewBuffer(body2))
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusConflict {
+		t.Errorf("Expected conflict for duplicate email, got %d: %s", w2.Code, w2.Body.String())
+	}
+
+	if !strings.Contains(w2.Body.String(), "该邮箱已被注册") {
+		t.Errorf("Expected duplicate email message, got %s", w2.Body.String())
 	}
 }
 
@@ -633,7 +695,7 @@ func TestPortalAuthHandler_DuplicateRegistration(t *testing.T) {
 func TestPortalAuthHandler_ResetPassword(t *testing.T) {
 	router, handler, userRepo := setupPortalTestRouter()
 	authTokenRepo := newPortalMockAuthTokenRepo()
-	
+
 	// Create a test user
 	hashedPassword, _ := handler.authService.HashPassword("oldpassword123")
 	userRepo.Create(context.Background(), &repository.User{
@@ -643,7 +705,7 @@ func TestPortalAuthHandler_ResetPassword(t *testing.T) {
 		Role:         "user",
 		Enabled:      true,
 	})
-	
+
 	// Create a valid reset token
 	resetToken := &repository.PasswordResetToken{
 		ID:        1,
@@ -653,10 +715,10 @@ func TestPortalAuthHandler_ResetPassword(t *testing.T) {
 		CreatedAt: time.Now(),
 	}
 	authTokenRepo.passwordResetTokens[resetToken.Token] = resetToken
-	
+
 	// Update the handler's service to use our mock auth token repo
 	handler.portalAuthService = portalauth.NewService(userRepo, authTokenRepo)
-	
+
 	tests := []struct {
 		name       string
 		body       map[string]interface{}
@@ -694,16 +756,16 @@ func TestPortalAuthHandler_ResetPassword(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body, _ := json.Marshal(tt.body)
 			req := httptest.NewRequest(http.MethodPost, "/api/portal/auth/reset-password", bytes.NewBuffer(body))
 			req.Header.Set("Content-Type", "application/json")
-			
+
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
-			
+
 			if w.Code != tt.wantStatus {
 				t.Errorf("ResetPassword() status = %v, want %v, body = %s", w.Code, tt.wantStatus, w.Body.String())
 			}
@@ -716,7 +778,7 @@ func TestPortalAuthHandler_ResetPassword(t *testing.T) {
 func TestPortalAuthHandler_ResetPasswordTokenExpired(t *testing.T) {
 	router, handler, userRepo := setupPortalTestRouter()
 	authTokenRepo := newPortalMockAuthTokenRepo()
-	
+
 	// Create a test user
 	hashedPassword, _ := handler.authService.HashPassword("oldpassword123")
 	userRepo.Create(context.Background(), &repository.User{
@@ -726,7 +788,7 @@ func TestPortalAuthHandler_ResetPasswordTokenExpired(t *testing.T) {
 		Role:         "user",
 		Enabled:      true,
 	})
-	
+
 	// Create an expired reset token
 	expiredToken := &repository.PasswordResetToken{
 		ID:        1,
@@ -736,19 +798,19 @@ func TestPortalAuthHandler_ResetPasswordTokenExpired(t *testing.T) {
 		CreatedAt: time.Now().Add(-2 * time.Hour),
 	}
 	authTokenRepo.passwordResetTokens[expiredToken.Token] = expiredToken
-	
+
 	handler.portalAuthService = portalauth.NewService(userRepo, authTokenRepo)
-	
+
 	body, _ := json.Marshal(map[string]interface{}{
 		"token":        "expired-reset-token-1234567890123456",
 		"new_password": "newpassword123",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/portal/auth/reset-password", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	
+
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("Expected BadRequest for expired token, got %d: %s", w.Code, w.Body.String())
 	}
@@ -759,7 +821,7 @@ func TestPortalAuthHandler_ResetPasswordTokenExpired(t *testing.T) {
 func TestPortalAuthHandler_ResetPasswordTokenSingleUse(t *testing.T) {
 	router, handler, userRepo := setupPortalTestRouter()
 	authTokenRepo := newPortalMockAuthTokenRepo()
-	
+
 	// Create a test user
 	hashedPassword, _ := handler.authService.HashPassword("oldpassword123")
 	userRepo.Create(context.Background(), &repository.User{
@@ -769,7 +831,7 @@ func TestPortalAuthHandler_ResetPasswordTokenSingleUse(t *testing.T) {
 		Role:         "user",
 		Enabled:      true,
 	})
-	
+
 	// Create a used reset token
 	usedAt := time.Now().Add(-30 * time.Minute)
 	usedToken := &repository.PasswordResetToken{
@@ -781,19 +843,19 @@ func TestPortalAuthHandler_ResetPasswordTokenSingleUse(t *testing.T) {
 		CreatedAt: time.Now().Add(-1 * time.Hour),
 	}
 	authTokenRepo.passwordResetTokens[usedToken.Token] = usedToken
-	
+
 	handler.portalAuthService = portalauth.NewService(userRepo, authTokenRepo)
-	
+
 	body, _ := json.Marshal(map[string]interface{}{
 		"token":        "used-reset-token-12345678901234567890",
 		"new_password": "newpassword123",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/portal/auth/reset-password", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	
+
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("Expected BadRequest for used token, got %d: %s", w.Code, w.Body.String())
 	}
@@ -803,7 +865,7 @@ func TestPortalAuthHandler_ResetPasswordTokenSingleUse(t *testing.T) {
 // Validates: Requirements 2.2, 2.3
 func TestPortalAuthHandler_LoginDisabledAccount(t *testing.T) {
 	router, handler, userRepo := setupPortalTestRouter()
-	
+
 	// Create a disabled user
 	hashedPassword, _ := handler.authService.HashPassword("password123")
 	userRepo.Create(context.Background(), &repository.User{
@@ -813,17 +875,17 @@ func TestPortalAuthHandler_LoginDisabledAccount(t *testing.T) {
 		Role:         "user",
 		Enabled:      false, // Account is disabled
 	})
-	
+
 	body, _ := json.Marshal(map[string]interface{}{
 		"username": "disableduser",
 		"password": "password123",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/portal/auth/login", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	
+
 	if w.Code != http.StatusForbidden {
 		t.Errorf("Expected Forbidden for disabled account, got %d: %s", w.Code, w.Body.String())
 	}
@@ -833,7 +895,7 @@ func TestPortalAuthHandler_LoginDisabledAccount(t *testing.T) {
 // Validates: Requirements 2.1
 func TestPortalAuthHandler_LoginWithEmail(t *testing.T) {
 	router, handler, userRepo := setupPortalTestRouter()
-	
+
 	// Create a test user
 	hashedPassword, _ := handler.authService.HashPassword("password123")
 	userRepo.Create(context.Background(), &repository.User{
@@ -843,21 +905,21 @@ func TestPortalAuthHandler_LoginWithEmail(t *testing.T) {
 		Role:         "user",
 		Enabled:      true,
 	})
-	
+
 	body, _ := json.Marshal(map[string]interface{}{
 		"username": "emaillogin@example.com", // Using email as username
 		"password": "password123",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/portal/auth/login", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	
+
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected OK for email login, got %d: %s", w.Code, w.Body.String())
 	}
-	
+
 	// Verify token is returned
 	var response map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &response)
@@ -866,11 +928,115 @@ func TestPortalAuthHandler_LoginWithEmail(t *testing.T) {
 	}
 }
 
+func TestPortalAuthHandler_LoginWithEmailIsCaseInsensitive(t *testing.T) {
+	router, handler, userRepo := setupPortalTestRouter()
+
+	hashedPassword, _ := handler.authService.HashPassword("password123")
+	userRepo.Create(context.Background(), &repository.User{
+		Username:     "mixedemailuser",
+		Email:        "justinshuai36@gmail.com",
+		PasswordHash: hashedPassword,
+		Role:         "user",
+		Enabled:      true,
+	})
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"username": "Justinshuai36@gmail.com",
+		"password": "password123",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/portal/auth/login", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected OK for case-insensitive email login, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestPortalAuthHandler_Verify2FALoginRejectsInvalidCode(t *testing.T) {
+	router, handler, userRepo := setupPortalTestRouter()
+	authTokenRepo := newPortalMockAuthTokenRepo()
+
+	hashedPassword, _ := handler.authService.HashPassword("password123")
+	user := &repository.User{
+		Username:         "twofauser",
+		Email:            "twofa@example.com",
+		PasswordHash:     hashedPassword,
+		Role:             "user",
+		Enabled:          true,
+		TwoFactorEnabled: true,
+	}
+	userRepo.Create(context.Background(), user)
+
+	authTokenRepo.twoFactorSecrets[user.ID] = &repository.TwoFactorSecret{
+		UserID:  user.ID,
+		Secret:  "JBSWY3DPEHPK3PXP",
+		Enabled: true,
+	}
+	handler.portalAuthService = portalauth.NewService(userRepo, authTokenRepo)
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"user_id": user.ID,
+		"code":    "ABCDEF",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/portal/auth/2fa/login", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthorized for invalid 2FA code, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if !strings.Contains(w.Body.String(), "验证码错误") {
+		t.Fatalf("expected invalid 2FA code message, got %s", w.Body.String())
+	}
+}
+
+func TestPortalAuthHandler_ForgotPasswordSendsToNormalizedEmail(t *testing.T) {
+	router, handler, userRepo := setupPortalTestRouter()
+	emailSender := &portalMockEmailSender{}
+	handler.WithEmailSender(emailSender, "http://shcrystal.top:13212")
+
+	hashedPassword, _ := handler.authService.HashPassword("password123")
+	userRepo.Create(context.Background(), &repository.User{
+		Username:     "resetmailuser",
+		Email:        "test@example.com",
+		PasswordHash: hashedPassword,
+		Role:         "user",
+		Enabled:      true,
+	})
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"email": "  TEST@example.com  ",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/portal/auth/forgot-password", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected OK for forgot password, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if len(emailSender.sent) != 1 {
+		t.Fatalf("expected one reset email, got %d", len(emailSender.sent))
+	}
+
+	if got := emailSender.sent[0].to; got != "test@example.com" {
+		t.Fatalf("expected normalized recipient email, got %q", got)
+	}
+}
+
 // TestPortalAuthHandler_RegistrationFlow tests the complete registration flow.
 // Validates: Requirements 1.1-1.10
 func TestPortalAuthHandler_RegistrationFlow(t *testing.T) {
 	router, _, userRepo := setupPortalTestRouter()
-	
+
 	// Step 1: Register a new user
 	registerBody, _ := json.Marshal(map[string]interface{}{
 		"username": "flowuser",
@@ -879,36 +1045,36 @@ func TestPortalAuthHandler_RegistrationFlow(t *testing.T) {
 	})
 	registerReq := httptest.NewRequest(http.MethodPost, "/api/portal/auth/register", bytes.NewBuffer(registerBody))
 	registerReq.Header.Set("Content-Type", "application/json")
-	
+
 	registerW := httptest.NewRecorder()
 	router.ServeHTTP(registerW, registerReq)
-	
+
 	if registerW.Code != http.StatusCreated {
 		t.Fatalf("Registration failed: %s", registerW.Body.String())
 	}
-	
+
 	// Verify response contains user info
 	var registerResponse map[string]interface{}
 	json.Unmarshal(registerW.Body.Bytes(), &registerResponse)
-	
+
 	if registerResponse["message"] != "注册成功" {
 		t.Errorf("Expected success message, got %v", registerResponse["message"])
 	}
-	
+
 	userInfo, ok := registerResponse["user"].(map[string]interface{})
 	if !ok {
 		t.Fatal("Expected user info in response")
 	}
-	
+
 	if userInfo["username"] != "flowuser" {
 		t.Errorf("Expected username 'flowuser', got %v", userInfo["username"])
 	}
-	
+
 	// Step 2: Verify user was created in repository
 	if len(userRepo.users) != 1 {
 		t.Errorf("Expected 1 user in repository, got %d", len(userRepo.users))
 	}
-	
+
 	// Step 3: Login with the new user
 	loginBody, _ := json.Marshal(map[string]interface{}{
 		"username": "flowuser",
@@ -916,18 +1082,18 @@ func TestPortalAuthHandler_RegistrationFlow(t *testing.T) {
 	})
 	loginReq := httptest.NewRequest(http.MethodPost, "/api/portal/auth/login", bytes.NewBuffer(loginBody))
 	loginReq.Header.Set("Content-Type", "application/json")
-	
+
 	loginW := httptest.NewRecorder()
 	router.ServeHTTP(loginW, loginReq)
-	
+
 	if loginW.Code != http.StatusOK {
 		t.Fatalf("Login failed after registration: %s", loginW.Body.String())
 	}
-	
+
 	// Verify token is returned
 	var loginResponse map[string]interface{}
 	json.Unmarshal(loginW.Body.Bytes(), &loginResponse)
-	
+
 	if _, ok := loginResponse["token"]; !ok {
 		t.Error("Expected token in login response")
 	}
@@ -937,7 +1103,7 @@ func TestPortalAuthHandler_RegistrationFlow(t *testing.T) {
 // Validates: Requirements 1.3, 3.4
 func TestPortalAuthHandler_PasswordValidation(t *testing.T) {
 	router, _, _ := setupPortalTestRouter()
-	
+
 	tests := []struct {
 		name       string
 		password   string
@@ -974,7 +1140,7 @@ func TestPortalAuthHandler_PasswordValidation(t *testing.T) {
 			wantStatus: http.StatusCreated,
 		},
 	}
-	
+
 	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body, _ := json.Marshal(map[string]interface{}{
@@ -984,10 +1150,10 @@ func TestPortalAuthHandler_PasswordValidation(t *testing.T) {
 			})
 			req := httptest.NewRequest(http.MethodPost, "/api/portal/auth/register", bytes.NewBuffer(body))
 			req.Header.Set("Content-Type", "application/json")
-			
+
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
-			
+
 			if w.Code != tt.wantStatus {
 				t.Errorf("Password validation for %q: status = %v, want %v, body = %s", tt.password, w.Code, tt.wantStatus, w.Body.String())
 			}
@@ -999,7 +1165,7 @@ func TestPortalAuthHandler_PasswordValidation(t *testing.T) {
 // Validates: Requirements 1.2
 func TestPortalAuthHandler_EmailValidation(t *testing.T) {
 	router, _, _ := setupPortalTestRouter()
-	
+
 	tests := []struct {
 		name       string
 		email      string
@@ -1041,7 +1207,7 @@ func TestPortalAuthHandler_EmailValidation(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 		},
 	}
-	
+
 	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body, _ := json.Marshal(map[string]interface{}{
@@ -1051,10 +1217,10 @@ func TestPortalAuthHandler_EmailValidation(t *testing.T) {
 			})
 			req := httptest.NewRequest(http.MethodPost, "/api/portal/auth/register", bytes.NewBuffer(body))
 			req.Header.Set("Content-Type", "application/json")
-			
+
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
-			
+
 			if w.Code != tt.wantStatus {
 				t.Errorf("Email validation for %q: status = %v, want %v, body = %s", tt.email, w.Code, tt.wantStatus, w.Body.String())
 			}

@@ -27,8 +27,8 @@ type WeChatGateway struct {
 // WeChatConfig holds WeChat Pay gateway configuration.
 type WeChatConfig struct {
 	AppID     string `json:"app_id"`
-	MchID     string `json:"mch_id"`      // Merchant ID
-	APIKey    string `json:"api_key"`     // API Key for signing
+	MchID     string `json:"mch_id"`  // Merchant ID
+	APIKey    string `json:"api_key"` // API Key for signing
 	NotifyURL string `json:"notify_url"`
 	IsSandbox bool   `json:"is_sandbox"`
 }
@@ -137,15 +137,15 @@ func (g *WeChatGateway) VerifyCallback(data []byte, signature string) (*PaymentR
 	}
 
 	// Verify signature
-	callbackSign := result["sign"]
+	callbackSign := strings.TrimSpace(result["sign"])
+	if callbackSign == "" {
+		return nil, errors.New("missing callback signature")
+	}
 	delete(result, "sign")
 
 	expectedSign := g.sign(result)
 	if callbackSign != expectedSign {
-		return &PaymentResult{
-			Success: false,
-			Error:   "signature verification failed",
-		}, nil
+		return nil, errors.New("signature verification failed")
 	}
 
 	// Check result

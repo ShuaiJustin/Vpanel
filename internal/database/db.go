@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -151,7 +152,7 @@ func (d *Database) Close() error {
 func (d *Database) AutoMigrate() error {
 	// Only run GORM auto migrations
 	// SQL migrations are disabled for PostgreSQL compatibility
-	return d.db.AutoMigrate(
+	if err := d.db.AutoMigrate(
 		// Core models
 		&repository.User{},
 		&repository.Proxy{},
@@ -207,7 +208,108 @@ func (d *Database) AutoMigrate() error {
 		&ip.SubscriptionIPAccess{},
 		&ip.GeoCache{},
 		&ip.FailedAttempt{},
-	)
+	); err != nil {
+		return err
+	}
+
+	if err := d.normalizeUserEmails(context.Background()); err != nil {
+		return err
+	}
+
+	if err := d.ensureUserEmailUniqueIndex(context.Background()); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (d *Database) normalizeUserEmails(ctx context.Context) error {
+	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`UPDATE users SET email = NULL WHERE email IS NOT NULL AND TRIM(email) = ''`).Error; err != nil {
+			return fmt.Errorf("clear blank user emails: %w", err)
+		}
+
+		if err := tx.Exec(`UPDATE users SET email = LOWER(TRIM(email)) WHERE email IS NOT NULL AND email <> LOWER(TRIM(email))`).Error; err != nil {
+			return fmt.Errorf("normalize user emails: %w", err)
+		}
+
+		return nil
+	})
+}
+
+func (d *Database) ensureUserEmailUniqueIndex(ctx context.Context) error {
+	duplicates, err := d.findDuplicateNormalizedUserEmails(ctx)
+	if err != nil {
+		return err
+	}
+	if len(duplicates) > 0 {
+		return fmt.Errorf("duplicate user emails prevent unique email index: %s", strings.Join(duplicates, "; "))
+	}
+
+	switch d.db.Dialector.Name() {
+	case "sqlite", "sqlite3":
+		return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Exec(`DROP INDEX IF EXISTS idx_users_email`).Error; err != nil {
+				return fmt.Errorf("drop legacy user email index: %w", err)
+			}
+			if err := tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users (LOWER(TRIM(email))) WHERE email IS NOT NULL AND TRIM(email) <> ''`).Error; err != nil {
+				return fmt.Errorf("create unique user email index: %w", err)
+			}
+			return nil
+		})
+	case "postgres", "postgresql":
+		return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Exec(`DROP INDEX IF EXISTS idx_users_email`).Error; err != nil {
+				return fmt.Errorf("drop legacy user email index: %w", err)
+			}
+			if err := tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users ((LOWER(TRIM(email)))) WHERE email IS NOT NULL AND TRIM(email) <> ''`).Error; err != nil {
+				return fmt.Errorf("create unique user email index: %w", err)
+			}
+			return nil
+		})
+	case "mysql":
+		return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			migrator := tx.Migrator()
+			if migrator.HasIndex(&repository.User{}, "idx_users_email") {
+				if err := migrator.DropIndex(&repository.User{}, "idx_users_email"); err != nil {
+					return fmt.Errorf("drop legacy user email index: %w", err)
+				}
+			}
+			if !migrator.HasIndex(&repository.User{}, "idx_users_email_unique") {
+				if err := tx.Exec(`CREATE UNIQUE INDEX idx_users_email_unique ON users (email)`).Error; err != nil {
+					return fmt.Errorf("create unique user email index: %w", err)
+				}
+			}
+			return nil
+		})
+	default:
+		return nil
+	}
+}
+
+func (d *Database) findDuplicateNormalizedUserEmails(ctx context.Context) ([]string, error) {
+	type duplicateEmailRow struct {
+		NormalizedEmail string
+		Count           int64
+	}
+
+	rows := make([]duplicateEmailRow, 0)
+	if err := d.db.WithContext(ctx).
+		Raw(`SELECT LOWER(TRIM(email)) AS normalized_email, COUNT(*) AS count
+			FROM users
+			WHERE email IS NOT NULL AND TRIM(email) <> ''
+			GROUP BY LOWER(TRIM(email))
+			HAVING COUNT(*) > 1`).
+		Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("scan duplicate user emails: %w", err)
+	}
+
+	duplicates := make([]string, 0, len(rows))
+	for _, row := range rows {
+		duplicates = append(duplicates, fmt.Sprintf("%s (%d)", row.NormalizedEmail, row.Count))
+	}
+
+	return duplicates, nil
 }
 
 // Ping checks the database connection.
@@ -393,7 +495,6 @@ func (d *Database) Health(ctx context.Context) HealthStatus {
 
 	return status
 }
-
 
 // slowQueryLogger implements GORM logger interface for slow query logging.
 type slowQueryLogger struct {

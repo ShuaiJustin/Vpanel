@@ -86,6 +86,26 @@ func buildUserResponse(user *repository.User) UserResponse {
 	return response
 }
 
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func (h *AuthHandler) emailBelongsToAnotherUser(ctx context.Context, email string, userID int64) (bool, error) {
+	if email == "" {
+		return false, nil
+	}
+
+	existing, err := h.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return existing.ID != userID, nil
+}
+
 func (h *AuthHandler) listAllUsers(ctx context.Context) ([]*repository.User, error) {
 	total, err := h.userRepo.Count(ctx)
 	if err != nil {
@@ -293,6 +313,60 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 	c.JSON(http.StatusOK, buildUserResponse(user))
 }
 
+// UpdateCurrentUserRequest represents a current-user profile update request.
+type UpdateCurrentUserRequest struct {
+	Email *string `json:"email"`
+}
+
+// UpdateCurrentUser updates the current authenticated user's profile.
+func (h *AuthHandler) UpdateCurrentUser(c *gin.Context) {
+	var req UpdateCurrentUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.HandleBadRequest(c, "请求参数无效")
+		return
+	}
+
+	userID, exists := c.Get("user_id")
+	if !exists {
+		middleware.HandleUnauthorized(c, errors.MsgUnauthorized)
+		return
+	}
+
+	user, err := h.userRepo.GetByID(c.Request.Context(), userID.(int64))
+	if err != nil {
+		middleware.HandleNotFound(c, "user", userID)
+		return
+	}
+
+	if req.Email != nil {
+		email := normalizeEmail(*req.Email)
+		if email != "" && !isValidEmail(email) {
+			middleware.HandleBadRequest(c, "请输入正确的邮箱地址")
+			return
+		}
+
+		inUse, err := h.emailBelongsToAnotherUser(c.Request.Context(), email, user.ID)
+		if err != nil {
+			middleware.HandleInternalError(c, "更新个人资料失败，请稍后重试", err)
+			return
+		}
+		if inUse {
+			c.JSON(http.StatusConflict, gin.H{"error": "该邮箱已被其他账号使用"})
+			return
+		}
+
+		user.Email = email
+	}
+
+	if err := h.userRepo.Update(c.Request.Context(), user); err != nil {
+		middleware.HandleInternalError(c, "更新个人资料失败，请稍后重试", err)
+		return
+	}
+
+	h.logger.Info("current user updated", logger.F("user_id", user.ID))
+	c.JSON(http.StatusOK, buildUserResponse(user))
+}
+
 // ChangePasswordRequest represents a password change request.
 type ChangePasswordRequest struct {
 	OldPassword string `json:"old_password" binding:"required"`
@@ -387,10 +461,24 @@ func (h *AuthHandler) CreateUser(c *gin.Context) {
 		return
 	}
 
+	req.Email = normalizeEmail(req.Email)
+
 	// Validate email if provided
 	if req.Email != "" && !isValidEmail(req.Email) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid email format"})
 		return
+	}
+
+	if req.Email != "" {
+		inUse, err := h.emailBelongsToAnotherUser(c.Request.Context(), req.Email, 0)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate email uniqueness"})
+			return
+		}
+		if inUse {
+			c.JSON(http.StatusConflict, gin.H{"error": "Email already exists"})
+			return
+		}
 	}
 
 	// Check if username exists
@@ -502,9 +590,19 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 		user.Username = username
 	}
 	if req.Email != nil {
-		email := strings.TrimSpace(*req.Email)
+		email := normalizeEmail(*req.Email)
 		if email != "" && !isValidEmail(email) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid email format"})
+			return
+		}
+
+		inUse, err := h.emailBelongsToAnotherUser(c.Request.Context(), email, user.ID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate email uniqueness"})
+			return
+		}
+		if inUse {
+			c.JSON(http.StatusConflict, gin.H{"error": "Email already exists"})
 			return
 		}
 

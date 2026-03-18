@@ -228,7 +228,7 @@ func (s *Service) GetStats(ctx context.Context, userID int64) (*InviteStats, err
 
 // GenerateInviteLink generates an invite link for a code.
 func (s *Service) GenerateInviteLink(code string) string {
-	return fmt.Sprintf("%s/register?ref=%s", s.config.BaseURL, code)
+	return fmt.Sprintf("%s/user/register?ref=%s", s.config.BaseURL, code)
 }
 
 // generateCode generates a unique invite code.

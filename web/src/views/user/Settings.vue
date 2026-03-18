@@ -196,6 +196,16 @@
               </el-button>
             </el-form-item>
           </el-form>
+
+          <el-divider />
+
+          <div class="account-actions">
+            <h3 class="section-title">账户操作</h3>
+            <p class="section-desc">在当前设备安全退出用户门户。</p>
+            <el-button type="danger" plain @click="logout" :loading="loggingOut">
+              退出登录
+            </el-button>
+          </div>
         </el-card>
       </el-tab-pane>
     </el-tabs>
@@ -274,12 +284,14 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { User } from '@element-plus/icons-vue'
 import { useUserPortalStore } from '@/stores/userPortal'
 import { useTheme } from '@/composables/useTheme'
 import { copyText } from '@/utils/clipboard'
 
+const router = useRouter()
 const userStore = useUserPortalStore()
 const { themeMode, setTheme, THEME_MODES } = useTheme()
 
@@ -294,6 +306,7 @@ const saving = ref(false)
 const changingPassword = ref(false)
 const savingNotifications = ref(false)
 const savingPreferences = ref(false)
+const loggingOut = ref(false)
 const showTwoFactorDialog = ref(false)
 const processingTwoFactor = ref(false)
 
@@ -514,6 +527,21 @@ async function savePreferences() {
   }
 }
 
+function logout() {
+  ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(async () => {
+    loggingOut.value = true
+    await userStore.logout()
+    ElMessage.success('已退出登录')
+    router.push('/user/login')
+  }).catch(() => {}).finally(() => {
+    loggingOut.value = false
+  })
+}
+
 onMounted(() => {
   // 加载用户设置
   profileForm.displayName = userStore.user?.display_name || ''
@@ -661,12 +689,23 @@ onMounted(() => {
   font-size: 14px;
 }
 
+.account-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
 /* 响应式 */
 @media (max-width: 768px) {
   .two-factor-section {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
+  }
+
+  .account-actions .el-button {
+    width: 100%;
   }
 }
 </style>
