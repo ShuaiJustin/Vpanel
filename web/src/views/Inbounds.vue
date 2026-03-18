@@ -229,6 +229,7 @@
               <el-option label="xtls-rprx-vision" value="xtls-rprx-vision" />
               <el-option label="xtls-rprx-vision-udp443" value="xtls-rprx-vision-udp443" />
             </el-select>
+            <div class="form-tip">VLESS 的 XTLS/Vision 由这里的流控值决定；下方 TLS 只负责证书与 SNI。</div>
           </el-form-item>
         </template>
         
@@ -252,6 +253,7 @@
               <el-option label="xtls-rprx-direct" value="xtls-rprx-direct" />
               <el-option label="xtls-rprx-direct-udp443" value="xtls-rprx-direct-udp443" />
             </el-select>
+            <div class="form-tip">Trojan 的 XTLS 流控由这里决定；下方 TLS 只负责证书与 SNI。</div>
           </el-form-item>
           
           <el-form-item label="回落" prop="trojan_fallbacks">
@@ -412,10 +414,6 @@
         </el-form-item>
         
         <template v-if="tlsSettingsEnabled">
-          <el-form-item label="XTLS">
-            <el-switch v-model="xtlsEnabled" />
-          </el-form-item>
-          
           <el-form-item label="域名">
             <el-select
               v-model="inboundForm.stream_settings.tls_settings.server_name"
@@ -710,7 +708,7 @@ const effectiveServerAddressSource = computed(() => {
   return ''
 })
 
-const tlsSettingsEnabled = computed(() => ['tls', 'xtls'].includes(inboundForm.stream_settings.security))
+const tlsSettingsEnabled = computed(() => inboundForm.stream_settings.security === 'tls')
 
 const shouldAutoSelectCertificateDomain = () => dialogMode.value === 'add'
   && tlsSettingsEnabled.value
@@ -739,14 +737,6 @@ const tlsEnabled = computed({
       inboundForm.stream_settings.security = 'tls'
       selectDefaultCertificateDomain()
     }
-  }
-})
-
-// XTLS开关
-const xtlsEnabled = computed({
-  get: () => inboundForm.stream_settings.security === 'xtls',
-  set: (value) => {
-    inboundForm.stream_settings.security = value ? 'xtls' : 'tls'
   }
 })
 
@@ -1004,10 +994,9 @@ const normalizeProxyToInboundForm = (proxyData = {}) => {
   const tlsDomain = normalizeStringValue(settings.server_name || settings.sni || settings.tls_domain)
   const hasLegacyCertificateMaterial = (normalizeStringValue(settings.cert_file) && normalizeStringValue(settings.key_file)) || (firstStringValue(settings.certificate) && firstStringValue(settings.key))
   const hasTLS = settings.security === 'tls' || settings.tls === true || !!tlsDomain || hasLegacyCertificateMaterial
-  const hasXTLSFlow = typeof settings.flow === 'string' && settings.flow.toLowerCase().includes('xtls')
 
   if (hasTLS) {
-    form.stream_settings.security = hasXTLSFlow ? 'xtls' : 'tls'
+    form.stream_settings.security = 'tls'
     form.stream_settings.tls_settings.server_name = tlsDomain
   }
 
@@ -1100,7 +1089,7 @@ const buildTLSCertificatePayload = () => {
   const tlsSettings = inboundForm.stream_settings.tls_settings || {}
   const domain = normalizeStringValue(tlsSettings.server_name)
   if (!domain) {
-    throw new Error('启用 TLS/XTLS 时请选择证书域名')
+    throw new Error('启用 TLS 时请选择证书域名')
   }
 
   const payload = {
