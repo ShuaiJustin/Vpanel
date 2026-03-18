@@ -284,7 +284,9 @@ watch(isMobile, mobile => {
   --sidebar-active: #3b82f6;
   --sidebar-active-shadow: rgba(59, 130, 246, 0.28);
   display: flex;
+  width: 100%;
   min-height: 100vh;
+  overflow: hidden;
 }
 
 .sidebar-overlay {
@@ -296,12 +298,13 @@ watch(isMobile, mobile => {
 }
 
 .sidebar {
-  width: 200px;
+  width: 224px;
   height: 100vh;
   background: linear-gradient(180deg, var(--sidebar-surface) 0%, var(--sidebar-bg) 100%);
   color: var(--sidebar-text);
   transition: all 0.3s;
   overflow-y: auto;
+  overflow-x: hidden;
   flex-shrink: 0;
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
   z-index: 1001;
@@ -357,6 +360,10 @@ watch(isMobile, mobile => {
 
 .sidebar-menu {
   border-right: none;
+  width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  background-color: transparent !important;
 }
 
 .sidebar-menu:not(.el-menu--collapse) {
@@ -370,6 +377,7 @@ watch(isMobile, mobile => {
   color: var(--sidebar-text) !important;
   border-radius: 12px;
   margin: 6px 10px;
+  box-sizing: border-box;
   transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
 
@@ -380,6 +388,7 @@ watch(isMobile, mobile => {
   color: var(--sidebar-text) !important;
   border-radius: 12px;
   margin: 6px 10px;
+  box-sizing: border-box;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
@@ -400,8 +409,11 @@ watch(isMobile, mobile => {
 }
 
 :deep(.el-sub-menu .el-menu-item) {
-  min-width: 200px;
-  padding-left: 40px !important;
+  min-width: 0;
+  width: calc(100% - 28px);
+  margin: 4px 14px 4px 14px;
+  padding-left: 52px !important;
+  box-sizing: border-box;
   background-color: var(--sidebar-nested);
   color: var(--sidebar-muted) !important;
 }
@@ -418,6 +430,7 @@ watch(isMobile, mobile => {
 
 .main-content {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -486,6 +499,7 @@ watch(isMobile, mobile => {
 
 .content {
   flex: 1;
+  min-width: 0;
   padding: 20px;
   overflow: auto;
   background-color: #f0f2f5;
