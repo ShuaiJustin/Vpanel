@@ -105,8 +105,15 @@
     </div>
 
     <!-- 日志详情弹窗 -->
-    <el-dialog v-model="detailDialogVisible" title="日志详情" width="700px">
-      <el-descriptions :column="2" border v-if="selectedLog">
+    <el-dialog
+      v-model="detailDialogVisible"
+      title="日志详情"
+      width="760px"
+      class="log-detail-dialog"
+      destroy-on-close
+    >
+      <div v-if="selectedLog" class="log-detail-content">
+      <el-descriptions :column="2" border class="log-detail-meta">
         <el-descriptions-item label="ID">{{ selectedLog.id }}</el-descriptions-item>
         <el-descriptions-item label="级别">
           <el-tag :type="getLevelTagType(selectedLog.level)" size="small">
@@ -118,18 +125,21 @@
         <el-descriptions-item label="用户 ID" v-if="selectedLog.user_id">{{ selectedLog.user_id }}</el-descriptions-item>
         <el-descriptions-item label="IP 地址" v-if="selectedLog.ip">{{ selectedLog.ip }}</el-descriptions-item>
         <el-descriptions-item label="User Agent" :span="2" v-if="selectedLog.user_agent">
-          {{ selectedLog.user_agent }}
+          <div class="log-detail-text">{{ selectedLog.user_agent }}</div>
         </el-descriptions-item>
         <el-descriptions-item label="请求 ID" :span="2" v-if="selectedLog.request_id">
-          {{ selectedLog.request_id }}
-        </el-descriptions-item>
-        <el-descriptions-item label="消息" :span="2">
-          <div class="log-message">{{ selectedLog.message }}</div>
-        </el-descriptions-item>
-        <el-descriptions-item label="附加字段" :span="2" v-if="selectedLog.fields && selectedLog.fields !== '{}'">
-          <pre class="log-fields">{{ typeof selectedLog.fields === 'string' ? selectedLog.fields : JSON.stringify(selectedLog.fields, null, 2) }}</pre>
+          <div class="log-detail-text">{{ selectedLog.request_id }}</div>
         </el-descriptions-item>
       </el-descriptions>
+      <section class="log-detail-section">
+        <div class="log-detail-section-title">消息</div>
+        <pre class="log-message">{{ selectedLog.message }}</pre>
+      </section>
+      <section class="log-detail-section" v-if="formattedLogFields">
+        <div class="log-detail-section-title">附加字段</div>
+        <pre class="log-fields">{{ formattedLogFields }}</pre>
+      </section>
+      </div>
     </el-dialog>
 
     <!-- 清理对话框 -->
@@ -185,7 +195,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Download, Delete } from '@element-plus/icons-vue'
 import { logsApi } from '@/api'
@@ -208,6 +218,21 @@ const filterForm = reactive({
 // 详情弹窗
 const detailDialogVisible = ref(false)
 const selectedLog = ref(null)
+const formattedLogFields = computed(() => {
+  if (!selectedLog.value?.fields || selectedLog.value.fields === '{}') {
+    return ''
+  }
+
+  if (typeof selectedLog.value.fields === 'string') {
+    try {
+      return JSON.stringify(JSON.parse(selectedLog.value.fields), null, 2)
+    } catch {
+      return selectedLog.value.fields
+    }
+  }
+
+  return JSON.stringify(selectedLog.value.fields, null, 2)
+})
 
 // 清理弹窗
 const cleanupDialogVisible = ref(false)
@@ -475,20 +500,91 @@ const formatDateTime = (dateStr) => {
 }
 
 .log-message {
+  margin: 0;
   white-space: pre-wrap;
-  word-break: break-all;
-  max-height: 200px;
-  overflow-y: auto;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  max-height: 240px;
+  overflow: auto;
+  line-height: 1.6;
 }
 
 .log-fields {
   background-color: #f5f7fa;
-  padding: 10px;
-  border-radius: 4px;
+  padding: 12px;
+  border-radius: 8px;
   margin: 0;
-  max-height: 200px;
-  overflow-y: auto;
+  max-height: 280px;
+  overflow: auto;
   font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.log-detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.log-detail-text {
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+
+.log-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.log-detail-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+}
+
+:deep(.log-detail-dialog .el-dialog) {
+  max-width: calc(100vw - 32px);
+}
+
+:deep(.log-detail-dialog .el-dialog__body) {
+  max-height: min(72vh, 720px);
+  overflow: auto;
+}
+
+:deep(.log-detail-meta .el-descriptions__table) {
+  table-layout: fixed;
+  width: 100%;
+}
+
+:deep(.log-detail-meta .el-descriptions__cell) {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 768px) {
+  .logs-container {
+    padding: 12px;
+  }
+
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .actions {
+    flex-wrap: wrap;
+  }
+
+  .log-detail-section-title {
+    font-size: 13px;
+  }
 }
 
 :deep(.log-row-error) {

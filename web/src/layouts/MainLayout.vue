@@ -285,7 +285,9 @@ watch(isMobile, mobile => {
   --sidebar-active-shadow: rgba(59, 130, 246, 0.28);
   display: flex;
   width: 100%;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -300,6 +302,9 @@ watch(isMobile, mobile => {
 .sidebar {
   width: 224px;
   height: 100vh;
+  height: 100dvh;
+  position: sticky;
+  top: 0;
   background: linear-gradient(180deg, var(--sidebar-surface) 0%, var(--sidebar-bg) 100%);
   color: var(--sidebar-text);
   transition: all 0.3s;
@@ -431,6 +436,8 @@ watch(isMobile, mobile => {
 .main-content {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -500,6 +507,7 @@ watch(isMobile, mobile => {
 .content {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   padding: 20px;
   overflow: auto;
   background-color: #f0f2f5;
@@ -595,6 +603,8 @@ watch(isMobile, mobile => {
     top: 0;
     left: 0;
     width: min(82vw, 320px);
+    height: 100vh;
+    height: 100dvh;
     transform: translateX(-100%);
   }
 

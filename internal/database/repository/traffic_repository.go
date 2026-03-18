@@ -20,6 +20,46 @@ func NewTrafficRepository(db *gorm.DB) TrafficRepository {
 	return &trafficRepository{db: db}
 }
 
+func (r *trafficRepository) timelineGroupingClause(interval string) string {
+	dialect := r.db.Dialector.Name()
+
+	switch dialect {
+	case "sqlite":
+		switch interval {
+		case "hour":
+			return "strftime('%Y-%m-%d %H:00:00', recorded_at)"
+		case "day":
+			return "strftime('%Y-%m-%d', recorded_at)"
+		case "month":
+			return "strftime('%Y-%m', recorded_at)"
+		default:
+			return "strftime('%Y-%m-%d %H:00:00', recorded_at)"
+		}
+	case "mysql":
+		switch interval {
+		case "hour":
+			return "DATE_FORMAT(recorded_at, '%Y-%m-%d %H:00:00')"
+		case "day":
+			return "DATE_FORMAT(recorded_at, '%Y-%m-%d')"
+		case "month":
+			return "DATE_FORMAT(recorded_at, '%Y-%m')"
+		default:
+			return "DATE_FORMAT(recorded_at, '%Y-%m-%d %H:00:00')"
+		}
+	default:
+		switch interval {
+		case "hour":
+			return "TO_CHAR(recorded_at, 'YYYY-MM-DD HH24:00:00')"
+		case "day":
+			return "TO_CHAR(recorded_at, 'YYYY-MM-DD')"
+		case "month":
+			return "TO_CHAR(recorded_at, 'YYYY-MM')"
+		default:
+			return "TO_CHAR(recorded_at, 'YYYY-MM-DD HH24:00:00')"
+		}
+	}
+}
+
 // Create creates a new traffic record.
 func (r *trafficRepository) Create(ctx context.Context, traffic *Traffic) error {
 	result := r.db.WithContext(ctx).Create(traffic)
@@ -189,21 +229,8 @@ func (r *trafficRepository) GetTrafficTimeline(ctx context.Context, start, end t
 	
 	var tempResults []*tempResult
 
-	// PostgreSQL date formatting based on interval
-	var dateFormat string
-	switch interval {
-	case "hour":
-		dateFormat = "YYYY-MM-DD HH24:00:00"
-	case "day":
-		dateFormat = "YYYY-MM-DD"
-	case "month":
-		dateFormat = "YYYY-MM"
-	default:
-		dateFormat = "YYYY-MM-DD HH24:00:00"
-	}
-
-	selectClause := "TO_CHAR(recorded_at, '" + dateFormat + "') as time, COALESCE(SUM(upload), 0) as upload, COALESCE(SUM(download), 0) as download"
-	groupClause := "TO_CHAR(recorded_at, '" + dateFormat + "')"
+	groupClause := r.timelineGroupingClause(interval)
+	selectClause := groupClause + " as time, COALESCE(SUM(upload), 0) as upload, COALESCE(SUM(download), 0) as download"
 
 	err := r.db.WithContext(ctx).
 		Table("traffic").
@@ -260,21 +287,8 @@ func (r *trafficRepository) GetTrafficTimelineByUser(ctx context.Context, userID
 	
 	var tempResults []*tempResult
 
-	// PostgreSQL date formatting based on interval
-	var dateFormat string
-	switch interval {
-	case "hour":
-		dateFormat = "YYYY-MM-DD HH24:00:00"
-	case "day":
-		dateFormat = "YYYY-MM-DD"
-	case "month":
-		dateFormat = "YYYY-MM"
-	default:
-		dateFormat = "YYYY-MM-DD HH24:00:00"
-	}
-
-	selectClause := "TO_CHAR(recorded_at, '" + dateFormat + "') as time, COALESCE(SUM(upload), 0) as upload, COALESCE(SUM(download), 0) as download"
-	groupClause := "TO_CHAR(recorded_at, '" + dateFormat + "')"
+	groupClause := r.timelineGroupingClause(interval)
+	selectClause := groupClause + " as time, COALESCE(SUM(upload), 0) as upload, COALESCE(SUM(download), 0) as download"
 
 	err := r.db.WithContext(ctx).
 		Table("traffic").
