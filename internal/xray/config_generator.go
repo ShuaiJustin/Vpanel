@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"v/internal/database/repository"
@@ -488,7 +490,7 @@ func (g *ConfigGenerator) resolveTLSCertificates(ctx context.Context, settings m
 
 func (g *ConfigGenerator) getTLSDomain(settings map[string]any) string {
 	for _, key := range []string{"tls_domain", "server_name", "host"} {
-		if value := normalizeTLSDomain(getStringSetting(settings, key)); value != "" {
+		if value := strings.TrimSpace(strings.ToLower(getStringSetting(settings, key))); value != "" {
 			return value
 		}
 	}
@@ -536,19 +538,82 @@ func buildRepositoryTLSCertificates(cert *repository.Certificate) []Certificate 
 	if cert == nil {
 		return nil
 	}
-	if cert.CertPath != "" && cert.KeyPath != "" {
-		return []Certificate{{
-			CertificateFile: cert.CertPath,
-			KeyFile:         cert.KeyPath,
-		}}
-	}
 	if cert.Certificate != "" && cert.PrivateKey != "" {
 		return []Certificate{{
 			Certificate: []string{cert.Certificate},
 			Key:         []string{cert.PrivateKey},
 		}}
 	}
+	if cert.CertPath != "" && cert.KeyPath != "" {
+		if inlineCert, inlineKey, err := loadCertificatePair(cert.CertPath, cert.KeyPath); err == nil {
+			return []Certificate{{
+				Certificate: []string{inlineCert},
+				Key:         []string{inlineKey},
+			}}
+		}
+		return []Certificate{{
+			CertificateFile: cert.CertPath,
+			KeyFile:         cert.KeyPath,
+		}}
+	}
 	return nil
+}
+
+func loadCertificatePair(certPath, keyPath string) (string, string, error) {
+	resolvedCertPath, err := resolveCertificatePath(certPath)
+	if err != nil {
+		return "", "", err
+	}
+	resolvedKeyPath, err := resolveCertificatePath(keyPath)
+	if err != nil {
+		return "", "", err
+	}
+
+	certContent, err := os.ReadFile(resolvedCertPath)
+	if err != nil {
+		return "", "", err
+	}
+	keyContent, err := os.ReadFile(resolvedKeyPath)
+	if err != nil {
+		return "", "", err
+	}
+
+	return string(certContent), string(keyContent), nil
+}
+
+func resolveCertificatePath(path string) (string, error) {
+	trimmedPath := strings.TrimSpace(path)
+	if trimmedPath == "" {
+		return "", fmt.Errorf("empty certificate path")
+	}
+
+	candidates := []string{trimmedPath}
+	if !filepath.IsAbs(trimmedPath) {
+		candidates = append(candidates, filepath.Join("/app", trimmedPath))
+		if dataDir := strings.TrimSpace(os.Getenv("VPANEL_DATA_DIR")); dataDir != "" {
+			candidates = append(candidates, filepath.Join(dataDir, trimmedPath))
+			if strings.HasPrefix(trimmedPath, "data/") {
+				candidates = append(candidates, filepath.Join(dataDir, strings.TrimPrefix(trimmedPath, "data/")))
+			}
+		}
+	}
+
+	seen := make(map[string]struct{}, len(candidates))
+	for _, candidate := range candidates {
+		if candidate == "" {
+			continue
+		}
+		candidate = filepath.Clean(candidate)
+		if _, ok := seen[candidate]; ok {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
+		}
+	}
+
+	return "", fmt.Errorf("certificate path not found: %s", trimmedPath)
 }
 
 func (g *ConfigGenerator) logMissingTLSCertificate(settings map[string]any) {
@@ -560,14 +625,35 @@ func (g *ConfigGenerator) logMissingTLSCertificate(settings map[string]any) {
 }
 
 func buildCertificateCandidates(domain string) []string {
-	domain = normalizeTLSDomain(domain)
-	if domain == "" {
+	rawDomain := strings.TrimSpace(strings.ToLower(domain))
+	if rawDomain == "" {
 		return nil
 	}
 
-	candidates := []string{domain}
-	if wildcard := wildcardDomain(domain); wildcard != "" && wildcard != domain {
-		candidates = append(candidates, wildcard)
+	candidates := make([]string, 0, 2)
+	seen := make(map[string]struct{})
+	addCandidate := func(candidate string) {
+		candidate = strings.TrimSpace(strings.ToLower(candidate))
+		if candidate == "" {
+			return
+		}
+		if _, exists := seen[candidate]; exists {
+			return
+		}
+		seen[candidate] = struct{}{}
+		candidates = append(candidates, candidate)
+	}
+
+	if strings.HasPrefix(rawDomain, "*.") {
+		addCandidate(rawDomain)
+		addCandidate(normalizeTLSDomain(rawDomain))
+		return candidates
+	}
+
+	normalizedDomain := normalizeTLSDomain(rawDomain)
+	addCandidate(normalizedDomain)
+	if wildcard := wildcardDomain(normalizedDomain); wildcard != "" {
+		addCandidate(wildcard)
 	}
 	return candidates
 }

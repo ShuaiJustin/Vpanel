@@ -2,6 +2,8 @@ package xray
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -106,6 +108,33 @@ func TestGenerateStreamSettings_AutoMatchesWildcardCertificate(t *testing.T) {
 	assert.Equal(t, "/etc/ssl/example/privkey.pem", stream.TLSSettings.Certificates[0].KeyFile)
 }
 
+func TestGenerateStreamSettings_AutoMatchesExactWildcardCertificateSelection(t *testing.T) {
+	generator := &ConfigGenerator{
+		certRepo: &mockCertificateRepoForGenerator{certs: map[string]*repository.Certificate{
+			"*.example.com": {
+				ID:       11,
+				Domain:   "*.example.com",
+				Status:   "active",
+				CertPath: "/etc/ssl/example/fullchain.pem",
+				KeyPath:  "/etc/ssl/example/privkey.pem",
+			},
+		}},
+		logger: logger.NewNopLogger(),
+	}
+
+	stream := generator.generateStreamSettings(context.Background(), map[string]any{
+		"network":     "tcp",
+		"security":    "tls",
+		"server_name": "*.example.com",
+	})
+
+	require.NotNil(t, stream)
+	require.NotNil(t, stream.TLSSettings)
+	require.Len(t, stream.TLSSettings.Certificates, 1)
+	assert.Equal(t, "/etc/ssl/example/fullchain.pem", stream.TLSSettings.Certificates[0].CertificateFile)
+	assert.Equal(t, "/etc/ssl/example/privkey.pem", stream.TLSSettings.Certificates[0].KeyFile)
+}
+
 func TestGenerateStreamSettings_ManualFilesTakePrecedence(t *testing.T) {
 	generator := &ConfigGenerator{
 		certRepo: &mockCertificateRepoForGenerator{certs: map[string]*repository.Certificate{
@@ -177,9 +206,37 @@ func TestGenerateStreamSettings_AutoMatchesStoredCertificateContent(t *testing.T
 	assert.Equal(t, []string{"-----BEGIN PRIVATE KEY-----stored-----END PRIVATE KEY-----"}, stream.TLSSettings.Certificates[0].Key)
 }
 
+func TestBuildRepositoryTLSCertificates_LoadsRelativeStoredFiles(t *testing.T) {
+	tempDir := t.TempDir()
+	dataDir := filepath.Join(tempDir, "data")
+	certDir := filepath.Join(dataDir, "certificates", "*.example.com")
+	require.NoError(t, os.MkdirAll(certDir, 0o755))
+
+	certPath := filepath.Join(certDir, "fullchain.pem")
+	keyPath := filepath.Join(certDir, "privkey.pem")
+	require.NoError(t, os.WriteFile(certPath, []byte("CERTIFICATE_DATA"), 0o600))
+	require.NoError(t, os.WriteFile(keyPath, []byte("PRIVATE_KEY_DATA"), 0o600))
+
+	t.Setenv("VPANEL_DATA_DIR", dataDir)
+
+	certs := buildRepositoryTLSCertificates(&repository.Certificate{
+		Domain:   "*.example.com",
+		Status:   "active",
+		CertPath: "data/certificates/*.example.com/fullchain.pem",
+		KeyPath:  "data/certificates/*.example.com/privkey.pem",
+	})
+
+	require.Len(t, certs, 1)
+	assert.Equal(t, []string{"CERTIFICATE_DATA"}, certs[0].Certificate)
+	assert.Equal(t, []string{"PRIVATE_KEY_DATA"}, certs[0].Key)
+	assert.Empty(t, certs[0].CertificateFile)
+	assert.Empty(t, certs[0].KeyFile)
+}
+
 func TestBuildCertificateCandidates(t *testing.T) {
 	assert.Equal(t, []string{"api.example.com", "*.example.com"}, buildCertificateCandidates("api.example.com"))
 	assert.Equal(t, []string{"example.com"}, buildCertificateCandidates("example.com"))
+	assert.Equal(t, []string{"*.example.com", "example.com"}, buildCertificateCandidates("*.example.com"))
 }
 
 func TestNormalizeTLSDomain(t *testing.T) {
