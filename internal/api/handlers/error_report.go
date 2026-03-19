@@ -23,9 +23,9 @@ func NewErrorReportHandler(log logger.Logger) *ErrorReportHandler {
 // POST /api/errors/report
 func (h *ErrorReportHandler) ReportErrors(c *gin.Context) {
 	var req struct {
-		Errors    []map[string]interface{} `json:"errors"`
-		BatchID   string                   `json:"batchId"`
-		ReportedAt string                  `json:"reportedAt"`
+		Errors     []map[string]interface{} `json:"errors"`
+		BatchID    string                   `json:"batchId"`
+		ReportedAt string                   `json:"reportedAt"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {

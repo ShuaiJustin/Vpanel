@@ -43,6 +43,10 @@ const Invoices = () => import(/* webpackChunkName: "user-commercial" */ '../view
 const PlanUpgrade = () => import(/* webpackChunkName: "user-commercial" */ '../views/user/PlanUpgrade.vue')
 const GiftCard = () => import(/* webpackChunkName: "user-commercial" */ '../views/user/GiftCard.vue')
 
+function getStoredItem(key) {
+  return sessionStorage.getItem(key) || localStorage.getItem(key)
+}
+
 /**
  * 用户前台路由配置
  */
@@ -347,9 +351,9 @@ export const userRoutes = [
  * @param {Function} next - 导航函数
  */
 export function userRouteGuard(to, from, next) {
-  const isUserAuthenticated = localStorage.getItem('userToken')
-  const isAdminAuthenticated = localStorage.getItem('token')
-  const userRole = localStorage.getItem('userRole') || 'user'
+  const isUserAuthenticated = getStoredItem('userToken')
+  const isAdminAuthenticated = getStoredItem('token')
+  const userRole = getStoredItem('userRole') || 'user'
   
   // 更新页面标题
   if (to.meta.title) {
@@ -363,7 +367,11 @@ export function userRouteGuard(to, from, next) {
   }
   
   // 已登录用户访问登录/注册页面，跳转到用户仪表板
-  if (to.meta.guest && isUserAuthenticated && to.path.startsWith('/user/')) {
+  if (to.meta.guest && (isUserAuthenticated || isAdminAuthenticated) && to.path.startsWith('/user/')) {
+    if (isAdminAuthenticated && userRole === 'admin') {
+      next('/admin/dashboard')
+      return
+    }
     next('/user/dashboard')
     return
   }

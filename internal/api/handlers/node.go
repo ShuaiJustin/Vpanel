@@ -3,8 +3,10 @@ package handlers
 
 import (
 	"context"
+	stderrors "errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -18,6 +20,7 @@ import (
 // NodeHandler handles node management API requests.
 type NodeHandler struct {
 	nodeService     *node.Service
+	groupService    *node.GroupService
 	deployService   *node.RemoteDeployService
 	recoveryTracker *NodeRecoveryTracker
 	logger          logger.Logger
@@ -26,9 +29,10 @@ type NodeHandler struct {
 type queueNodeCommandFunc func(nodeID int64, source, reason string) (Command, bool)
 
 // NewNodeHandler creates a new node handler.
-func NewNodeHandler(nodeService *node.Service, deployService *node.RemoteDeployService, recoveryTracker *NodeRecoveryTracker, log logger.Logger) *NodeHandler {
+func NewNodeHandler(nodeService *node.Service, groupService *node.GroupService, deployService *node.RemoteDeployService, recoveryTracker *NodeRecoveryTracker, log logger.Logger) *NodeHandler {
 	return &NodeHandler{
 		nodeService:     nodeService,
+		groupService:    groupService,
 		deployService:   deployService,
 		recoveryTracker: recoveryTracker,
 		logger:          log,
@@ -83,7 +87,8 @@ type NodeResponse struct {
 	TLSDomain  string `json:"tls_domain,omitempty"`
 
 	// 节点分组
-	GroupID *int64 `json:"group_id,omitempty"`
+	GroupID  *int64  `json:"group_id,omitempty"`
+	GroupIDs []int64 `json:"group_ids,omitempty"`
 
 	// 排序和优先级
 	Priority int `json:"priority"`
@@ -149,7 +154,8 @@ type CreateNodeRequest struct {
 	TLSDomain  string `json:"tls_domain"`
 
 	// 节点分组
-	GroupID *int64 `json:"group_id"`
+	GroupID  *int64  `json:"group_id"`
+	GroupIDs []int64 `json:"group_ids"`
 
 	// 排序和优先级
 	Priority int `json:"priority"`
@@ -202,7 +208,8 @@ type UpdateNodeRequest struct {
 	TLSDomain  *string `json:"tls_domain"`
 
 	// 节点分组
-	GroupID *int64 `json:"group_id"`
+	GroupID  *int64   `json:"group_id"`
+	GroupIDs *[]int64 `json:"group_ids"`
 
 	// 排序和优先级
 	Priority *int `json:"priority"`
@@ -319,8 +326,85 @@ func toNodeResponse(n *node.Node) *NodeResponse {
 	return resp
 }
 
-func (h *NodeHandler) buildNodeResponse(n *node.Node) *NodeResponse {
+func normalizeNodeGroupIDs(groupIDs []int64, fallback *int64) []int64 {
+	seen := make(map[int64]struct{}, len(groupIDs)+1)
+	normalized := make([]int64, 0, len(groupIDs)+1)
+
+	for _, groupID := range groupIDs {
+		if groupID <= 0 {
+			continue
+		}
+		if _, exists := seen[groupID]; exists {
+			continue
+		}
+		seen[groupID] = struct{}{}
+		normalized = append(normalized, groupID)
+	}
+
+	if len(normalized) == 0 && fallback != nil && *fallback > 0 {
+		normalized = append(normalized, *fallback)
+	}
+
+	return normalized
+}
+
+func nodeMutationErrorResponse(err error, fallbackMessage string) (int, gin.H) {
+	message := err.Error()
+	for _, prefix := range []string{
+		node.ErrDuplicateNode.Error() + ": ",
+		node.ErrInvalidNode.Error() + ": ",
+		node.ErrInvalidAddress.Error() + ": ",
+	} {
+		if strings.HasPrefix(message, prefix) {
+			message = strings.TrimPrefix(message, prefix)
+			break
+		}
+	}
+
+	switch {
+	case stderrors.Is(err, node.ErrDuplicateNode):
+		return http.StatusConflict, gin.H{"error": message}
+	case stderrors.Is(err, node.ErrInvalidAddress), stderrors.Is(err, node.ErrInvalidNode):
+		return http.StatusBadRequest, gin.H{"error": message}
+	case stderrors.Is(err, node.ErrNodeNotFound):
+		return http.StatusNotFound, gin.H{"error": "Node not found"}
+	default:
+		return http.StatusInternalServerError, gin.H{"error": fallbackMessage}
+	}
+}
+
+func (h *NodeHandler) populateNodeGroupIDs(ctx context.Context, resp *NodeResponse) {
+	if resp == nil {
+		return
+	}
+
+	resp.GroupIDs = normalizeNodeGroupIDs(resp.GroupIDs, resp.GroupID)
+	if h == nil || h.groupService == nil {
+		return
+	}
+
+	groups, err := h.groupService.GetGroupsForNode(ctx, resp.ID)
+	if err != nil {
+		return
+	}
+
+	groupIDs := make([]int64, 0, len(groups))
+	for _, group := range groups {
+		if group == nil || group.ID <= 0 {
+			continue
+		}
+		groupIDs = append(groupIDs, group.ID)
+	}
+
+	resp.GroupIDs = normalizeNodeGroupIDs(groupIDs, resp.GroupID)
+	if len(resp.GroupIDs) > 0 {
+		resp.GroupID = &resp.GroupIDs[0]
+	}
+}
+
+func (h *NodeHandler) buildNodeResponse(ctx context.Context, n *node.Node) *NodeResponse {
 	resp := toNodeResponse(n)
+	h.populateNodeGroupIDs(ctx, resp)
 	if h == nil || h.recoveryTracker == nil || resp == nil {
 		return resp
 	}
@@ -374,7 +458,7 @@ func (h *NodeHandler) List(c *gin.Context) {
 
 	response := make([]*NodeResponse, len(nodes))
 	for i, n := range nodes {
-		response[i] = h.buildNodeResponse(n)
+		response[i] = h.buildNodeResponse(c.Request.Context(), n)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -467,7 +551,7 @@ func (h *NodeHandler) Get(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, h.buildNodeResponse(n))
+	c.JSON(http.StatusOK, h.buildNodeResponse(c.Request.Context(), n))
 }
 
 // Create creates a new node.
@@ -477,6 +561,12 @@ func (h *NodeHandler) Create(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		middleware.HandleBadRequest(c, errors.MsgInvalidRequest)
 		return
+	}
+
+	groupIDs := normalizeNodeGroupIDs(req.GroupIDs, req.GroupID)
+	var primaryGroupID *int64
+	if len(groupIDs) > 0 {
+		primaryGroupID = &groupIDs[0]
 	}
 
 	createReq := &node.CreateNodeRequest{
@@ -502,7 +592,7 @@ func (h *NodeHandler) Create(c *gin.Context) {
 		TLSDomain:  req.TLSDomain,
 
 		// 节点分组
-		GroupID: req.GroupID,
+		GroupID: primaryGroupID,
 
 		// 排序和优先级
 		Priority: req.Priority,
@@ -523,23 +613,38 @@ func (h *NodeHandler) Create(c *gin.Context) {
 
 	n, err := h.nodeService.Create(c.Request.Context(), createReq)
 	if err != nil {
-		if err == node.ErrInvalidAddress {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid node address format"})
-			return
-		}
-		if err == node.ErrInvalidNode {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid node data"})
-			return
-		}
 		h.logger.Error("Failed to create node", logger.Err(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create node"})
+		status, payload := nodeMutationErrorResponse(err, "Failed to create node")
+		c.JSON(status, payload)
 		return
+	}
+
+	if len(groupIDs) > 0 && h.groupService != nil {
+		if err := h.groupService.SyncNodeGroups(c.Request.Context(), n.ID, groupIDs); err != nil {
+			h.logger.Error("Failed to sync node groups after create", logger.Err(err), logger.F("node_id", n.ID))
+			if cleanupErr := h.nodeService.Delete(c.Request.Context(), n.ID); cleanupErr != nil {
+				h.logger.Error("Failed to cleanup node after group sync failure", logger.Err(cleanupErr), logger.F("node_id", n.ID))
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to assign node groups"})
+			return
+		}
+		n, err = h.nodeService.GetByID(c.Request.Context(), n.ID)
+		if err != nil {
+			h.logger.Error("Failed to reload node after group sync", logger.Err(err), logger.F("node_id", n.ID))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload created node"})
+			return
+		}
+	} else if primaryGroupID == nil && h.groupService != nil {
+		// Ensure old memberships are not left behind if this endpoint is ever reused with a pre-created record.
+		if err := h.groupService.SyncNodeGroups(c.Request.Context(), n.ID, nil); err != nil {
+			h.logger.Warn("Failed to clear empty node groups after create", logger.Err(err), logger.F("node_id", n.ID))
+		}
 	}
 
 	h.logger.Info("Node created", logger.F("node_id", n.ID), logger.F("name", n.Name))
 
 	resp := &NodeWithTokenResponse{
-		NodeResponse: *h.buildNodeResponse(n),
+		NodeResponse: *h.buildNodeResponse(c.Request.Context(), n),
 		Token:        n.Token,
 	}
 
@@ -557,10 +662,14 @@ func (h *NodeHandler) Create(c *gin.Context) {
 		}
 		if panelURL == "" {
 			scheme := "http"
-			if c.Request.TLS != nil {
+			if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
 				scheme = "https"
 			}
-			panelURL = scheme + "://" + c.Request.Host
+			host := c.GetHeader("X-Forwarded-Host")
+			if host == "" {
+				host = c.Request.Host
+			}
+			panelURL = scheme + "://" + host
 		}
 
 		h.logger.Info("Using Panel URL for deployment",
@@ -637,6 +746,23 @@ func (h *NodeHandler) Update(c *gin.Context) {
 		return
 	}
 
+	var groupIDs []int64
+	if req.GroupIDs != nil || req.GroupID != nil {
+		if req.GroupIDs != nil {
+			groupIDs = normalizeNodeGroupIDs(*req.GroupIDs, req.GroupID)
+		} else {
+			groupIDs = normalizeNodeGroupIDs(nil, req.GroupID)
+		}
+	}
+	var primaryGroupID *int64
+	if len(groupIDs) > 0 {
+		primaryGroupID = &groupIDs[0]
+	} else if req.GroupIDs != nil {
+		primaryGroupID = nil
+	} else {
+		primaryGroupID = req.GroupID
+	}
+
 	updateReq := &node.UpdateNodeRequest{
 		Name:        req.Name,
 		Address:     req.Address,
@@ -660,7 +786,7 @@ func (h *NodeHandler) Update(c *gin.Context) {
 		TLSDomain:  req.TLSDomain,
 
 		// 节点分组
-		GroupID: req.GroupID,
+		GroupID: primaryGroupID,
 
 		// 排序和优先级
 		Priority: req.Priority,
@@ -681,22 +807,29 @@ func (h *NodeHandler) Update(c *gin.Context) {
 
 	n, err := h.nodeService.Update(c.Request.Context(), id, updateReq)
 	if err != nil {
-		if err == node.ErrNodeNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Node not found"})
-			return
-		}
-		if err == node.ErrInvalidAddress {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid node address format"})
-			return
-		}
 		h.logger.Error("Failed to update node", logger.Err(err), logger.F("id", id))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update node"})
+		status, payload := nodeMutationErrorResponse(err, "Failed to update node")
+		c.JSON(status, payload)
 		return
+	}
+
+	if (req.GroupIDs != nil || req.GroupID != nil) && h.groupService != nil {
+		if err := h.groupService.SyncNodeGroups(c.Request.Context(), id, groupIDs); err != nil {
+			h.logger.Error("Failed to sync node groups after update", logger.Err(err), logger.F("node_id", id))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update node groups"})
+			return
+		}
+		n, err = h.nodeService.GetByID(c.Request.Context(), id)
+		if err != nil {
+			h.logger.Error("Failed to reload node after group sync", logger.Err(err), logger.F("node_id", id))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reload updated node"})
+			return
+		}
 	}
 
 	h.logger.Info("Node updated", logger.F("node_id", id))
 
-	c.JSON(http.StatusOK, h.buildNodeResponse(n))
+	c.JSON(http.StatusOK, h.buildNodeResponse(c.Request.Context(), n))
 }
 
 // Delete deletes a node.

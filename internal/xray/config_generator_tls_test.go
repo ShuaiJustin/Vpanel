@@ -206,6 +206,57 @@ func TestGenerateStreamSettings_AutoMatchesStoredCertificateContent(t *testing.T
 	assert.Equal(t, []string{"-----BEGIN PRIVATE KEY-----stored-----END PRIVATE KEY-----"}, stream.TLSSettings.Certificates[0].Key)
 }
 
+func TestGenerateStreamSettings_SupportsALPNCommaSeparatedString(t *testing.T) {
+	generator := &ConfigGenerator{logger: logger.NewNopLogger()}
+
+	stream := generator.generateStreamSettings(context.Background(), map[string]any{
+		"security": "tls",
+		"alpn":     "h2, http/1.1",
+	})
+
+	require.NotNil(t, stream)
+	require.NotNil(t, stream.TLSSettings)
+	assert.Equal(t, []string{"h2", "http/1.1"}, stream.TLSSettings.ALPN)
+}
+
+func TestGenerateStreamSettings_SupportsALPNInterfaceSlice(t *testing.T) {
+	generator := &ConfigGenerator{logger: logger.NewNopLogger()}
+
+	stream := generator.generateStreamSettings(context.Background(), map[string]any{
+		"security": "tls",
+		"alpn":     []any{"h2", "http/1.1"},
+	})
+
+	require.NotNil(t, stream)
+	require.NotNil(t, stream.TLSSettings)
+	assert.Equal(t, []string{"h2", "http/1.1"}, stream.TLSSettings.ALPN)
+}
+
+func TestGenerateStreamSettings_SupportsRealitySettings(t *testing.T) {
+	generator := &ConfigGenerator{logger: logger.NewNopLogger()}
+
+	stream := generator.generateStreamSettings(context.Background(), map[string]any{
+		"security":    "reality",
+		"server_name": "www.cloudflare.com",
+		"reality_settings": map[string]any{
+			"dest":        "www.cloudflare.com:443",
+			"privateKey":  "private-key",
+			"serverNames": []string{"www.cloudflare.com"},
+			"shortIds":    []string{"6ba85179e30d4fc2"},
+			"xver":        0,
+		},
+	})
+
+	require.NotNil(t, stream)
+	assert.Equal(t, "reality", stream.Security)
+	assert.Nil(t, stream.TLSSettings)
+	require.NotNil(t, stream.RealitySettings)
+	assert.Equal(t, "www.cloudflare.com:443", stream.RealitySettings["dest"])
+	assert.Equal(t, "private-key", stream.RealitySettings["privateKey"])
+	assert.Equal(t, []string{"www.cloudflare.com"}, stream.RealitySettings["serverNames"])
+	assert.Equal(t, []string{"6ba85179e30d4fc2"}, stream.RealitySettings["shortIds"])
+}
+
 func TestBuildRepositoryTLSCertificates_LoadsRelativeStoredFiles(t *testing.T) {
 	tempDir := t.TempDir()
 	dataDir := filepath.Join(tempDir, "data")

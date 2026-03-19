@@ -803,6 +803,7 @@ import {
 import { useNodeStore } from "@/stores/node";
 import { certificatesApi } from "@/api";
 import { nodesApi } from "@/api/modules/nodes";
+import { copyText } from "@/utils/clipboard";
 
 const nodeStore = useNodeStore();
 const router = useRouter();
@@ -1274,67 +1275,11 @@ const fetchNodes = async () => {
 };
 
 const showCreateDialog = () => {
-  isEdit.value = false;
-
-  // 自动检测当前访问的 Panel URL
-  let currentUrl = window.location.origin;
-
-  // 如果检测到 localhost，尝试获取实际 IP
-  if (currentUrl.includes("localhost") || currentUrl.includes("127.0.0.1")) {
-    // 提示用户需要手动输入实际地址
-    currentUrl = "";
-    ElMessage.warning(
-      "检测到使用 localhost 访问，请手动输入 Panel 服务器的实际 IP 或域名",
-    );
-  }
-
-  Object.assign(form, {
-    id: null,
-    name: "",
-    address: "",
-    port: 18443,
-    region: "",
-    weight: 1,
-    max_users: 0,
-    tags: [],
-    ip_whitelist_str: "",
-    tls_enabled: false,
-    tls_domain: "",
-    certificate_id: null,
-    installMethod: "manual",
-    panel_url: currentUrl, // 自动填充当前访问地址
-    ssh_host: "",
-    ssh_port: 22,
-    ssh_username: "root",
-    ssh_auth_method: "password",
-    ssh_password: "",
-    ssh_private_key: "",
-  });
-  connectionTestResult.value = null;
-  dialogVisible.value = true;
+  router.push("/admin/nodes/new");
 };
 
 const editNode = (node) => {
-  isEdit.value = true;
-  const tags = parseTags(node.tags);
-  const ipWhitelist = node.ip_whitelist
-    ? (Array.isArray(node.ip_whitelist) ? node.ip_whitelist : []).join("\n")
-    : "";
-  Object.assign(form, {
-    id: node.id,
-    name: node.name,
-    address: node.address,
-    port: node.port,
-    region: node.region || "",
-    weight: node.weight || 1,
-    max_users: node.max_users || 0,
-    tags: tags,
-    ip_whitelist_str: ipWhitelist,
-    tls_enabled: Boolean(node.tls_enabled),
-    tls_domain: node.tls_domain || "",
-    certificate_id: node.certificate_id ?? null,
-  });
-  dialogVisible.value = true;
+  router.push(`/admin/nodes/${node.id}/edit`);
 };
 
 const submitForm = async () => {
@@ -1540,10 +1485,10 @@ const handleRevokeToken = async () => {
 
 const copyToken = async () => {
   try {
-    await navigator.clipboard.writeText(currentToken.value);
+    await copyText(currentToken.value);
     ElMessage.success("已复制到剪贴板");
-  } catch {
-    ElMessage.error("复制失败");
+  } catch (error) {
+    ElMessage.error(error.message || "复制失败");
   }
 };
 
@@ -1706,10 +1651,10 @@ const closeDeployProgress = () => {
 
 const copyDeployLogs = async () => {
   try {
-    await navigator.clipboard.writeText(deployLogs.value);
+    await copyText(deployLogs.value);
     ElMessage.success("已复制到剪贴板");
-  } catch {
-    ElMessage.error("复制失败");
+  } catch (error) {
+    ElMessage.error(error.message || "复制失败");
   }
 };
 

@@ -12,21 +12,21 @@ import (
 
 // Common errors
 var (
-	ErrTrialNotFound     = errors.New("trial not found")
-	ErrTrialAlreadyUsed  = errors.New("user has already used trial")
-	ErrTrialExpired      = errors.New("trial has expired")
-	ErrTrialNotActive    = errors.New("trial is not active")
-	ErrTrialDisabled     = errors.New("trial feature is disabled")
-	ErrEmailNotVerified  = errors.New("email verification required for trial")
+	ErrTrialNotFound    = errors.New("trial not found")
+	ErrTrialAlreadyUsed = errors.New("user has already used trial")
+	ErrTrialExpired     = errors.New("trial has expired")
+	ErrTrialNotActive   = errors.New("trial is not active")
+	ErrTrialDisabled    = errors.New("trial feature is disabled")
+	ErrEmailNotVerified = errors.New("email verification required for trial")
 )
 
 // Config holds trial configuration.
 type Config struct {
 	Enabled             bool     `json:"enabled"`
-	Duration            int      `json:"duration"`              // days
-	TrafficLimit        int64    `json:"traffic_limit"`         // bytes
+	Duration            int      `json:"duration"`      // days
+	TrafficLimit        int64    `json:"traffic_limit"` // bytes
 	RequireEmailVerify  bool     `json:"require_email_verify"`
-	AutoActivate        bool     `json:"auto_activate"`         // on registration
+	AutoActivate        bool     `json:"auto_activate"` // on registration
 	FeatureRestrictions []string `json:"feature_restrictions"`
 }
 
@@ -34,10 +34,10 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		Enabled:             true,
-		Duration:            7,                    // 7 days
-		TrafficLimit:        1073741824,           // 1 GB
+		Duration:            7,          // 7 days
+		TrafficLimit:        1073741824, // 1 GB
 		RequireEmailVerify:  false,
-		AutoActivate:        false,
+		AutoActivate:        true,
 		FeatureRestrictions: []string{},
 	}
 }

@@ -160,7 +160,6 @@ func (h *NodeGroupHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, toNodeGroupResponse(g))
 }
 
-
 // GetWithStats returns a single node group with statistics.
 // GET /api/admin/node-groups/:id/stats
 func (h *NodeGroupHandler) GetWithStats(c *gin.Context) {

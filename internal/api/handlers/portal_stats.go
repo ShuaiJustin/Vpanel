@@ -48,7 +48,7 @@ func (h *PortalStatsHandler) GetTrafficStats(c *gin.Context) {
 	} else if period == "year" {
 		days = 365
 	}
-	
+
 	daily, err := h.statsService.GetDailyTraffic(c.Request.Context(), userID.(int64), days)
 	if err != nil {
 		h.logger.Error("failed to get daily traffic", logger.F("error", err), logger.F("user_id", userID))

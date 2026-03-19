@@ -31,6 +31,7 @@ import (
 	"v/internal/commercial/trial"
 	"v/internal/config"
 	"v/internal/database/repository"
+	"v/internal/entitlement"
 	"v/internal/ip"
 	logservice "v/internal/log"
 	"v/internal/logger"
@@ -58,6 +59,8 @@ type Router struct {
 	repos               *repository.Repositories
 	settingsService     *settings.Service
 	notificationService *notification.Service
+	trialService        *trial.Service
+	entitlementService  *entitlement.Service
 	xrayManager         xray.Manager
 	logService          *logservice.Service
 	certificateService  CertificateService
@@ -203,6 +206,18 @@ func (r *Router) Setup() {
 	invoiceService := invoice.NewService(r.repos.Invoice, r.repos.Order, r.logger, nil)
 	refundService := refund.NewService(r.repos.Order, balanceService, commissionService, r.logger)
 	trialService := trial.NewService(r.repos.Trial, r.repos.User, r.logger, nil)
+	r.trialService = trialService
+	orderService.WithTrialMarker(trialService)
+	r.entitlementService = entitlement.NewService(
+		r.repos.User,
+		r.repos.Trial,
+		r.repos.Proxy,
+		r.repos.Node,
+		r.repos.UserNodeAssignment,
+		trialService,
+		r.logger,
+	)
+	subscriptionService.WithEntitlementService(r.entitlementService)
 	planChangeService := planchange.NewService(r.repos.PlanChange, r.repos.Plan, r.repos.User, orderService, balanceService, r.logger)
 
 	// Create pause service
@@ -235,7 +250,7 @@ func (r *Router) Setup() {
 	nodeAgentHandler := handlers.NewNodeAgentHandler(nodeService, r.repos.Node, configGenerator, r.nodeRecoveryTracker, r.logger)
 
 	// Create node management handlers
-	nodeHandler := handlers.NewNodeHandler(nodeService, nodeDeployService, r.nodeRecoveryTracker, r.logger)
+	nodeHandler := handlers.NewNodeHandler(nodeService, nodeGroupService, nodeDeployService, r.nodeRecoveryTracker, r.logger)
 	nodeGroupHandler := handlers.NewNodeGroupHandler(nodeGroupService, r.logger)
 	nodeHealthHandler := handlers.NewNodeHealthHandler(r.nodeHealthChecker, r.repos.HealthCheck, r.repos.Node, r.logger)
 	nodeStatsHandler := handlers.NewNodeStatsHandler(nodeTrafficService, nodeService, nodeGroupService, r.logger)
@@ -628,6 +643,7 @@ func (r *Router) Setup() {
 			adminOrders.Use(authMiddleware.RequireRole("admin"))
 			{
 				adminOrders.GET("", orderHandler.ListAllOrders)
+				adminOrders.GET("/:id", orderHandler.GetOrder)
 				adminOrders.PUT("/:id/status", orderHandler.UpdateOrderStatus)
 			}
 
@@ -1245,12 +1261,14 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 	ticketService := ticket.NewService(r.repos.Ticket, r.repos.User)
 	announcementService := announcement.NewService(r.repos.Announcement)
 	helpService := help.NewService(r.repos.HelpArticle)
-	portalNodeService := portalnode.NewService(r.repos.Proxy, r.repos.User, r.repos.Node)
+	portalNodeService := portalnode.NewService(r.repos.Proxy, r.repos.User, r.repos.Node).
+		WithEntitlementService(r.entitlementService)
 	statsService := stats.NewService(r.repos.Traffic, r.repos.User)
 
 	// Create portal handlers
 	portalAuthHandler := handlers.NewPortalAuthHandler(portalAuthService, r.authService, r.repos.User, r.repos.Proxy, r.logger).
-		WithEmailSender(r.notificationService, r.config.GetBaseURL())
+		WithEmailSender(r.notificationService, r.config.GetBaseURL()).
+		WithEntitlementService(r.entitlementService)
 	portalDashboardHandler := handlers.NewPortalDashboardHandler(r.repos.User, statsService, announcementService, r.logger)
 	portalNodeHandler := handlers.NewPortalNodeHandler(portalNodeService, r.nodeRecoveryTracker, r.logger)
 	portalTicketHandler := handlers.NewPortalTicketHandler(ticketService, r.logger)

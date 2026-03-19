@@ -357,7 +357,6 @@ func TestCustomRoleCanBeUpdated(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
-
 // Feature: project-optimization, Property 19: Permission Validation
 // Validates: Requirements 19.7
 // *For any* role creation or update with invalid permission keys,

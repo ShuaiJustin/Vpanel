@@ -36,11 +36,10 @@
         </el-table-column>
         <el-table-column prop="payment_method" label="支付方式" width="100" />
         <el-table-column prop="created_at" label="创建时间" width="180" />
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="viewDetail(row)">详情</el-button>
             <el-button v-if="row.status === 'pending'" type="success" link @click="handleRetry(row)">重试支付</el-button>
-            <el-button v-if="row.status === 'paid'" type="warning" link @click="handleRefund(row)">退款</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -76,23 +75,6 @@
         <el-descriptions-item label="创建时间">{{ currentOrder.created_at }}</el-descriptions-item>
         <el-descriptions-item label="支付时间">{{ currentOrder.paid_at || '-' }}</el-descriptions-item>
       </el-descriptions>
-    </el-dialog>
-
-    <!-- 退款对话框 -->
-    <el-dialog v-model="refundVisible" title="订单退款" width="400px">
-      <el-form :model="refundForm" label-width="80px">
-        <el-form-item label="退款金额">
-          <el-input-number v-model="refundForm.amount" :min="0" :max="maxRefund" :precision="2" />
-          <span style="margin-left: 8px;">最大可退 ¥{{ formatPrice(maxRefund * 100) }}</span>
-        </el-form-item>
-        <el-form-item label="退款原因">
-          <el-input v-model="refundForm.reason" type="textarea" :rows="2" placeholder="请输入退款原因" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="refundVisible = false">取消</el-button>
-        <el-button type="danger" :loading="refunding" @click="confirmRefund">确认退款</el-button>
-      </template>
     </el-dialog>
 
     <!-- 重试支付对话框 -->
@@ -134,8 +116,8 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ref, reactive, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import { ordersApi, paymentsApi } from '@/api/index'
 
 const loading = ref(false)
@@ -143,17 +125,12 @@ const orders = ref([])
 const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
 const filter = reactive({ status: '', search: '', dateRange: null })
 const detailVisible = ref(false)
-const refundVisible = ref(false)
 const retryVisible = ref(false)
 const currentOrder = ref(null)
-const refunding = ref(false)
 const retrying = ref(false)
-const refundForm = reactive({ amount: 0, reason: '' })
 const retryForm = reactive({ method: '', switchMethod: false })
 const retryInfo = ref(null)
 const paymentMethods = ref(['alipay', 'wechat'])
-
-const maxRefund = computed(() => currentOrder.value ? currentOrder.value.pay_amount / 100 : 0)
 
 const formatPrice = (price) => (price / 100).toFixed(2)
 
@@ -221,13 +198,6 @@ const viewDetail = async (order) => {
   }
 }
 
-const handleRefund = (order) => {
-  currentOrder.value = order
-  refundForm.amount = order.pay_amount / 100
-  refundForm.reason = ''
-  refundVisible.value = true
-}
-
 const handleRetry = async (order) => {
   currentOrder.value = order
   retryForm.method = order.payment_method || paymentMethods.value[0] || 'alipay'
@@ -273,28 +243,6 @@ const confirmRetry = async () => {
     ElMessage.error(e.message || '重试失败')
   } finally {
     retrying.value = false
-  }
-}
-
-const confirmRefund = async () => {
-  if (!refundForm.reason.trim()) {
-    ElMessage.warning('请输入退款原因')
-    return
-  }
-  await ElMessageBox.confirm('确定要执行退款吗？此操作不可撤销。', '提示', { type: 'warning' })
-  refunding.value = true
-  try {
-    await ordersApi.admin.refund(currentOrder.value.id, {
-      amount: Math.round(refundForm.amount * 100),
-      reason: refundForm.reason
-    })
-    ElMessage.success('退款成功')
-    refundVisible.value = false
-    fetchOrders()
-  } catch (e) {
-    ElMessage.error(e.message || '退款失败')
-  } finally {
-    refunding.value = false
   }
 }
 

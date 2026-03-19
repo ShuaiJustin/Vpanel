@@ -277,7 +277,6 @@ func setUserContext(c *gin.Context, userID int64, role string) {
 	c.Set("role", role)
 }
 
-
 // TestProxyUserAssociation_CreateSetsUserID tests that when a proxy is created,
 // the user_id is set to the authenticated user's ID.
 func TestProxyUserAssociation_CreateSetsUserID(t *testing.T) {

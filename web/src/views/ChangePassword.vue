@@ -202,7 +202,7 @@ const changePassword = async () => {
     ElMessage.success('密码修改成功，请重新登录')
     resetForm()
     userStore.logout()
-    router.replace('/admin/login')
+    router.replace('/user/login?redirect=/admin/dashboard')
   } catch (error) {
     ElMessage.error(typeof error === 'string' ? error : '修改密码失败，请检查当前密码是否正确')
   } finally {

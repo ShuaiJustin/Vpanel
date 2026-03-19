@@ -166,6 +166,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, CopyDocument } from '@element-plus/icons-vue'
 import { giftCardsApi } from '@/api/index'
+import { copyText } from '@/utils/clipboard'
 
 const loading = ref(false)
 const giftCards = ref([])
@@ -204,9 +205,13 @@ const getStatusLabel = (status) => {
   return labels[status] || status
 }
 
-const copyCode = (code) => {
-  navigator.clipboard.writeText(code)
-  ElMessage.success('已复制')
+const copyCode = async (code) => {
+  try {
+    await copyText(code)
+    ElMessage.success('已复制')
+  } catch (error) {
+    ElMessage.error('复制失败')
+  }
 }
 
 const fetchStats = async () => {

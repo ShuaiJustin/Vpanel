@@ -183,88 +183,18 @@
       </el-tab-pane>
 
       <el-tab-pane label="支付设置" name="payment">
-        <el-form :model="paymentForm" label-width="140px" class="settings-form">
-          <el-alert
-            title="支付设置保存后立即生效"
-            type="info"
-            :closable="false"
-            show-icon
-            style="margin-bottom: 20px"
-          />
-
-          <el-divider content-position="left">支付宝</el-divider>
-          <el-form-item label="启用支付宝">
-            <el-switch v-model="paymentForm.alipayEnabled" />
-          </el-form-item>
-          <el-form-item label="App ID">
-            <el-input v-model="paymentForm.alipayAppId" placeholder="请输入支付宝 App ID" />
-          </el-form-item>
-          <el-form-item label="商户私钥">
-            <el-input
-              v-model="paymentForm.alipayPrivateKey"
-              type="textarea"
-              :rows="4"
-              :placeholder="paymentForm.alipayPrivateKeyConfigured ? '已配置，留空则保持不变' : '请输入支付宝 RSA 私钥 PEM 内容'"
-            />
-          </el-form-item>
-          <el-form-item label="支付宝公钥">
-            <el-input
-              v-model="paymentForm.alipayPublicKey"
-              type="textarea"
-              :rows="4"
-              placeholder="请输入支付宝公钥 PEM 内容"
-            />
-          </el-form-item>
-          <el-form-item label="通知地址">
-            <el-input
-              v-model="paymentForm.alipayNotifyUrl"
-              placeholder="留空则自动使用面板公网地址 + /api/payments/callback/alipay"
-            />
-          </el-form-item>
-          <el-form-item label="返回地址">
-            <el-input
-              v-model="paymentForm.alipayReturnUrl"
-              placeholder="留空则自动使用面板公网地址 + /user/orders"
-            />
-          </el-form-item>
-          <el-form-item label="沙箱模式">
-            <el-switch v-model="paymentForm.alipaySandbox" />
-          </el-form-item>
-
-          <el-divider content-position="left">微信支付</el-divider>
-          <el-form-item label="启用微信支付">
-            <el-switch v-model="paymentForm.wechatEnabled" />
-          </el-form-item>
-          <el-form-item label="App ID">
-            <el-input v-model="paymentForm.wechatAppId" placeholder="请输入微信支付 App ID" />
-          </el-form-item>
-          <el-form-item label="商户号">
-            <el-input v-model="paymentForm.wechatMchId" placeholder="请输入微信支付商户号" />
-          </el-form-item>
-          <el-form-item label="API Key">
-            <el-input
-              v-model="paymentForm.wechatApiKey"
-              type="password"
-              show-password
-              :placeholder="paymentForm.wechatApiKeyConfigured ? '已配置，留空则保持不变' : '请输入微信支付 API Key'"
-            />
-          </el-form-item>
-          <el-form-item label="通知地址">
-            <el-input
-              v-model="paymentForm.wechatNotifyUrl"
-              placeholder="留空则自动使用面板公网地址 + /api/payments/callback/wechat"
-            />
-          </el-form-item>
-          <el-form-item label="沙箱模式">
-            <el-switch v-model="paymentForm.wechatSandbox" />
-          </el-form-item>
-
-          <el-divider></el-divider>
-          <el-form-item>
-            <el-button type="primary" :loading="paymentForm.saving" @click="savePaymentSettings">保存支付设置</el-button>
-            <el-button :loading="paymentForm.loading" @click="loadPaymentSettings">刷新</el-button>
-          </el-form-item>
-        </el-form>
+        <el-alert
+          title="支付配置已迁移到商业化管理"
+          description="为避免系统设置和商业化管理出现两套支付配置入口，这里只保留跳转入口。请统一在“商业化管理 -> 支付配置”中维护商户参数。"
+          type="info"
+          :closable="false"
+          show-icon
+        />
+        <div style="margin-top: 16px;">
+          <el-button type="primary" @click="openPaymentSettingsPage">
+            前往商业化管理中的支付配置
+          </el-button>
+        </div>
       </el-tab-pane>
       
       <el-tab-pane label="面板本地Xray" name="xray">
@@ -1821,6 +1751,10 @@ const loadPaymentSettings = async () => {
   } finally {
     paymentForm.loading = false
   }
+}
+
+const openPaymentSettingsPage = () => {
+  window.location.href = '/admin/payment-settings'
 }
 
 const savePaymentSettings = async () => {

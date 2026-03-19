@@ -56,6 +56,16 @@ func (h *SubscriptionHandler) GetLink(c *gin.Context) {
 		return
 	}
 
+	if err := h.service.CheckUserAccess(c.Request.Context(), userID.(int64)); err != nil {
+		if errors.IsForbidden(err) {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			return
+		}
+		h.logger.Error("failed to check subscription access", logger.F("error", err), logger.UserID(userID.(int64)))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check subscription access"})
+		return
+	}
+
 	info, err := h.service.GetSubscriptionInfoWithBaseURL(c.Request.Context(), userID.(int64), subscriptionBaseURLFromRequest(c))
 	if err != nil {
 		h.logger.Error("failed to get subscription info",
@@ -93,6 +103,16 @@ func (h *SubscriptionHandler) GetInfo(c *gin.Context) {
 		return
 	}
 
+	if err := h.service.CheckUserAccess(c.Request.Context(), userID.(int64)); err != nil {
+		if errors.IsForbidden(err) {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			return
+		}
+		h.logger.Error("failed to check subscription access", logger.F("error", err), logger.UserID(userID.(int64)))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check subscription access"})
+		return
+	}
+
 	info, err := h.service.GetSubscriptionInfoWithBaseURL(c.Request.Context(), userID.(int64), subscriptionBaseURLFromRequest(c))
 	if err != nil {
 		h.logger.Error("failed to get subscription info", logger.F("error", err), logger.UserID(userID.(int64)))
@@ -109,6 +129,16 @@ func (h *SubscriptionHandler) Regenerate(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	if err := h.service.CheckUserAccess(c.Request.Context(), userID.(int64)); err != nil {
+		if errors.IsForbidden(err) {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			return
+		}
+		h.logger.Error("failed to check subscription access", logger.F("error", err), logger.UserID(userID.(int64)))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check subscription access"})
 		return
 	}
 

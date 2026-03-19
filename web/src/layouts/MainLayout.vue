@@ -194,9 +194,13 @@ const username = computed(() => userStore.user?.username || '管理员')
 const activeMenu = computed(() => route.path)
 const currentTitle = computed(() => route.meta?.title || 'V 管理面板')
 
+function getStoredItem(key) {
+  return sessionStorage.getItem(key) || localStorage.getItem(key)
+}
+
 // Check if user is admin
 const isAdmin = computed(() => {
-  const userRole = localStorage.getItem('userRole')
+  const userRole = getStoredItem('userRole')
   return userRole === 'admin'
 })
 

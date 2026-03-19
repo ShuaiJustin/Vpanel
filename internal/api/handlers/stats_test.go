@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
 	"github.com/leanovate/gopter/prop"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
 	"v/internal/database/repository"
@@ -50,7 +50,7 @@ func TestStatisticsAccuracy_TotalUsers(t *testing.T) {
 				return false
 			}
 			db.AutoMigrate(&repository.User{})
-			
+
 			userRepo := repository.NewUserRepository(db)
 			ctx := context.Background()
 
@@ -89,7 +89,7 @@ func TestStatisticsAccuracy_ActiveUsers(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	db.AutoMigrate(&repository.User{})
-	
+
 	userRepo := repository.NewUserRepository(db)
 	ctx := context.Background()
 
@@ -144,7 +144,7 @@ func TestStatisticsAccuracy_TotalProxies(t *testing.T) {
 				return false
 			}
 			db.AutoMigrate(&repository.Proxy{})
-			
+
 			proxyRepo := repository.NewProxyRepository(db)
 			ctx := context.Background()
 
@@ -200,7 +200,7 @@ func TestStatisticsAccuracy_ActiveProxies(t *testing.T) {
 				return false
 			}
 			db.AutoMigrate(&repository.Proxy{})
-			
+
 			proxyRepo := repository.NewProxyRepository(db)
 			ctx := context.Background()
 
@@ -270,7 +270,7 @@ func TestStatisticsAccuracy_TotalTraffic(t *testing.T) {
 				return false
 			}
 			db.AutoMigrate(&repository.Traffic{})
-			
+
 			trafficRepo := repository.NewTrafficRepository(db)
 			ctx := context.Background()
 
@@ -437,7 +437,6 @@ func TestStatisticsAccuracy_TrafficByPeriod(t *testing.T) {
 	assert.Equal(t, int64(1500), upload, "Week's upload mismatch")
 	assert.Equal(t, int64(3000), download, "Week's download mismatch")
 }
-
 
 // Feature: project-optimization, Property 21: Traffic Period Filtering
 // *For any* traffic query with a time period filter, the returned traffic SHALL only

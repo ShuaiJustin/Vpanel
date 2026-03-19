@@ -178,6 +178,13 @@ func (h *ProxyHandler) Create(c *gin.Context) {
 		settings.Settings = protocol.DefaultSettings()
 	}
 
+	normalizedSettings, err := proxy.NormalizeSettings(req.Protocol, settings.Settings)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	settings.Settings = normalizedSettings
+
 	if err := protocol.Validate(settings); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -209,7 +216,7 @@ func (h *ProxyHandler) Create(c *gin.Context) {
 		Protocol: req.Protocol,
 		Port:     req.Port,
 		Host:     req.Host,
-		Settings: req.Settings,
+		Settings: settings.Settings,
 		Enabled:  req.Enabled,
 		Remark:   req.Remark,
 	}
@@ -355,7 +362,12 @@ func (h *ProxyHandler) Update(c *gin.Context) {
 		p.NodeID = req.NodeID
 	}
 	if req.Settings != nil {
-		p.Settings = req.Settings
+		normalizedSettings, err := proxy.NormalizeSettings(p.Protocol, req.Settings)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		p.Settings = normalizedSettings
 	}
 	if req.Enabled != nil {
 		p.Enabled = *req.Enabled
@@ -456,6 +468,9 @@ func (h *ProxyHandler) GetShareLink(c *gin.Context) {
 	settingsMap := make(map[string]any, len(p.Settings)+1)
 	for key, value := range p.Settings {
 		settingsMap[key] = value
+	}
+	if normalizedSettings, normalizeErr := proxy.NormalizeSettings(p.Protocol, settingsMap); normalizeErr == nil {
+		settingsMap = normalizedSettings
 	}
 
 	resolvedServer := ""

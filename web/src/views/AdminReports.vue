@@ -147,20 +147,17 @@
       </div>
     </el-card>
 
-    <!-- 收入趋势图 -->
     <el-card shadow="never" class="chart-card">
       <template #header>
-        <span>收入趋势</span>
+        <span>趋势与排行</span>
       </template>
-      <div ref="revenueChartRef" class="chart-container"></div>
-    </el-card>
-
-    <!-- 订单统计图 -->
-    <el-card shadow="never" class="chart-card">
-      <template #header>
-        <span>订单统计</span>
-      </template>
-      <div ref="orderChartRef" class="chart-container"></div>
+      <el-alert
+        title="当前后端只提供汇总类报表接口"
+        description="收入趋势、订单趋势和套餐销售排行仍缺少真实的按日/按套餐统计接口，页面不再展示伪造图表数据。"
+        type="info"
+        :closable="false"
+        show-icon
+      />
     </el-card>
 
     <!-- 套餐销售排行 -->
@@ -168,35 +165,18 @@
       <template #header>
         <span>套餐销售排行</span>
       </template>
-      <el-table :data="planRanking" style="width: 100%">
-        <el-table-column prop="rank" label="排名" width="80" />
-        <el-table-column prop="plan_name" label="套餐名称" />
-        <el-table-column prop="order_count" label="订单数" width="120" />
-        <el-table-column label="销售额" width="150">
-          <template #default="{ row }">¥{{ formatPrice(row.revenue) }}</template>
-        </el-table-column>
-        <el-table-column label="占比" width="120">
-          <template #default="{ row }">
-            <el-progress :percentage="row.percentage" :stroke-width="6" />
-          </template>
-        </el-table-column>
-      </el-table>
+      <el-empty description="缺少真实套餐排行接口，暂不展示模拟数据" />
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
-import * as echarts from 'echarts'
 import api from '@/api'
 
 const dateRange = ref(null)
-const revenueChartRef = ref(null)
-const orderChartRef = ref(null)
-let revenueChart = null
-let orderChart = null
 
 const stats = reactive({
   total_revenue: 0,
@@ -227,8 +207,6 @@ const pauseStats = reactive({
   abuse_patterns: []
 })
 
-const planRanking = ref([])
-
 const formatPrice = (price) => ((price || 0) / 100).toFixed(2)
 
 // Convert failures_by_reason object to array for table display
@@ -248,21 +226,16 @@ const fetchFailedPaymentStats = async () => {
     }
   } catch (error) {
     console.error('Failed to fetch failed payment stats:', error)
-    // Use mock data if API fails
     Object.assign(failedPaymentStats, {
-      total_failed: 12,
-      pending_retry: 3,
-      retry_exhausted: 2,
-      recovered_by_retry: 5,
-      failure_rate: 7.69,
-      recovery_rate: 41.67,
-      avg_retry_attempts: 1.8,
-      failures_by_method: { alipay: 5, wechat: 7 },
-      failures_by_reason: { 
-        'payment gateway timeout': 4, 
-        'insufficient balance': 3,
-        'user cancelled': 5
-      }
+      total_failed: 0,
+      pending_retry: 0,
+      retry_exhausted: 0,
+      recovered_by_retry: 0,
+      failure_rate: 0,
+      recovery_rate: 0,
+      avg_retry_attempts: 0,
+      failures_by_method: {},
+      failures_by_reason: {}
     })
   }
 }
@@ -275,14 +248,13 @@ const fetchPauseStats = async () => {
     }
   } catch (error) {
     console.error('Failed to fetch pause stats:', error)
-    // Use mock data if API fails
     Object.assign(pauseStats, {
-      total_pauses: 45,
-      active_pauses: 8,
-      resumed_pauses: 32,
-      auto_resumed: 5,
-      avg_pause_days: 12.5,
-      pause_rate: 15.3,
+      total_pauses: 0,
+      active_pauses: 0,
+      resumed_pauses: 0,
+      auto_resumed: 0,
+      avg_pause_days: 0,
+      pause_rate: 0,
       abuse_patterns: []
     })
   }
@@ -328,77 +300,18 @@ const fetchReports = async () => {
       stats.total_refund = orderStatsResponse.data.refunded || 0
     }
 
-    // TODO: 获取套餐排名数据（需要后端 API）
-    // 暂时使用模拟数据
-    planRanking.value = [
-      { rank: 1, plan_name: '年度套餐', order_count: 45, revenue: 539400, percentage: 43 },
-      { rank: 2, plan_name: '季度套餐', order_count: 52, revenue: 415600, percentage: 33 },
-      { rank: 3, plan_name: '月度套餐', order_count: 59, revenue: 303900, percentage: 24 }
-    ]
-
-    updateCharts()
-    fetchFailedPaymentStats()
-    fetchPauseStats()
+    await Promise.all([
+      fetchFailedPaymentStats(),
+      fetchPauseStats()
+    ])
   } catch (error) {
     console.error('Failed to fetch reports:', error)
     ElMessage.error(`获取报表数据失败: ${error.message || '未知错误'}`)
   }
 }
 
-const updateCharts = () => {
-  // Revenue chart
-  if (revenueChart) {
-    revenueChart.setOption({
-      tooltip: { trigger: 'axis' },
-      xAxis: { type: 'category', data: ['1月', '2月', '3月', '4月', '5月', '6月'] },
-      yAxis: { type: 'value', axisLabel: { formatter: '¥{value}' } },
-      series: [{
-        name: '收入',
-        type: 'line',
-        smooth: true,
-        data: [12000, 15000, 18000, 22000, 19000, 25000],
-        areaStyle: { opacity: 0.3 }
-      }]
-    })
-  }
-
-  // Order chart
-  if (orderChart) {
-    orderChart.setOption({
-      tooltip: { trigger: 'axis' },
-      legend: { data: ['新订单', '已支付', '已退款'] },
-      xAxis: { type: 'category', data: ['1月', '2月', '3月', '4月', '5月', '6月'] },
-      yAxis: { type: 'value' },
-      series: [
-        { name: '新订单', type: 'bar', data: [20, 25, 30, 35, 28, 40] },
-        { name: '已支付', type: 'bar', data: [18, 23, 28, 32, 26, 38] },
-        { name: '已退款', type: 'bar', data: [2, 2, 2, 3, 2, 2] }
-      ]
-    })
-  }
-}
-
-const initCharts = () => {
-  if (revenueChartRef.value) {
-    revenueChart = echarts.init(revenueChartRef.value)
-  }
-  if (orderChartRef.value) {
-    orderChart = echarts.init(orderChartRef.value)
-  }
-}
-
 onMounted(() => {
-  initCharts()
   fetchReports()
-  window.addEventListener('resize', () => {
-    revenueChart?.resize()
-    orderChart?.resize()
-  })
-})
-
-onUnmounted(() => {
-  revenueChart?.dispose()
-  orderChart?.dispose()
 })
 </script>
 

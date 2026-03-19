@@ -78,18 +78,21 @@ func (p *Protocol) GenerateLink(settings *proxy.Settings) (string, error) {
 	}
 
 	linkData := map[string]any{
-		"v":    "2",
-		"ps":   settings.Name,
-		"add":  server,
-		"port": settings.Port,
-		"id":   userID,
-		"aid":  settings.GetInt("alterId"),
-		"net":  settings.GetString("network"),
-		"type": settings.GetString("type"),
-		"host": settings.GetString("host"),
-		"path": settings.GetString("path"),
-		"tls":  tlsValue,
-		"sni":  proxy.ResolveSNI(settings.Settings),
+		"v":             "2",
+		"ps":            settings.Name,
+		"add":           server,
+		"port":          settings.Port,
+		"id":            userID,
+		"aid":           settings.GetInt("alterId"),
+		"net":           settings.GetString("network"),
+		"type":          settings.GetString("type"),
+		"host":          settings.GetString("host"),
+		"path":          settings.GetString("path"),
+		"tls":           tlsValue,
+		"sni":           proxy.ResolveSNI(settings.Settings),
+		"alpn":          settings.GetString("alpn"),
+		"fp":            settings.GetString("fingerprint"),
+		"allowInsecure": settings.GetBool("allowInsecure"),
 	}
 
 	jsonData, err := json.Marshal(linkData)
@@ -140,6 +143,10 @@ func (p *Protocol) ParseLink(link string) (*proxy.Settings, error) {
 			"host":    getString(linkData, "host"),
 			"path":    getString(linkData, "path"),
 			"tls":     getString(linkData, "tls"),
+			"sni":     getString(linkData, "sni"),
+			"alpn":    getString(linkData, "alpn"),
+			"fp":      getString(linkData, "fp"),
+			"allowInsecure": getBool(linkData, "allowInsecure"),
 		},
 		Enabled: true,
 	}
@@ -192,4 +199,16 @@ func getInt(m map[string]any, key string) int {
 		}
 	}
 	return 0
+}
+
+func getBool(m map[string]any, key string) bool {
+	if v, ok := m[key]; ok {
+		switch typed := v.(type) {
+		case bool:
+			return typed
+		case string:
+			return typed == "1" || typed == "true"
+		}
+	}
+	return false
 }

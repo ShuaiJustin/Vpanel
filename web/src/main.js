@@ -9,6 +9,7 @@ import './assets/styles/main.css'
 import './assets/styles/base.scss'
 import './styles/theme.css'
 import './styles/responsive.css'
+import './styles/admin-ui.css'
 import './styles/dark-mode-fixes.css'
 import router from './router'
 

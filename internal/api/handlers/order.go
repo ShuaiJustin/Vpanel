@@ -2,8 +2,11 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -49,7 +52,6 @@ type CreateOrderRequest struct {
 	PlanID     int64  `json:"plan_id" binding:"required,gt=0"`
 	CouponCode string `json:"coupon_code"`
 }
-
 
 // CreateOrder creates a new order.
 func (h *OrderHandler) CreateOrder(c *gin.Context) {
@@ -190,7 +192,6 @@ func (h *OrderHandler) CancelOrder(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Order cancelled"})
 }
 
-
 // ListAllOrders returns all orders (admin only).
 func (h *OrderHandler) ListAllOrders(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -198,6 +199,26 @@ func (h *OrderHandler) ListAllOrders(c *gin.Context) {
 	status := c.Query("status")
 
 	filter := order.OrderFilter{Status: status}
+	filter.Search = strings.TrimSpace(c.Query("search"))
+
+	if startDate := strings.TrimSpace(c.Query("start_date")); startDate != "" {
+		parsed, err := parseOrderFilterTime(startDate)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid start date"})
+			return
+		}
+		filter.StartDate = &parsed
+	}
+
+	if endDate := strings.TrimSpace(c.Query("end_date")); endDate != "" {
+		parsed, err := parseOrderFilterTime(endDate)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid end date"})
+			return
+		}
+		filter.EndDate = &parsed
+	}
+
 	orders, total, err := h.orderService.List(c.Request.Context(), filter, page, pageSize)
 	if err != nil {
 		h.logger.Error("Failed to list orders", logger.Err(err))
@@ -236,6 +257,22 @@ func (h *OrderHandler) UpdateOrderStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Order status updated"})
+}
+
+func parseOrderFilterTime(value string) (time.Time, error) {
+	layouts := []string{
+		time.RFC3339,
+		"2006-01-02 15:04:05",
+		"2006-01-02",
+	}
+
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed, nil
+		}
+	}
+
+	return time.Time{}, errors.New("invalid time format")
 }
 
 func (h *OrderHandler) toOrderResponse(o *order.Order) OrderResponse {

@@ -7,14 +7,16 @@ import (
 	"strings"
 
 	"v/internal/database/repository"
+	"v/internal/entitlement"
 	proxylib "v/internal/proxy"
 )
 
 // Service provides node operations for the user portal.
 type Service struct {
-	proxyRepo repository.ProxyRepository
-	userRepo  repository.UserRepository
-	nodeRepo  repository.NodeRepository
+	proxyRepo   repository.ProxyRepository
+	userRepo    repository.UserRepository
+	nodeRepo    repository.NodeRepository
+	entitlement *entitlement.Service
 }
 
 // NewService creates a new node service.
@@ -24,6 +26,12 @@ func NewService(proxyRepo repository.ProxyRepository, userRepo repository.UserRe
 		userRepo:  userRepo,
 		nodeRepo:  nodeRepo,
 	}
+}
+
+// WithEntitlementService injects user entitlement logic for node access.
+func (s *Service) WithEntitlementService(entitlementService *entitlement.Service) *Service {
+	s.entitlement = entitlementService
+	return s
 }
 
 // Node represents a proxy node for the user portal.
@@ -54,14 +62,23 @@ type SortOption struct {
 
 // ListNodes retrieves available nodes for a user with optional filtering.
 func (s *Service) ListNodes(ctx context.Context, userID int64, filter *NodeFilter) ([]*Node, error) {
-	proxies, err := s.proxyRepo.GetByUserID(ctx, userID, 1000, 0)
-	if err != nil {
-		return nil, err
-	}
-	if len(proxies) == 0 {
-		proxies, err = s.proxyRepo.GetEnabled(ctx)
+	var err error
+	var proxies []*repository.Proxy
+	if s.entitlement != nil {
+		proxies, _, err = s.entitlement.GetAccessibleProxies(ctx, userID)
 		if err != nil {
 			return nil, err
+		}
+	} else {
+		proxies, err = s.proxyRepo.GetByUserID(ctx, userID, 1000, 0)
+		if err != nil {
+			return nil, err
+		}
+		if len(proxies) == 0 {
+			proxies, err = s.proxyRepo.GetEnabled(ctx)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -117,7 +134,15 @@ func (s *Service) ListAllNodes(ctx context.Context, filter *NodeFilter) ([]*Node
 }
 
 // GetNode retrieves a single node by ID.
-func (s *Service) GetNode(ctx context.Context, id int64) (*Node, error) {
+func (s *Service) GetNode(ctx context.Context, userID, id int64) (*Node, error) {
+	if s.entitlement != nil {
+		proxy, _, err := s.entitlement.GetAccessibleProxy(ctx, userID, id)
+		if err != nil {
+			return nil, err
+		}
+		return s.proxyToNode(ctx, proxy), nil
+	}
+
 	proxy, err := s.proxyRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err

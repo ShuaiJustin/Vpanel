@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
 	"github.com/leanovate/gopter/prop"
-	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 
@@ -455,7 +455,6 @@ func TestEmailValidation_EmptyEmail(t *testing.T) {
 		t.Errorf("Expected status 201, got %d: %s", w.Code, w.Body.String())
 	}
 }
-
 
 // TestEmailValidation_InvalidEmail tests that specific invalid emails are rejected
 func TestEmailValidation_InvalidEmail(t *testing.T) {

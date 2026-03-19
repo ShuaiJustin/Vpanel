@@ -17,11 +17,11 @@ import (
 
 // HealthHandler handles health check requests.
 type HealthHandler struct {
-	repos      *repository.Repositories
-	logger     logger.Logger
-	xrayMgr    xray.Manager
-	diskPath   string
-	minDiskGB  float64
+	repos     *repository.Repositories
+	logger    logger.Logger
+	xrayMgr   xray.Manager
+	diskPath  string
+	minDiskGB float64
 }
 
 // HealthHandlerConfig holds configuration for the health handler.
@@ -156,7 +156,6 @@ func (h *HealthHandler) checkDatabase() Check {
 		Latency: latency.String(),
 	}
 }
-
 
 // checkXray checks the Xray process status.
 func (h *HealthHandler) checkXray() Check {

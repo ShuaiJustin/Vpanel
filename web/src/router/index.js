@@ -62,15 +62,19 @@ const NodeComparison = () => import(/* webpackChunkName: "node-admin" */ '../vie
 // 错误页面
 const NotFound = () => import(/* webpackChunkName: "error" */ '../views/NotFound.vue')
 
+function getStoredItem(key) {
+  return sessionStorage.getItem(key) || localStorage.getItem(key)
+}
+
 const routes = [
   // 根路径 - 默认跳转到用户门户
   {
     path: '/',
     name: 'Home',
     redirect: () => {
-      const isAuthenticated = localStorage.getItem('token')
-      const isUserAuthenticated = localStorage.getItem('userToken')
-      const userRole = localStorage.getItem('userRole') || 'user'
+      const isAuthenticated = getStoredItem('token')
+      const isUserAuthenticated = getStoredItem('userToken')
+      const userRole = getStoredItem('userRole') || 'user'
       
       // 管理员已登录，跳转到管理后台
       if (isAuthenticated && userRole === 'admin') {
@@ -447,9 +451,9 @@ const router = createRouter({
 
 // 全局前置守卫
 router.beforeEach((to, from, next) => {
-  const isAuthenticated = localStorage.getItem('token')
-  const isUserAuthenticated = localStorage.getItem('userToken')
-  const userRole = localStorage.getItem('userRole') || 'user'
+  const isAuthenticated = getStoredItem('token')
+  const isUserAuthenticated = getStoredItem('userToken')
+  const userRole = getStoredItem('userRole') || 'user'
   
   // 处理根路径 - 根据登录状态和角色智能跳转
   if (to.path === '/') {

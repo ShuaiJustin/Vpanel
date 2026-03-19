@@ -28,20 +28,20 @@ func NewCouponHandler(couponService *coupon.Service, log logger.Logger) *CouponH
 
 // CouponResponse represents a coupon in API responses.
 type CouponResponse struct {
-	ID             int64    `json:"id"`
-	Code           string   `json:"code"`
-	Name           string   `json:"name"`
-	Type           string   `json:"type"`
-	Value          int64    `json:"value"`
-	MinOrderAmount int64    `json:"min_order_amount"`
-	MaxDiscount    int64    `json:"max_discount"`
-	TotalLimit     int      `json:"total_limit"`
-	PerUserLimit   int      `json:"per_user_limit"`
-	UsedCount      int      `json:"used_count"`
-	PlanIDs        []int64  `json:"plan_ids,omitempty"`
-	StartAt        string   `json:"start_at"`
-	ExpireAt       string   `json:"expire_at"`
-	IsActive       bool     `json:"is_active"`
+	ID             int64   `json:"id"`
+	Code           string  `json:"code"`
+	Name           string  `json:"name"`
+	Type           string  `json:"type"`
+	Value          int64   `json:"value"`
+	MinOrderAmount int64   `json:"min_order_amount"`
+	MaxDiscount    int64   `json:"max_discount"`
+	TotalLimit     int     `json:"total_limit"`
+	PerUserLimit   int     `json:"per_user_limit"`
+	UsedCount      int     `json:"used_count"`
+	PlanIDs        []int64 `json:"plan_ids,omitempty"`
+	StartAt        string  `json:"start_at"`
+	ExpireAt       string  `json:"expire_at"`
+	IsActive       bool    `json:"is_active"`
 }
 
 // ValidateCouponRequest represents a request to validate a coupon.
@@ -82,7 +82,6 @@ func (h *CouponHandler) ValidateCoupon(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"coupon": h.toCouponResponse(cp), "discount": discount})
 }
-
 
 // CreateCouponRequest represents a request to create a coupon.
 type CreateCouponRequest struct {
@@ -144,7 +143,7 @@ func (h *CouponHandler) CreateCoupon(c *gin.Context) {
 			return
 		}
 	}
-	
+
 	// Validate time range
 	if expireAt.Before(startAt) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "expire_at must be after start_at"})

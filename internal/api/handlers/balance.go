@@ -59,7 +59,6 @@ func (h *BalanceHandler) GetBalance(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"balance": bal})
 }
 
-
 // GetTransactions returns the current user's transaction history.
 func (h *BalanceHandler) GetTransactions(c *gin.Context) {
 	userID, exists := c.Get("user_id")
@@ -130,7 +129,7 @@ func (h *BalanceHandler) AdjustBalance(c *gin.Context) {
 		logger.F("reason", req.Reason))
 
 	if err := h.balanceService.Adjust(c.Request.Context(), req.UserID, req.Amount, req.Reason, operatorStr); err != nil {
-		h.logger.Error("Failed to adjust balance", 
+		h.logger.Error("Failed to adjust balance",
 			logger.Err(err),
 			logger.F("target_user_id", req.UserID),
 			logger.F("operator", operatorStr))

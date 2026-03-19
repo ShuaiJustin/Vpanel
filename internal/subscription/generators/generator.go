@@ -2,6 +2,8 @@
 package generators
 
 import (
+	"strings"
+
 	"v/internal/database/repository"
 )
 
@@ -92,8 +94,12 @@ func ExtractProxyInfo(proxy *repository.Proxy) *ProxyInfo {
 
 // GetSettingString safely gets a string setting value.
 func GetSettingString(settings map[string]interface{}, key string, defaultValue string) string {
-	if v, ok := settings[key].(string); ok {
-		return v
+	for _, candidate := range settingAliases(key) {
+		if v, ok := settings[candidate].(string); ok {
+			if trimmed := strings.TrimSpace(v); trimmed != "" {
+				return trimmed
+			}
+		}
 	}
 	return defaultValue
 }
@@ -111,10 +117,33 @@ func GetSettingInt(settings map[string]interface{}, key string, defaultValue int
 
 // GetSettingBool safely gets a bool setting value.
 func GetSettingBool(settings map[string]interface{}, key string, defaultValue bool) bool {
-	if v, ok := settings[key].(bool); ok {
-		return v
+	for _, candidate := range settingAliases(key) {
+		if v, ok := settings[candidate]; ok {
+			switch typed := v.(type) {
+			case bool:
+				return typed
+			case string:
+				trimmed := strings.TrimSpace(typed)
+				return strings.EqualFold(trimmed, "true") || trimmed == "1"
+			}
+		}
 	}
 	return defaultValue
+}
+
+func settingAliases(key string) []string {
+	switch key {
+	case "fingerprint", "fp":
+		return []string{"fingerprint", "fp"}
+	case "publicKey", "pbk":
+		return []string{"publicKey", "pbk"}
+	case "shortId", "sid":
+		return []string{"shortId", "sid"}
+	case "sni", "server_name":
+		return []string{"sni", "server_name"}
+	default:
+		return []string{key}
+	}
 }
 
 // MakeUniqueNames ensures all proxy names are unique by appending suffixes if needed.

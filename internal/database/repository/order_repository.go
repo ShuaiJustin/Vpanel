@@ -3,6 +3,7 @@ package repository
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"gorm.io/gorm"
@@ -50,6 +51,7 @@ const (
 // OrderFilter defines filter options for listing orders.
 type OrderFilter struct {
 	UserID        *int64
+	Search        string
 	Status        string
 	PaymentMethod string
 	StartDate     *time.Time
@@ -144,6 +146,14 @@ func (r *orderRepository) List(ctx context.Context, filter OrderFilter, limit, o
 
 	if filter.UserID != nil {
 		query = query.Where("user_id = ?", *filter.UserID)
+	}
+	if filter.Search != "" {
+		searchLike := "%" + filter.Search + "%"
+		if userID, err := strconv.ParseInt(filter.Search, 10, 64); err == nil {
+			query = query.Where(r.db.WithContext(ctx).Where("user_id = ?", userID).Or("order_no LIKE ?", searchLike))
+		} else {
+			query = query.Where("order_no LIKE ?", searchLike)
+		}
 	}
 	if filter.Status != "" {
 		query = query.Where("status = ?", filter.Status)

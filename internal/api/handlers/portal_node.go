@@ -49,6 +49,10 @@ func (h *PortalNodeHandler) ListNodes(c *gin.Context) {
 	// Get nodes
 	nodes, err := h.nodeService.ListNodes(c.Request.Context(), userID.(int64), filter)
 	if err != nil {
+		if errors.IsForbidden(err) {
+			middleware.HandleForbidden(c, err.Error())
+			return
+		}
 		h.logger.Error("failed to list nodes", logger.F("error", err))
 		middleware.HandleInternalError(c, "获取节点列表失败", err)
 		return
@@ -79,6 +83,12 @@ func (h *PortalNodeHandler) ListNodes(c *gin.Context) {
 
 // GetNode returns a single node by ID.
 func (h *PortalNodeHandler) GetNode(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		middleware.HandleUnauthorized(c, errors.MsgUnauthorized)
+		return
+	}
+
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -86,8 +96,12 @@ func (h *PortalNodeHandler) GetNode(c *gin.Context) {
 		return
 	}
 
-	nodeInfo, err := h.nodeService.GetNode(c.Request.Context(), id)
+	nodeInfo, err := h.nodeService.GetNode(c.Request.Context(), userID.(int64), id)
 	if err != nil {
+		if errors.IsForbidden(err) {
+			middleware.HandleForbidden(c, err.Error())
+			return
+		}
 		middleware.HandleNotFound(c, "node", id)
 		return
 	}
@@ -102,6 +116,12 @@ type TestLatencyRequest struct {
 
 // TestLatency tests TCP latency to a node host:port.
 func (h *PortalNodeHandler) TestLatency(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		middleware.HandleUnauthorized(c, errors.MsgUnauthorized)
+		return
+	}
+
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -110,8 +130,12 @@ func (h *PortalNodeHandler) TestLatency(c *gin.Context) {
 	}
 
 	// Get node to verify it exists
-	nodeInfo, err := h.nodeService.GetNode(c.Request.Context(), id)
+	nodeInfo, err := h.nodeService.GetNode(c.Request.Context(), userID.(int64), id)
 	if err != nil {
+		if errors.IsForbidden(err) {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusNotFound, gin.H{"error": "节点不存在"})
 		return
 	}

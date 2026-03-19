@@ -25,13 +25,13 @@ func NewReportHandler(orderService *order.Service, log logger.Logger) *ReportHan
 // GetRevenueReport returns revenue statistics (admin only).
 func (h *ReportHandler) GetRevenueReport(c *gin.Context) {
 	ctx := c.Request.Context()
-	
+
 	startStr := c.Query("start")
 	endStr := c.Query("end")
-	
+
 	var start, end time.Time
 	var err error
-	
+
 	if startStr != "" {
 		start, err = time.Parse("2006-01-02", startStr)
 		if err != nil {
@@ -45,7 +45,7 @@ func (h *ReportHandler) GetRevenueReport(c *gin.Context) {
 	} else {
 		start = time.Now().AddDate(0, -1, 0) // Default: last month
 	}
-	
+
 	if endStr != "" {
 		end, err = time.Parse("2006-01-02", endStr)
 		if err != nil {
@@ -59,7 +59,7 @@ func (h *ReportHandler) GetRevenueReport(c *gin.Context) {
 	} else {
 		end = time.Now()
 	}
-	
+
 	// Validate date range
 	if start.After(end) {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -69,7 +69,7 @@ func (h *ReportHandler) GetRevenueReport(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	// Check if order service is available
 	if h.orderService == nil {
 		h.logger.Error("Order service is not available")
@@ -80,7 +80,7 @@ func (h *ReportHandler) GetRevenueReport(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	revenue, err := h.orderService.GetRevenueByDateRange(ctx, start, end)
 	if err != nil {
 		h.logger.Error("Failed to get revenue", logger.Err(err),
@@ -93,7 +93,7 @@ func (h *ReportHandler) GetRevenueReport(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	orderCount, err := h.orderService.GetOrderCountByDateRange(ctx, start, end)
 	if err != nil {
 		h.logger.Error("Failed to get order count", logger.Err(err),
@@ -106,7 +106,7 @@ func (h *ReportHandler) GetRevenueReport(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "success",
@@ -122,7 +122,7 @@ func (h *ReportHandler) GetRevenueReport(c *gin.Context) {
 // GetOrderStats returns order statistics (admin only).
 func (h *ReportHandler) GetOrderStats(c *gin.Context) {
 	ctx := c.Request.Context()
-	
+
 	// Check if order service is available
 	if h.orderService == nil {
 		h.logger.Error("Order service is not available")
@@ -133,7 +133,7 @@ func (h *ReportHandler) GetOrderStats(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	total, err := h.orderService.GetOrderCount(ctx)
 	if err != nil {
 		h.logger.Error("Failed to get total order count", logger.Err(err))
@@ -144,14 +144,14 @@ func (h *ReportHandler) GetOrderStats(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	// Get counts by status - don't fail if individual queries fail
 	pending, _ := h.orderService.GetOrderCountByStatus(ctx, "pending")
 	paid, _ := h.orderService.GetOrderCountByStatus(ctx, "paid")
 	completed, _ := h.orderService.GetOrderCountByStatus(ctx, "completed")
 	cancelled, _ := h.orderService.GetOrderCountByStatus(ctx, "cancelled")
 	refunded, _ := h.orderService.GetOrderCountByStatus(ctx, "refunded")
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "success",

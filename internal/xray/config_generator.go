@@ -99,14 +99,15 @@ type InboundConfig struct {
 
 // StreamSettings represents stream settings for transport.
 type StreamSettings struct {
-	Network      string         `json:"network"`
-	Security     string         `json:"security,omitempty"`
-	TLSSettings  *TLSSettings   `json:"tlsSettings,omitempty"`
-	TCPSettings  map[string]any `json:"tcpSettings,omitempty"`
-	WSSettings   map[string]any `json:"wsSettings,omitempty"`
-	HTTPSettings map[string]any `json:"httpSettings,omitempty"`
-	QUICSettings map[string]any `json:"quicSettings,omitempty"`
-	GRPCSettings map[string]any `json:"grpcSettings,omitempty"`
+	Network         string         `json:"network"`
+	Security        string         `json:"security,omitempty"`
+	TLSSettings     *TLSSettings   `json:"tlsSettings,omitempty"`
+	RealitySettings map[string]any `json:"realitySettings,omitempty"`
+	TCPSettings     map[string]any `json:"tcpSettings,omitempty"`
+	WSSettings      map[string]any `json:"wsSettings,omitempty"`
+	HTTPSettings    map[string]any `json:"httpSettings,omitempty"`
+	QUICSettings    map[string]any `json:"quicSettings,omitempty"`
+	GRPCSettings    map[string]any `json:"grpcSettings,omitempty"`
 }
 
 // TLSSettings represents TLS configuration.
@@ -407,9 +408,11 @@ func (g *ConfigGenerator) generateStreamSettings(ctx context.Context, settings m
 			}
 
 			// ALPN
-			if alpn, ok := settings["alpn"].([]string); ok {
+			if alpn := getStringSliceSetting(settings, "alpn"); len(alpn) > 0 {
 				stream.TLSSettings.ALPN = alpn
 			}
+		} else if security == "reality" {
+			stream.RealitySettings = buildRealitySettings(settings)
 		}
 	}
 
@@ -683,8 +686,166 @@ func getStringSetting(settings map[string]any, key string) string {
 		if len(typed) > 0 {
 			return strings.TrimSpace(typed[0])
 		}
+	case []any:
+		for _, item := range typed {
+			if text, ok := item.(string); ok {
+				text = strings.TrimSpace(text)
+				if text != "" {
+					return text
+				}
+			}
+		}
 	}
 	return ""
+}
+
+func getStringSliceSetting(settings map[string]any, key string) []string {
+	value, ok := settings[key]
+	if !ok || value == nil {
+		return nil
+	}
+
+	values := make([]string, 0)
+	appendValue := func(item string) {
+		for _, part := range strings.Split(item, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			values = append(values, part)
+		}
+	}
+
+	switch typed := value.(type) {
+	case string:
+		appendValue(typed)
+	case []string:
+		for _, item := range typed {
+			appendValue(item)
+		}
+	case []any:
+		for _, item := range typed {
+			if text, ok := item.(string); ok {
+				appendValue(text)
+			}
+		}
+	}
+
+	if len(values) == 0 {
+		return nil
+	}
+	return values
+}
+
+func getMapSetting(settings map[string]any, key string) map[string]any {
+	value, ok := settings[key]
+	if !ok || value == nil {
+		return nil
+	}
+	typed, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	return typed
+}
+
+func getBoolSetting(settings map[string]any, key string) bool {
+	value, ok := settings[key]
+	if !ok || value == nil {
+		return false
+	}
+
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		return strings.EqualFold(trimmed, "true") || trimmed == "1"
+	case int:
+		return typed != 0
+	case float64:
+		return typed != 0
+	default:
+		return false
+	}
+}
+
+func getIntSetting(settings map[string]any, key string) int {
+	value, ok := settings[key]
+	if !ok || value == nil {
+		return 0
+	}
+
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int64:
+		return int(typed)
+	case float64:
+		return int(typed)
+	default:
+		return 0
+	}
+}
+
+func buildRealitySettings(settings map[string]any) map[string]any {
+	realitySettings := getMapSetting(settings, "reality_settings")
+	if realitySettings == nil {
+		realitySettings = make(map[string]any)
+	}
+
+	dest := getStringSetting(realitySettings, "dest")
+	if dest == "" {
+		dest = getStringSetting(settings, "dest")
+	}
+	privateKey := getStringSetting(realitySettings, "privateKey")
+	if privateKey == "" {
+		privateKey = getStringSetting(settings, "privateKey")
+	}
+	serverNames := getStringSliceSetting(realitySettings, "serverNames")
+	if len(serverNames) == 0 {
+		if sni := getStringSetting(settings, "server_name"); sni != "" {
+			serverNames = []string{sni}
+		} else if sni := getStringSetting(settings, "sni"); sni != "" {
+			serverNames = []string{sni}
+		}
+	}
+	shortIDs := getStringSliceSetting(realitySettings, "shortIds")
+	if len(shortIDs) == 0 {
+		if shortID := getStringSetting(settings, "shortId"); shortID != "" {
+			shortIDs = []string{shortID}
+		} else if shortID := getStringSetting(settings, "sid"); shortID != "" {
+			shortIDs = []string{shortID}
+		} else {
+			shortIDs = []string{""}
+		}
+	}
+
+	result := map[string]any{}
+	if show := getBoolSetting(realitySettings, "show"); show {
+		result["show"] = true
+	}
+	if dest != "" {
+		result["dest"] = dest
+	}
+	result["xver"] = getIntSetting(realitySettings, "xver")
+	if len(serverNames) > 0 {
+		result["serverNames"] = serverNames
+	}
+	if privateKey != "" {
+		result["privateKey"] = privateKey
+	}
+	if len(shortIDs) > 0 {
+		result["shortIds"] = shortIDs
+	}
+
+	if len(result) == 1 {
+		if _, ok := result["xver"]; ok {
+			return nil
+		}
+	}
+
+	return result
 }
 
 // generateOutbounds generates outbound configurations.

@@ -139,7 +139,6 @@ func newNotFoundError(resource string, id interface{}) error {
 	return errors.NewNotFoundError(resource, id)
 }
 
-
 type mockUserRepo struct {
 	users map[int64]*repository.User
 }
@@ -376,7 +375,6 @@ func (m *mockProxyRepo) GetByNodeID(ctx context.Context, nodeID int64) ([]*repos
 	return result, nil
 }
 
-
 // Property 12: Invalid Token Returns 404
 // For any token that does not exist in the database, accessing the subscription SHALL return HTTP 404.
 // **Validates: Requirements 4.1**
@@ -525,7 +523,6 @@ func TestProperty14_TrafficExceededAccessDenied(t *testing.T) {
 
 	properties.TestingRun(t)
 }
-
 
 // Property 15: Expired User Access Denied
 // For any user whose account has expired, accessing their subscription SHALL return HTTP 403.

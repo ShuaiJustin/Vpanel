@@ -112,7 +112,7 @@
     <el-dialog
       v-model="addInboundDialogVisible"
       :title="dialogMode === 'edit' ? '编辑协议' : '添加协议'"
-      width="500px"
+      width="560px"
       destroy-on-close
       :close-on-click-modal="false"
     >
@@ -332,6 +332,7 @@
             <el-option label="TCP" value="tcp" />
             <el-option label="WebSocket" value="ws" />
             <el-option label="HTTP/2" value="http" />
+            <el-option label="QUIC" value="quic" />
             <el-option label="gRPC" value="grpc" />
           </el-select>
         </el-form-item>
@@ -349,7 +350,7 @@
           <template v-if="inboundForm.stream_settings.tcp_settings.is_http">
             <el-form-item label="域名">
               <el-input
-                v-model="inboundForm.stream_settings.tcp_settings.http_settings.host[0]"
+                v-model="inboundForm.stream_settings.tcp_settings.http_settings.host"
                 placeholder="请输入域名，多个域名用逗号分隔"
               />
             </el-form-item>
@@ -384,7 +385,7 @@
         <template v-if="inboundForm.stream_settings.network === 'http'">
           <el-form-item label="域名">
             <el-input
-              v-model="inboundForm.stream_settings.http_settings.host[0]"
+              v-model="inboundForm.stream_settings.http_settings.host"
               placeholder="请输入域名，多个域名用逗号分隔"
             />
           </el-form-item>
@@ -405,11 +406,59 @@
               placeholder="请输入服务名称"
             />
           </el-form-item>
+
+          <el-form-item label="多路复用">
+            <el-switch
+              v-model="inboundForm.stream_settings.grpc_settings.multi_mode"
+              active-text="开启"
+              inactive-text="关闭"
+            />
+            <div class="form-tip">对应 Xray 的 gRPC `multiMode`，仅在客户端也开启时生效。</div>
+          </el-form-item>
+        </template>
+
+        <!-- QUIC 设置 -->
+        <template v-if="inboundForm.stream_settings.network === 'quic'">
+          <el-form-item label="加密方式">
+            <el-select v-model="inboundForm.stream_settings.quic_settings.security" style="width: 100%">
+              <el-option label="none" value="none" />
+              <el-option label="aes-128-gcm" value="aes-128-gcm" />
+              <el-option label="chacha20-poly1305" value="chacha20-poly1305" />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="密钥">
+            <el-input
+              v-model="inboundForm.stream_settings.quic_settings.key"
+              placeholder="请输入 QUIC 密钥；加密方式为 none 时可留空"
+            />
+          </el-form-item>
+
+          <el-form-item label="头类型">
+            <el-select v-model="inboundForm.stream_settings.quic_settings.header_type" style="width: 100%">
+              <el-option label="none" value="none" />
+              <el-option label="srtp" value="srtp" />
+              <el-option label="utp" value="utp" />
+              <el-option label="wechat-video" value="wechat-video" />
+              <el-option label="dtls" value="dtls" />
+              <el-option label="wireguard" value="wireguard" />
+            </el-select>
+          </el-form-item>
+
+          <div class="form-tip">QUIC 会直接写入 `quicSettings`，不再依赖扁平参数。</div>
         </template>
         
-        <el-divider content-position="left">TLS 设置</el-divider>
-        
-        <el-form-item label="TLS">
+        <el-divider content-position="left">安全设置</el-divider>
+
+        <el-form-item v-if="supportsReality" label="安全协议">
+          <el-select v-model="securityMode" style="width: 100%">
+            <el-option label="无" value="none" />
+            <el-option label="TLS" value="tls" />
+            <el-option label="Reality" value="reality" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item v-else label="TLS">
           <el-switch v-model="tlsEnabled" />
         </el-form-item>
         
@@ -447,6 +496,96 @@
               <el-tag type="success">自动匹配系统证书</el-tag>
               <div class="form-tip">保存后会按上面的域名，从“证书管理”里自动匹配已签发且可用的系统证书。</div>
             </div>
+          </el-form-item>
+
+          <el-form-item label="ALPN">
+            <el-input
+              v-model="inboundForm.stream_settings.tls_settings.alpn"
+              placeholder="可选，例如: h2,http/1.1"
+            />
+            <div class="form-tip">多个值用逗号分隔，保存后会写入 TLS 的 ALPN 列表。</div>
+          </el-form-item>
+        </template>
+
+        <template v-if="realitySettingsEnabled">
+          <el-form-item label="目标地址">
+            <el-input
+              v-model="inboundForm.stream_settings.reality_settings.dest"
+              placeholder="请输入 Reality dest，例如: www.cloudflare.com:443"
+            />
+            <div class="form-tip">这是 Reality 服务端回落目标，会写入 `realitySettings.dest`。</div>
+          </el-form-item>
+
+          <el-form-item label="ServerNames">
+            <el-input
+              v-model="inboundForm.stream_settings.reality_settings.server_names"
+              placeholder="请输入 Server Names，多个值用逗号分隔"
+            />
+            <div class="form-tip">第一个域名会同时作为分享链接的 SNI。</div>
+          </el-form-item>
+
+          <el-form-item label="私钥">
+            <el-input
+              v-model="inboundForm.stream_settings.reality_settings.private_key"
+              type="textarea"
+              :rows="3"
+              placeholder="请输入 xray x25519 生成的 private key"
+            />
+            <div class="form-tip">保存时会根据私钥自动推导公钥，并同步到订阅导出字段。</div>
+          </el-form-item>
+
+          <el-form-item label="公钥">
+            <el-input
+              v-model="inboundForm.stream_settings.reality_settings.public_key"
+              disabled
+              placeholder="保存后自动生成"
+            />
+          </el-form-item>
+
+          <el-form-item label="Short IDs">
+            <el-input
+              v-model="inboundForm.stream_settings.reality_settings.short_ids"
+              placeholder="可选，多个值用逗号分隔；留空将使用空 shortId"
+            />
+          </el-form-item>
+
+          <el-form-item label="Xver">
+            <el-input-number
+              v-model="inboundForm.stream_settings.reality_settings.xver"
+              :min="0"
+              :max="2"
+              style="width: 100%"
+              controls-position="right"
+            />
+          </el-form-item>
+        </template>
+
+        <template v-if="clientFingerprintVisible">
+          <el-form-item label="客户端指纹">
+            <el-select
+              v-model="inboundForm.stream_settings.client_settings.fingerprint"
+              style="width: 100%"
+              filterable
+              allow-create
+              clearable
+              default-first-option
+              placeholder="可选，例如: chrome"
+            >
+              <el-option
+                v-for="option in fingerprintOptions"
+                :key="option"
+                :label="option"
+                :value="option"
+              />
+            </el-select>
+            <div class="form-tip">这是客户端分享/订阅参数，不影响服务端入站监听。</div>
+          </el-form-item>
+        </template>
+
+        <template v-if="allowInsecureVisible">
+          <el-form-item label="跳过证书校验">
+            <el-switch v-model="inboundForm.stream_settings.client_settings.allow_insecure" />
+            <div class="form-tip">这是客户端参数，只会写进分享链接和订阅导出。</div>
           </el-form-item>
         </template>
         
@@ -574,7 +713,7 @@ const defaultInboundForm = {
     tcp_settings: {
       is_http: false,
       http_settings: {
-        host: [],
+        host: '',
         path: '/'
       }
     },
@@ -583,14 +722,34 @@ const defaultInboundForm = {
       host: ''
     },
     http_settings: {
-      host: [],
+      host: '',
       path: '/'
     },
+    quic_settings: {
+      security: 'none',
+      key: '',
+      header_type: 'none'
+    },
     grpc_settings: {
-      service_name: ''
+      service_name: '',
+      multi_mode: false
     },
     tls_settings: {
-      server_name: ''
+      server_name: '',
+      alpn: ''
+    },
+    reality_settings: {
+      dest: '',
+      server_names: '',
+      private_key: '',
+      public_key: '',
+      short_ids: '',
+      xver: 0,
+      show: false
+    },
+    client_settings: {
+      fingerprint: '',
+      allow_insecure: false
     }
   },
   sniffing: {
@@ -605,8 +764,30 @@ const inboundForm = reactive({...defaultInboundForm})
 const unwrapApiData = (response) => response?.data ?? response ?? null
 const normalizeStringValue = (value) => typeof value === 'string' ? value.trim() : ''
 const firstStringValue = (value) => Array.isArray(value) ? normalizeStringValue(value[0]) : normalizeStringValue(value)
+const splitCommaValues = (value) => normalizeStringValue(value)
+  .split(',')
+  .map(item => normalizeStringValue(item))
+  .filter(Boolean)
+const joinCommaValues = (value) => {
+  if (Array.isArray(value)) {
+    return value
+      .map(item => normalizeStringValue(item))
+      .filter(Boolean)
+      .join(', ')
+  }
+  return normalizeStringValue(value)
+}
+const preferStructuredValue = (value, fallback) => {
+  if (Array.isArray(value)) {
+    return value.some(item => normalizeStringValue(item)) ? value : fallback
+  }
+  return normalizeStringValue(value) ? value : fallback
+}
+const asObject = (value) => value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+const normalizeBooleanValue = (value) => value === true || value === 'true' || value === 1 || value === '1'
 const cloneDefaultInboundForm = () => JSON.parse(JSON.stringify(defaultInboundForm))
 const resetInboundForm = () => Object.assign(inboundForm, cloneDefaultInboundForm())
+const fingerprintOptions = ['chrome', 'firefox', 'safari', 'ios', 'android', 'edge', '360', 'qq', 'randomized']
 const formatCertificateDate = (value) => {
   if (!value) return '-'
   const date = new Date(value)
@@ -647,6 +828,15 @@ const encodeBase64UTF8 = (value) => {
 const getCurrentAccessHost = () => {
   if (typeof window === 'undefined') return ''
   return normalizeShareHost(window.location.hostname)
+}
+const getSettingString = (settings = {}, ...keys) => {
+  for (const key of keys) {
+    const value = settings?.[key]
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
+    }
+  }
+  return ''
 }
 const getNodeAddressByID = (nodeID) => {
   if (nodeID === null || nodeID === undefined) return ''
@@ -708,7 +898,34 @@ const effectiveServerAddressSource = computed(() => {
   return ''
 })
 
+const supportsReality = computed(() => inboundForm.protocol === 'vless')
 const tlsSettingsEnabled = computed(() => inboundForm.stream_settings.security === 'tls')
+const realitySettingsEnabled = computed(() => supportsReality.value && inboundForm.stream_settings.security === 'reality')
+const clientFingerprintVisible = computed(() => ['vmess', 'vless', 'trojan'].includes(inboundForm.protocol) && (tlsSettingsEnabled.value || realitySettingsEnabled.value))
+const allowInsecureVisible = computed(() => ['vmess', 'vless', 'trojan'].includes(inboundForm.protocol) && tlsSettingsEnabled.value)
+const securityMode = computed({
+  get: () => {
+    const security = normalizeStringValue(inboundForm.stream_settings.security)
+    if (supportsReality.value) {
+      if (security === 'reality') return 'reality'
+      if (security === 'tls') return 'tls'
+      return 'none'
+    }
+    return security === 'tls' ? 'tls' : 'none'
+  },
+  set: (value) => {
+    if (value === 'tls') {
+      inboundForm.stream_settings.security = 'tls'
+      selectDefaultCertificateDomain()
+      return
+    }
+    if (value === 'reality' && supportsReality.value) {
+      inboundForm.stream_settings.security = 'reality'
+      return
+    }
+    inboundForm.stream_settings.security = ''
+  }
+})
 
 const shouldAutoSelectCertificateDomain = () => dialogMode.value === 'add'
   && tlsSettingsEnabled.value
@@ -781,10 +998,13 @@ const validateTrojanForm = () => {
   if (inboundForm.protocol === 'trojan') {
     tlsEnabled.value = true
   }
+  if (inboundForm.protocol !== 'vless' && inboundForm.stream_settings.security === 'reality') {
+    inboundForm.stream_settings.security = ''
+  }
 }
 
 // 监听协议变化
-watch(() => inboundForm.protocol, (newVal) => {
+watch(() => inboundForm.protocol, () => {
   validateTrojanForm();
 })
 
@@ -979,6 +1199,17 @@ function openAddInboundDialog() {
 const normalizeProxyToInboundForm = (proxyData = {}) => {
   const settings = proxyData.settings || {}
   const form = cloneDefaultInboundForm()
+  const wsSettings = asObject(settings.ws_settings)
+  const wsHeaders = asObject(wsSettings.headers)
+  const httpSettings = asObject(settings.http_settings)
+  const grpcSettings = asObject(settings.grpc_settings)
+  const quicSettings = asObject(settings.quic_settings)
+  const quicHeader = asObject(quicSettings.header)
+  const realitySettings = asObject(settings.reality_settings)
+  const tcpSettings = asObject(settings.tcp_settings)
+  const tcpHeader = asObject(tcpSettings.header)
+  const tcpRequest = asObject(tcpHeader.request)
+  const tcpRequestHeaders = asObject(tcpRequest.headers)
 
   form.id = proxyData.id || null
   form.remark = proxyData.name || proxyData.remark || ''
@@ -994,8 +1225,19 @@ const normalizeProxyToInboundForm = (proxyData = {}) => {
   const tlsDomain = normalizeStringValue(settings.server_name || settings.sni || settings.tls_domain)
   const hasLegacyCertificateMaterial = (normalizeStringValue(settings.cert_file) && normalizeStringValue(settings.key_file)) || (firstStringValue(settings.certificate) && firstStringValue(settings.key))
   const hasTLS = settings.security === 'tls' || settings.tls === true || !!tlsDomain || hasLegacyCertificateMaterial
+  form.stream_settings.tls_settings.alpn = joinCommaValues(settings.alpn)
+  form.stream_settings.client_settings.allow_insecure = normalizeBooleanValue(settings.allowInsecure)
+  form.stream_settings.client_settings.fingerprint = normalizeStringValue(settings.fingerprint || settings.fp)
 
-  if (hasTLS) {
+  if (settings.security === 'reality') {
+    form.stream_settings.security = 'reality'
+    form.stream_settings.reality_settings.dest = normalizeStringValue(realitySettings.dest || settings.dest)
+    form.stream_settings.reality_settings.server_names = joinCommaValues(preferStructuredValue(realitySettings.serverNames, settings.server_name || settings.sni))
+    form.stream_settings.reality_settings.private_key = normalizeStringValue(realitySettings.privateKey || settings.privateKey)
+    form.stream_settings.reality_settings.public_key = normalizeStringValue(settings.publicKey || settings.pbk)
+    form.stream_settings.reality_settings.short_ids = joinCommaValues(preferStructuredValue(realitySettings.shortIds, settings.shortId || settings.sid))
+    form.stream_settings.reality_settings.xver = Number(realitySettings.xver ?? settings.xver ?? 0) || 0
+  } else if (hasTLS) {
     form.stream_settings.security = 'tls'
     form.stream_settings.tls_settings.server_name = tlsDomain
   }
@@ -1028,21 +1270,27 @@ const normalizeProxyToInboundForm = (proxyData = {}) => {
 
   switch (transportNetwork) {
     case 'ws':
-      form.stream_settings.ws_settings.path = settings.path || '/'
-      form.stream_settings.ws_settings.host = settings.host || ''
+      form.stream_settings.ws_settings.path = normalizeStringValue(wsSettings.path || settings.path) || '/'
+      form.stream_settings.ws_settings.host = firstStringValue(wsHeaders.Host || wsSettings.host || settings.host)
       break
     case 'http':
-      form.stream_settings.http_settings.path = settings.path || '/'
-      form.stream_settings.http_settings.host = [firstStringValue(settings.host)].filter(Boolean)
+      form.stream_settings.http_settings.path = normalizeStringValue(httpSettings.path || settings.path) || '/'
+      form.stream_settings.http_settings.host = joinCommaValues(preferStructuredValue(httpSettings.host, settings.host))
       break
     case 'grpc':
-      form.stream_settings.grpc_settings.service_name = settings.serviceName || settings.service_name || ''
+      form.stream_settings.grpc_settings.service_name = normalizeStringValue(grpcSettings.serviceName || grpcSettings.service_name || settings.serviceName || settings.service_name)
+      form.stream_settings.grpc_settings.multi_mode = normalizeBooleanValue(grpcSettings.multiMode ?? grpcSettings.multi_mode)
+      break
+    case 'quic':
+      form.stream_settings.quic_settings.security = normalizeStringValue(quicSettings.security) || 'none'
+      form.stream_settings.quic_settings.key = normalizeStringValue(quicSettings.key)
+      form.stream_settings.quic_settings.header_type = normalizeStringValue(quicHeader.type || quicSettings.headerType) || 'none'
       break
     case 'tcp':
-      if (settings.headerType === 'http') {
+      if (tcpHeader.type === 'http' || settings.headerType === 'http') {
         form.stream_settings.tcp_settings.is_http = true
-        form.stream_settings.tcp_settings.http_settings.path = settings.path || '/'
-        form.stream_settings.tcp_settings.http_settings.host = [firstStringValue(settings.host)].filter(Boolean)
+        form.stream_settings.tcp_settings.http_settings.path = firstStringValue(tcpRequest.path || settings.path) || '/'
+        form.stream_settings.tcp_settings.http_settings.host = joinCommaValues(preferStructuredValue(tcpRequestHeaders.Host, settings.host))
       }
       break
   }
@@ -1055,27 +1303,85 @@ const buildTransportPayload = () => {
   const payload = { network }
 
   if (network === 'ws') {
-    payload.path = normalizeStringValue(inboundForm.stream_settings.ws_settings.path) || '/'
+    const path = normalizeStringValue(inboundForm.stream_settings.ws_settings.path) || '/'
     const host = normalizeStringValue(inboundForm.stream_settings.ws_settings.host)
+    payload.path = path
     if (host) payload.host = host
+    payload.ws_settings = {
+      path,
+      ...(host ? { headers: { Host: host } } : {})
+    }
   }
 
   if (network === 'http') {
-    payload.path = normalizeStringValue(inboundForm.stream_settings.http_settings.path) || '/'
-    const host = firstStringValue(inboundForm.stream_settings.http_settings.host)
-    if (host) payload.host = host
+    const path = normalizeStringValue(inboundForm.stream_settings.http_settings.path) || '/'
+    const hostList = splitCommaValues(inboundForm.stream_settings.http_settings.host)
+    payload.path = path
+    if (hostList[0]) payload.host = hostList[0]
+    payload.http_settings = {
+      path,
+      ...(hostList.length ? { host: hostList } : {})
+    }
   }
 
   if (network === 'grpc') {
     const serviceName = normalizeStringValue(inboundForm.stream_settings.grpc_settings.service_name)
+    const multiMode = !!inboundForm.stream_settings.grpc_settings.multi_mode
     if (serviceName) payload.serviceName = serviceName
+    payload.grpc_settings = {
+      ...(serviceName ? { serviceName } : {}),
+      multiMode
+    }
+  }
+
+  if (network === 'quic') {
+    const security = normalizeStringValue(inboundForm.stream_settings.quic_settings.security) || 'none'
+    const key = normalizeStringValue(inboundForm.stream_settings.quic_settings.key)
+    const headerType = normalizeStringValue(inboundForm.stream_settings.quic_settings.header_type) || 'none'
+
+    if (security !== 'none' && !key) {
+      throw new Error('QUIC 开启加密时必须填写密钥')
+    }
+
+    payload.quic_settings = {
+      security,
+      ...(key ? { key } : {}),
+      header: {
+        type: headerType
+      }
+    }
   }
 
   if (network === 'tcp' && inboundForm.stream_settings.tcp_settings.is_http) {
+    const path = normalizeStringValue(inboundForm.stream_settings.tcp_settings.http_settings.path) || '/'
+    const hostList = splitCommaValues(inboundForm.stream_settings.tcp_settings.http_settings.host)
     payload.headerType = 'http'
-    payload.path = normalizeStringValue(inboundForm.stream_settings.tcp_settings.http_settings.path) || '/'
-    const host = firstStringValue(inboundForm.stream_settings.tcp_settings.http_settings.host)
-    if (host) payload.host = host
+    payload.path = path
+    if (hostList[0]) payload.host = hostList[0]
+    payload.tcp_settings = {
+      header: {
+        type: 'http',
+        request: {
+          path: [path],
+          ...(hostList.length ? { headers: { Host: hostList } } : {})
+        }
+      }
+    }
+  }
+
+  return payload
+}
+
+const buildClientSecurityPayload = () => {
+  const payload = {}
+  const fingerprint = normalizeStringValue(inboundForm.stream_settings.client_settings.fingerprint)
+  if (clientFingerprintVisible.value && fingerprint) {
+    payload.fingerprint = fingerprint
+    payload.fp = fingerprint
+  }
+
+  if (allowInsecureVisible.value) {
+    payload.allowInsecure = !!inboundForm.stream_settings.client_settings.allow_insecure
   }
 
   return payload
@@ -1099,7 +1405,53 @@ const buildTLSCertificatePayload = () => {
     tls_domain: domain
   }
 
+  const alpn = splitCommaValues(tlsSettings.alpn)
+  if (alpn.length) {
+    payload.alpn = alpn.join(',')
+  }
+
   return payload
+}
+
+const buildRealityPayload = () => {
+  if (!realitySettingsEnabled.value) {
+    return {}
+  }
+
+  const realitySettings = inboundForm.stream_settings.reality_settings || {}
+  const dest = normalizeStringValue(realitySettings.dest)
+  const serverNames = splitCommaValues(realitySettings.server_names)
+  const privateKey = normalizeStringValue(realitySettings.private_key)
+  const publicKey = normalizeStringValue(realitySettings.public_key)
+  const shortIds = splitCommaValues(realitySettings.short_ids)
+  const xver = Number(realitySettings.xver || 0) || 0
+
+  if (!dest) {
+    throw new Error('Reality 需要填写目标地址')
+  }
+  if (!serverNames.length) {
+    throw new Error('Reality 需要填写至少一个 Server Name')
+  }
+  if (!privateKey) {
+    throw new Error('Reality 需要填写私钥')
+  }
+
+  return {
+    security: 'reality',
+    sni: serverNames[0],
+    server_name: serverNames[0],
+    ...(publicKey ? { publicKey, pbk: publicKey } : {}),
+    ...(shortIds[0] ? { shortId: shortIds[0], sid: shortIds[0] } : {}),
+    privateKey,
+    reality_settings: {
+      show: !!realitySettings.show,
+      dest,
+      xver,
+      serverNames,
+      privateKey,
+      shortIds: shortIds.length ? shortIds : ['']
+    }
+  }
 }
 
 const buildProxyPayload = () => {
@@ -1116,6 +1468,8 @@ const buildProxyPayload = () => {
   }
 
   const tlsPayload = buildTLSCertificatePayload()
+  const realityPayload = buildRealityPayload()
+  const clientSecurityPayload = buildClientSecurityPayload()
   const transportPayload = buildTransportPayload()
 
   switch (inboundForm.protocol) {
@@ -1125,6 +1479,7 @@ const buildProxyPayload = () => {
         flow: inboundForm.trojan_flow === 'none' ? '' : inboundForm.trojan_flow,
         ...transportPayload,
         ...(selectedNodeShareServer ? { server: selectedNodeShareServer } : {}),
+        ...clientSecurityPayload,
         tls: true,
         fallbacks: inboundForm.trojan_fallbacks,
         ...tlsPayload
@@ -1136,8 +1491,11 @@ const buildProxyPayload = () => {
         flow: inboundForm.vless_flow === 'none' ? '' : inboundForm.vless_flow,
         ...transportPayload,
         ...(selectedNodeShareServer ? { server: selectedNodeShareServer } : {}),
-        security: tlsSettingsEnabled.value ? 'tls' : 'none',
-        ...tlsPayload
+        ...clientSecurityPayload,
+        ...(realitySettingsEnabled.value ? realityPayload : {
+          security: tlsSettingsEnabled.value ? 'tls' : 'none',
+          ...tlsPayload
+        })
       }
       break
     case 'vmess':
@@ -1147,6 +1505,7 @@ const buildProxyPayload = () => {
         alterId: inboundForm.vmess_aid,
         ...transportPayload,
         ...(selectedNodeShareServer ? { server: selectedNodeShareServer } : {}),
+        ...clientSecurityPayload,
         security: tlsSettingsEnabled.value ? 'tls' : 'none',
         ...tlsPayload
       }
@@ -1356,6 +1715,7 @@ const copyLink = async (row) => {
 const getLocalGeneratedLink = (row) => {
   const protocol = row.protocol
   const fallbackServer = resolveLocalFallbackServer(row)
+  const settings = row?.settings || {}
   let link = ''
   
   switch (protocol) {
@@ -1365,34 +1725,60 @@ const getLocalGeneratedLink = (row) => {
         ps: row.remark || '',
         add: fallbackServer,
         port: String(row.port ?? ''),
-        id: row?.settings?.uuid || '8ad388ff-8d82-418c-9c44-fbb3a580c1fb',
-        aid: String(row?.settings?.alter_id ?? row?.settings?.alterId ?? 0),
-        net: row?.settings?.network || 'tcp',
+        id: settings.uuid || '8ad388ff-8d82-418c-9c44-fbb3a580c1fb',
+        aid: String(settings.alter_id ?? settings.alterId ?? 0),
+        net: settings.network || 'tcp',
         type: 'none',
-        host: row?.settings?.host || '',
-        path: row?.settings?.path || '/',
-        tls: row?.settings?.security === 'tls' || row?.settings?.tls === true ? 'tls' : ''
+        host: getSettingString(settings, 'host') || '',
+        path: getSettingString(settings, 'path') || '/',
+        tls: settings.security === 'tls' || settings.tls === true ? 'tls' : '',
+        sni: getSettingString(settings, 'sni', 'server_name')
       }))}`
       break;
     case 'vless':
-      link = `vless://${row?.settings?.uuid || '8ad388ff-8d82-418c-9c44-fbb3a580c1fb'}@${fallbackServer}:${row.port}?encryption=none&security=${encodeURIComponent(row?.settings?.security || 'none')}&type=${encodeURIComponent(row?.settings?.network || 'tcp')}#${encodeURIComponent(row.remark)}`
+      {
+        const params = new URLSearchParams()
+        params.set('encryption', 'none')
+        params.set('security', getSettingString(settings, 'security') || 'none')
+        params.set('type', getSettingString(settings, 'network') || 'tcp')
+        const sni = getSettingString(settings, 'sni', 'server_name')
+        if (sni) params.set('sni', sni)
+        const flow = getSettingString(settings, 'flow')
+        if (flow) params.set('flow', flow)
+        const pbk = getSettingString(settings, 'pbk', 'publicKey')
+        if (pbk) params.set('pbk', pbk)
+        const sid = getSettingString(settings, 'sid', 'shortId')
+        if (sid) params.set('sid', sid)
+        const fp = getSettingString(settings, 'fp', 'fingerprint')
+        if (fp) params.set('fp', fp)
+        if (settings.allowInsecure === true) params.set('allowInsecure', '1')
+        link = `vless://${settings.uuid || '8ad388ff-8d82-418c-9c44-fbb3a580c1fb'}@${fallbackServer}:${row.port}?${params.toString()}#${encodeURIComponent(row.remark)}`
+      }
       break;
     case 'trojan':
       // 获取设置，如果有的话
       let password = 'password123'
       let sni = fallbackServer
       
-      if (row.settings) {
-        if (row.settings.password) {
-          password = row.settings.password
-        }
-        if (row.settings.sni) {
-          sni = row.settings.sni
-        }
+      if (settings.password) {
+        password = settings.password
+      }
+      if (getSettingString(settings, 'sni', 'server_name')) {
+        sni = getSettingString(settings, 'sni', 'server_name')
       }
       
       // 标准Trojan链接格式
-      link = `trojan://${encodeURIComponent(password)}@${fallbackServer}:${row.port}?security=tls&sni=${encodeURIComponent(sni)}#${encodeURIComponent(row.remark)}`
+      {
+        const params = new URLSearchParams()
+        params.set('security', getSettingString(settings, 'security') || 'tls')
+        params.set('sni', sni)
+        const alpn = getSettingString(settings, 'alpn')
+        if (alpn) params.set('alpn', alpn)
+        const fp = getSettingString(settings, 'fp', 'fingerprint')
+        if (fp) params.set('fp', fp)
+        if (settings.allowInsecure === true) params.set('allowInsecure', '1')
+        link = `trojan://${encodeURIComponent(password)}@${fallbackServer}:${row.port}?${params.toString()}#${encodeURIComponent(row.remark)}`
+      }
       break;
     default:
       link = `${protocol}://${fallbackServer}:${row.port}#${encodeURIComponent(row.remark)}`

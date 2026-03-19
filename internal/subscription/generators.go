@@ -17,8 +17,12 @@ import (
 // Helper functions for extracting settings
 
 func getSettingString(settings map[string]interface{}, key string, defaultValue string) string {
-	if v, ok := settings[key].(string); ok {
-		return v
+	for _, candidate := range settingAliases(key) {
+		if v, ok := settings[candidate].(string); ok {
+			if trimmed := strings.TrimSpace(v); trimmed != "" {
+				return trimmed
+			}
+		}
 	}
 	return defaultValue
 }
@@ -34,10 +38,33 @@ func getSettingInt(settings map[string]interface{}, key string, defaultValue int
 }
 
 func getSettingBool(settings map[string]interface{}, key string, defaultValue bool) bool {
-	if v, ok := settings[key].(bool); ok {
-		return v
+	for _, candidate := range settingAliases(key) {
+		if v, ok := settings[candidate]; ok {
+			switch typed := v.(type) {
+			case bool:
+				return typed
+			case string:
+				trimmed := strings.TrimSpace(typed)
+				return strings.EqualFold(trimmed, "true") || trimmed == "1"
+			}
+		}
 	}
 	return defaultValue
+}
+
+func settingAliases(key string) []string {
+	switch key {
+	case "fingerprint", "fp":
+		return []string{"fingerprint", "fp"}
+	case "publicKey", "pbk":
+		return []string{"publicKey", "pbk"}
+	case "shortId", "sid":
+		return []string{"shortId", "sid"}
+	case "sni", "server_name":
+		return []string{"sni", "server_name"}
+	default:
+		return []string{key}
+	}
 }
 
 // extractProxyInfo extracts proxy information from a repository.Proxy.
@@ -102,6 +129,8 @@ type vmessConfig struct {
 	Path string `json:"path"`
 	TLS  string `json:"tls"`
 	SNI  string `json:"sni"`
+	ALPN string `json:"alpn,omitempty"`
+	FP   string `json:"fp,omitempty"`
 }
 
 func generateVMessLink(name, server string, port int, settings map[string]interface{}) (string, error) {
@@ -118,6 +147,8 @@ func generateVMessLink(name, server string, port int, settings map[string]interf
 		Host: getSettingString(settings, "host", ""),
 		Path: getSettingString(settings, "path", ""),
 		SNI:  proxylib.ResolveSNI(settings),
+		ALPN: getSettingString(settings, "alpn", ""),
+		FP:   getSettingString(settings, "fingerprint", ""),
 	}
 
 	if proxylib.HasTLSSettings(settings) {
@@ -167,6 +198,12 @@ func generateVLESSLink(name, server string, port int, settings map[string]interf
 	if sid := getSettingString(settings, "shortId", ""); sid != "" {
 		params.Set("sid", sid)
 	}
+	if fp := getSettingString(settings, "fingerprint", ""); fp != "" {
+		params.Set("fp", fp)
+	}
+	if getSettingBool(settings, "allowInsecure", false) {
+		params.Set("allowInsecure", "1")
+	}
 
 	link := fmt.Sprintf("vless://%s@%s:%d", uuid, server, port)
 	if len(params) > 0 {
@@ -188,6 +225,12 @@ func generateTrojanLink(name, server string, port int, settings map[string]inter
 	}
 	if alpn := getSettingString(settings, "alpn", ""); alpn != "" {
 		params.Set("alpn", alpn)
+	}
+	if fp := getSettingString(settings, "fingerprint", ""); fp != "" {
+		params.Set("fp", fp)
+	}
+	if getSettingBool(settings, "allowInsecure", false) {
+		params.Set("allowInsecure", "1")
 	}
 
 	link := fmt.Sprintf("trojan://%s@%s:%d", url.PathEscape(password), server, port)
@@ -291,6 +334,12 @@ func generateClashVMess(name, server string, port int, settings map[string]inter
 		if sni := getSettingString(settings, "sni", ""); sni != "" {
 			proxy["servername"] = sni
 		}
+		if getSettingBool(settings, "allowInsecure", false) {
+			proxy["skip-cert-verify"] = true
+		}
+	}
+	if fp := getSettingString(settings, "fingerprint", ""); fp != "" {
+		proxy["client-fingerprint"] = fp
 	}
 
 	network := getSettingString(settings, "network", "tcp")
@@ -330,6 +379,12 @@ func generateClashVLESS(name, server string, port int, settings map[string]inter
 		if sni := getSettingString(settings, "sni", ""); sni != "" {
 			proxy["servername"] = sni
 		}
+		if getSettingBool(settings, "allowInsecure", false) {
+			proxy["skip-cert-verify"] = true
+		}
+	}
+	if fp := getSettingString(settings, "fingerprint", ""); fp != "" {
+		proxy["client-fingerprint"] = fp
 	}
 
 	if security == "reality" {
@@ -360,6 +415,12 @@ func generateClashTrojan(name, server string, port int, settings map[string]inte
 
 	if sni := getSettingString(settings, "sni", ""); sni != "" {
 		proxy["sni"] = sni
+	}
+	if getSettingBool(settings, "allowInsecure", false) {
+		proxy["skip-cert-verify"] = true
+	}
+	if fp := getSettingString(settings, "fingerprint", ""); fp != "" {
+		proxy["client-fingerprint"] = fp
 	}
 
 	return proxy

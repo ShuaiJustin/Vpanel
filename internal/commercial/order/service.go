@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	trialsvc "v/internal/commercial/trial"
 	"v/internal/database/repository"
 	"v/internal/logger"
 )
@@ -65,6 +66,7 @@ type CreateOrderRequest struct {
 // OrderFilter defines filter options for listing orders.
 type OrderFilter struct {
 	UserID        *int64
+	Search        string
 	Status        string
 	PaymentMethod string
 	StartDate     *time.Time
@@ -88,10 +90,15 @@ type Service struct {
 	orderRepo repository.OrderRepository
 	planRepo  repository.PlanRepository
 	userRepo  repository.UserRepository
+	trialRepo trialMarker
 	logger    logger.Logger
 	config    *Config
 	mu        sync.Mutex
 	orderNos  map[string]bool // Track generated order numbers for uniqueness
+}
+
+type trialMarker interface {
+	MarkConverted(ctx context.Context, userID int64) error
 }
 
 // NewService creates a new order service.
@@ -116,6 +123,12 @@ func NewService(
 // WithUserRepository enables plan activation on successful payment.
 func (s *Service) WithUserRepository(userRepo repository.UserRepository) *Service {
 	s.userRepo = userRepo
+	return s
+}
+
+// WithTrialMarker marks active trials as converted when a paid plan is applied.
+func (s *Service) WithTrialMarker(trialRepo trialMarker) *Service {
+	s.trialRepo = trialRepo
 	return s
 }
 
@@ -245,8 +258,12 @@ func (s *Service) List(ctx context.Context, filter OrderFilter, page, pageSize i
 
 	offset := (page - 1) * pageSize
 	repoFilter := repository.OrderFilter{
-		UserID: filter.UserID,
-		Status: filter.Status,
+		UserID:        filter.UserID,
+		Search:        filter.Search,
+		Status:        filter.Status,
+		PaymentMethod: filter.PaymentMethod,
+		StartDate:     filter.StartDate,
+		EndDate:       filter.EndDate,
 	}
 	repoOrders, total, err := s.orderRepo.List(ctx, repoFilter, pageSize, offset)
 	if err != nil {
@@ -460,5 +477,19 @@ func (s *Service) applyPlanToUser(ctx context.Context, ord *repository.Order) er
 	user.TrafficLimit = plan.TrafficLimit
 	user.ExpiresAt = &newExpireAt
 
-	return s.userRepo.Update(ctx, user)
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return err
+	}
+	if s.trialRepo != nil {
+		if err := s.trialRepo.MarkConverted(ctx, ord.UserID); err != nil {
+			if !errors.Is(err, trialsvc.ErrTrialNotFound) {
+				s.logger.Warn("failed to mark trial converted after plan activation",
+					logger.Err(err),
+					logger.UserID(ord.UserID),
+					logger.F("order_id", ord.ID),
+				)
+			}
+		}
+	}
+	return nil
 }

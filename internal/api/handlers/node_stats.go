@@ -184,7 +184,6 @@ func (h *NodeStatsHandler) GetTrafficByUser(c *gin.Context) {
 	})
 }
 
-
 // GetUserTrafficBreakdown returns traffic breakdown by node for a user.
 // GET /api/admin/users/:id/node-traffic/breakdown
 func (h *NodeStatsHandler) GetUserTrafficBreakdown(c *gin.Context) {

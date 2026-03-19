@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"v/internal/database/repository"
+	"v/internal/entitlement"
 	"v/internal/logger"
 	proxylib "v/internal/proxy"
 	"v/pkg/errors"
@@ -69,6 +70,7 @@ type Service struct {
 	userRepo         repository.UserRepository
 	proxyRepo        repository.ProxyRepository
 	nodeRepo         repository.NodeRepository
+	entitlement      *entitlement.Service
 	logger           logger.Logger
 	baseURL          string
 }
@@ -93,6 +95,12 @@ func NewService(
 // WithNodeRepository injects node repository for node-aware server resolution.
 func (s *Service) WithNodeRepository(nodeRepo repository.NodeRepository) *Service {
 	s.nodeRepo = nodeRepo
+	return s
+}
+
+// WithEntitlementService injects user entitlement logic for subscription access.
+func (s *Service) WithEntitlementService(entitlementService *entitlement.Service) *Service {
+	s.entitlement = entitlementService
 	return s
 }
 
@@ -283,6 +291,11 @@ func (s *Service) UpdateAccessStats(ctx context.Context, subscriptionID int64, i
 // CheckUserAccess checks if a user can access their subscription.
 // Returns an error if the user is disabled, expired, or has exceeded traffic limits.
 func (s *Service) CheckUserAccess(ctx context.Context, userID int64) error {
+	if s.entitlement != nil {
+		_, err := s.entitlement.EvaluateAccess(ctx, userID)
+		return err
+	}
+
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return err
@@ -380,6 +393,11 @@ func (s *Service) GetUserEnabledProxies(ctx context.Context, userID int64) ([]*r
 }
 
 func (s *Service) getAccessibleProxies(ctx context.Context, userID int64) ([]*repository.Proxy, error) {
+	if s.entitlement != nil {
+		proxies, _, err := s.entitlement.GetAccessibleProxies(ctx, userID)
+		return proxies, err
+	}
+
 	proxies, err := s.proxyRepo.GetByUserID(ctx, userID, 10000, 0)
 	if err != nil {
 		return nil, err

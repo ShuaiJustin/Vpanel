@@ -66,9 +66,9 @@ func (h *GiftCardHandler) RedeemGiftCard(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":    "Gift card redeemed successfully",
-		"gift_card":  gc,
-		"credited":   gc.Value,
+		"message":   "Gift card redeemed successfully",
+		"gift_card": gc,
+		"credited":  gc.Value,
 	})
 }
 
@@ -125,7 +125,6 @@ func (h *GiftCardHandler) ValidateGiftCard(c *gin.Context) {
 	})
 }
 
-
 // ==================== Admin Handlers ====================
 
 // CreateBatchRequest represents a request to create a batch of gift cards.
@@ -176,10 +175,10 @@ func (h *GiftCardHandler) AdminCreateBatch(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
-		"message":     "Gift cards created successfully",
-		"batch_id":    batchID,
-		"count":       len(giftCards),
-		"gift_cards":  giftCards,
+		"message":    "Gift cards created successfully",
+		"batch_id":   batchID,
+		"count":      len(giftCards),
+		"gift_cards": giftCards,
 	})
 }
 

@@ -25,7 +25,7 @@ type XrayHandler struct {
 func NewXrayHandler(manager xray.Manager, log logger.Logger) *XrayHandler {
 	// Create version manager with default binary directory
 	versionManager := xray.NewVersionManager("./xray/bin", log)
-	
+
 	// Scan for installed versions
 	if err := versionManager.ScanInstalledVersions(); err != nil {
 		log.Warn("failed to scan installed versions", logger.F("error", err))
@@ -333,7 +333,6 @@ func (h *XrayHandler) Stop(c *gin.Context) {
 	h.logger.Info("xray stopped by user")
 	c.JSON(http.StatusOK, gin.H{"message": "Xray stopped successfully"})
 }
-
 
 // TestConfigRequest represents a test config request.
 type TestConfigRequest struct {

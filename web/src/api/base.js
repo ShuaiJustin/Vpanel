@@ -202,8 +202,8 @@ api.interceptors.response.use(
           sessionStorage.removeItem('userRole')
           localStorage.removeItem('userRole')
           
-          // 使用 replace 避免产生历史记录
-          router.replace('/admin/login?redirect=' + encodeURIComponent(currentPath))
+          // 当前没有独立的后台登录页，统一回到用户登录页并保留目标地址
+          router.replace('/user/login?redirect=' + encodeURIComponent(currentPath))
         } else {
           // 其他路径 - 默认清除所有令牌，跳转到用户登录页
           sessionStorage.removeItem('token')

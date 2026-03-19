@@ -130,6 +130,9 @@ func (p *Protocol) GenerateLink(settings *proxy.Settings) (string, error) {
 	if fp := settings.GetString("fp"); fp != "" {
 		params.Set("fp", fp)
 	}
+	if settings.GetBool("allowInsecure") {
+		params.Set("allowInsecure", "1")
+	}
 
 	server := proxy.ResolveServerAddress(settings.Host, settings.Settings)
 	if server == "" {
@@ -210,6 +213,7 @@ func (p *Protocol) ParseLink(link string) (*proxy.Settings, error) {
 			"path":     params.Get("path"),
 			"host":     params.Get("host"),
 			"fp":       params.Get("fp"),
+			"allowInsecure": params.Get("allowInsecure") == "1" || strings.EqualFold(params.Get("allowInsecure"), "true"),
 		},
 		Enabled: true,
 	}

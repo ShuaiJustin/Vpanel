@@ -218,21 +218,21 @@ func (m *ticketMockUserRepo) CountActive(ctx context.Context) (int64, error) {
 
 type ticketMockLogger struct{}
 
-func (m *ticketMockLogger) Debug(msg string, fields ...logger.Field) {}
-func (m *ticketMockLogger) Info(msg string, fields ...logger.Field)  {}
-func (m *ticketMockLogger) Warn(msg string, fields ...logger.Field)  {}
-func (m *ticketMockLogger) Error(msg string, fields ...logger.Field) {}
-func (m *ticketMockLogger) Fatal(msg string, fields ...logger.Field) {}
+func (m *ticketMockLogger) Debug(msg string, fields ...logger.Field)  {}
+func (m *ticketMockLogger) Info(msg string, fields ...logger.Field)   {}
+func (m *ticketMockLogger) Warn(msg string, fields ...logger.Field)   {}
+func (m *ticketMockLogger) Error(msg string, fields ...logger.Field)  {}
+func (m *ticketMockLogger) Fatal(msg string, fields ...logger.Field)  {}
 func (m *ticketMockLogger) With(fields ...logger.Field) logger.Logger { return m }
-func (m *ticketMockLogger) SetLevel(level logger.Level)              {}
-func (m *ticketMockLogger) GetLevel() logger.Level                   { return logger.InfoLevel }
+func (m *ticketMockLogger) SetLevel(level logger.Level)               {}
+func (m *ticketMockLogger) GetLevel() logger.Level                    { return logger.InfoLevel }
 
 func setupTicketTestRouter() (*gin.Engine, *PortalTicketHandler, *ticketMockTicketRepo) {
 	gin.SetMode(gin.TestMode)
-	
+
 	ticketRepo := newTicketMockTicketRepo()
 	userRepo := newTicketMockUserRepo()
-	
+
 	// Create a test user
 	userRepo.Create(context.Background(), &repository.User{
 		Username: "testuser",
@@ -240,18 +240,18 @@ func setupTicketTestRouter() (*gin.Engine, *PortalTicketHandler, *ticketMockTick
 		Role:     "user",
 		Enabled:  true,
 	})
-	
+
 	ticketService := ticket.NewService(ticketRepo, userRepo)
 	handler := NewPortalTicketHandler(ticketService, &ticketMockLogger{})
-	
+
 	router := gin.New()
-	
+
 	// Add middleware to set user_id
 	router.Use(func(c *gin.Context) {
 		c.Set("user_id", int64(1))
 		c.Next()
 	})
-	
+
 	// Setup routes
 	portal := router.Group("/api/portal")
 	{
@@ -265,13 +265,13 @@ func setupTicketTestRouter() (*gin.Engine, *PortalTicketHandler, *ticketMockTick
 			tickets.POST("/:id/reopen", handler.ReopenTicket)
 		}
 	}
-	
+
 	return router, handler, ticketRepo
 }
 
 func TestPortalTicketHandler_CreateTicket(t *testing.T) {
 	router, _, ticketRepo := setupTicketTestRouter()
-	
+
 	tests := []struct {
 		name       string
 		body       map[string]interface{}
@@ -302,22 +302,22 @@ func TestPortalTicketHandler_CreateTicket(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body, _ := json.Marshal(tt.body)
 			req := httptest.NewRequest(http.MethodPost, "/api/portal/tickets", bytes.NewBuffer(body))
 			req.Header.Set("Content-Type", "application/json")
-			
+
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
-			
+
 			if w.Code != tt.wantStatus {
 				t.Errorf("CreateTicket() status = %v, want %v, body = %s", w.Code, tt.wantStatus, w.Body.String())
 			}
 		})
 	}
-	
+
 	// Verify ticket was created
 	if len(ticketRepo.tickets) != 1 {
 		t.Errorf("Expected 1 ticket to be created, got %d", len(ticketRepo.tickets))
@@ -326,7 +326,7 @@ func TestPortalTicketHandler_CreateTicket(t *testing.T) {
 
 func TestPortalTicketHandler_ListTickets(t *testing.T) {
 	router, _, ticketRepo := setupTicketTestRouter()
-	
+
 	// Create some test tickets
 	ticketRepo.Create(context.Background(), &repository.Ticket{
 		UserID:   1,
@@ -346,18 +346,18 @@ func TestPortalTicketHandler_ListTickets(t *testing.T) {
 		Status:   repository.TicketStatusOpen,
 		Category: "technical",
 	})
-	
+
 	req := httptest.NewRequest(http.MethodGet, "/api/portal/tickets", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	
+
 	if w.Code != http.StatusOK {
 		t.Errorf("ListTickets() status = %v, want %v", w.Code, http.StatusOK)
 	}
-	
+
 	var response map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &response)
-	
+
 	tickets := response["tickets"].([]interface{})
 	if len(tickets) != 2 {
 		t.Errorf("Expected 2 tickets for user 1, got %d", len(tickets))
@@ -366,7 +366,7 @@ func TestPortalTicketHandler_ListTickets(t *testing.T) {
 
 func TestPortalTicketHandler_GetTicket(t *testing.T) {
 	router, _, ticketRepo := setupTicketTestRouter()
-	
+
 	// Create a test ticket
 	ticketRepo.Create(context.Background(), &repository.Ticket{
 		UserID:   1,
@@ -374,14 +374,14 @@ func TestPortalTicketHandler_GetTicket(t *testing.T) {
 		Status:   repository.TicketStatusOpen,
 		Category: "technical",
 	})
-	
+
 	// Add a message
 	ticketRepo.AddMessage(context.Background(), &repository.TicketMessage{
 		TicketID: 1,
 		Content:  "Initial message",
 		IsAdmin:  false,
 	})
-	
+
 	tests := []struct {
 		name       string
 		ticketID   string
@@ -403,13 +403,13 @@ func TestPortalTicketHandler_GetTicket(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/api/portal/tickets/"+tt.ticketID, nil)
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
-			
+
 			if w.Code != tt.wantStatus {
 				t.Errorf("GetTicket() status = %v, want %v, body = %s", w.Code, tt.wantStatus, w.Body.String())
 			}
@@ -419,7 +419,7 @@ func TestPortalTicketHandler_GetTicket(t *testing.T) {
 
 func TestPortalTicketHandler_ReplyTicket(t *testing.T) {
 	router, _, ticketRepo := setupTicketTestRouter()
-	
+
 	// Create a test ticket
 	ticketRepo.Create(context.Background(), &repository.Ticket{
 		UserID:   1,
@@ -427,7 +427,7 @@ func TestPortalTicketHandler_ReplyTicket(t *testing.T) {
 		Status:   repository.TicketStatusOpen,
 		Category: "technical",
 	})
-	
+
 	tests := []struct {
 		name       string
 		ticketID   string
@@ -459,16 +459,16 @@ func TestPortalTicketHandler_ReplyTicket(t *testing.T) {
 			wantStatus: http.StatusNotFound,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body, _ := json.Marshal(tt.body)
 			req := httptest.NewRequest(http.MethodPost, "/api/portal/tickets/"+tt.ticketID+"/reply", bytes.NewBuffer(body))
 			req.Header.Set("Content-Type", "application/json")
-			
+
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
-			
+
 			if w.Code != tt.wantStatus {
 				t.Errorf("ReplyTicket() status = %v, want %v, body = %s", w.Code, tt.wantStatus, w.Body.String())
 			}
@@ -478,7 +478,7 @@ func TestPortalTicketHandler_ReplyTicket(t *testing.T) {
 
 func TestPortalTicketHandler_CloseAndReopenTicket(t *testing.T) {
 	router, _, ticketRepo := setupTicketTestRouter()
-	
+
 	// Create a test ticket
 	ticketRepo.Create(context.Background(), &repository.Ticket{
 		UserID:   1,
@@ -486,31 +486,31 @@ func TestPortalTicketHandler_CloseAndReopenTicket(t *testing.T) {
 		Status:   repository.TicketStatusOpen,
 		Category: "technical",
 	})
-	
+
 	// Close the ticket
 	req := httptest.NewRequest(http.MethodPost, "/api/portal/tickets/1/close", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	
+
 	if w.Code != http.StatusOK {
 		t.Errorf("CloseTicket() status = %v, want %v", w.Code, http.StatusOK)
 	}
-	
+
 	// Verify ticket is closed
 	ticketObj, _ := ticketRepo.GetByID(context.Background(), 1)
 	if ticketObj.Status != repository.TicketStatusClosed {
 		t.Errorf("Expected ticket status to be closed, got %s", ticketObj.Status)
 	}
-	
+
 	// Reopen the ticket
 	req = httptest.NewRequest(http.MethodPost, "/api/portal/tickets/1/reopen", nil)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	
+
 	if w.Code != http.StatusOK {
 		t.Errorf("ReopenTicket() status = %v, want %v", w.Code, http.StatusOK)
 	}
-	
+
 	// Verify ticket is reopened
 	ticketObj, _ = ticketRepo.GetByID(context.Background(), 1)
 	if ticketObj.Status != repository.TicketStatusOpen {
@@ -520,7 +520,7 @@ func TestPortalTicketHandler_CloseAndReopenTicket(t *testing.T) {
 
 func TestPortalTicketHandler_CannotReplyToClosedTicket(t *testing.T) {
 	router, _, ticketRepo := setupTicketTestRouter()
-	
+
 	// Create a closed ticket
 	ticketRepo.Create(context.Background(), &repository.Ticket{
 		UserID:   1,
@@ -528,16 +528,16 @@ func TestPortalTicketHandler_CannotReplyToClosedTicket(t *testing.T) {
 		Status:   repository.TicketStatusClosed,
 		Category: "technical",
 	})
-	
+
 	body, _ := json.Marshal(map[string]interface{}{
 		"content": "Trying to reply to closed ticket",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/portal/tickets/1/reply", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	
+
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("Expected BadRequest for replying to closed ticket, got %d: %s", w.Code, w.Body.String())
 	}

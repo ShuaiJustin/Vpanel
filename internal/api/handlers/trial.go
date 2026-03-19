@@ -42,11 +42,11 @@ type TrialResponse struct {
 
 // TrialStatusResponse represents the trial status for a user.
 type TrialStatusResponse struct {
-	HasTrial     bool           `json:"has_trial"`
-	CanActivate  bool           `json:"can_activate"`
-	Message      string         `json:"message,omitempty"`
-	Trial        *TrialResponse `json:"trial,omitempty"`
-	TrialConfig  *TrialConfig   `json:"trial_config"`
+	HasTrial    bool           `json:"has_trial"`
+	CanActivate bool           `json:"can_activate"`
+	Message     string         `json:"message,omitempty"`
+	Trial       *TrialResponse `json:"trial,omitempty"`
+	TrialConfig *TrialConfig   `json:"trial_config"`
 }
 
 // TrialConfig represents trial configuration in API responses.

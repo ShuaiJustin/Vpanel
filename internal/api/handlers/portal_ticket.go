@@ -222,7 +222,7 @@ func (h *PortalTicketHandler) handleError(c *gin.Context, err error) {
 		c.JSON(appErr.HTTPStatus(), gin.H{"error": appErr.Message})
 		return
 	}
-	
+
 	// Fallback for non-AppError errors
 	errStr := err.Error()
 	switch {

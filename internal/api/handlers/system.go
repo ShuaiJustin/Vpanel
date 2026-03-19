@@ -72,11 +72,11 @@ func (h *SystemHandler) GetInfo(c *gin.Context) {
 
 // SystemStatusResponse represents system status.
 type SystemStatusResponse struct {
-	Status     string      `json:"status"`
-	CPU        CPUInfo     `json:"cpu"`
-	Memory     MemoryInfo  `json:"memory"`
-	Goroutines int         `json:"goroutines"`
-	Uptime     string      `json:"uptime"`
+	Status     string     `json:"status"`
+	CPU        CPUInfo    `json:"cpu"`
+	Memory     MemoryInfo `json:"memory"`
+	Goroutines int        `json:"goroutines"`
+	Uptime     string     `json:"uptime"`
 }
 
 // CPUInfo represents CPU information.
@@ -87,11 +87,11 @@ type CPUInfo struct {
 
 // MemoryInfo represents memory information.
 type MemoryInfo struct {
-	Alloc      uint64  `json:"alloc"`
-	TotalAlloc uint64  `json:"total_alloc"`
-	Sys        uint64  `json:"sys"`
-	HeapAlloc  uint64  `json:"heap_alloc"`
-	HeapSys    uint64  `json:"heap_sys"`
+	Alloc        uint64  `json:"alloc"`
+	TotalAlloc   uint64  `json:"total_alloc"`
+	Sys          uint64  `json:"sys"`
+	HeapAlloc    uint64  `json:"heap_alloc"`
+	HeapSys      uint64  `json:"heap_sys"`
 	UsagePercent float64 `json:"usage_percent"`
 }
 
@@ -129,11 +129,11 @@ func (h *SystemHandler) GetStatus(c *gin.Context) {
 
 // SystemStatsResponse represents system statistics.
 type SystemStatsResponse struct {
-	TotalProxies   int64 `json:"total_proxies"`
-	ActiveProxies  int64 `json:"active_proxies"`
-	TotalUsers     int64 `json:"total_users"`
-	TotalTraffic   int64 `json:"total_traffic"`
-	UploadTraffic  int64 `json:"upload_traffic"`
+	TotalProxies    int64 `json:"total_proxies"`
+	ActiveProxies   int64 `json:"active_proxies"`
+	TotalUsers      int64 `json:"total_users"`
+	TotalTraffic    int64 `json:"total_traffic"`
+	UploadTraffic   int64 `json:"upload_traffic"`
 	DownloadTraffic int64 `json:"download_traffic"`
 }
 

@@ -83,14 +83,12 @@ func (p *Protocol) buildStreamSettings(settings *proxy.Settings, security string
 			tlsSettings["alpn"] = strings.Split(alpn, ",")
 		}
 		if security == "tls" {
+			if settings.GetBool("allowInsecure") {
+				tlsSettings["allowInsecure"] = true
+			}
 			streamSettings["tlsSettings"] = tlsSettings
 		} else {
-			// Reality settings
-			realitySettings := map[string]any{
-				"serverName": settings.GetString("sni"),
-				"publicKey":  settings.GetString("pbk"),
-				"shortId":    settings.GetString("sid"),
-			}
+			realitySettings := buildRealitySettings(settings)
 			streamSettings["realitySettings"] = realitySettings
 		}
 	}
@@ -163,6 +161,9 @@ func (p *Protocol) GenerateLink(settings *proxy.Settings) (string, error) {
 	}
 	if fp := settings.GetString("fp"); fp != "" {
 		params.Set("fp", fp)
+	}
+	if settings.GetBool("allowInsecure") {
+		params.Set("allowInsecure", "1")
 	}
 
 	server := proxy.ResolveServerAddress(settings.Host, settings.Settings)
@@ -247,6 +248,7 @@ func (p *Protocol) ParseLink(link string) (*proxy.Settings, error) {
 			"pbk":      params.Get("pbk"),
 			"sid":      params.Get("sid"),
 			"fp":       params.Get("fp"),
+			"allowInsecure": params.Get("allowInsecure") == "1" || strings.EqualFold(params.Get("allowInsecure"), "true"),
 		},
 		Enabled: true,
 	}
@@ -290,4 +292,75 @@ func (p *Protocol) DefaultSettings() map[string]any {
 // EncodeBase64 encodes settings to base64 (for compatibility).
 func EncodeBase64(data []byte) string {
 	return base64.StdEncoding.EncodeToString(data)
+}
+
+func buildRealitySettings(settings *proxy.Settings) map[string]any {
+	result := map[string]any{}
+
+	rawSettings, _ := settings.Settings["reality_settings"].(map[string]any)
+	if rawSettings == nil {
+		rawSettings = map[string]any{}
+	}
+
+	if show, ok := rawSettings["show"].(bool); ok && show {
+		result["show"] = true
+	}
+
+	if dest, ok := rawSettings["dest"].(string); ok && strings.TrimSpace(dest) != "" {
+		result["dest"] = strings.TrimSpace(dest)
+	}
+
+	if xver, ok := rawSettings["xver"]; ok {
+		switch typed := xver.(type) {
+		case int:
+			result["xver"] = typed
+		case float64:
+			result["xver"] = int(typed)
+		}
+	}
+
+	if privateKey, ok := rawSettings["privateKey"].(string); ok && strings.TrimSpace(privateKey) != "" {
+		result["privateKey"] = strings.TrimSpace(privateKey)
+	}
+
+	if serverNames := readStringSlice(rawSettings["serverNames"]); len(serverNames) > 0 {
+		result["serverNames"] = serverNames
+	} else if sni := settings.GetString("sni"); sni != "" {
+		result["serverNames"] = []string{sni}
+	}
+
+	if shortIDs := readStringSlice(rawSettings["shortIds"]); len(shortIDs) > 0 {
+		result["shortIds"] = shortIDs
+	} else if shortID := settings.GetString("sid"); shortID != "" {
+		result["shortIds"] = []string{shortID}
+	} else {
+		result["shortIds"] = []string{""}
+	}
+
+	return result
+}
+
+func readStringSlice(value any) []string {
+	switch typed := value.(type) {
+	case []string:
+		result := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if trimmed := strings.TrimSpace(item); trimmed != "" {
+				result = append(result, trimmed)
+			}
+		}
+		return result
+	case []any:
+		result := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if text, ok := item.(string); ok {
+				if trimmed := strings.TrimSpace(text); trimmed != "" {
+					result = append(result, trimmed)
+				}
+			}
+		}
+		return result
+	default:
+		return nil
+	}
 }

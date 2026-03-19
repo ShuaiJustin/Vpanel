@@ -314,6 +314,7 @@ import { ElMessage } from "element-plus";
 import { ArrowLeft, CopyDocument } from "@element-plus/icons-vue";
 import { useNodeStore } from "@/stores/node";
 import { certificatesApi, nodeGroupsApi, nodesApi } from "@/api";
+import { copyText } from "@/utils/clipboard";
 
 const route = useRoute();
 const router = useRouter();
@@ -362,7 +363,7 @@ const form = reactive({
 const rules = {
   name: [
     { required: true, message: "请输入节点名称", trigger: "blur" },
-    { min: 2, max: 64, message: "名称长度在 2 到 64 个字符", trigger: "blur" },
+    { min: 2, max: 128, message: "名称长度在 2 到 128 个字符", trigger: "blur" },
   ],
   address: [
     { required: true, message: "请输入节点地址", trigger: "blur" },
@@ -525,7 +526,11 @@ const fetchNode = async () => {
         ? node.ip_whitelist.join("\n")
         : ""
       : "";
-    form.group_ids = node.group_ids || [];
+    form.group_ids = Array.isArray(node.group_ids)
+      ? node.group_ids
+      : node.group_id
+        ? [node.group_id]
+        : [];
     form.tls_enabled = Boolean(node.tls_enabled);
     form.tls_domain = node.tls_domain || "";
     form.certificate_id = node.certificate_id ?? null;
@@ -595,6 +600,7 @@ const submitForm = async () => {
       max_users: form.max_users,
       tags: form.tags,
       ip_whitelist: ipWhitelist,
+      group_id: form.group_ids[0] || null,
       group_ids: form.group_ids,
       tls_enabled: form.tls_enabled,
       tls_domain: normalizeText(form.tls_domain).toLowerCase(),
@@ -654,10 +660,10 @@ const submitForm = async () => {
 
 const copyToken = async () => {
   try {
-    await navigator.clipboard.writeText(createdToken.value);
+    await copyText(createdToken.value);
     ElMessage.success("已复制到剪贴板");
-  } catch {
-    ElMessage.error("复制失败");
+  } catch (error) {
+    ElMessage.error(error.message || "复制失败");
   }
 };
 

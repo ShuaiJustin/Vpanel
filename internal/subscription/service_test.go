@@ -95,7 +95,6 @@ func TestGenerateShortCode(t *testing.T) {
 	}
 }
 
-
 // TestGetOrCreateSubscription tests subscription creation and retrieval.
 func TestGetOrCreateSubscription(t *testing.T) {
 	db := setupTestDB(t)
@@ -222,7 +221,7 @@ func TestCheckUserAccess(t *testing.T) {
 	}
 	// Explicitly update to ensure Enabled is false
 	db.Model(disabledUser).Update("enabled", false)
-	
+
 	err = service.CheckUserAccess(ctx, disabledUser.ID)
 	if err == nil {
 		t.Error("Expected disabled user to be denied access")
@@ -351,7 +350,6 @@ func TestProperty_ShortCodeLength(t *testing.T) {
 	properties.TestingRun(t)
 }
 
-
 // Feature: subscription-system, Property 4: Token Regeneration Invalidation
 // Validates: Requirements 1.5, 1.6
 // *For any* subscription, after regenerating the token, the old token SHALL be invalid
@@ -455,7 +453,6 @@ func TestProperty_TokenUserAssociationRoundTrip(t *testing.T) {
 	properties.TestingRun(t)
 }
 
-
 // Feature: subscription-system, Property 19: Short Code Mapping Consistency
 // Validates: Requirements 8.5
 // *For any* short code, looking up the subscription by short code SHALL return the same
@@ -507,7 +504,6 @@ func TestProperty_ShortCodeMappingConsistency(t *testing.T) {
 
 	properties.TestingRun(t)
 }
-
 
 // Feature: subscription-system, Property 5: Format Detection Consistency
 // Validates: Requirements 2.2
@@ -565,7 +561,7 @@ func TestProperty_FormatOverridePriority(t *testing.T) {
 	// This property is tested at the handler level, not service level
 	// The service's DetectClientFormat only handles User-Agent detection
 	// Format override is handled by the handler when parsing query parameters
-	
+
 	// For now, we test that the service correctly returns the format when explicitly specified
 	db := setupTestDB(t)
 	service := createTestService(t, db)
@@ -700,7 +696,7 @@ func TestProperty_EnabledProxiesOnly(t *testing.T) {
 func TestProperty_UniqueProxyNames(t *testing.T) {
 	// This property is tested at the generator level
 	// The generators package has MakeUniqueNames function for this
-	
+
 	// Test that the service correctly handles proxies with same names
 	db := setupTestDB(t)
 	ctx := context.Background()

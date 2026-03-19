@@ -156,7 +156,6 @@ func (h *NodeHealthHandler) GetHistory(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"history": response})
 }
 
-
 // GetLatest returns the latest health check for a node.
 // GET /api/admin/nodes/:id/health-latest
 func (h *NodeHealthHandler) GetLatest(c *gin.Context) {

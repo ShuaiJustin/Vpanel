@@ -3,6 +3,7 @@ package proxy
 
 import (
 	"encoding/json"
+	"strings"
 )
 
 // Protocol defines the interface for proxy protocols.
@@ -43,9 +44,11 @@ func (s *Settings) GetString(key string) string {
 	if s.Settings == nil {
 		return ""
 	}
-	if v, ok := s.Settings[key]; ok {
-		if str, ok := v.(string); ok {
-			return str
+	for _, candidate := range settingAliasKeys(key) {
+		if v, ok := s.Settings[candidate]; ok {
+			if str, ok := v.(string); ok {
+				return strings.TrimSpace(str)
+			}
 		}
 	}
 	return ""
@@ -74,9 +77,18 @@ func (s *Settings) GetBool(key string) bool {
 	if s.Settings == nil {
 		return false
 	}
-	if v, ok := s.Settings[key]; ok {
-		if b, ok := v.(bool); ok {
-			return b
+	for _, candidate := range settingAliasKeys(key) {
+		if v, ok := s.Settings[candidate]; ok {
+			switch typed := v.(type) {
+			case bool:
+				return typed
+			case string:
+				return strings.EqualFold(strings.TrimSpace(typed), "true") || strings.TrimSpace(typed) == "1"
+			case int:
+				return typed != 0
+			case float64:
+				return typed != 0
+			}
 		}
 	}
 	return false
@@ -88,4 +100,21 @@ func (s *Settings) SetValue(key string, value any) {
 		s.Settings = make(map[string]any)
 	}
 	s.Settings[key] = value
+}
+
+func settingAliasKeys(key string) []string {
+	switch key {
+	case "fp", "fingerprint":
+		return []string{"fp", "fingerprint"}
+	case "pbk", "publicKey":
+		return []string{"pbk", "publicKey"}
+	case "sid", "shortId":
+		return []string{"sid", "shortId"}
+	case "sni", "server_name":
+		return []string{"sni", "server_name"}
+	case "serviceName", "service_name":
+		return []string{"serviceName", "service_name"}
+	default:
+		return []string{key}
+	}
 }

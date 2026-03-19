@@ -56,13 +56,13 @@ func (h *PauseHandler) PauseSubscription(c *gin.Context) {
 	result, err := h.pauseService.Pause(c.Request.Context(), userID.(int64))
 	if err != nil {
 		h.logger.Error("Failed to pause subscription", logger.Err(err), logger.F("user_id", userID))
-		
+
 		// Check for validation errors
 		if err.Error() == "cannot_pause" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		
+
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to pause subscription"})
 		return
 	}
@@ -87,13 +87,13 @@ func (h *PauseHandler) ResumeSubscription(c *gin.Context) {
 	err := h.pauseService.Resume(c.Request.Context(), userID.(int64))
 	if err != nil {
 		h.logger.Error("Failed to resume subscription", logger.Err(err), logger.F("user_id", userID))
-		
+
 		// Check for validation errors
 		if err.Error() == "not_paused" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Subscription is not paused"})
 			return
 		}
-		
+
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to resume subscription"})
 		return
 	}

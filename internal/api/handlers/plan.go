@@ -59,7 +59,6 @@ type CreatePlanRequest struct {
 	Features      []string `json:"features"`
 }
 
-
 // ListActivePlans returns all active plans (public endpoint).
 func (h *PlanHandler) ListActivePlans(c *gin.Context) {
 	plans, err := h.planService.ListActive(c.Request.Context())
@@ -165,7 +164,6 @@ func (h *PlanHandler) UpdatePlan(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"plan": h.toPlanResponse(p)})
 }
-
 
 // DeletePlan deletes a plan (admin only).
 func (h *PlanHandler) DeletePlan(c *gin.Context) {

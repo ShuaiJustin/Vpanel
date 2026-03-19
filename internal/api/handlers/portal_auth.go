@@ -13,6 +13,7 @@ import (
 
 	"v/internal/auth"
 	"v/internal/database/repository"
+	"v/internal/entitlement"
 	"v/internal/logger"
 	portalauth "v/internal/portal/auth"
 	pkgerrors "v/pkg/errors"
@@ -24,6 +25,7 @@ type PortalAuthHandler struct {
 	authService       *auth.Service
 	userRepo          repository.UserRepository
 	proxyRepo         repository.ProxyRepository
+	entitlement       *entitlement.Service
 	emailSender       portalEmailSender
 	baseURL           string
 	rateLimiter       *portalauth.RateLimiter
@@ -74,6 +76,12 @@ func NewPortalAuthHandler(
 func (h *PortalAuthHandler) WithEmailSender(sender portalEmailSender, baseURL string) *PortalAuthHandler {
 	h.emailSender = sender
 	h.baseURL = strings.TrimSuffix(baseURL, "/")
+	return h
+}
+
+// WithEntitlementService configures portal entitlement-aware profile data.
+func (h *PortalAuthHandler) WithEntitlementService(entitlementService *entitlement.Service) *PortalAuthHandler {
+	h.entitlement = entitlementService
 	return h
 }
 
@@ -212,6 +220,15 @@ func (h *PortalAuthHandler) Register(c *gin.Context) {
 			h.logger.Warn("failed to send verification email", logger.F("user_id", result.UserID), logger.F("error", err))
 		} else {
 			emailVerificationSent = true
+		}
+	}
+
+	if h.entitlement != nil {
+		if _, _, entitlementErr := h.entitlement.GetAccessibleProxies(c.Request.Context(), result.UserID); entitlementErr != nil && !pkgerrors.IsForbidden(entitlementErr) {
+			h.logger.Warn("failed to initialize portal trial entitlement after registration",
+				logger.F("user_id", result.UserID),
+				logger.F("error", entitlementErr),
+			)
 		}
 	}
 
@@ -421,27 +438,70 @@ func (h *PortalAuthHandler) GetProfile(c *gin.Context) {
 		return
 	}
 
+	var (
+		effectiveExpiresAt    = user.ExpiresAt
+		effectiveTrafficLimit = user.TrafficLimit
+		effectiveTrafficUsed  = user.TrafficUsed
+		availableNodes        = 0
+		accessDenied          = false
+	)
+
+	if h.entitlement != nil {
+		accessState, accessErr := h.entitlement.EvaluateAccess(c.Request.Context(), userID.(int64))
+		if accessState != nil {
+			effectiveExpiresAt = accessState.EffectiveExpiresAt
+			effectiveTrafficLimit = accessState.EffectiveTrafficLimit
+			effectiveTrafficUsed = accessState.EffectiveTrafficUsed
+		}
+		if accessErr == nil {
+			if proxies, _, proxyErr := h.entitlement.GetAccessibleProxies(c.Request.Context(), userID.(int64)); proxyErr == nil {
+				nodeIDs := make(map[int64]struct{}, len(proxies))
+				for _, proxy := range proxies {
+					nodeKey := proxy.ID
+					if proxy.NodeID != nil && *proxy.NodeID > 0 {
+						nodeKey = *proxy.NodeID
+					}
+					nodeIDs[nodeKey] = struct{}{}
+				}
+				availableNodes = len(nodeIDs)
+			}
+		} else if pkgerrors.IsForbidden(accessErr) {
+			accessDenied = true
+		} else {
+			h.logger.Warn("failed to evaluate portal entitlement for profile",
+				logger.F("user_id", userID.(int64)),
+				logger.F("error", accessErr),
+			)
+		}
+	}
+
 	// Determine user status
 	status := "active"
 	if !user.Enabled {
 		status = "disabled"
-	} else if user.IsExpired() {
+	} else if effectiveExpiresAt != nil && time.Now().After(*effectiveExpiresAt) {
+		status = "expired"
+	} else if accessDenied {
 		status = "expired"
 	}
 
-	// Get available nodes count (enabled proxies)
-	availableNodes := 0
-	if h.proxyRepo != nil {
+	if h.entitlement == nil && h.proxyRepo != nil {
 		proxies, err := h.proxyRepo.GetByUserID(c.Request.Context(), userID.(int64), 1000, 0)
 		if err == nil && len(proxies) == 0 {
 			proxies, err = h.proxyRepo.GetEnabled(c.Request.Context())
 		}
 		if err == nil {
+			nodeIDs := map[int64]struct{}{}
 			for _, proxy := range proxies {
 				if proxy.Enabled {
-					availableNodes++
+					nodeKey := proxy.ID
+					if proxy.NodeID != nil && *proxy.NodeID > 0 {
+						nodeKey = *proxy.NodeID
+					}
+					nodeIDs[nodeKey] = struct{}{}
 				}
 			}
+			availableNodes = len(nodeIDs)
 		}
 	}
 
@@ -452,9 +512,9 @@ func (h *PortalAuthHandler) GetProfile(c *gin.Context) {
 		"role":               user.Role,
 		"enabled":            user.Enabled,
 		"status":             status,
-		"traffic_limit":      user.TrafficLimit,
-		"traffic_used":       user.TrafficUsed,
-		"expires_at":         user.ExpiresAt,
+		"traffic_limit":      effectiveTrafficLimit,
+		"traffic_used":       effectiveTrafficUsed,
+		"expires_at":         effectiveExpiresAt,
 		"two_factor_enabled": user.TwoFactorEnabled,
 		"available_nodes":    availableNodes,
 		"created_at":         user.CreatedAt,

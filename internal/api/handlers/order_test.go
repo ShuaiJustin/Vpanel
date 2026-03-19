@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -86,6 +87,7 @@ func setupOrderTestRouter(db *gorm.DB) (*gin.Engine, *order.Service) {
 			var id int64
 			fmt.Sscanf(userIDStr, "%d", &id)
 			c.Set("userID", id)
+			c.Set("user_id", id)
 		}
 		role := c.GetHeader("X-User-Role")
 		if role != "" {
@@ -99,6 +101,7 @@ func setupOrderTestRouter(db *gorm.DB) (*gin.Engine, *order.Service) {
 	router.GET("/orders/:id", orderHandler.GetOrder)
 	router.POST("/orders/:id/cancel", orderHandler.CancelOrder)
 	router.GET("/admin/orders", orderHandler.ListAllOrders)
+	router.GET("/admin/orders/:id", orderHandler.GetOrder)
 	router.PUT("/admin/orders/:id/status", orderHandler.UpdateOrderStatus)
 
 	return router, orderService
@@ -207,6 +210,100 @@ func TestOrderCancellation_PendingOrder(t *testing.T) {
 	}
 }
 
+func TestAdminGetOrder_UsesAdminRoute(t *testing.T) {
+	db := setupOrderTestDB(t)
+	router, orderService := setupOrderTestRouter(db)
+
+	testPlan := createOrderTestPlan(db, "Admin Detail Plan", 2000, 30)
+	testUser := createOrderTestUser(db, "adminorderdetail")
+
+	createdOrder, err := orderService.Create(context.Background(), &order.CreateOrderRequest{
+		UserID: int64(testUser.ID),
+		PlanID: int64(testPlan.ID),
+	})
+	if err != nil {
+		t.Fatalf("Failed to create order: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/admin/orders/%d", createdOrder.ID), nil)
+	req.Header.Set("X-User-ID", "1")
+	req.Header.Set("X-User-Role", "admin")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var response map[string]map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response["order"]["order_no"] != createdOrder.OrderNo {
+		t.Fatalf("Expected order_no %s, got %v", createdOrder.OrderNo, response["order"]["order_no"])
+	}
+}
+
+func TestListAllOrders_AppliesSearchAndDateFilter(t *testing.T) {
+	db := setupOrderTestDB(t)
+	router, orderService := setupOrderTestRouter(db)
+
+	testPlan := createOrderTestPlan(db, "Search Plan", 3000, 30)
+	firstUser := createOrderTestUser(db, "searchuserone")
+	secondUser := createOrderTestUser(db, "searchusertwo")
+
+	firstOrder, err := orderService.Create(context.Background(), &order.CreateOrderRequest{
+		UserID: int64(firstUser.ID),
+		PlanID: int64(testPlan.ID),
+	})
+	if err != nil {
+		t.Fatalf("Failed to create first order: %v", err)
+	}
+	if _, err := orderService.Create(context.Background(), &order.CreateOrderRequest{
+		UserID: int64(secondUser.ID),
+		PlanID: int64(testPlan.ID),
+	}); err != nil {
+		t.Fatalf("Failed to create second order: %v", err)
+	}
+
+	startDate := time.Now().Add(-1 * time.Hour).Format(time.RFC3339)
+	endDate := time.Now().Add(1 * time.Hour).Format(time.RFC3339)
+	requestURL := fmt.Sprintf(
+		"/admin/orders?search=%d&start_date=%s&end_date=%s",
+		firstUser.ID,
+		url.QueryEscape(startDate),
+		url.QueryEscape(endDate),
+	)
+	req := httptest.NewRequest(http.MethodGet, requestURL, nil)
+	req.Header.Set("X-User-ID", "1")
+	req.Header.Set("X-User-Role", "admin")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var response struct {
+		Orders []map[string]interface{} `json:"orders"`
+		Total  int64                    `json:"total"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.Total != 1 || len(response.Orders) != 1 {
+		t.Fatalf("Expected exactly 1 filtered order, got total=%d len=%d body=%s", response.Total, len(response.Orders), w.Body.String())
+	}
+
+	if response.Orders[0]["order_no"] != firstOrder.OrderNo {
+		t.Fatalf("Expected filtered order %s, got %v", firstOrder.OrderNo, response.Orders[0]["order_no"])
+	}
+}
+
 // TestOrderFlow_Property tests the complete order flow property.
 // *For any* valid plan and user, creating an order should result in a pending order
 // with correct amount and expiration time.
@@ -262,8 +359,8 @@ func TestOrderFlow_Property(t *testing.T) {
 
 			return true
 		},
-		gen.Int64Range(100, 100000),  // price in cents
-		gen.IntRange(1, 365),          // duration in days
+		gen.Int64Range(100, 100000), // price in cents
+		gen.IntRange(1, 365),        // duration in days
 	))
 
 	properties.TestingRun(t)
