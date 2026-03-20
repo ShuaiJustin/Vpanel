@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -164,6 +165,10 @@ func (s *Service) GetAccessibleProxies(ctx context.Context, userID int64) ([]*re
 		return nil, nil, err
 	}
 	if len(proxies) > 0 {
+		proxies, err = s.reconcileUserAutoProvisionedProxies(ctx, proxies)
+		if err != nil {
+			return nil, nil, err
+		}
 		return enabledOnly(proxies), state, nil
 	}
 
@@ -348,6 +353,7 @@ func (s *Service) autoProvisionDefaultProxy(ctx context.Context, userID, nodeID 
 	}
 
 	settings := protocol.DefaultSettings()
+	settings = applyAutoProvisionNodeSecurity(node, protocolName, settings)
 	normalizedSettings, err := proxylib.NormalizeSettings(protocolName, settings)
 	if err != nil {
 		return nil, errors.NewInternalError("failed to normalize auto provisioned proxy settings", err)
@@ -397,12 +403,111 @@ func (s *Service) autoProvisionDefaultProxy(ctx context.Context, userID, nodeID 
 	return proxyModel, nil
 }
 
+func (s *Service) reconcileUserAutoProvisionedProxies(ctx context.Context, proxies []*repository.Proxy) ([]*repository.Proxy, error) {
+	if len(proxies) == 0 {
+		return proxies, nil
+	}
+
+	reconciled := make([]*repository.Proxy, len(proxies))
+	for i, proxyModel := range proxies {
+		updatedProxy, err := s.reconcileUserAutoProvisionedProxy(ctx, proxyModel)
+		if err != nil {
+			return nil, err
+		}
+		reconciled[i] = updatedProxy
+	}
+
+	return reconciled, nil
+}
+
+func (s *Service) reconcileUserAutoProvisionedProxy(ctx context.Context, proxyModel *repository.Proxy) (*repository.Proxy, error) {
+	if proxyModel == nil || proxyModel.NodeID == nil || proxyModel.UserID <= 0 {
+		return proxyModel, nil
+	}
+	if strings.ToLower(strings.TrimSpace(proxyModel.Remark)) != "auto provisioned" {
+		return proxyModel, nil
+	}
+	if !s.canAutoProvisionDefaultProxy() || !protocolSupportsAutoProvisionTLS(proxyModel.Protocol) {
+		return proxyModel, nil
+	}
+
+	node, err := s.nodeRepo.GetByID(ctx, *proxyModel.NodeID)
+	if err != nil {
+		return nil, err
+	}
+	if !nodeSupportsAutoProvisionTLS(node) {
+		return proxyModel, nil
+	}
+
+	settingsCopy := cloneSettings(proxyModel.Settings)
+	currentSettings, normalizeErr := proxylib.NormalizeSettings(proxyModel.Protocol, settingsCopy)
+	if normalizeErr != nil {
+		currentSettings = settingsCopy
+	}
+	desiredSettings, err := proxylib.NormalizeSettings(proxyModel.Protocol, applyAutoProvisionNodeSecurity(node, proxyModel.Protocol, cloneSettings(currentSettings)))
+	if err != nil {
+		return nil, errors.NewInternalError("failed to normalize reconciled auto provisioned proxy settings", err)
+	}
+	if reflect.DeepEqual(currentSettings, desiredSettings) {
+		return proxyModel, nil
+	}
+
+	protocol, ok := s.proxyManager.GetProtocol(proxyModel.Protocol)
+	if !ok {
+		return proxyModel, nil
+	}
+	if err := protocol.Validate(&proxylib.Settings{
+		ID:       proxyModel.ID,
+		Name:     proxyModel.Name,
+		Protocol: proxyModel.Protocol,
+		Port:     proxyModel.Port,
+		Host:     proxyModel.Host,
+		Settings: desiredSettings,
+		Enabled:  proxyModel.Enabled,
+		Remark:   proxyModel.Remark,
+	}); err != nil {
+		return nil, errors.NewInternalError("failed to validate reconciled auto provisioned proxy settings", err)
+	}
+
+	updatedProxy := *proxyModel
+	updatedProxy.Settings = desiredSettings
+	if err := s.proxyRepo.Update(ctx, &updatedProxy); err != nil {
+		return nil, err
+	}
+
+	if s.configSyncHook != nil && updatedProxy.NodeID != nil {
+		s.configSyncHook(*updatedProxy.NodeID, "entitlement_auto_provision_reconcile", "reconciled auto provisioned proxy security settings")
+	}
+
+	s.logger.Info("reconciled auto provisioned proxy security settings",
+		logger.UserID(updatedProxy.UserID),
+		logger.F("proxy_id", updatedProxy.ID),
+		logger.F("node_id", *updatedProxy.NodeID),
+		logger.F("protocol", updatedProxy.Protocol),
+	)
+
+	return &updatedProxy, nil
+}
+
 func (s *Service) canAutoProvisionDefaultProxy() bool {
 	return s.proxyManager != nil && s.nodeRepo != nil
 }
 
 func (s *Service) selectAutoProvisionProtocol(node *repository.Node) (string, proxylib.Protocol, error) {
-	for _, protocolName := range preferredAutoProvisionProtocols(node.Protocols) {
+	preferredProtocols := preferredAutoProvisionProtocols(node.Protocols)
+	if nodeSupportsAutoProvisionTLS(node) {
+		for _, protocolName := range preferredProtocols {
+			if !protocolSupportsAutoProvisionTLS(protocolName) {
+				continue
+			}
+			protocol, ok := s.proxyManager.GetProtocol(protocolName)
+			if ok {
+				return protocolName, protocol, nil
+			}
+		}
+	}
+
+	for _, protocolName := range preferredProtocols {
 		protocol, ok := s.proxyManager.GetProtocol(protocolName)
 		if ok {
 			return protocolName, protocol, nil
@@ -459,6 +564,59 @@ func preferredAutoProvisionProtocols(raw string) []string {
 	}
 
 	return ordered
+}
+
+func cloneSettings(settings map[string]any) map[string]any {
+	if settings == nil {
+		return map[string]any{}
+	}
+	cloned := make(map[string]any, len(settings))
+	for key, value := range settings {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func applyAutoProvisionNodeSecurity(node *repository.Node, protocolName string, settings map[string]any) map[string]any {
+	if settings == nil {
+		settings = map[string]any{}
+	}
+
+	if !nodeSupportsAutoProvisionTLS(node) || !protocolSupportsAutoProvisionTLS(protocolName) {
+		return settings
+	}
+
+	settings["security"] = "tls"
+	if connectHost := autoProvisionConnectHost(node); connectHost != "" {
+		settings["server"] = connectHost
+	}
+	settings["server_name"] = node.TLSDomain
+	settings["tls_domain"] = node.TLSDomain
+	settings["sni"] = node.TLSDomain
+	return settings
+}
+
+func autoProvisionConnectHost(node *repository.Node) string {
+	if node == nil {
+		return ""
+	}
+	if normalized := proxylib.NormalizeShareHost(node.Address); normalized != "" {
+		return normalized
+	}
+	return strings.TrimSpace(node.TLSDomain)
+}
+
+func nodeSupportsAutoProvisionTLS(node *repository.Node) bool {
+	return node != nil && node.TLSEnabled && strings.TrimSpace(node.TLSDomain) != ""
+}
+
+func protocolSupportsAutoProvisionTLS(protocolName string) bool {
+	switch strings.ToLower(strings.TrimSpace(protocolName)) {
+	case "vmess", "vless", "trojan":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Service) trialConfig() *trial.Config {

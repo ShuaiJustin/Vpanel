@@ -48,6 +48,15 @@
           </div>
         </template>
       </el-table-column>
+
+      <el-table-column label="流量限制" min-width="160" align="center">
+        <template #default="{ row }">
+          <div class="expiry-cell">
+            <span>{{ row.traffic_limit_display || '-' }}</span>
+            <el-tag v-if="row.traffic_limit_source_label" size="small" type="info">{{ row.traffic_limit_source_label }}</el-tag>
+          </div>
+        </template>
+      </el-table-column>
       
       <el-table-column label="状态" width="100" align="center">
         <template #default="{ row }">
@@ -600,18 +609,11 @@
         
         <el-divider content-position="left">高级设置</el-divider>
         
-        <el-form-item label="流量">
-          <el-input-number
-            v-model="inboundForm.total_traffic"
-            :min="0"
-            :step="1"
-            style="width: 100%"
-            controls-position="right"
-          >
-            <template #append>GB</template>
-          </el-input-number>
-          <div style="font-size: 12px; color: #909399; margin-top: 5px;">
-            0表示不限制
+        <el-form-item label="流量限制">
+          <div class="expiry-readonly">
+            <div class="expiry-readonly__value">{{ inboundForm.traffic_limit_display || '不适用' }}</div>
+            <div v-if="inboundForm.traffic_limit_source_label" class="form-tip">来源：{{ inboundForm.traffic_limit_source_label }}</div>
+            <div class="form-tip">该额度跟随用户试用或订阅流量，不在代理协议里单独设置。</div>
           </div>
         </el-form-item>
         
@@ -698,7 +700,10 @@ const defaultInboundForm = {
   listen: '',
   port: null,
   node_id: null,  // 节点ID
-  total_traffic: 0,
+  traffic_limit: 0,
+  traffic_limit_display: '不适用',
+  traffic_limit_source: '',
+  traffic_limit_source_label: '',
   expires_at: '',
   expires_at_display: '不适用',
   expiry_source: '',
@@ -1175,6 +1180,10 @@ const loadInbounds = async () => {
         enable: p.enabled,
         clientCount: 0,
         created_at: p.created_at,
+        traffic_limit: p.traffic_limit || 0,
+        traffic_limit_source: p.traffic_limit_source || '',
+        traffic_limit_source_label: getExpirySourceLabel(p.traffic_limit_source),
+        traffic_limit_display: formatProxyTrafficDisplay(p.traffic_limit, p.traffic_limit_source),
         expires_at: p.expires_at || '',
         expiry_source: p.expiry_source || '',
         expiry_source_label: getExpirySourceLabel(p.expiry_source),
@@ -1185,6 +1194,8 @@ const loadInbounds = async () => {
       inbounds.value = (data.list || []).map(p => ({
         ...p,
         user_id: p.user_id,
+        traffic_limit_source_label: getExpirySourceLabel(p.traffic_limit_source),
+        traffic_limit_display: formatProxyTrafficDisplay(p.traffic_limit, p.traffic_limit_source),
         expiry_source_label: getExpirySourceLabel(p.expiry_source),
         expires_at_display: formatProxyExpiryDisplay(p.expires_at, p.expiry_source)
       }))
@@ -1207,8 +1218,14 @@ const formatTraffic = (bytes) => {
   const k = 1024
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
-  
+
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+const formatProxyTrafficDisplay = (trafficLimit, source) => {
+  if (!source) return ''
+  if (!trafficLimit || trafficLimit <= 0) return '不限制'
+  return formatTraffic(trafficLimit)
 }
 
 // 打开添加入站对话框
@@ -1260,6 +1277,10 @@ const normalizeProxyToInboundForm = (proxyData = {}) => {
   form.listen = proxyData.host || ''
   form.port = proxyData.port || null
   form.node_id = proxyData.node_id ?? null
+  form.traffic_limit = Number(proxyData.traffic_limit || 0)
+  form.traffic_limit_source = proxyData.traffic_limit_source || ''
+  form.traffic_limit_source_label = getExpirySourceLabel(proxyData.traffic_limit_source)
+  form.traffic_limit_display = formatProxyTrafficDisplay(proxyData.traffic_limit, proxyData.traffic_limit_source) || '不适用'
   form.expires_at = proxyData.expires_at || ''
   form.expiry_source = proxyData.expiry_source || ''
   form.expiry_source_label = getExpirySourceLabel(proxyData.expiry_source)

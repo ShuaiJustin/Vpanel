@@ -154,15 +154,11 @@ func (h *PortalNodeHandler) TestLatency(c *gin.Context) {
 	start := time.Now()
 	conn, dialErr := net.DialTimeout("tcp", target, 3*time.Second)
 	if dialErr != nil {
-		if h.recoveryTracker != nil && nodeInfo.NodeID != nil && *nodeInfo.NodeID > 0 {
-			h.recoveryTracker.QueueConfigSyncCommand(*nodeInfo.NodeID, "portal_ping", "portal ping failed, trigger config sync")
-			h.recoveryTracker.QueueXrayRecoveryCommand(*nodeInfo.NodeID, "portal_ping", "portal ping failed, trigger xray start")
-		}
 		c.JSON(http.StatusBadGateway, gin.H{
 			"node_id": nodeInfo.ID,
 			"host":    nodeInfo.Host,
 			"latency": -1,
-			"message": "连接失败，已触发节点恢复",
+			"message": "连接失败",
 		})
 		return
 	}

@@ -209,6 +209,7 @@ func (r *Router) Setup() {
 	refundService := refund.NewService(r.repos.Order, balanceService, commissionService, r.logger)
 	trialService := trial.NewService(r.repos.Trial, r.repos.User, r.logger, nil)
 	r.trialService = trialService
+	proxyHandler.WithTrialService(trialService)
 	orderService.WithTrialMarker(trialService)
 	r.entitlementService = entitlement.NewService(
 		r.repos.User,
@@ -251,6 +252,7 @@ func (r *Router) Setup() {
 	proxyHandler.WithRecoveryTracker(r.nodeRecoveryTracker)
 	r.entitlementService.WithConfigSyncHook(func(nodeID int64, source, reason string) {
 		r.nodeRecoveryTracker.QueueConfigSyncCommand(nodeID, source, reason)
+		r.nodeRecoveryTracker.QueueXrayRestartCommand(nodeID, source, "apply synced entitlement config")
 	})
 
 	// Create Xray config generator for nodes

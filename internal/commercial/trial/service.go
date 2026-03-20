@@ -35,7 +35,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		Enabled:             true,
 		Duration:            7,          // 7 days
-		TrafficLimit:        1073741824, // 1 GB
+		TrafficLimit:        107374182400, // 100 GB
 		RequireEmailVerify:  false,
 		AutoActivate:        true,
 		FeatureRestrictions: []string{},

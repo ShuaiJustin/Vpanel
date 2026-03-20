@@ -330,3 +330,97 @@ func TestGetAccessibleProxies_DoesNotShareAutoProvisionedUserProxy(t *testing.T)
 		t.Fatalf("expected two user-specific proxies on node, got %d", count)
 	}
 }
+
+func TestGetAccessibleProxies_AutoProvisionedProxyInheritsNodeTLS(t *testing.T) {
+	service, db := setupTestService(t)
+	user := createTestUser(t, db, "tls-auto-provision-user")
+	node := createTestNode(t, db, "tls-node")
+	node.Protocols = `["shadowsocks","vmess"]`
+	node.TLSEnabled = true
+	node.TLSDomain = "panel.example.com"
+	if err := db.Save(node).Error; err != nil {
+		t.Fatalf("failed to update node tls settings: %v", err)
+	}
+
+	proxies, _, err := service.GetAccessibleProxies(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("expected tls auto provisioned proxy, got error: %v", err)
+	}
+	if len(proxies) != 1 {
+		t.Fatalf("expected one tls auto provisioned proxy, got %d", len(proxies))
+	}
+	if proxies[0].Protocol != "vmess" {
+		t.Fatalf("expected vmess proxy for tls-enabled node, got %s", proxies[0].Protocol)
+	}
+	if got := proxies[0].Settings["security"]; got != "tls" {
+		t.Fatalf("expected tls security, got %#v", got)
+	}
+	if got := proxies[0].Settings["server"]; got != node.Address {
+		t.Fatalf("expected server address to use node address, got %#v", got)
+	}
+	if got := proxies[0].Settings["server_name"]; got != "panel.example.com" {
+		t.Fatalf("expected server_name to inherit tls domain, got %#v", got)
+	}
+}
+
+func TestGetAccessibleProxies_ReconcilesExistingAutoProvisionedProxyToTLS(t *testing.T) {
+	service, db := setupTestService(t)
+	user := createTestUser(t, db, "tls-reconcile-user")
+	node := createTestNode(t, db, "tls-reconcile-node")
+	node.TLSEnabled = true
+	node.TLSDomain = "edge.example.com"
+	if err := db.Save(node).Error; err != nil {
+		t.Fatalf("failed to update node tls settings: %v", err)
+	}
+
+	nodeRef := node.ID
+	existingProxy := &repository.Proxy{
+		UserID:   user.ID,
+		NodeID:   &nodeRef,
+		Name:     "legacy-auto-proxy",
+		Protocol: "vmess",
+		Port:     24001,
+		Host:     node.Address,
+		Settings: map[string]any{
+			"uuid":     "3f9b4ca6-7df4-4dd9-a61e-bba0e4d2c2d3",
+			"alterId":  0,
+			"network":  "tcp",
+			"security": "none",
+		},
+		Enabled: true,
+		Remark:  "auto provisioned",
+	}
+	if err := db.Create(existingProxy).Error; err != nil {
+		t.Fatalf("failed to create legacy auto provisioned proxy: %v", err)
+	}
+
+	var syncedNodeID int64
+	service.WithConfigSyncHook(func(nodeID int64, source, reason string) {
+		syncedNodeID = nodeID
+	})
+
+	proxies, _, err := service.GetAccessibleProxies(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("expected reconciled proxy, got error: %v", err)
+	}
+	if len(proxies) != 1 {
+		t.Fatalf("expected one reconciled proxy, got %d", len(proxies))
+	}
+	if got := proxies[0].Settings["security"]; got != "tls" {
+		t.Fatalf("expected existing proxy security upgraded to tls, got %#v", got)
+	}
+	if got := proxies[0].Settings["server"]; got != node.Address {
+		t.Fatalf("expected existing proxy server upgraded to node address, got %#v", got)
+	}
+	if syncedNodeID != node.ID {
+		t.Fatalf("expected config sync for node %d, got %d", node.ID, syncedNodeID)
+	}
+
+	var persisted repository.Proxy
+	if err := db.First(&persisted, existingProxy.ID).Error; err != nil {
+		t.Fatalf("failed to reload reconciled proxy: %v", err)
+	}
+	if got := persisted.Settings["security"]; got != "tls" {
+		t.Fatalf("expected persisted proxy security to be tls, got %#v", got)
+	}
+}

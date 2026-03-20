@@ -33,7 +33,8 @@ export function getNode(id) {
  * @returns {Promise}
  */
 export function testLatency(id) {
-  return api.post(`${BASE_URL}/${id}/ping`)
+  // Latency probing is expected to fail occasionally; keep the UI error local.
+  return api.post(`${BASE_URL}/${id}/ping`, null, { silent: true })
 }
 
 /**

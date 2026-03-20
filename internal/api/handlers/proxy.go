@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	trialsvc "v/internal/commercial/trial"
 	"v/internal/database/repository"
 	"v/internal/logger"
 	"v/internal/proxy"
@@ -21,6 +22,7 @@ type ProxyHandler struct {
 	trafficRepo     repository.TrafficRepository
 	userRepo        repository.UserRepository
 	trialRepo       repository.TrialRepository
+	trialService    *trialsvc.Service
 	recoveryTracker *NodeRecoveryTracker
 	logger          logger.Logger
 }
@@ -56,6 +58,12 @@ func (h *ProxyHandler) WithUserRepositories(userRepo repository.UserRepository, 
 	return h
 }
 
+// WithTrialService injects trial service for derived trial traffic metadata.
+func (h *ProxyHandler) WithTrialService(trialService *trialsvc.Service) *ProxyHandler {
+	h.trialService = trialService
+	return h
+}
+
 // WithRecoveryTracker injects recovery tracker for node config sync commands.
 func (h *ProxyHandler) WithRecoveryTracker(recoveryTracker *NodeRecoveryTracker) *ProxyHandler {
 	h.recoveryTracker = recoveryTracker
@@ -67,6 +75,7 @@ func (h *ProxyHandler) queueNodeConfigSync(nodeID *int64, source, reason string)
 		return
 	}
 	h.recoveryTracker.QueueConfigSyncCommand(*nodeID, source, reason)
+	h.recoveryTracker.QueueXrayRestartCommand(*nodeID, source, "apply synced proxy config")
 }
 
 type ProxyResponse struct {
@@ -82,6 +91,8 @@ type ProxyResponse struct {
 	Remark       string         `json:"remark,omitempty"`
 	ExpiresAt    *string        `json:"expires_at,omitempty"`
 	ExpirySource string         `json:"expiry_source,omitempty"`
+	TrafficLimit  int64         `json:"traffic_limit"`
+	TrafficSource string        `json:"traffic_limit_source,omitempty"`
 	CreatedAt    string         `json:"created_at"`
 	UpdatedAt    string         `json:"updated_at"`
 }
@@ -375,8 +386,10 @@ func (h *ProxyHandler) buildProxyResponse(ctx context.Context, p *repository.Pro
 		UpdatedAt: p.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 	}
 
-	if expiresAt, source := h.resolveProxyExpiry(ctx, p.UserID); source != "" {
-		response.ExpirySource = source
+	if expiresAt, expirySource, trafficLimit, trafficSource := h.resolveProxyAccessMetadata(ctx, p.UserID); expirySource != "" || trafficSource != "" {
+		response.ExpirySource = expirySource
+		response.TrafficLimit = trafficLimit
+		response.TrafficSource = trafficSource
 		if expiresAt != nil {
 			formatted := expiresAt.UTC().Format(time.RFC3339)
 			response.ExpiresAt = &formatted
@@ -386,32 +399,47 @@ func (h *ProxyHandler) buildProxyResponse(ctx context.Context, p *repository.Pro
 	return response
 }
 
-func (h *ProxyHandler) resolveProxyExpiry(ctx context.Context, userID int64) (*time.Time, string) {
+func (h *ProxyHandler) resolveProxyAccessMetadata(ctx context.Context, userID int64) (*time.Time, string, int64, string) {
 	if h == nil || userID <= 0 || h.userRepo == nil {
-		return nil, ""
+		return nil, "", 0, ""
 	}
 
 	user, err := h.userRepo.GetByID(ctx, userID)
-	if err == nil && user != nil {
-		if user.ExpiresAt != nil {
-			expiresAt := user.ExpiresAt.UTC()
-			return &expiresAt, "subscription"
-		}
+	if err != nil || user == nil {
+		return nil, "", 0, ""
+	}
+
+	now := time.Now()
+	if user.ExpiresAt != nil && !now.After(*user.ExpiresAt) {
+		expiresAt := user.ExpiresAt.UTC()
+		return &expiresAt, "subscription", user.TrafficLimit, "subscription"
+	}
+	if user.ExpiresAt == nil && user.TrafficLimit > 0 {
+		return nil, "subscription", user.TrafficLimit, "subscription"
 	}
 
 	if h.trialRepo != nil {
 		trial, trialErr := h.trialRepo.GetByUserID(ctx, userID)
-		if trialErr == nil && trial != nil {
+		if trialErr == nil && trial != nil && trial.Status == "active" && trial.ConvertedAt == nil && !now.After(trial.ExpireAt) {
 			expiresAt := trial.ExpireAt.UTC()
-			return &expiresAt, "trial"
+			return &expiresAt, "trial", h.trialTrafficLimit(), "trial"
 		}
 	}
 
-	if user != nil {
-		return nil, "subscription"
+	if user.ExpiresAt != nil {
+		expiresAt := user.ExpiresAt.UTC()
+		return &expiresAt, "subscription", user.TrafficLimit, "subscription"
 	}
 
-	return nil, ""
+	return nil, "subscription", user.TrafficLimit, "subscription"
+}
+
+func (h *ProxyHandler) trialTrafficLimit() int64 {
+	if h == nil || h.trialService == nil || h.trialService.GetConfig() == nil {
+		return 0
+	}
+
+	return h.trialService.GetConfig().TrafficLimit
 }
 
 // Delete deletes a proxy.
