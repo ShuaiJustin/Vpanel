@@ -12,6 +12,11 @@ import (
 	trialsvc "v/internal/commercial/trial"
 	"v/internal/database/repository"
 	"v/internal/logger"
+	"v/internal/proxy"
+	"v/internal/proxy/protocols/shadowsocks"
+	"v/internal/proxy/protocols/trojan"
+	"v/internal/proxy/protocols/vless"
+	"v/internal/proxy/protocols/vmess"
 	pkgerrors "v/pkg/errors"
 )
 
@@ -41,6 +46,11 @@ func setupTestService(t *testing.T) (*Service, *gorm.DB) {
 	nodeRepo := repository.NewNodeRepository(db)
 	assignmentRepo := repository.NewUserNodeAssignmentRepository(db)
 	trialService := trialsvc.NewService(trialRepo, userRepo, logger.NewNopLogger(), nil)
+	proxyManager := proxy.NewManager(proxyRepo)
+	proxyManager.RegisterProtocol(vmess.New())
+	proxyManager.RegisterProtocol(vless.New())
+	proxyManager.RegisterProtocol(trojan.New())
+	proxyManager.RegisterProtocol(shadowsocks.New())
 
 	service := NewService(
 		userRepo,
@@ -50,7 +60,7 @@ func setupTestService(t *testing.T) (*Service, *gorm.DB) {
 		assignmentRepo,
 		trialService,
 		logger.NewNopLogger(),
-	)
+	).WithProxyManager(proxyManager)
 
 	return service, db
 }
@@ -231,5 +241,92 @@ func TestGetAccessibleProxies_ReassignsOfflineNode(t *testing.T) {
 	}
 	if assignment == nil || assignment.NodeID != onlineNode.ID {
 		t.Fatalf("expected reassignment to node %d, got %+v", onlineNode.ID, assignment)
+	}
+}
+
+func TestGetAccessibleProxies_AutoProvisionsDefaultProxyOnEmptyNode(t *testing.T) {
+	service, db := setupTestService(t)
+	user := createTestUser(t, db, "auto-provision-user")
+	node := createTestNode(t, db, "empty-node")
+	node.Protocols = `["vmess"]`
+	if err := db.Save(node).Error; err != nil {
+		t.Fatalf("failed to update node protocols: %v", err)
+	}
+
+	var syncedNodeID int64
+	service.WithConfigSyncHook(func(nodeID int64, source, reason string) {
+		syncedNodeID = nodeID
+	})
+
+	proxies, _, err := service.GetAccessibleProxies(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("expected auto provisioned proxy, got error: %v", err)
+	}
+	if len(proxies) != 1 {
+		t.Fatalf("expected one auto provisioned proxy, got %d", len(proxies))
+	}
+	if proxies[0].UserID != user.ID {
+		t.Fatalf("expected proxy to belong to user %d, got %d", user.ID, proxies[0].UserID)
+	}
+	if proxies[0].NodeID == nil || *proxies[0].NodeID != node.ID {
+		t.Fatalf("expected proxy node %d, got %+v", node.ID, proxies[0].NodeID)
+	}
+	if proxies[0].Protocol != "vmess" {
+		t.Fatalf("expected vmess proxy, got %s", proxies[0].Protocol)
+	}
+	if proxies[0].Port < autoProvisionPortMin || proxies[0].Port > autoProvisionPortMax {
+		t.Fatalf("expected auto provisioned port in range, got %d", proxies[0].Port)
+	}
+	if syncedNodeID != node.ID {
+		t.Fatalf("expected config sync for node %d, got %d", node.ID, syncedNodeID)
+	}
+
+	var persisted []*repository.Proxy
+	if err := db.Where("user_id = ?", user.ID).Find(&persisted).Error; err != nil {
+		t.Fatalf("failed to load persisted proxies: %v", err)
+	}
+	if len(persisted) != 1 {
+		t.Fatalf("expected one persisted proxy, got %d", len(persisted))
+	}
+}
+
+func TestGetAccessibleProxies_DoesNotShareAutoProvisionedUserProxy(t *testing.T) {
+	service, db := setupTestService(t)
+	firstUser := createTestUser(t, db, "auto-provision-first")
+	secondUser := createTestUser(t, db, "auto-provision-second")
+	node := createTestNode(t, db, "exclusive-node")
+	node.Protocols = `["vmess"]`
+	if err := db.Save(node).Error; err != nil {
+		t.Fatalf("failed to update node protocols: %v", err)
+	}
+
+	firstProxies, _, err := service.GetAccessibleProxies(context.Background(), firstUser.ID)
+	if err != nil {
+		t.Fatalf("expected first user's proxy, got error: %v", err)
+	}
+	if len(firstProxies) != 1 {
+		t.Fatalf("expected one first-user proxy, got %d", len(firstProxies))
+	}
+
+	secondProxies, _, err := service.GetAccessibleProxies(context.Background(), secondUser.ID)
+	if err != nil {
+		t.Fatalf("expected second user's proxy, got error: %v", err)
+	}
+	if len(secondProxies) != 1 {
+		t.Fatalf("expected one second-user proxy, got %d", len(secondProxies))
+	}
+	if secondProxies[0].ID == firstProxies[0].ID {
+		t.Fatalf("expected distinct proxies for different users, got shared proxy %d", secondProxies[0].ID)
+	}
+	if secondProxies[0].UserID != secondUser.ID {
+		t.Fatalf("expected second user's proxy ownership %d, got %d", secondUser.ID, secondProxies[0].UserID)
+	}
+
+	var count int64
+	if err := db.Model(&repository.Proxy{}).Where("node_id = ?", node.ID).Count(&count).Error; err != nil {
+		t.Fatalf("failed to count node proxies: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("expected two user-specific proxies on node, got %d", count)
 	}
 }

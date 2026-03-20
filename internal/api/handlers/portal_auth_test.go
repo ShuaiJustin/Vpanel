@@ -193,6 +193,16 @@ func (m *portalMockAuthTokenRepo) MarkEmailVerified(ctx context.Context, id int6
 	return nil
 }
 
+func (m *portalMockAuthTokenRepo) CountPendingEmailVerificationTokensByUser(ctx context.Context, userID int64) (int64, error) {
+	count := int64(0)
+	for _, t := range m.emailVerificationTokens {
+		if t.UserID == userID && !t.IsVerified() && !t.IsExpired() {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func (m *portalMockAuthTokenRepo) DeleteExpiredEmailVerificationTokens(ctx context.Context) (int64, error) {
 	count := int64(0)
 	for token, t := range m.emailVerificationTokens {
@@ -308,6 +318,7 @@ func setupPortalTestRouter() (*gin.Engine, *PortalAuthHandler, *portalMockUserRe
 			auth.POST("/2fa/login", handler.Verify2FALogin)
 			auth.POST("/forgot-password", handler.ForgotPassword)
 			auth.POST("/reset-password", handler.ResetPassword)
+			auth.GET("/verify-email", handler.VerifyEmail)
 		}
 	}
 
@@ -952,6 +963,95 @@ func TestPortalAuthHandler_LoginWithEmailIsCaseInsensitive(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected OK for case-insensitive email login, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestPortalAuthHandler_LoginRequiresVerifiedEmailWhenPendingTokenExists(t *testing.T) {
+	router, handler, userRepo := setupPortalTestRouter()
+	authTokenRepo := newPortalMockAuthTokenRepo()
+
+	hashedPassword, _ := handler.authService.HashPassword("password123")
+	user := &repository.User{
+		Username:        "pendingverifyuser",
+		Email:           "pending@example.com",
+		PasswordHash:    hashedPassword,
+		Role:            "user",
+		Enabled:         true,
+		EmailVerified:   false,
+		EmailVerifiedAt: nil,
+	}
+	userRepo.Create(context.Background(), user)
+
+	authTokenRepo.emailVerificationTokens["pending-token"] = &repository.EmailVerificationToken{
+		ID:        1,
+		UserID:    user.ID,
+		Email:     user.Email,
+		Token:     "pending-token",
+		ExpiresAt: time.Now().Add(time.Hour),
+		CreatedAt: time.Now(),
+	}
+	handler.portalAuthService = portalauth.NewService(userRepo, authTokenRepo)
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"username": "pendingverifyuser",
+		"password": "password123",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/portal/auth/login", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("Expected Forbidden for unverified email, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "请先验证邮箱后再登录") {
+		t.Fatalf("Expected email verification message, got %s", w.Body.String())
+	}
+}
+
+func TestPortalAuthHandler_VerifyEmailUpdatesUserStatus(t *testing.T) {
+	router, handler, userRepo := setupPortalTestRouter()
+	authTokenRepo := newPortalMockAuthTokenRepo()
+
+	hashedPassword, _ := handler.authService.HashPassword("password123")
+	user := &repository.User{
+		Username:      "verifyuser",
+		Email:         "verify@example.com",
+		PasswordHash:  hashedPassword,
+		Role:          "user",
+		Enabled:       true,
+		EmailVerified: false,
+	}
+	userRepo.Create(context.Background(), user)
+
+	authTokenRepo.emailVerificationTokens["verify-token"] = &repository.EmailVerificationToken{
+		ID:        1,
+		UserID:    user.ID,
+		Email:     user.Email,
+		Token:     "verify-token",
+		ExpiresAt: time.Now().Add(time.Hour),
+		CreatedAt: time.Now(),
+	}
+	handler.portalAuthService = portalauth.NewService(userRepo, authTokenRepo)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/portal/auth/verify-email?token=verify-token", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected OK for verify email, got %d: %s", w.Code, w.Body.String())
+	}
+
+	updatedUser, err := userRepo.GetByID(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("Expected user lookup to succeed: %v", err)
+	}
+	if !updatedUser.EmailVerified {
+		t.Fatalf("Expected user email to be marked verified")
+	}
+	if updatedUser.EmailVerifiedAt == nil {
+		t.Fatalf("Expected user email verification timestamp to be set")
 	}
 }
 

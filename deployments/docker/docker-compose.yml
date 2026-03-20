@@ -42,6 +42,13 @@ x-vpanel-environment: &vpanel-environment
   ACME_EMAIL: ${ACME_EMAIL:-}
   TZ: ${TZ:-UTC}
 
+x-vpanel-volumes: &vpanel-volumes
+  - v-panel-config:/app/configs
+  - v-panel-data:${VPANEL_DATA_DIR:-/app/data}
+  - v-panel-logs:${VPANEL_LOG_DIR:-/app/logs}
+  - v-panel-xray:${VPANEL_XRAY_DIR:-/app/xray}
+  - ${VPANEL_CERT_DIR:-./certs}:/app/certs:ro
+
 x-vpanel-healthcheck: &vpanel-healthcheck
   test:
     [
@@ -58,6 +65,7 @@ services:
     build:
       context: ../..
       dockerfile: deployments/docker/Dockerfile
+      target: runtime
       args: *vpanel-build-args
     image: v-panel:${VERSION:-latest}
     container_name: v-panel
@@ -67,11 +75,7 @@ services:
     ports:
       - "${V_SERVER_PORT:-8080}:8080"
     environment: *vpanel-environment
-    volumes:
-      - v-panel-data:${VPANEL_DATA_DIR:-/app/data}
-      - v-panel-logs:${VPANEL_LOG_DIR:-/app/logs}
-      - v-panel-xray:${VPANEL_XRAY_DIR:-/app/xray}
-      - ${VPANEL_CERT_DIR:-./certs}:/app/certs:ro
+    volumes: *vpanel-volumes
     healthcheck: *vpanel-healthcheck
     networks:
       - v-panel-network
@@ -83,6 +87,8 @@ services:
         compress: "true"
 
 volumes:
+  v-panel-config:
+    name: v-panel-config
   v-panel-data:
     name: v-panel-data
   v-panel-logs:

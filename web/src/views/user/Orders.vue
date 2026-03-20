@@ -15,7 +15,8 @@
           <el-radio-button value="pending">待支付</el-radio-button>
           <el-radio-button value="paid">已支付</el-radio-button>
           <el-radio-button value="completed">已完成</el-radio-button>
-          <el-radio-button value="cancelled">已取消</el-radio-button>
+        <el-radio-button value="cancelled">已取消</el-radio-button>
+        <el-radio-button value="refunded">已退款</el-radio-button>
         </el-radio-group>
       </div>
 
@@ -24,10 +25,14 @@
         <el-skeleton :rows="5" animated />
       </div>
 
-      <!-- 订单表格 -->
-      <el-table v-else :data="orders" style="width: 100%">
+      <div v-else class="table-wrap">
+      <el-table :data="orders" style="width: 100%">
         <el-table-column prop="order_no" label="订单号" width="180" />
-        <el-table-column prop="plan_name" label="套餐" />
+        <el-table-column label="套餐" min-width="160">
+          <template #default="{ row }">
+            {{ row.plan_name || `套餐 #${row.plan_id}` }}
+          </template>
+        </el-table-column>
         <el-table-column label="金额" width="120">
           <template #default="{ row }">
             <span class="price">¥{{ formatPrice(row.pay_amount) }}</span>
@@ -44,8 +49,9 @@
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="创建时间" width="180" />
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" min-width="160">
           <template #default="{ row }">
+            <div class="row-actions">
             <el-button
               v-if="row.status === 'pending'"
               type="primary"
@@ -65,9 +71,11 @@
             <el-button type="primary" link @click="viewDetail(row)">
               详情
             </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
+      </div>
 
       <!-- 空状态 -->
       <el-empty v-if="!loading && orders.length === 0" description="暂无订单" />
@@ -87,10 +95,12 @@
     </el-card>
 
     <!-- 订单详情对话框 -->
-    <el-dialog v-model="showDetailDialog" title="订单详情" width="500px">
-      <el-descriptions v-if="currentOrder" :column="1" border>
+    <el-dialog v-model="showDetailDialog" title="订单详情" :width="detailDialogWidth">
+      <el-descriptions v-if="currentOrder" :column="detailColumns" border>
         <el-descriptions-item label="订单号">{{ currentOrder.order_no }}</el-descriptions-item>
-        <el-descriptions-item label="套餐">{{ currentOrder.plan_name }}</el-descriptions-item>
+        <el-descriptions-item label="套餐">
+          {{ currentOrder.plan_name || `套餐 #${currentOrder.plan_id}` }}
+        </el-descriptions-item>
         <el-descriptions-item label="原价">¥{{ formatPrice(currentOrder.original_amount) }}</el-descriptions-item>
         <el-descriptions-item v-if="currentOrder.discount_amount > 0" label="优惠">
           -¥{{ formatPrice(currentOrder.discount_amount) }}
@@ -106,11 +116,12 @@
             {{ getStatusInfo(currentOrder.status).label }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="支付方式">{{ currentOrder.payment_method || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="支付方式">{{ getMethodLabel(currentOrder.payment_method) }}</el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ currentOrder.created_at }}</el-descriptions-item>
         <el-descriptions-item v-if="currentOrder.paid_at" label="支付时间">
           {{ currentOrder.paid_at }}
         </el-descriptions-item>
+        <el-descriptions-item label="过期时间">{{ currentOrder.expired_at || '-' }}</el-descriptions-item>
       </el-descriptions>
     </el-dialog>
 
@@ -129,12 +140,15 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useOrderStore } from '@/stores/order'
+import { useViewport } from '@/composables/useViewport'
 
+const route = useRoute()
 const router = useRouter()
 const orderStore = useOrderStore()
+const { isMobile } = useViewport({ mobileBreakpoint: 768, tabletBreakpoint: 1280 })
 
 // 状态
 const statusFilter = ref('')
@@ -148,14 +162,45 @@ const loading = computed(() => orderStore.loading)
 const orders = computed(() => orderStore.orders)
 const currentOrder = computed(() => orderStore.currentOrder)
 const pagination = computed(() => orderStore.pagination)
+const detailColumns = computed(() => (isMobile.value ? 1 : 2))
+const detailDialogWidth = computed(() => (isMobile.value ? '94%' : '620px'))
+
+const methodLabels = {
+  alipay: '支付宝',
+  wechat: '微信支付',
+  paypal: 'PayPal',
+  crypto: '加密货币',
+  balance: '余额支付'
+}
 
 // 方法
 const formatPrice = (price) => (price / 100).toFixed(2)
 const getStatusInfo = (status) => orderStore.getStatusInfo(status)
+const getMethodLabel = (method) => methodLabels[method] || method || '-'
 
 const fetchOrders = () => {
   const params = statusFilter.value ? { status: statusFilter.value } : {}
   orderStore.fetchOrders(params)
+}
+
+const handlePaymentResultNotice = async () => {
+  if (route.query.payment !== 'success') {
+    return
+  }
+
+  ElMessage.success('支付成功')
+
+  const orderNo = String(route.query.order_no || '').trim()
+  if (orderNo) {
+    try {
+      await orderStore.fetchOrderByOrderNo(orderNo)
+      showDetailDialog.value = true
+    } catch (error) {
+      console.error('Failed to load paid order detail:', error)
+    }
+  }
+
+  router.replace({ name: 'user-orders' })
 }
 
 const handleFilterChange = () => {
@@ -174,7 +219,7 @@ const handleSizeChange = (size) => {
 }
 
 const goToPay = (order) => {
-  router.push({ name: 'user-payment', query: { order_no: order.order_no } })
+  router.push({ name: 'user-payment', query: { order_id: order.id } })
 }
 
 const viewDetail = async (order) => {
@@ -205,6 +250,7 @@ const confirmCancel = async () => {
 
 onMounted(() => {
   fetchOrders()
+  handlePaymentResultNotice()
 })
 </script>
 
@@ -238,6 +284,10 @@ onMounted(() => {
   margin-bottom: 20px;
 }
 
+.table-wrap {
+  overflow-x: auto;
+}
+
 .loading-container {
   padding: 20px;
 }
@@ -259,9 +309,25 @@ onMounted(() => {
   color: #409eff;
 }
 
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
 .pagination-container {
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
+}
+
+@media (max-width: 768px) {
+  .orders-page {
+    padding: 12px;
+  }
+
+  .pagination-container {
+    justify-content: center;
+  }
 }
 </style>

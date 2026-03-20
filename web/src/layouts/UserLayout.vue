@@ -277,7 +277,7 @@ const showContact = () => {
 // 初始化
 onMounted(() => {
   // 加载用户信息
-  const userInfo = localStorage.getItem('userInfo')
+  const userInfo = sessionStorage.getItem('userInfo') || localStorage.getItem('userInfo')
   if (userInfo) {
     try {
       const info = JSON.parse(userInfo)
@@ -318,6 +318,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
 }
 
 .header-left {
@@ -340,6 +341,7 @@ onMounted(() => {
 .desktop-nav {
   display: flex;
   gap: 8px;
+  min-width: 0;
 }
 
 .nav-item {
@@ -351,6 +353,7 @@ onMounted(() => {
   text-decoration: none;
   color: var(--color-text-regular);
   font-size: 14px;
+  white-space: nowrap;
   transition: all 0.2s;
 }
 
@@ -383,6 +386,7 @@ onMounted(() => {
   padding: 4px 8px;
   border-radius: 6px;
   transition: background-color 0.2s;
+  min-width: 0;
 }
 
 .user-dropdown-trigger:hover {
@@ -397,6 +401,10 @@ onMounted(() => {
 .username {
   font-size: 14px;
   color: var(--color-text-primary);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mobile-menu-btn {
@@ -409,7 +417,7 @@ onMounted(() => {
   max-width: 1400px;
   width: 100%;
   margin: 0 auto;
-  padding: 24px 20px;
+  padding: clamp(16px, 2vw, 24px) clamp(12px, 2vw, 20px);
 }
 
 /* 页脚 */
@@ -531,6 +539,32 @@ onMounted(() => {
 }
 
 /* 响应式 */
+@media (max-width: 1200px) {
+  .header-container {
+    height: auto;
+    min-height: 60px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .header-left {
+    gap: 16px;
+    flex: 1;
+  }
+
+  .desktop-nav {
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .desktop-nav::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @media (max-width: 768px) {
   .header-container {
     height: 56px;

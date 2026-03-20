@@ -52,21 +52,9 @@ export function exportStats(params = {}) {
   })
 }
 
-/**
- * 获取连接历史
- * @param {Object} [params] - 查询参数
- * @param {number} [params.limit] - 每页数量
- * @param {number} [params.offset] - 偏移量
- * @returns {Promise}
- */
-export function getConnectionHistory(params = {}) {
-  return api.get(`${BASE_URL}/connections`, { params })
-}
-
 export default {
   getTrafficStats,
   getUsageStats,
   getDashboardStats,
-  exportStats,
-  getConnectionHistory
+  exportStats
 }

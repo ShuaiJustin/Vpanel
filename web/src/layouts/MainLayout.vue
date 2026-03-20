@@ -256,9 +256,10 @@ const confirmLogout = () => {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     type: 'warning'
-  }).then(() => {
-    userStore.logout()
-    router.push('/user/login')
+  }).then(async () => {
+    await userStore.logout()
+    closeMobileMenu()
+    router.replace({ name: 'UserLogin' })
   }).catch(() => {})
 }
 
@@ -455,6 +456,7 @@ watch(isMobile, mobile => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 0 20px;
   position: sticky;
   top: 0;
@@ -554,8 +556,12 @@ watch(isMobile, mobile => {
 .user-info {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
   height: 40px;
   padding: 0 5px;
+  min-width: 0;
 }
 
 .theme-toggle-btn {
@@ -581,6 +587,11 @@ watch(isMobile, mobile => {
 .username {
   margin: 0 8px;
   font-weight: 500;
+  min-width: 0;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-action-btn {
@@ -631,6 +642,22 @@ watch(isMobile, mobile => {
 
   .theme-toggle-btn {
     margin-right: 8px;
+  }
+}
+
+@media (max-width: 1366px) {
+  .header {
+    padding: 0 14px;
+  }
+
+  .username {
+    max-width: 96px;
+    margin: 0 4px;
+  }
+
+  .user-action-btn {
+    margin: 0;
+    padding: 0 4px;
   }
 }
 

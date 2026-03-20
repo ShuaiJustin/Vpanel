@@ -3,101 +3,15 @@
 
 set -e
 
-# 颜色定义
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-# 获取脚本所在目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-DOCKER_DIR="$PROJECT_ROOT/deployments/docker"
+. "$SCRIPT_DIR/common.sh"
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}       V Panel 一键启动脚本${NC}"
 echo -e "${GREEN}========================================${NC}"
 
-# 检查 Docker 是否安装
-if ! command -v docker &> /dev/null; then
-    echo -e "${RED}错误: Docker 未安装，请先安装 Docker${NC}"
-    exit 1
-fi
-
-# 检查 Docker Compose 是否可用
-if ! docker compose version &> /dev/null && ! command -v docker-compose &> /dev/null; then
-    echo -e "${RED}错误: Docker Compose 未安装${NC}"
-    exit 1
-fi
-
-# 确定使用哪个 compose 命令
-if docker compose version &> /dev/null; then
-    COMPOSE_CMD="docker compose"
-else
-    COMPOSE_CMD="docker-compose"
-fi
-
-# 安全读取 .env 文件中的变量
-read_env_var() {
-    local var_name=$1
-    local env_file=$2
-    # 只匹配 KEY=VALUE 格式，忽略注释和空行
-    grep "^${var_name}=" "$env_file" 2>/dev/null | head -n1 | cut -d'=' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
-}
-
-# 验证密码强度
-validate_password() {
-    local password=$1
-    local min_length=12
-    
-    # 检查长度
-    if [ ${#password} -lt $min_length ]; then
-        return 1
-    fi
-    
-    # 检查是否包含大写字母
-    if ! echo "$password" | grep -q '[A-Z]'; then
-        return 1
-    fi
-    
-    # 检查是否包含小写字母
-    if ! echo "$password" | grep -q '[a-z]'; then
-        return 1
-    fi
-    
-    # 检查是否包含数字
-    if ! echo "$password" | grep -q '[0-9]'; then
-        return 1
-    fi
-    
-    # 检查是否包含特殊字符
-    # 使用更兼容的方式：检查是否包含非字母数字字符
-    if ! echo "$password" | grep -q '[^A-Za-z0-9]'; then
-        return 1
-    fi
-    
-    return 0
-}
-
-# 验证 JWT Secret
-validate_jwt_secret() {
-    local secret=$1
-    local min_length=32
-    
-    if [ ${#secret} -lt $min_length ]; then
-        return 1
-    fi
-    
-    # 检查是否是默认值
-    if [ "$secret" = "CHANGE_ME_OR_AUTO_GENERATE_ON_FIRST_START" ] || \
-       [ "$secret" = "CHANGE_ME_OR_SYSTEM_WILL_REFUSE_TO_START" ] || \
-       [ "$secret" = "your-secure-jwt-secret-change-me" ] || \
-       [ "$secret" = "change-me-in-production" ]; then
-        return 1
-    fi
-    
-    return 0
-}
+require_docker
+require_compose
 
 # 生产环境安全检查
 production_security_check() {
@@ -127,9 +41,7 @@ production_security_check() {
     
     # 检查管理员密码
     local admin_pass=$(read_env_var "V_ADMIN_PASS" "$env_file")
-    if [ "$admin_pass" = "CHANGE_ME_OR_SYSTEM_WILL_REFUSE_TO_START" ] || \
-       [ "$admin_pass" = "admin123" ] || \
-       [ "$admin_pass" = "your-secure-admin-password" ]; then
+    if is_default_admin_password "$admin_pass"; then
         echo -e "${RED}✗ 管理员密码使用默认值！${NC}"
         echo -e "  必须修改为强密码"
         has_error=1
@@ -164,31 +76,6 @@ production_security_check() {
     return 0
 }
 
-# 生成随机强密码
-generate_strong_password() {
-    # 生成 16 字符的强密码：大小写字母、数字、特殊字符
-    if command -v openssl &> /dev/null; then
-        # 使用 openssl 生成，确保包含所需字符
-        local password=$(openssl rand -base64 24 | tr -d "=+/" | cut -c1-16)
-        # 确保包含至少一个特殊字符
-        echo "${password}@$(openssl rand -hex 2 | cut -c1-2)!"
-    else
-        # 备用方案：使用 /dev/urandom
-        LC_ALL=C tr -dc 'A-Za-z0-9!@#$%^&*' < /dev/urandom | head -c 16
-        echo "!@"
-    fi
-}
-
-# 生成 JWT Secret
-generate_jwt_secret() {
-    if command -v openssl &> /dev/null; then
-        openssl rand -base64 48 | tr -d "\n"
-    else
-        # 备用方案
-        LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 48
-    fi
-}
-
 # 初始化或更新 .env 文件
 init_env_file() {
     local env_file="$1"
@@ -199,22 +86,14 @@ init_env_file() {
     local admin_pass=$(read_env_var "V_ADMIN_PASS" "$env_file")
     
     # 检查是否需要生成 JWT Secret
-    if [ -z "$jwt_secret" ] || \
-       [ "$jwt_secret" = "CHANGE_ME_OR_AUTO_GENERATE_ON_FIRST_START" ] || \
-       [ "$jwt_secret" = "CHANGE_ME_OR_SYSTEM_WILL_REFUSE_TO_START" ] || \
-       [ "$jwt_secret" = "your-secure-jwt-secret-change-me" ] || \
-       [ "$jwt_secret" = "change-me-in-production" ]; then
+    if is_default_jwt_secret "$jwt_secret"; then
         jwt_secret=$(generate_jwt_secret)
         needs_update=1
         echo -e "${GREEN}✓ 已生成 JWT Secret${NC}"
     fi
     
     # 检查是否需要生成管理员密码
-    if [ -z "$admin_pass" ] || \
-       [ "$admin_pass" = "CHANGE_ME_OR_AUTO_GENERATE_ON_FIRST_START" ] || \
-       [ "$admin_pass" = "CHANGE_ME_OR_SYSTEM_WILL_REFUSE_TO_START" ] || \
-       [ "$admin_pass" = "admin123" ] || \
-       [ "$admin_pass" = "your-secure-admin-password" ]; then
+    if is_default_admin_password "$admin_pass"; then
         admin_pass=$(generate_strong_password)
         needs_update=1
         echo -e "${GREEN}✓ 已生成管理员密码${NC}"
@@ -301,7 +180,7 @@ case "${1:-start}" in
         
         echo ""
         echo -e "${GREEN}启动 V Panel...${NC}"
-        if $COMPOSE_CMD up -d --build; then
+        if docker_compose_cmd up -d --build; then
             # 读取实际的管理员密码
             admin_pass=$(read_env_var "V_ADMIN_PASS" ".env")
             
@@ -321,7 +200,7 @@ case "${1:-start}" in
         ;;
     stop)
         echo -e "${YELLOW}停止 V Panel...${NC}"
-        if $COMPOSE_CMD down; then
+        if docker_compose_cmd down; then
             echo -e "${GREEN}V Panel 已停止${NC}"
         else
             echo -e "${RED}停止失败！${NC}"
@@ -330,7 +209,7 @@ case "${1:-start}" in
         ;;
     restart)
         echo -e "${YELLOW}重启 V Panel...${NC}"
-        if $COMPOSE_CMD down && $COMPOSE_CMD up -d --build; then
+        if docker_compose_cmd down && docker_compose_cmd up -d --build; then
             echo -e "${GREEN}V Panel 已重启${NC}"
             echo -e "访问地址: ${YELLOW}http://localhost:${V_SERVER_PORT}${NC}"
         else
@@ -339,10 +218,10 @@ case "${1:-start}" in
         fi
         ;;
     logs)
-        $COMPOSE_CMD logs -f
+        docker_compose_cmd logs -f
         ;;
     status)
-        $COMPOSE_CMD ps
+        docker_compose_cmd ps
         echo ""
         echo -e "访问地址: ${YELLOW}http://localhost:${V_SERVER_PORT}${NC}"
         echo -e "模式:     ${YELLOW}${V_SERVER_MODE}${NC}"
@@ -353,16 +232,17 @@ case "${1:-start}" in
         echo -e "${RED}        警告: 危险操作！${NC}"
         echo -e "${RED}========================================${NC}"
         echo -e "${RED}这将删除所有数据，包括:${NC}"
+        echo -e "  - 面板配置"
         echo -e "  - 数据库文件"
         echo -e "  - 日志文件"
         echo -e "  - Xray 配置"
         echo ""
         echo -e "${YELLOW}建议: 在删除前先备份数据${NC}"
-        echo -e "  备份命令: docker run --rm -v v-panel-data:/data -v \$(pwd):/backup alpine tar czf /backup/v-panel-backup-\$(date +%Y%m%d-%H%M%S).tar.gz /data"
+        show_volume_backup_hint
         echo ""
         read -p "确认删除所有数据? 输入 'DELETE' 确认: " confirm
         if [ "$confirm" = "DELETE" ]; then
-            if $COMPOSE_CMD down -v; then
+            if docker_compose_cmd down -v; then
                 echo -e "${GREEN}已清理所有容器和数据卷${NC}"
             else
                 echo -e "${RED}清理失败！${NC}"

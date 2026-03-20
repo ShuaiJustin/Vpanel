@@ -39,6 +39,15 @@
       <el-table-column prop="clientCount" label="用户数" width="100" align="center" />
       
       <el-table-column prop="created_at" label="创建时间" min-width="150" align="center" />
+
+      <el-table-column label="到期时间" min-width="180" align="center">
+        <template #default="{ row }">
+          <div class="expiry-cell">
+            <span>{{ row.expires_at_display || '-' }}</span>
+            <el-tag v-if="row.expiry_source_label" size="small" type="info">{{ row.expiry_source_label }}</el-tag>
+          </div>
+        </template>
+      </el-table-column>
       
       <el-table-column label="状态" width="100" align="center">
         <template #default="{ row }">
@@ -607,14 +616,10 @@
         </el-form-item>
         
         <el-form-item label="过期时间">
-          <el-date-picker
-            v-model="inboundForm.expiry_time"
-            type="datetime"
-            placeholder="请选择过期时间"
-            style="width: 100%"
-          />
-          <div style="font-size: 12px; color: #909399; margin-top: 5px;">
-            留空表示不限制
+          <div class="expiry-readonly">
+            <div class="expiry-readonly__value">{{ inboundForm.expires_at_display || '不适用' }}</div>
+            <div v-if="inboundForm.expiry_source_label" class="form-tip">来源：{{ inboundForm.expiry_source_label }}</div>
+            <div class="form-tip">该时间跟随用户试用或订阅有效期，不在代理协议里单独设置。</div>
           </div>
         </el-form-item>
         
@@ -694,7 +699,10 @@ const defaultInboundForm = {
   port: null,
   node_id: null,  // 节点ID
   total_traffic: 0,
-  expiry_time: '',
+  expires_at: '',
+  expires_at_display: '不适用',
+  expiry_source: '',
+  expiry_source_label: '',
   vmess_id: '',  // vmess 特有
   vmess_aid: 0,  // vmess 特有
   vless_id: '',  // vless 特有
@@ -793,6 +801,30 @@ const formatCertificateDate = (value) => {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '-'
   return date.toISOString().slice(0, 10)
+}
+const formatDateTime = (value) => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  })
+}
+const getExpirySourceLabel = (source) => {
+  if (source === 'trial') return '试用'
+  if (source === 'subscription') return '订阅'
+  return ''
+}
+const formatProxyExpiryDisplay = (expiresAt, expirySource) => {
+  if (expiresAt) return formatDateTime(expiresAt)
+  if (expirySource === 'subscription') return '不限制'
+  return ''
 }
 const invalidShareHosts = new Set(['', '0.0.0.0', '::', '[::]', '0:0:0:0:0:0:0:0'])
 const normalizeCertificatesResponse = (response) => {
@@ -1133,6 +1165,7 @@ const loadInbounds = async () => {
     if (Array.isArray(data)) {
       inbounds.value = data.map(p => ({
         id: p.id,
+        user_id: p.user_id,
         remark: p.name || p.remark,
         protocol: p.protocol,
         port: p.port,
@@ -1141,11 +1174,20 @@ const loadInbounds = async () => {
         settings: p.settings || {},
         enable: p.enabled,
         clientCount: 0,
-        created_at: p.created_at
+        created_at: p.created_at,
+        expires_at: p.expires_at || '',
+        expiry_source: p.expiry_source || '',
+        expiry_source_label: getExpirySourceLabel(p.expiry_source),
+        expires_at_display: formatProxyExpiryDisplay(p.expires_at, p.expiry_source)
       }))
       total.value = data.length
     } else if (data) {
-      inbounds.value = data.list || []
+      inbounds.value = (data.list || []).map(p => ({
+        ...p,
+        user_id: p.user_id,
+        expiry_source_label: getExpirySourceLabel(p.expiry_source),
+        expires_at_display: formatProxyExpiryDisplay(p.expires_at, p.expiry_source)
+      }))
       total.value = data.total || 0
     }
   } catch (error) {
@@ -1218,6 +1260,10 @@ const normalizeProxyToInboundForm = (proxyData = {}) => {
   form.listen = proxyData.host || ''
   form.port = proxyData.port || null
   form.node_id = proxyData.node_id ?? null
+  form.expires_at = proxyData.expires_at || ''
+  form.expiry_source = proxyData.expiry_source || ''
+  form.expiry_source_label = getExpirySourceLabel(proxyData.expiry_source)
+  form.expires_at_display = formatProxyExpiryDisplay(proxyData.expires_at, proxyData.expiry_source) || '不适用'
 
   const transportNetwork = settings.network || form.stream_settings.network
   form.stream_settings.network = transportNetwork
@@ -2115,6 +2161,27 @@ const downloadQrCode = async () => {
   border: 1px solid var(--el-border-color-lighter, #ebeef5);
   border-radius: 4px;
   background-color: var(--el-fill-color-lighter, #f9f9f9);
+}
+
+.expiry-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.expiry-readonly {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--el-border-color-lighter, #ebeef5);
+  border-radius: 8px;
+  background-color: var(--el-fill-color-lighter, #f9f9f9);
+}
+
+.expiry-readonly__value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary, #303133);
 }
 
 .fallback-item {

@@ -85,9 +85,9 @@ const handleCommand = (command) => {
           cancelButtonText: '取消',
           type: 'warning',
         }
-      ).then(() => {
-        userStore.logout()
-        router.push('/user/login')
+      ).then(async () => {
+        await userStore.logout()
+        router.replace('/user/login')
       }).catch(() => {})
       break
   }
@@ -166,4 +166,4 @@ const handleCommand = (command) => {
   padding: 20px;
   overflow-y: auto;
 }
-</style> 
+</style>

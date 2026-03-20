@@ -85,6 +85,8 @@ func (h *AuthMiddlewareHandler) Authenticate() gin.HandlerFunc {
 		c.Set(string(UserClaimsKey), claims)
 		// Also store user_id for backward compatibility with handlers
 		c.Set("user_id", claims.UserID)
+		c.Set("username", claims.Username)
+		c.Set("role", claims.Role)
 		c.Next()
 	}
 }
@@ -185,6 +187,8 @@ func AuthMiddleware(authService auth.Service) gin.HandlerFunc {
 		c.Set(string(UserClaimsKey), claims)
 		// Also store user_id for backward compatibility with handlers
 		c.Set("user_id", claims.UserID)
+		c.Set("username", claims.Username)
+		c.Set("role", claims.Role)
 		c.Next()
 	}
 }

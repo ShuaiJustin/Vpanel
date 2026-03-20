@@ -166,7 +166,7 @@
     <el-dialog
       v-model="showResetDialog"
       title="重置订阅链接"
-      width="400px"
+      :width="isMobile ? 'calc(100vw - 24px)' : '400px'"
     >
       <el-alert
         type="warning"
@@ -201,11 +201,13 @@ import { usePauseStore } from '@/stores/pause'
 import PauseCard from '@/components/user/PauseCard.vue'
 import QRCode from 'qrcode'
 import { copyText } from '@/utils/clipboard'
+import { useViewport } from '@/composables/useViewport'
 
 const router = useRouter()
 const userStore = useUserPortalStore()
 const subscriptionStore = useSubscriptionStore()
 const pauseStore = usePauseStore()
+const { isMobile } = useViewport()
 
 // 引用
 const qrcodeCanvas = ref(null)
@@ -448,6 +450,8 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 /* 订阅内容 */
@@ -460,6 +464,7 @@ onMounted(() => {
 .format-selector {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -492,6 +497,8 @@ onMounted(() => {
 
 .qrcode-wrapper canvas {
   display: block;
+  max-width: min(100%, 220px);
+  height: auto;
 }
 
 /* 使用说明 */
@@ -557,13 +564,34 @@ onMounted(() => {
 
 /* 响应式 */
 @media (max-width: 768px) {
+  .subscription-page {
+    padding: 12px;
+  }
+
   .format-selector {
     flex-direction: column;
     align-items: flex-start;
   }
 
+  .action-buttons > .el-button {
+    width: 100%;
+  }
+
+  .selector-label {
+    width: 100%;
+  }
+
+  .subscription-url :deep(.el-input-group__append .el-button) {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
   .clients-grid {
     grid-template-columns: 1fr;
+  }
+
+  .client-item {
+    align-items: flex-start;
   }
 }
 </style>

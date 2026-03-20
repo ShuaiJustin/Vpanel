@@ -3,6 +3,9 @@ package entitlement
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -10,7 +13,13 @@ import (
 	"v/internal/commercial/trial"
 	"v/internal/database/repository"
 	"v/internal/logger"
+	proxylib "v/internal/proxy"
 	"v/pkg/errors"
+)
+
+const (
+	autoProvisionPortMin = 20000
+	autoProvisionPortMax = 60000
 )
 
 // AccessState describes the effective access state for a portal user.
@@ -32,6 +41,8 @@ type Service struct {
 	nodeRepo       repository.NodeRepository
 	assignmentRepo repository.UserNodeAssignmentRepository
 	trialService   *trial.Service
+	proxyManager   proxylib.Manager
+	configSyncHook func(nodeID int64, source, reason string)
 	logger         logger.Logger
 }
 
@@ -54,6 +65,18 @@ func NewService(
 		trialService:   trialService,
 		logger:         log,
 	}
+}
+
+// WithProxyManager enables automatic default proxy provisioning.
+func (s *Service) WithProxyManager(proxyManager proxylib.Manager) *Service {
+	s.proxyManager = proxyManager
+	return s
+}
+
+// WithConfigSyncHook registers a callback invoked after auto-provisioning a node proxy.
+func (s *Service) WithConfigSyncHook(hook func(nodeID int64, source, reason string)) *Service {
+	s.configSyncHook = hook
+	return s
 }
 
 // EvaluateAccess resolves the user's effective access state.
@@ -153,8 +176,15 @@ func (s *Service) GetAccessibleProxies(ctx context.Context, userID int64) ([]*re
 	if err != nil {
 		return nil, nil, err
 	}
-	proxies = enabledOnly(proxies)
+	proxies = sharedOnly(enabledOnly(proxies))
 	if len(proxies) == 0 {
+		proxyModel, provisionErr := s.autoProvisionDefaultProxy(ctx, userID, nodeID)
+		if provisionErr != nil {
+			return nil, nil, provisionErr
+		}
+		if proxyModel != nil {
+			return []*repository.Proxy{proxyModel}, state, nil
+		}
 		return nil, nil, errors.NewForbiddenError("当前暂无可用节点")
 	}
 
@@ -217,7 +247,7 @@ func (s *Service) getOrAssignNode(ctx context.Context, userID int64) (int64, err
 	if assignment != nil {
 		node, nodeErr := s.nodeRepo.GetByID(ctx, assignment.NodeID)
 		proxies, proxyErr := s.proxyRepo.GetByNodeID(ctx, assignment.NodeID)
-		if nodeErr == nil && node.Status == repository.NodeStatusOnline && (node.MaxUsers == 0 || node.CurrentUsers < node.MaxUsers) && proxyErr == nil && len(enabledOnly(proxies)) > 0 {
+		if nodeErr == nil && node.Status == repository.NodeStatusOnline && (node.MaxUsers == 0 || node.CurrentUsers < node.MaxUsers) && ((proxyErr == nil && len(sharedOnly(enabledOnly(proxies))) > 0) || s.canAutoProvisionDefaultProxy()) {
 			return assignment.NodeID, nil
 		}
 	}
@@ -234,11 +264,14 @@ func (s *Service) getOrAssignNode(ctx context.Context, userID int64) (int64, err
 		selectedNodeID int64
 		selectedCount  int64
 		found          bool
+		fallbackNodeID int64
+		fallbackCount  int64
+		fallbackFound  bool
 	)
 
 	for _, candidate := range availableNodes {
 		proxies, proxyErr := s.proxyRepo.GetByNodeID(ctx, candidate.ID)
-		if proxyErr != nil || len(enabledOnly(proxies)) == 0 {
+		if proxyErr != nil {
 			continue
 		}
 
@@ -247,11 +280,32 @@ func (s *Service) getOrAssignNode(ctx context.Context, userID int64) (int64, err
 			return 0, countErr
 		}
 
-		if !found || count < selectedCount || (count == selectedCount && candidate.ID < selectedNodeID) {
-			selectedNodeID = candidate.ID
-			selectedCount = count
-			found = true
+		if len(sharedOnly(enabledOnly(proxies))) > 0 {
+			if !found || count < selectedCount || (count == selectedCount && candidate.ID < selectedNodeID) {
+				selectedNodeID = candidate.ID
+				selectedCount = count
+				found = true
+			}
+			continue
 		}
+
+		if !s.canAutoProvisionDefaultProxy() {
+			continue
+		}
+		if !fallbackFound || count < fallbackCount || (count == fallbackCount && candidate.ID < fallbackNodeID) {
+			fallbackNodeID = candidate.ID
+			fallbackCount = count
+			fallbackFound = true
+		}
+	}
+
+	if !found {
+		if !fallbackFound {
+			return 0, errors.NewForbiddenError("当前暂无可用节点")
+		}
+		selectedNodeID = fallbackNodeID
+		selectedCount = fallbackCount
+		found = true
 	}
 
 	if !found {
@@ -265,6 +319,148 @@ func (s *Service) getOrAssignNode(ctx context.Context, userID int64) (int64, err
 	return selectedNodeID, nil
 }
 
+func (s *Service) autoProvisionDefaultProxy(ctx context.Context, userID, nodeID int64) (*repository.Proxy, error) {
+	if !s.canAutoProvisionDefaultProxy() {
+		return nil, nil
+	}
+
+	existing, err := s.proxyRepo.GetByUserID(ctx, userID, 10000, 0)
+	if err != nil {
+		return nil, err
+	}
+	if enabled := enabledOnly(existing); len(enabled) > 0 {
+		return selectPrimaryProxy(enabled), nil
+	}
+
+	node, err := s.nodeRepo.GetByID(ctx, nodeID)
+	if err != nil {
+		return nil, err
+	}
+
+	protocolName, protocol, err := s.selectAutoProvisionProtocol(node)
+	if err != nil {
+		return nil, err
+	}
+
+	port, err := s.allocateAutoProvisionPort(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	settings := protocol.DefaultSettings()
+	normalizedSettings, err := proxylib.NormalizeSettings(protocolName, settings)
+	if err != nil {
+		return nil, errors.NewInternalError("failed to normalize auto provisioned proxy settings", err)
+	}
+
+	proxySettings := &proxylib.Settings{
+		Name:     fmt.Sprintf("%s-%s", node.Name, protocolName),
+		Protocol: protocolName,
+		Port:     port,
+		Host:     node.Address,
+		Settings: normalizedSettings,
+		Enabled:  true,
+		Remark:   "auto provisioned",
+	}
+	if err := protocol.Validate(proxySettings); err != nil {
+		return nil, errors.NewInternalError("failed to validate auto provisioned proxy settings", err)
+	}
+
+	nodeRef := node.ID
+	proxyModel := &repository.Proxy{
+		UserID:   userID,
+		NodeID:   &nodeRef,
+		Name:     fmt.Sprintf("%s-%s", node.Name, protocolName),
+		Protocol: protocolName,
+		Port:     port,
+		Host:     node.Address,
+		Settings: normalizedSettings,
+		Enabled:  true,
+		Remark:   "auto provisioned",
+	}
+	if err := s.proxyRepo.Create(ctx, proxyModel); err != nil {
+		return nil, err
+	}
+
+	if s.configSyncHook != nil {
+		s.configSyncHook(node.ID, "entitlement_auto_provision", "auto provisioned default proxy for entitled user")
+	}
+
+	s.logger.Info("auto provisioned default proxy for entitled user",
+		logger.UserID(userID),
+		logger.F("proxy_id", proxyModel.ID),
+		logger.F("node_id", node.ID),
+		logger.F("protocol", protocolName),
+		logger.F("port", port),
+	)
+
+	return proxyModel, nil
+}
+
+func (s *Service) canAutoProvisionDefaultProxy() bool {
+	return s.proxyManager != nil && s.nodeRepo != nil
+}
+
+func (s *Service) selectAutoProvisionProtocol(node *repository.Node) (string, proxylib.Protocol, error) {
+	for _, protocolName := range preferredAutoProvisionProtocols(node.Protocols) {
+		protocol, ok := s.proxyManager.GetProtocol(protocolName)
+		if ok {
+			return protocolName, protocol, nil
+		}
+	}
+
+	return "", nil, errors.NewForbiddenError("当前暂无可用节点")
+}
+
+func (s *Service) allocateAutoProvisionPort(ctx context.Context, userID int64) (int, error) {
+	totalPorts := autoProvisionPortMax - autoProvisionPortMin + 1
+	start := autoProvisionPortMin + int(userID%int64(totalPorts))
+
+	for offset := 0; offset < totalPorts; offset++ {
+		port := autoProvisionPortMin + (start-autoProvisionPortMin+offset)%totalPorts
+		existing, err := s.proxyRepo.GetByPort(ctx, port)
+		if err != nil {
+			return 0, err
+		}
+		if existing == nil {
+			return port, nil
+		}
+	}
+
+	return 0, errors.NewInternalError("failed to allocate auto provisioned proxy port", fmt.Errorf("no available ports in range %d-%d", autoProvisionPortMin, autoProvisionPortMax))
+}
+
+func preferredAutoProvisionProtocols(raw string) []string {
+	ordered := []string{}
+	seen := map[string]struct{}{}
+	appendProtocol := func(name string) {
+		normalized := strings.ToLower(strings.TrimSpace(name))
+		if normalized == "" {
+			return
+		}
+		if _, exists := seen[normalized]; exists {
+			return
+		}
+		seen[normalized] = struct{}{}
+		ordered = append(ordered, normalized)
+	}
+
+	if strings.TrimSpace(raw) != "" {
+		var configured []string
+		if err := json.Unmarshal([]byte(raw), &configured); err == nil {
+			for _, protocolName := range configured {
+				appendProtocol(protocolName)
+			}
+		}
+	}
+
+	for _, protocolName := range []string{"vmess", "vless", "trojan", "shadowsocks"} {
+		appendProtocol(protocolName)
+	}
+
+	return ordered
+}
+
 func (s *Service) trialConfig() *trial.Config {
 	if s.trialService == nil {
 		return nil
@@ -276,6 +472,16 @@ func enabledOnly(proxies []*repository.Proxy) []*repository.Proxy {
 	filtered := make([]*repository.Proxy, 0, len(proxies))
 	for _, proxy := range proxies {
 		if proxy != nil && proxy.Enabled {
+			filtered = append(filtered, proxy)
+		}
+	}
+	return filtered
+}
+
+func sharedOnly(proxies []*repository.Proxy) []*repository.Proxy {
+	filtered := make([]*repository.Proxy, 0, len(proxies))
+	for _, proxy := range proxies {
+		if proxy != nil && proxy.UserID == 0 {
 			filtered = append(filtered, proxy)
 		}
 	}

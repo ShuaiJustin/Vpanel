@@ -170,7 +170,8 @@ Docker Compose 配置了以下数据卷：
 
 | 卷名 | 容器路径 | 说明 |
 |------|----------|------|
-| `v-panel-data` | `/app/data` | 数据库和配置 |
+| `v-panel-config` | `/app/configs` | 面板配置文件 |
+| `v-panel-data` | `/app/data` | 数据库和运行时数据 |
 | `v-panel-logs` | `/app/logs` | 日志文件 |
 | `v-panel-xray` | `/app/xray` | Xray 相关文件 |
 
@@ -214,6 +215,7 @@ docker run -d \
   --name v-panel \
   --restart unless-stopped \
   -p 8080:8080 \
+  -v v-panel-config:/app/configs \
   -v v-panel-data:/app/data \
   -v v-panel-logs:/app/logs \
   -e V_JWT_SECRET=your-secret \

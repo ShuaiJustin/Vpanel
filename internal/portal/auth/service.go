@@ -344,15 +344,16 @@ func (s *Service) VerifyEmail(ctx context.Context, token string) error {
 		return err
 	}
 
-	// Update user's email_verified status
 	user, err := s.userRepo.GetByID(ctx, verificationToken.UserID)
 	if err != nil {
 		return err
 	}
-
-	// Note: This requires extending the User model and repository
-	// For now, we'll just mark the token as verified
-	_ = user
+	now := time.Now().UTC()
+	user.EmailVerified = true
+	user.EmailVerifiedAt = &now
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -518,6 +519,16 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest, ip string, rateL
 	// Check if user is enabled
 	if !user.Enabled {
 		return nil, errors.NewForbiddenError("账户已被禁用")
+	}
+
+	if !user.EmailVerified && strings.TrimSpace(user.Email) != "" {
+		pendingTokens, err := s.authTokenRepo.CountPendingEmailVerificationTokensByUser(ctx, user.ID)
+		if err != nil {
+			return nil, err
+		}
+		if pendingTokens > 0 {
+			return nil, errors.NewForbiddenError("请先验证邮箱后再登录")
+		}
 	}
 
 	// Verify password

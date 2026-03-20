@@ -21,26 +21,26 @@
     <div class="users-table-wrap">
       <el-table :data="paginatedUsers" border v-loading="loading" class="users-table">
       <el-table-column prop="username" label="用户名" min-width="140" />
-      <el-table-column prop="email" label="邮箱" :min-width="isMobile ? 180 : 220" />
-      <el-table-column prop="role" label="角色" :width="isMobile ? 88 : 100">
+      <el-table-column prop="email" label="邮箱" :min-width="isCompact ? 180 : 220" />
+      <el-table-column prop="role" label="角色" :width="isCompact ? 96 : 110">
         <template #default="{ row }">
           <el-tag :type="row.role === 'admin' ? 'danger' : 'primary'">
             {{ row.role === 'admin' ? '管理员' : '普通用户' }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column v-if="!isMobile" prop="created" label="创建时间" width="180" />
-      <el-table-column v-if="!isMobile" prop="lastLogin" label="最后登录" width="180" />
-      <el-table-column prop="status" label="状态" :width="isMobile ? 88 : 100">
+      <el-table-column v-if="showMetaColumns" prop="created" label="创建时间" width="180" />
+      <el-table-column v-if="showMetaColumns" prop="lastLogin" label="最后登录" width="180" />
+      <el-table-column prop="status" label="状态" :width="isCompact ? 90 : 100">
         <template #default="{ row }">
           <el-tag :type="row.status ? 'success' : 'danger'">
             {{ row.status ? '启用' : '禁用' }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" :width="isMobile ? 220 : 320" :fixed="isMobile ? false : 'right'">
+      <el-table-column label="操作" :min-width="isCompact ? 250 : 320">
         <template #default="{ row }">
-          <el-space wrap>
+          <el-space wrap class="row-actions">
             <el-button size="small" type="primary" @click="handleEdit(row)">编辑</el-button>
             <el-button size="small" @click="handleResetPassword(row)">重置密码</el-button>
             <el-button
@@ -62,7 +62,7 @@
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
         :page-sizes="[10, 20, 50, 100]"
-        :layout="isMobile ? 'prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
+        :layout="isMobile ? 'prev, pager, next' : isCompact ? 'total, prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
         :total="displayTotal"
         @size-change="handleSizeChange"
         @current-change="handleCurrentChange"
@@ -119,7 +119,7 @@ import { Search } from '@element-plus/icons-vue'
 import { usersApi } from '@/api'
 import { useViewport } from '@/composables/useViewport'
 
-const { isMobile } = useViewport()
+const { isMobile, viewportWidth } = useViewport({ mobileBreakpoint: 768, tabletBreakpoint: 1280 })
 
 const users = ref([])
 const loading = ref(false)
@@ -193,6 +193,8 @@ const filteredUsers = computed(() => {
 })
 
 const displayTotal = computed(() => filteredUsers.value.length)
+const isCompact = computed(() => viewportWidth.value <= 1366)
+const showMetaColumns = computed(() => viewportWidth.value > 1200)
 
 const paginatedUsers = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
@@ -399,6 +401,7 @@ onMounted(fetchUsers)
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 16px;
   margin-bottom: 20px;
 }
@@ -410,7 +413,10 @@ onMounted(fetchUsers)
 .actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 12px;
+  min-width: 0;
 }
 
 .search-input {
@@ -418,11 +424,21 @@ onMounted(fetchUsers)
 }
 
 .users-table-wrap {
+  width: 100%;
   overflow-x: auto;
 }
 
 .users-table {
-  min-width: 760px;
+  width: 100%;
+  min-width: 720px;
+}
+
+:deep(.users-table .cell) {
+  word-break: break-word;
+}
+
+:deep(.row-actions) {
+  row-gap: 8px;
 }
 
 .pagination-container {
@@ -462,7 +478,7 @@ onMounted(fetchUsers)
   }
 
   .users-table {
-    min-width: 640px;
+    min-width: 560px;
   }
 }
 </style>

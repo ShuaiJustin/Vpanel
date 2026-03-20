@@ -41,6 +41,7 @@ type Order struct {
 	OrderNo        string     `json:"order_no"`
 	UserID         int64      `json:"user_id"`
 	PlanID         int64      `json:"plan_id"`
+	PlanName       string     `json:"plan_name"`
 	CouponID       *int64     `json:"coupon_id"`
 	OriginalAmount int64      `json:"original_amount"`
 	DiscountAmount int64      `json:"discount_amount"`
@@ -71,6 +72,8 @@ type OrderFilter struct {
 	PaymentMethod string
 	StartDate     *time.Time
 	EndDate       *time.Time
+	MinAmount     *int64
+	MaxAmount     *int64
 }
 
 // Config holds order service configuration.
@@ -87,14 +90,15 @@ func DefaultConfig() *Config {
 
 // Service provides order management operations.
 type Service struct {
-	orderRepo repository.OrderRepository
-	planRepo  repository.PlanRepository
-	userRepo  repository.UserRepository
-	trialRepo trialMarker
-	logger    logger.Logger
-	config    *Config
-	mu        sync.Mutex
-	orderNos  map[string]bool // Track generated order numbers for uniqueness
+	orderRepo        repository.OrderRepository
+	planRepo         repository.PlanRepository
+	userRepo         repository.UserRepository
+	trialRepo        trialMarker
+	afterPlanApplied func(ctx context.Context, userID int64) error
+	logger           logger.Logger
+	config           *Config
+	mu               sync.Mutex
+	orderNos         map[string]bool // Track generated order numbers for uniqueness
 }
 
 type trialMarker interface {
@@ -129,6 +133,12 @@ func (s *Service) WithUserRepository(userRepo repository.UserRepository) *Servic
 // WithTrialMarker marks active trials as converted when a paid plan is applied.
 func (s *Service) WithTrialMarker(trialRepo trialMarker) *Service {
 	s.trialRepo = trialRepo
+	return s
+}
+
+// WithAfterPlanAppliedHook runs best-effort post-processing after a paid plan is applied.
+func (s *Service) WithAfterPlanAppliedHook(hook func(ctx context.Context, userID int64) error) *Service {
+	s.afterPlanApplied = hook
 	return s
 }
 
@@ -264,6 +274,8 @@ func (s *Service) List(ctx context.Context, filter OrderFilter, page, pageSize i
 		PaymentMethod: filter.PaymentMethod,
 		StartDate:     filter.StartDate,
 		EndDate:       filter.EndDate,
+		MinAmount:     filter.MinAmount,
+		MaxAmount:     filter.MaxAmount,
 	}
 	repoOrders, total, err := s.orderRepo.List(ctx, repoFilter, pageSize, offset)
 	if err != nil {
@@ -434,6 +446,7 @@ func (s *Service) toOrder(ro *repository.Order) *Order {
 		OrderNo:        ro.OrderNo,
 		UserID:         ro.UserID,
 		PlanID:         ro.PlanID,
+		PlanName:       planName(ro),
 		CouponID:       ro.CouponID,
 		OriginalAmount: ro.OriginalAmount,
 		DiscountAmount: ro.DiscountAmount,
@@ -448,6 +461,14 @@ func (s *Service) toOrder(ro *repository.Order) *Order {
 		CreatedAt:      ro.CreatedAt,
 		UpdatedAt:      ro.UpdatedAt,
 	}
+}
+
+func planName(ro *repository.Order) string {
+	if ro.Plan == nil {
+		return ""
+	}
+
+	return ro.Plan.Name
 }
 
 func (s *Service) applyPlanToUser(ctx context.Context, ord *repository.Order) error {
@@ -489,6 +510,15 @@ func (s *Service) applyPlanToUser(ctx context.Context, ord *repository.Order) er
 					logger.F("order_id", ord.ID),
 				)
 			}
+		}
+	}
+	if s.afterPlanApplied != nil {
+		if err := s.afterPlanApplied(ctx, ord.UserID); err != nil {
+			s.logger.Warn("failed to run after plan applied hook",
+				logger.Err(err),
+				logger.UserID(ord.UserID),
+				logger.F("order_id", ord.ID),
+			)
 		}
 	}
 	return nil

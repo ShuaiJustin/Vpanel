@@ -30,7 +30,7 @@
 
     <!-- 筛选 -->
     <el-card shadow="never" class="filter-card">
-      <el-form :inline="true">
+      <el-form :inline="!isMobile" class="filter-form">
         <el-form-item label="状态">
           <el-select v-model="filter.status" placeholder="全部" clearable @change="fetchGiftCards">
             <el-option label="可用" value="active" />
@@ -47,6 +47,7 @@
 
     <!-- 列表 -->
     <el-card shadow="never">
+      <div class="table-wrap">
       <el-table :data="giftCards" v-loading="loading" style="width: 100%">
         <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="code" label="礼品卡码" width="220">
@@ -69,18 +70,18 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="batch_id" label="批次" width="180" />
-        <el-table-column label="过期时间" width="180">
+        <el-table-column prop="batch_id" label="批次" :min-width="isMobile ? 140 : 180" />
+        <el-table-column label="过期时间" :min-width="isMobile ? 150 : 180">
           <template #default="{ row }">
             {{ row.expires_at ? formatTime(row.expires_at) : '永不过期' }}
           </template>
         </el-table-column>
-        <el-table-column label="兑换时间" width="180">
+        <el-table-column v-if="!isMobile" label="兑换时间" width="180">
           <template #default="{ row }">
             {{ row.redeemed_at ? formatTime(row.redeemed_at) : '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" :min-width="isMobile ? 120 : 150">
           <template #default="{ row }">
             <template v-if="row.status === 'active'">
               <el-button type="warning" link @click="disableGiftCard(row)">禁用</el-button>
@@ -97,6 +98,7 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
 
       <div v-if="pagination.total > 0" class="pagination-container">
         <el-pagination
@@ -110,8 +112,8 @@
     </el-card>
 
     <!-- 批量创建对话框 -->
-    <el-dialog v-model="dialogVisible" title="批量创建礼品卡" width="500px">
-      <el-form :model="form" :rules="rules" ref="formRef" label-width="100px">
+    <el-dialog v-model="dialogVisible" title="批量创建礼品卡" :width="isMobile ? 'calc(100vw - 24px)' : '500px'">
+      <el-form :model="form" :rules="rules" ref="formRef" :label-width="isMobile ? '76px' : '100px'">
         <el-form-item label="数量" prop="count">
           <el-input-number v-model="form.count" :min="1" :max="1000" />
           <span style="margin-left: 8px; color: #909399;">最多1000张</span>
@@ -139,7 +141,7 @@
     </el-dialog>
 
     <!-- 创建成功对话框 -->
-    <el-dialog v-model="successDialogVisible" title="创建成功" width="600px">
+    <el-dialog v-model="successDialogVisible" title="创建成功" :width="isMobile ? 'calc(100vw - 24px)' : '600px'">
       <div class="success-info">
         <p>成功创建 <strong>{{ createdResult.count }}</strong> 张礼品卡</p>
         <p>批次ID: <code>{{ createdResult.batch_id }}</code></p>
@@ -167,6 +169,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, CopyDocument } from '@element-plus/icons-vue'
 import { giftCardsApi } from '@/api/index'
 import { copyText } from '@/utils/clipboard'
+import { useViewport } from '@/composables/useViewport'
+
+const { isMobile } = useViewport()
 
 const loading = ref(false)
 const giftCards = ref([])
@@ -332,6 +337,8 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-bottom: 20px;
 }
 
@@ -343,7 +350,7 @@ onMounted(() => {
 
 .stats-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 16px;
   margin-bottom: 20px;
 }
@@ -386,6 +393,30 @@ onMounted(() => {
 
 .filter-card :deep(.el-card__body) {
   padding: 16px 20px;
+}
+
+.filter-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0 16px;
+}
+
+.filter-form :deep(.el-form-item) {
+  margin-right: 0;
+  margin-bottom: 16px;
+}
+
+.filter-form :deep(.el-select),
+.filter-form :deep(.el-input) {
+  width: 100%;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.table-wrap :deep(.el-table) {
+  min-width: 860px;
 }
 
 .gc-code {
@@ -438,11 +469,37 @@ onMounted(() => {
 .code-item code {
   font-family: monospace;
   font-size: 14px;
+  min-width: 0;
+  word-break: break-all;
 }
 
 .more-hint {
   text-align: center;
   color: #909399;
   padding: 12px 0;
+}
+
+@media (max-width: 768px) {
+  .admin-giftcards-page {
+    padding: 12px;
+  }
+
+  .filter-card :deep(.el-card__body) {
+    padding: 14px;
+  }
+
+  .table-wrap :deep(.el-table) {
+    min-width: 760px;
+  }
+
+  .pagination-container {
+    justify-content: center;
+  }
+
+  .code-item {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
 }
 </style>

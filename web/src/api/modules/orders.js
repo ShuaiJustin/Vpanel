@@ -33,6 +33,13 @@ export const ordersApi = {
   get: (id) => api.get(`/orders/${id}`),
 
   /**
+   * 根据订单号获取订单详情
+   * @param {string} orderNo - 订单号
+   * @returns {Promise<Object>} 订单详情
+   */
+  getByOrderNo: (orderNo) => api.get(`/orders/by-order-no/${orderNo}`),
+
+  /**
    * 取消订单
    * @param {number} id - 订单ID
    * @returns {Promise<Object>} 取消后的订单

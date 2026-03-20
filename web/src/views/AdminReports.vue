@@ -5,6 +5,7 @@
       <el-date-picker
         v-model="dateRange"
         type="daterange"
+        :style="{ width: datePickerWidth }"
         start-placeholder="开始日期"
         end-placeholder="结束日期"
         @change="fetchReports"
@@ -76,6 +77,7 @@
       <!-- 失败原因分布 -->
       <div v-if="Object.keys(failedPaymentStats.failures_by_reason || {}).length > 0" class="failure-reasons">
         <h4>失败原因分布</h4>
+        <div class="table-wrap">
         <el-table :data="failureReasonsList" size="small" style="width: 100%">
           <el-table-column prop="reason" label="失败原因" />
           <el-table-column prop="count" label="次数" width="100" />
@@ -88,6 +90,7 @@
             </template>
           </el-table-column>
         </el-table>
+        </div>
       </div>
     </el-card>
 
@@ -132,6 +135,7 @@
       <!-- 暂停滥用检测 -->
       <div v-if="pauseStats.abuse_patterns?.length > 0" class="abuse-patterns">
         <h4>潜在滥用用户</h4>
+        <div class="table-wrap">
         <el-table :data="pauseStats.abuse_patterns" size="small" style="width: 100%">
           <el-table-column prop="user_id" label="用户ID" width="100" />
           <el-table-column prop="pause_count" label="暂停次数" width="100" />
@@ -144,6 +148,7 @@
             </template>
           </el-table-column>
         </el-table>
+        </div>
       </div>
     </el-card>
 
@@ -175,6 +180,9 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import api from '@/api'
+import { useViewport } from '@/composables/useViewport'
+
+const { isMobile, isTablet } = useViewport({ mobileBreakpoint: 768, tabletBreakpoint: 1280 })
 
 const dateRange = ref(null)
 
@@ -206,6 +214,7 @@ const pauseStats = reactive({
   pause_rate: 0,
   abuse_patterns: []
 })
+const datePickerWidth = computed(() => (isMobile.value ? '100%' : isTablet.value ? '320px' : '360px'))
 
 const formatPrice = (price) => ((price || 0) / 100).toFixed(2)
 const resetFailedPaymentStats = () => {
@@ -319,9 +328,9 @@ onMounted(() => {
 
 <style scoped>
 .admin-reports-page { padding: 20px; }
-.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.page-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
 .page-title { font-size: 24px; font-weight: 600; margin: 0; }
-.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 20px; }
 .stat-card { text-align: center; }
 .stat-value { font-size: 28px; font-weight: 600; color: #409eff; }
 .stat-label { font-size: 14px; color: #909399; margin-top: 8px; }
@@ -330,10 +339,10 @@ onMounted(() => {
 
 /* Failed payment stats styles */
 .failed-payments-card { margin-bottom: 20px; }
-.card-header { display: flex; justify-content: space-between; align-items: center; }
-.failed-stats-grid { 
+.card-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+.failed-stats-grid {
   display: grid; 
-  grid-template-columns: repeat(7, 1fr); 
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 16px; 
   margin-bottom: 20px;
   padding: 16px;
@@ -356,6 +365,8 @@ onMounted(() => {
   margin-top: 4px; 
 }
 .failure-reasons { margin-top: 16px; }
+.table-wrap { overflow-x: auto; }
+.table-wrap :deep(.el-table) { min-width: 480px; }
 .failure-reasons h4 { 
   font-size: 14px; 
   font-weight: 600; 
@@ -365,9 +376,9 @@ onMounted(() => {
 
 /* Pause stats styles */
 .pause-stats-card { margin-bottom: 20px; }
-.pause-stats-grid { 
+.pause-stats-grid {
   display: grid; 
-  grid-template-columns: repeat(6, 1fr); 
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 16px; 
   margin-bottom: 20px;
   padding: 16px;
@@ -396,12 +407,21 @@ onMounted(() => {
 }
 
 @media (max-width: 1200px) {
-  .failed-stats-grid { grid-template-columns: repeat(4, 1fr); }
-  .pause-stats-grid { grid-template-columns: repeat(3, 1fr); }
+  .admin-reports-page { padding: 16px; }
 }
 @media (max-width: 768px) {
-  .stats-grid { grid-template-columns: repeat(2, 1fr); }
-  .failed-stats-grid { grid-template-columns: repeat(2, 1fr); }
-  .pause-stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .admin-reports-page { padding: 12px; }
+  .page-header { align-items: stretch; }
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+  .failed-stats-grid { grid-template-columns: 1fr 1fr; }
+  .pause-stats-grid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 520px) {
+  .stats-grid,
+  .failed-stats-grid,
+  .pause-stats-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

@@ -6,7 +6,7 @@
         <h1 class="page-title">使用统计</h1>
         <p class="page-subtitle">查看您的流量使用情况和历史记录</p>
       </div>
-      <el-button @click="exportData" :loading="exporting">
+      <el-button @click="exportData" :loading="exporting" :class="{ 'full-width-btn': isMobile }">
         <el-icon><Download /></el-icon>
         导出数据
       </el-button>
@@ -24,6 +24,7 @@
       <el-date-picker
         v-model="customRange"
         type="daterange"
+        :style="{ width: customRangeWidth }"
         range-separator="至"
         start-placeholder="开始日期"
         end-placeholder="结束日期"
@@ -161,6 +162,7 @@
         <span>详细记录</span>
       </template>
 
+      <div class="table-wrap">
       <el-table :data="records" stripe>
         <el-table-column label="日期" prop="date" width="120" />
         <el-table-column label="上传" width="120">
@@ -180,20 +182,23 @@
         </el-table-column>
         <el-table-column label="连接数" prop="connections" width="100" />
       </el-table>
+      </div>
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, nextTick, watch } from 'vue'
+import { ref, reactive, onMounted, nextTick, watch, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { 
   Download, Upload, DataLine, Connection, Loading 
 } from '@element-plus/icons-vue'
 import { usePortalStatsStore } from '@/stores/portalStats'
 import Chart from 'chart.js/auto'
+import { useViewport } from '@/composables/useViewport'
 
 const statsStore = usePortalStatsStore()
+const { isMobile } = useViewport()
 
 // 引用
 const trafficChart = ref(null)
@@ -220,6 +225,7 @@ const nodeUsage = ref([])
 const protocolUsage = ref([])
 const records = ref([])
 const chartData = ref({ labels: [], upload: [], download: [] })
+const customRangeWidth = computed(() => (isMobile.value ? '100%' : '320px'))
 
 // 日期快捷选项
 const dateShortcuts = [
@@ -436,6 +442,7 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  gap: 16px;
   margin-bottom: 24px;
 }
 
@@ -531,6 +538,8 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .chart-loading {
@@ -554,6 +563,11 @@ onMounted(() => {
 
 .chart-container {
   height: 300px;
+}
+
+.chart-container canvas,
+.protocol-chart canvas {
+  max-width: 100%;
 }
 
 /* 使用统计 */
@@ -625,8 +639,24 @@ onMounted(() => {
   height: 250px;
 }
 
+.table-wrap {
+  overflow-x: auto;
+}
+
+.table-wrap :deep(.el-table) {
+  min-width: 580px;
+}
+
+.full-width-btn {
+  width: 100%;
+}
+
 /* 响应式 */
 @media (max-width: 768px) {
+  .stats-page {
+    padding: 12px;
+  }
+
   .page-header {
     flex-direction: column;
     gap: 16px;
@@ -635,6 +665,10 @@ onMounted(() => {
   .time-selector {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .chart-container {
+    height: 260px;
   }
 }
 </style>

@@ -11,12 +11,14 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"v/internal/commercial/order"
+	"v/internal/commercial/refund"
 	"v/internal/logger"
 )
 
 // OrderHandler handles order-related requests.
 type OrderHandler struct {
 	orderService *order.Service
+	refundService *refund.Service
 	logger       logger.Logger
 }
 
@@ -28,12 +30,19 @@ func NewOrderHandler(orderService *order.Service, log logger.Logger) *OrderHandl
 	}
 }
 
+// WithRefundService enables admin refund operations on orders.
+func (h *OrderHandler) WithRefundService(refundService *refund.Service) *OrderHandler {
+	h.refundService = refundService
+	return h
+}
+
 // OrderResponse represents an order in API responses.
 type OrderResponse struct {
 	ID             int64   `json:"id"`
 	OrderNo        string  `json:"order_no"`
 	UserID         int64   `json:"user_id"`
 	PlanID         int64   `json:"plan_id"`
+	PlanName       string  `json:"plan_name,omitempty"`
 	CouponID       *int64  `json:"coupon_id,omitempty"`
 	OriginalAmount int64   `json:"original_amount"`
 	DiscountAmount int64   `json:"discount_amount"`
@@ -126,6 +135,39 @@ func (h *OrderHandler) GetOrder(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"order": h.toOrderResponse(o)})
 }
 
+// GetOrderByOrderNo returns an order by order number for the current user.
+func (h *OrderHandler) GetOrderByOrderNo(c *gin.Context) {
+	orderNo := strings.TrimSpace(c.Param("orderNo"))
+	if orderNo == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    "VALIDATION_ERROR",
+			"message": "Invalid order number",
+		})
+		return
+	}
+
+	o, err := h.orderService.GetByOrderNo(c.Request.Context(), orderNo)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"code":    "NOT_FOUND",
+			"message": "Order not found",
+		})
+		return
+	}
+
+	userID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
+	if role != "admin" && o.UserID != userID.(int64) {
+		c.JSON(http.StatusForbidden, gin.H{
+			"code":    "FORBIDDEN",
+			"message": "Access denied",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"order": h.toOrderResponse(o)})
+}
+
 // ListUserOrders returns orders for the current user.
 func (h *OrderHandler) ListUserOrders(c *gin.Context) {
 	userID, exists := c.Get("user_id")
@@ -139,8 +181,14 @@ func (h *OrderHandler) ListUserOrders(c *gin.Context) {
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	status := strings.TrimSpace(c.Query("status"))
 
-	orders, total, err := h.orderService.ListByUser(c.Request.Context(), userID.(int64), page, pageSize)
+	filter := order.OrderFilter{
+		UserID: func(id int64) *int64 { return &id }(userID.(int64)),
+		Status: status,
+	}
+
+	orders, total, err := h.orderService.List(c.Request.Context(), filter, page, pageSize)
 	if err != nil {
 		h.logger.Error("Failed to list orders", logger.Err(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list orders"})
@@ -200,6 +248,7 @@ func (h *OrderHandler) ListAllOrders(c *gin.Context) {
 
 	filter := order.OrderFilter{Status: status}
 	filter.Search = strings.TrimSpace(c.Query("search"))
+	filter.PaymentMethod = strings.TrimSpace(c.Query("payment_method"))
 
 	if startDate := strings.TrimSpace(c.Query("start_date")); startDate != "" {
 		parsed, err := parseOrderFilterTime(startDate)
@@ -217,6 +266,24 @@ func (h *OrderHandler) ListAllOrders(c *gin.Context) {
 			return
 		}
 		filter.EndDate = &parsed
+	}
+
+	if minAmount := strings.TrimSpace(c.Query("min_amount")); minAmount != "" {
+		parsed, err := strconv.ParseInt(minAmount, 10, 64)
+		if err != nil || parsed < 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid min amount"})
+			return
+		}
+		filter.MinAmount = &parsed
+	}
+
+	if maxAmount := strings.TrimSpace(c.Query("max_amount")); maxAmount != "" {
+		parsed, err := strconv.ParseInt(maxAmount, 10, 64)
+		if err != nil || parsed < 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid max amount"})
+			return
+		}
+		filter.MaxAmount = &parsed
 	}
 
 	orders, total, err := h.orderService.List(c.Request.Context(), filter, page, pageSize)
@@ -259,6 +326,42 @@ func (h *OrderHandler) UpdateOrderStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Order status updated"})
 }
 
+// RefundOrder processes a manual refund for an order (admin only).
+func (h *OrderHandler) RefundOrder(c *gin.Context) {
+	if h.refundService == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Refund service not available"})
+		return
+	}
+
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order ID"})
+		return
+	}
+
+	var req struct {
+		Amount int64  `json:"amount"`
+		Reason string `json:"reason"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	result, err := h.refundService.ProcessRefund(c.Request.Context(), &refund.RefundRequest{
+		OrderID: id,
+		Amount:  req.Amount,
+		Reason:  strings.TrimSpace(req.Reason),
+	})
+	if err != nil {
+		h.logger.Error("Failed to refund order", logger.Err(err), logger.F("id", id))
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"refund": result, "message": "Refund processed"})
+}
+
 func parseOrderFilterTime(value string) (time.Time, error) {
 	layouts := []string{
 		time.RFC3339,
@@ -281,6 +384,7 @@ func (h *OrderHandler) toOrderResponse(o *order.Order) OrderResponse {
 		OrderNo:        o.OrderNo,
 		UserID:         o.UserID,
 		PlanID:         o.PlanID,
+		PlanName:       o.PlanName,
 		CouponID:       o.CouponID,
 		OriginalAmount: o.OriginalAmount,
 		DiscountAmount: o.DiscountAmount,

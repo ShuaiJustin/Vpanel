@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -17,6 +19,8 @@ type ProxyHandler struct {
 	proxyRepo       repository.ProxyRepository
 	nodeRepo        repository.NodeRepository
 	trafficRepo     repository.TrafficRepository
+	userRepo        repository.UserRepository
+	trialRepo       repository.TrialRepository
 	recoveryTracker *NodeRecoveryTracker
 	logger          logger.Logger
 }
@@ -45,6 +49,13 @@ func (h *ProxyHandler) WithNodeRepository(nodeRepo repository.NodeRepository) *P
 	return h
 }
 
+// WithUserRepositories injects user and trial repositories for derived proxy metadata.
+func (h *ProxyHandler) WithUserRepositories(userRepo repository.UserRepository, trialRepo repository.TrialRepository) *ProxyHandler {
+	h.userRepo = userRepo
+	h.trialRepo = trialRepo
+	return h
+}
+
 // WithRecoveryTracker injects recovery tracker for node config sync commands.
 func (h *ProxyHandler) WithRecoveryTracker(recoveryTracker *NodeRecoveryTracker) *ProxyHandler {
 	h.recoveryTracker = recoveryTracker
@@ -59,18 +70,20 @@ func (h *ProxyHandler) queueNodeConfigSync(nodeID *int64, source, reason string)
 }
 
 type ProxyResponse struct {
-	ID        int64          `json:"id"`
-	UserID    int64          `json:"user_id"`
-	NodeID    *int64         `json:"node_id,omitempty"` // 节点 ID
-	Name      string         `json:"name"`
-	Protocol  string         `json:"protocol"`
-	Port      int            `json:"port"`
-	Host      string         `json:"host,omitempty"`
-	Settings  map[string]any `json:"settings,omitempty"`
-	Enabled   bool           `json:"enabled"`
-	Remark    string         `json:"remark,omitempty"`
-	CreatedAt string         `json:"created_at"`
-	UpdatedAt string         `json:"updated_at"`
+	ID           int64          `json:"id"`
+	UserID       int64          `json:"user_id"`
+	NodeID       *int64         `json:"node_id,omitempty"` // 节点 ID
+	Name         string         `json:"name"`
+	Protocol     string         `json:"protocol"`
+	Port         int            `json:"port"`
+	Host         string         `json:"host,omitempty"`
+	Settings     map[string]any `json:"settings,omitempty"`
+	Enabled      bool           `json:"enabled"`
+	Remark       string         `json:"remark,omitempty"`
+	ExpiresAt    *string        `json:"expires_at,omitempty"`
+	ExpirySource string         `json:"expiry_source,omitempty"`
+	CreatedAt    string         `json:"created_at"`
+	UpdatedAt    string         `json:"updated_at"`
 }
 
 // getUserFromContext extracts user information from the gin context.
@@ -118,20 +131,7 @@ func (h *ProxyHandler) List(c *gin.Context) {
 
 	response := make([]ProxyResponse, len(proxies))
 	for i, p := range proxies {
-		response[i] = ProxyResponse{
-			ID:        p.ID,
-			UserID:    p.UserID,
-			NodeID:    p.NodeID,
-			Name:      p.Name,
-			Protocol:  p.Protocol,
-			Port:      p.Port,
-			Host:      p.Host,
-			Settings:  p.Settings,
-			Enabled:   p.Enabled,
-			Remark:    p.Remark,
-			CreatedAt: p.CreatedAt.Format("2006-01-02T15:04:05Z"),
-			UpdatedAt: p.UpdatedAt.Format("2006-01-02T15:04:05Z"),
-		}
+		response[i] = h.buildProxyResponse(c.Request.Context(), p)
 	}
 
 	c.JSON(http.StatusOK, response)
@@ -230,20 +230,7 @@ func (h *ProxyHandler) Create(c *gin.Context) {
 	h.logger.Info("proxy created", logger.F("proxy_id", proxyModel.ID), logger.F("user_id", userID))
 	h.queueNodeConfigSync(proxyModel.NodeID, "proxy_create", "proxy created")
 
-	c.JSON(http.StatusCreated, ProxyResponse{
-		ID:        proxyModel.ID,
-		UserID:    proxyModel.UserID,
-		NodeID:    proxyModel.NodeID,
-		Name:      proxyModel.Name,
-		Protocol:  proxyModel.Protocol,
-		Port:      proxyModel.Port,
-		Host:      proxyModel.Host,
-		Settings:  proxyModel.Settings,
-		Enabled:   proxyModel.Enabled,
-		Remark:    proxyModel.Remark,
-		CreatedAt: proxyModel.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		UpdatedAt: proxyModel.UpdatedAt.Format("2006-01-02T15:04:05Z"),
-	})
+	c.JSON(http.StatusCreated, h.buildProxyResponse(c.Request.Context(), proxyModel))
 }
 
 // Get retrieves a proxy by ID.
@@ -271,20 +258,7 @@ func (h *ProxyHandler) Get(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, ProxyResponse{
-		ID:        p.ID,
-		UserID:    p.UserID,
-		NodeID:    p.NodeID,
-		Name:      p.Name,
-		Protocol:  p.Protocol,
-		Port:      p.Port,
-		Host:      p.Host,
-		Settings:  p.Settings,
-		Enabled:   p.Enabled,
-		Remark:    p.Remark,
-		CreatedAt: p.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		UpdatedAt: p.UpdatedAt.Format("2006-01-02T15:04:05Z"),
-	})
+	c.JSON(http.StatusOK, h.buildProxyResponse(c.Request.Context(), p))
 }
 
 type UpdateProxyRequest struct {
@@ -382,7 +356,11 @@ func (h *ProxyHandler) Update(c *gin.Context) {
 	}
 	h.queueNodeConfigSync(p.NodeID, "proxy_update", "proxy updated")
 
-	c.JSON(http.StatusOK, ProxyResponse{
+	c.JSON(http.StatusOK, h.buildProxyResponse(c.Request.Context(), p))
+}
+
+func (h *ProxyHandler) buildProxyResponse(ctx context.Context, p *repository.Proxy) ProxyResponse {
+	response := ProxyResponse{
 		ID:        p.ID,
 		UserID:    p.UserID,
 		NodeID:    p.NodeID,
@@ -395,7 +373,45 @@ func (h *ProxyHandler) Update(c *gin.Context) {
 		Remark:    p.Remark,
 		CreatedAt: p.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		UpdatedAt: p.UpdatedAt.Format("2006-01-02T15:04:05Z"),
-	})
+	}
+
+	if expiresAt, source := h.resolveProxyExpiry(ctx, p.UserID); source != "" {
+		response.ExpirySource = source
+		if expiresAt != nil {
+			formatted := expiresAt.UTC().Format(time.RFC3339)
+			response.ExpiresAt = &formatted
+		}
+	}
+
+	return response
+}
+
+func (h *ProxyHandler) resolveProxyExpiry(ctx context.Context, userID int64) (*time.Time, string) {
+	if h == nil || userID <= 0 || h.userRepo == nil {
+		return nil, ""
+	}
+
+	user, err := h.userRepo.GetByID(ctx, userID)
+	if err == nil && user != nil {
+		if user.ExpiresAt != nil {
+			expiresAt := user.ExpiresAt.UTC()
+			return &expiresAt, "subscription"
+		}
+	}
+
+	if h.trialRepo != nil {
+		trial, trialErr := h.trialRepo.GetByUserID(ctx, userID)
+		if trialErr == nil && trial != nil {
+			expiresAt := trial.ExpireAt.UTC()
+			return &expiresAt, "trial"
+		}
+	}
+
+	if user != nil {
+		return nil, "subscription"
+	}
+
+	return nil, ""
 }
 
 // Delete deletes a proxy.

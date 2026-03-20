@@ -18,53 +18,68 @@
         </div>
       </template>
       
-      <el-row :gutter="20" class="stats-row">
-        <el-col :span="8">
+      <div class="monitor-stats-grid" :style="{ gap: `${gridGutter}px` }">
+        <div class="monitor-stats-item">
           <el-card class="stats-card">
             <template #header>
               <div class="stats-header">CPU 使用率</div>
             </template>
             <div class="stats-value">
-              <el-progress type="dashboard" :percentage="cpuUsage" :color="getColorByPercentage" />
+              <el-progress
+                type="dashboard"
+                :width="progressWidth"
+                :percentage="cpuUsage"
+                :color="getColorByPercentage"
+              />
               <div class="stats-details">
                 <p>核心数: {{ cpuInfo.cores }}</p>
                 <p>型号: {{ cpuInfo.model }}</p>
               </div>
             </div>
           </el-card>
-        </el-col>
-        <el-col :span="8">
+        </div>
+        <div class="monitor-stats-item">
           <el-card class="stats-card">
             <template #header>
               <div class="stats-header">内存使用率</div>
             </template>
             <div class="stats-value">
-              <el-progress type="dashboard" :percentage="memoryUsage" :color="getColorByPercentage" />
+              <el-progress
+                type="dashboard"
+                :width="progressWidth"
+                :percentage="memoryUsage"
+                :color="getColorByPercentage"
+              />
               <div class="stats-details">
                 <p>已用: {{ formatBytes(memoryInfo.used) }}</p>
                 <p>总计: {{ formatBytes(memoryInfo.total) }}</p>
               </div>
             </div>
           </el-card>
-        </el-col>
-        <el-col :span="8">
+        </div>
+        <div class="monitor-stats-item">
           <el-card class="stats-card">
             <template #header>
               <div class="stats-header">磁盘使用率</div>
             </template>
             <div class="stats-value">
-              <el-progress type="dashboard" :percentage="diskUsage" :color="getColorByPercentage" />
+              <el-progress
+                type="dashboard"
+                :width="progressWidth"
+                :percentage="diskUsage"
+                :color="getColorByPercentage"
+              />
               <div class="stats-details">
                 <p>已用: {{ formatBytes(diskInfo.used) }}</p>
                 <p>总计: {{ formatBytes(diskInfo.total) }}</p>
               </div>
             </div>
           </el-card>
-        </el-col>
-      </el-row>
+        </div>
+      </div>
       
-      <el-row :gutter="20">
-        <el-col :span="12">
+      <el-row :gutter="gridGutter">
+        <el-col :xs="24" :lg="12">
           <el-card class="chart-card">
             <template #header>
               <div class="chart-header">CPU/内存历史趋势</div>
@@ -72,7 +87,7 @@
             <div class="chart" ref="resourceChartRef"></div>
           </el-card>
         </el-col>
-        <el-col :span="12">
+        <el-col :xs="24" :lg="12">
           <el-card class="chart-card">
             <template #header>
               <div class="chart-header">磁盘 I/O</div>
@@ -88,7 +103,7 @@
             <span>系统信息</span>
           </div>
         </template>
-        <el-descriptions border :column="2">
+        <el-descriptions border :column="descriptionColumns">
           <el-descriptions-item label="操作系统">{{ systemInfo.os }}</el-descriptions-item>
           <el-descriptions-item label="内核版本">{{ systemInfo.kernel }}</el-descriptions-item>
           <el-descriptions-item label="主机名">{{ systemInfo.hostname }}</el-descriptions-item>
@@ -105,29 +120,31 @@
             <el-input
               v-model="processSearch"
               placeholder="搜索进程"
-              style="width: 200px"
+              :style="{ width: processSearchWidth }"
               clearable
             />
           </div>
         </template>
+        <div class="process-table-wrap">
         <el-table :data="filteredProcesses" v-loading="loading" style="width: 100%">
           <el-table-column prop="pid" label="PID" width="80" />
           <el-table-column prop="name" label="名称" min-width="150" />
           <el-table-column prop="user" label="用户" width="100" />
-          <el-table-column prop="cpu" label="CPU %" width="80" />
-          <el-table-column prop="memory" label="内存 %" width="80" />
-          <el-table-column prop="memoryUsed" label="内存使用" width="120">
+          <el-table-column prop="cpu" label="CPU %" width="90" />
+          <el-table-column prop="memory" label="内存 %" width="90" />
+          <el-table-column prop="memoryUsed" label="内存使用" width="130">
             <template #default="{ row }">
               {{ formatBytes(row.memoryUsed) }}
             </template>
           </el-table-column>
-          <el-table-column prop="started" label="开始时间" width="150" />
+          <el-table-column v-if="!isMobile" prop="started" label="开始时间" width="150" />
           <el-table-column prop="state" label="状态" width="100">
             <template #default="{ row }">
               <el-tag :type="getStatusType(row.state)">{{ row.state }}</el-tag>
             </template>
           </el-table-column>
         </el-table>
+        </div>
       </el-card>
     </el-card>
   </div>
@@ -138,6 +155,9 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import * as echarts from 'echarts'
 import { systemApi } from '@/api'
 import { ElMessage } from 'element-plus'
+import { useViewport } from '@/composables/useViewport'
+
+const { isMobile, isTablet } = useViewport({ mobileBreakpoint: 768, tabletBreakpoint: 1280 })
 
 // 图表引用
 const resourceChartRef = ref(null)
@@ -164,6 +184,10 @@ const systemInfo = ref({
   ipAddress: '0.0.0.0'
 })
 const processes = ref([])
+const gridGutter = computed(() => (isMobile.value ? 12 : 20))
+const progressWidth = computed(() => (isMobile.value ? 132 : isTablet.value ? 150 : 168))
+const descriptionColumns = computed(() => (isMobile.value ? 1 : 2))
+const processSearchWidth = computed(() => (isMobile.value ? '100%' : isTablet.value ? '180px' : '220px'))
 
 // 计算属性
 const filteredProcesses = computed(() => {
@@ -181,6 +205,15 @@ const getColorByPercentage = (percentage) => {
   if (percentage < 60) return '#67C23A'
   if (percentage < 80) return '#E6A23C'
   return '#F56C6C'
+}
+
+const normalizePercentage = value => {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) {
+    return 0
+  }
+
+  return Math.max(0, Math.min(100, Math.round(parsed)))
 }
 
 // 获取进程状态类型
@@ -206,6 +239,10 @@ const formatBytes = (bytes) => {
 
 // 初始化图表
 const initCharts = () => {
+  if (!resourceChartRef.value || !diskChartRef.value) {
+    return
+  }
+
   // CPU/内存历史趋势图表
   resourceChart = echarts.init(resourceChartRef.value)
   resourceChart.setOption({
@@ -307,6 +344,10 @@ const generateTimePoints = (count) => {
 
 // 更新图表数据
 const updateCharts = () => {
+  if (!resourceChart || !diskChart) {
+    return
+  }
+
   // 更新CPU/内存图表
   resourceChart.setOption({
     xAxis: {
@@ -367,19 +408,19 @@ const refreshData = async () => {
     // 更新CPU信息
     if (data.cpuInfo) {
       cpuInfo.value = data.cpuInfo
-      cpuUsage.value = data.cpuUsage || 0
+      cpuUsage.value = normalizePercentage(data.cpuUsage)
     }
 
     // 更新内存信息
     if (data.memoryInfo) {
       memoryInfo.value = data.memoryInfo
-      memoryUsage.value = data.memoryUsage || 0
+      memoryUsage.value = normalizePercentage(data.memoryUsage)
     }
 
     // 更新磁盘信息
     if (data.diskInfo) {
       diskInfo.value = data.diskInfo
-      diskUsage.value = data.diskUsage || 0
+      diskUsage.value = normalizePercentage(data.diskUsage)
     }
 
     // 更新进程列表
@@ -443,13 +484,26 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.stats-row {
+.monitor-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-bottom: 20px;
 }
 
+.monitor-stats-item {
+  min-width: 0;
+}
+
 .stats-card {
+  height: 100%;
+  width: 100%;
+}
+
+:deep(.stats-card .el-card__body) {
   height: 100%;
 }
 
@@ -459,18 +513,23 @@ onUnmounted(() => {
 }
 
 .stats-value {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
   text-align: center;
-  padding: 20px 0;
+  padding: 12px 0;
 }
 
 .stats-details {
-  margin-top: 15px;
   text-align: center;
+  max-width: 100%;
 }
 
 .stats-details p {
   margin: 5px 0;
   color: #606266;
+  word-break: break-word;
 }
 
 .chart-card {
@@ -483,6 +542,7 @@ onUnmounted(() => {
 
 .chart {
   height: 300px;
+  width: 100%;
 }
 
 .system-info {
@@ -493,7 +553,35 @@ onUnmounted(() => {
   margin-top: 20px;
 }
 
+.process-table-wrap {
+  overflow-x: auto;
+}
+
 .el-card {
   z-index: 1;
+}
+
+@media (max-width: 768px) {
+  .system-monitor {
+    padding: 12px;
+  }
+
+  .monitor-stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .chart {
+    height: 260px;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1280px) {
+  .monitor-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+:deep(.monitor-stats-item > .el-card) {
+  height: 100%;
 }
 </style> 

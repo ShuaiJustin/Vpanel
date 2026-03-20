@@ -197,6 +197,7 @@ docker-compose logs -f
 docker run -d \
   --name v-panel \
   -p 随机端口:8080 \
+  -v v-panel-config:/app/configs \
   -v v-panel-data:/app/data \
   -e V_JWT_SECRET=your-secret \
   -e V_ADMIN_PASS=your-password \

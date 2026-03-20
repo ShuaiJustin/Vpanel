@@ -3,17 +3,8 @@
 
 set -e
 
-# 颜色定义
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
-# 获取脚本所在目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-DOCKER_DIR="$PROJECT_ROOT/deployments/docker"
+. "$SCRIPT_DIR/common.sh"
 
 echo -e "${CYAN}========================================${NC}"
 echo -e "${CYAN}  V Panel 生产环境部署检查${NC}"
@@ -53,13 +44,6 @@ check_item() {
     esac
 }
 
-# 安全读取 .env 文件
-read_env_var() {
-    local var_name=$1
-    local env_file=$2
-    grep "^${var_name}=" "$env_file" 2>/dev/null | head -n1 | cut -d'=' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
-}
-
 # 1. 检查 Docker 环境
 echo -e "${CYAN}[1/6] Docker 环境检查${NC}"
 if command -v docker &> /dev/null; then
@@ -68,7 +52,7 @@ else
     check_item "Docker 已安装" "fail" "请先安装 Docker"
 fi
 
-if docker compose version &> /dev/null || command -v docker-compose &> /dev/null; then
+if compose_available; then
     check_item "Docker Compose 已安装" "pass"
 else
     check_item "Docker Compose 已安装" "fail" "请先安装 Docker Compose"
@@ -114,9 +98,7 @@ echo -e "${CYAN}[3/6] 安全配置检查${NC}"
 if [ -n "$V_JWT_SECRET" ]; then
     if [ ${#V_JWT_SECRET} -lt 32 ]; then
         check_item "JWT Secret 长度" "fail" "长度不足 32 字符 (当前: ${#V_JWT_SECRET})"
-    elif [ "$V_JWT_SECRET" = "CHANGE_ME_OR_SYSTEM_WILL_REFUSE_TO_START" ] || \
-         [ "$V_JWT_SECRET" = "your-secure-jwt-secret-change-me" ] || \
-         [ "$V_JWT_SECRET" = "change-me-in-production" ]; then
+    elif is_default_jwt_secret "$V_JWT_SECRET"; then
         check_item "JWT Secret" "fail" "使用默认值，必须修改！"
     else
         check_item "JWT Secret" "pass" "已配置 (${#V_JWT_SECRET} 字符)"
@@ -127,16 +109,11 @@ fi
 
 # 检查管理员密码
 if [ -n "$V_ADMIN_PASS" ]; then
-    if [ "$V_ADMIN_PASS" = "CHANGE_ME_OR_SYSTEM_WILL_REFUSE_TO_START" ] || \
-       [ "$V_ADMIN_PASS" = "admin123" ] || \
-       [ "$V_ADMIN_PASS" = "your-secure-admin-password" ]; then
+    if is_default_admin_password "$V_ADMIN_PASS"; then
         check_item "管理员密码" "fail" "使用默认值，必须修改！"
     elif [ ${#V_ADMIN_PASS} -lt 12 ]; then
         check_item "管理员密码强度" "fail" "长度不足 12 字符"
-    elif ! echo "$V_ADMIN_PASS" | grep -q '[A-Z]' || \
-         ! echo "$V_ADMIN_PASS" | grep -q '[a-z]' || \
-         ! echo "$V_ADMIN_PASS" | grep -q '[0-9]' || \
-         ! echo "$V_ADMIN_PASS" | grep -q '[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]'; then
+    elif ! validate_password "$V_ADMIN_PASS"; then
         check_item "管理员密码强度" "warn" "建议包含大小写字母、数字和特殊字符"
     else
         check_item "管理员密码" "pass" "强度良好"

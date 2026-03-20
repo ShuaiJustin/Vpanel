@@ -110,11 +110,11 @@ func (c *InviteCode) IsValid() bool {
 
 // TwoFactorSecret represents a 2FA secret in the database.
 type TwoFactorSecret struct {
-	ID          int64     `gorm:"primaryKey;autoIncrement"`
-	UserID      int64     `gorm:"uniqueIndex;not null"`
-	Secret      string    `gorm:"size:64;not null"`
-	BackupCodes string    `gorm:"type:text"`
-	Enabled     bool      `gorm:"default:false"`
+	ID          int64  `gorm:"primaryKey;autoIncrement"`
+	UserID      int64  `gorm:"uniqueIndex;not null"`
+	Secret      string `gorm:"size:64;not null"`
+	BackupCodes string `gorm:"type:text"`
+	Enabled     bool   `gorm:"default:false"`
 	EnabledAt   *time.Time
 	CreatedAt   time.Time `gorm:"autoCreateTime"`
 
@@ -126,7 +126,6 @@ type TwoFactorSecret struct {
 func (TwoFactorSecret) TableName() string {
 	return "two_factor_secrets"
 }
-
 
 // AuthTokenRepository defines the interface for authentication token data access.
 type AuthTokenRepository interface {
@@ -141,6 +140,7 @@ type AuthTokenRepository interface {
 	CreateEmailVerificationToken(ctx context.Context, token *EmailVerificationToken) error
 	GetEmailVerificationTokenByToken(ctx context.Context, token string) (*EmailVerificationToken, error)
 	MarkEmailVerified(ctx context.Context, id int64) error
+	CountPendingEmailVerificationTokensByUser(ctx context.Context, userID int64) (int64, error)
 	DeleteExpiredEmailVerificationTokens(ctx context.Context) (int64, error)
 
 	// Invite Codes
@@ -264,6 +264,18 @@ func (r *authTokenRepository) MarkEmailVerified(ctx context.Context, id int64) e
 		return errors.NewNotFoundError("email_verification_token", id)
 	}
 	return nil
+}
+
+// CountPendingEmailVerificationTokensByUser counts unverified and unexpired verification tokens for a user.
+func (r *authTokenRepository) CountPendingEmailVerificationTokensByUser(ctx context.Context, userID int64) (int64, error) {
+	var count int64
+	result := r.db.WithContext(ctx).Model(&EmailVerificationToken{}).
+		Where("user_id = ? AND verified_at IS NULL AND expires_at > ?", userID, time.Now()).
+		Count(&count)
+	if result.Error != nil {
+		return 0, errors.NewDatabaseError("failed to count pending email verification tokens", result.Error)
+	}
+	return count, nil
 }
 
 // DeleteExpiredEmailVerificationTokens deletes expired email verification tokens.

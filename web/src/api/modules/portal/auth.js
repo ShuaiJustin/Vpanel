@@ -137,23 +137,6 @@ export function disable2FA(data) {
   return api.post(`${BASE_URL}/2fa/disable`, data)
 }
 
-/**
- * 获取活跃会话列表
- * @returns {Promise}
- */
-export function getSessions() {
-  return api.get(`${BASE_URL}/sessions`)
-}
-
-/**
- * 撤销会话
- * @param {number} sessionId - 会话 ID
- * @returns {Promise}
- */
-export function revokeSession(sessionId) {
-  return api.delete(`${BASE_URL}/sessions/${sessionId}`)
-}
-
 export default {
   register,
   login,
@@ -167,7 +150,5 @@ export default {
   changePassword,
   enable2FA,
   verify2FA,
-  disable2FA,
-  getSessions,
-  revokeSession
+  disable2FA
 }

@@ -134,7 +134,9 @@ func (r *Router) Setup() {
 
 	// Create handlers
 	authHandler := handlers.NewAuthHandler(r.authService, r.repos.User, r.repos.LoginHistory, r.logger)
-	proxyHandler := handlers.NewProxyHandlerWithTraffic(r.proxyManager, r.repos.Proxy, r.repos.Traffic, r.logger).WithNodeRepository(r.repos.Node)
+	proxyHandler := handlers.NewProxyHandlerWithTraffic(r.proxyManager, r.repos.Proxy, r.repos.Traffic, r.logger).
+		WithNodeRepository(r.repos.Node).
+		WithUserRepositories(r.repos.User, r.repos.Trial)
 	systemHandler := handlers.NewSystemHandler(r.config, r.logger)
 	healthHandler := handlers.NewHealthHandler(r.repos, r.logger, r.xrayManager, nil)
 	roleHandler := handlers.NewRoleHandler(r.logger, r.repos.Role)
@@ -216,7 +218,11 @@ func (r *Router) Setup() {
 		r.repos.UserNodeAssignment,
 		trialService,
 		r.logger,
-	)
+	).WithProxyManager(r.proxyManager)
+	orderService.WithAfterPlanAppliedHook(func(ctx context.Context, userID int64) error {
+		_, _, err := r.entitlementService.GetAccessibleProxies(ctx, userID)
+		return err
+	})
 	subscriptionService.WithEntitlementService(r.entitlementService)
 	planChangeService := planchange.NewService(r.repos.PlanChange, r.repos.Plan, r.repos.User, orderService, balanceService, r.logger)
 
@@ -243,6 +249,9 @@ func (r *Router) Setup() {
 	nodeDeployService := node.NewRemoteDeployService(r.logger, r.repos.Node)
 	r.nodeRecoveryTracker = handlers.NewNodeRecoveryTracker(r.logger)
 	proxyHandler.WithRecoveryTracker(r.nodeRecoveryTracker)
+	r.entitlementService.WithConfigSyncHook(func(nodeID int64, source, reason string) {
+		r.nodeRecoveryTracker.QueueConfigSyncCommand(nodeID, source, reason)
+	})
 
 	// Create Xray config generator for nodes
 	configGenerator := xray.NewConfigGenerator(r.repos.Proxy, r.repos.Certificate, r.logger)
@@ -278,7 +287,7 @@ func (r *Router) Setup() {
 
 	// Create commercial handlers
 	planHandler := handlers.NewPlanHandler(planService, r.logger)
-	orderHandler := handlers.NewOrderHandler(orderService, r.logger)
+	orderHandler := handlers.NewOrderHandler(orderService, r.logger).WithRefundService(refundService)
 	paymentHandler := handlers.NewPaymentHandlerWithRetry(paymentService, retryService, r.logger)
 	balanceHandler := handlers.NewBalanceHandler(balanceService, r.logger)
 	couponHandler := handlers.NewCouponHandler(couponService, r.logger)
@@ -290,7 +299,6 @@ func (r *Router) Setup() {
 	currencyHandler := handlers.NewCurrencyHandler(currencyService, planCurrencyService, r.logger)
 	pauseHandler := handlers.NewPauseHandler(pauseService, r.logger)
 	giftCardHandler := handlers.NewGiftCardHandler(giftCardService, r.logger)
-	_ = refundService // Will be used in admin routes
 
 	// Initialize system roles
 	ctx := context.Background()
@@ -538,6 +546,7 @@ func (r *Router) Setup() {
 			{
 				orders.POST("", orderHandler.CreateOrder)
 				orders.GET("", orderHandler.ListUserOrders)
+				orders.GET("/by-order-no/:orderNo", orderHandler.GetOrderByOrderNo)
 				orders.GET("/:id", orderHandler.GetOrder)
 				orders.POST("/:id/cancel", orderHandler.CancelOrder)
 			}
@@ -646,6 +655,7 @@ func (r *Router) Setup() {
 				adminOrders.GET("", orderHandler.ListAllOrders)
 				adminOrders.GET("/:id", orderHandler.GetOrder)
 				adminOrders.PUT("/:id/status", orderHandler.UpdateOrderStatus)
+				adminOrders.POST("/:id/refund", orderHandler.RefundOrder)
 			}
 
 			// Admin balance routes

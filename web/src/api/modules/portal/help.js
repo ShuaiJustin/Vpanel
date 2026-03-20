@@ -58,31 +58,10 @@ export function rateArticle(slug, data) {
   return api.post(`${BASE_URL}/articles/${slug}/helpful`, data)
 }
 
-/**
- * 获取相关文章
- * @param {string} slug - 文章 slug
- * @param {number} [limit] - 数量限制
- * @returns {Promise}
- */
-export function getRelatedArticles(slug, limit = 5) {
-  return api.get(`${BASE_URL}/articles/${slug}/related`, { params: { limit } })
-}
-
-/**
- * 获取热门文章
- * @param {number} [limit] - 数量限制
- * @returns {Promise}
- */
-export function getPopularArticles(limit = 10) {
-  return api.get(`${BASE_URL}/popular`, { params: { limit } })
-}
-
 export default {
   getArticles,
   getArticle,
   searchArticles,
   getCategories,
-  rateArticle,
-  getRelatedArticles,
-  getPopularArticles
+  rateArticle
 }

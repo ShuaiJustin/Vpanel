@@ -223,6 +223,20 @@ func (h *PortalAuthHandler) Register(c *gin.Context) {
 		}
 	}
 
+	if !emailVerificationSent {
+		user, userErr := h.userRepo.GetByID(c.Request.Context(), result.UserID)
+		if userErr != nil {
+			h.logger.Warn("failed to load portal user for email verification fallback", logger.F("user_id", result.UserID), logger.F("error", userErr))
+		} else if !user.EmailVerified {
+			now := time.Now().UTC()
+			user.EmailVerified = true
+			user.EmailVerifiedAt = &now
+			if err := h.userRepo.Update(c.Request.Context(), user); err != nil {
+				h.logger.Warn("failed to mark portal user email as verified by fallback", logger.F("user_id", result.UserID), logger.F("error", err))
+			}
+		}
+	}
+
 	if h.entitlement != nil {
 		if _, _, entitlementErr := h.entitlement.GetAccessibleProxies(c.Request.Context(), result.UserID); entitlementErr != nil && !pkgerrors.IsForbidden(entitlementErr) {
 			h.logger.Warn("failed to initialize portal trial entitlement after registration",

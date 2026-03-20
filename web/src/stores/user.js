@@ -32,8 +32,10 @@ export const useUserStore = defineStore('user', () => {
   const clearAuth = () => {
     token.value = ''
     user.value = null
-    localStorage.removeItem('token')
-    localStorage.removeItem('userRole')
+    for (const storage of [localStorage, sessionStorage]) {
+      storage.removeItem('token')
+      storage.removeItem('userRole')
+    }
   }
 
   const extractErrorMessage = (err, fallback) => {
@@ -77,9 +79,14 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  const logout = () => {
-    authApi.logout().catch(() => {})
-    clearAuth()
+  const logout = async () => {
+    try {
+      await authApi.logout()
+    } catch (err) {
+      console.error('Admin logout failed:', err)
+    } finally {
+      clearAuth()
+    }
   }
 
   const getUser = async () => {
@@ -114,32 +121,10 @@ export const useUserStore = defineStore('user', () => {
     
     try {
       const response = await usersApi.list(params)
-      
-      // 适配不同的响应格式（api 拦截器已经返回 response.data）
-      let users = [];
-      let total = 0;
-      
-      if (Array.isArray(response)) {
-        // 如果响应直接是数组
-        users = response;
-        total = response.length;
-      } else if (response && response.users) {
-        // 如果响应中有users字段
-        users = response.users;
-        total = response.total || users.length;
-      } else if (response && response.data && Array.isArray(response.data)) {
-        // 如果响应中有data字段
-        users = response.data;
-        total = response.total || users.length;
-      } else {
-        console.error('Unknown response format:', response);
-        users = [];
-        total = 0;
-      }
-      
+
       return {
-        users,
-        total
+        users: response?.users || [],
+        total: response?.total || response?.users?.length || 0
       }
     } catch (err) {
       error.value = extractErrorMessage(err, '获取用户列表失败')

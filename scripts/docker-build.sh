@@ -3,17 +3,13 @@
 
 set -e
 
-# Configuration
-IMAGE_NAME="v-panel"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/../deployments/scripts/common.sh"
+
+IMAGE_NAME="${IMAGE_NAME:-v-panel}"
 VERSION="${VERSION:-latest}"
 BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
 
 log_info() {
     echo -e "${GREEN}[INFO]${NC} $1"
@@ -29,6 +25,7 @@ log_error() {
 
 # Build Docker image
 build() {
+    require_docker
     log_info "Building Docker image: ${IMAGE_NAME}:${VERSION}"
     
     docker build \
@@ -45,6 +42,7 @@ build() {
 
 # Build multi-platform image
 build_multiplatform() {
+    require_docker
     log_info "Building multi-platform Docker image..."
     
     docker buildx build \
@@ -61,46 +59,38 @@ build_multiplatform() {
     log_info "Multi-platform Docker image built and pushed"
 }
 
-# Run with docker-compose
+# Run with Docker deployment scripts
 run() {
-    log_info "Starting V Panel with docker-compose..."
-    
-    cd deployments/docker
-    
-    # Create .env if not exists
-    if [ ! -f .env ]; then
-        log_info "Creating .env from example..."
-        cp .env.example .env
-    fi
-    
-    docker-compose up -d
-    
-    log_info "V Panel started. Access at http://localhost:8080"
+    require_docker
+    require_compose
+    log_info "Starting V Panel with deployment start script..."
+    "$PROJECT_ROOT/deployments/scripts/start.sh" start
 }
 
-# Stop docker-compose
+# Stop Docker deployment
 stop() {
+    require_docker
+    require_compose
     log_info "Stopping V Panel..."
-    
-    cd deployments/docker
-    docker-compose down
-    
+    "$PROJECT_ROOT/deployments/scripts/start.sh" stop
     log_info "V Panel stopped"
 }
 
 # View logs
 logs() {
-    cd deployments/docker
-    docker-compose logs -f
+    require_docker
+    require_compose
+    "$PROJECT_ROOT/deployments/scripts/start.sh" logs
 }
 
 # Clean up
 clean() {
+    require_docker
+    require_compose
     log_info "Cleaning up Docker resources..."
     
-    # Stop containers
-    cd deployments/docker
-    docker-compose down -v 2>/dev/null || true
+    cd "$DOCKER_DIR"
+    docker_compose_cmd down -v 2>/dev/null || true
     
     # Remove images
     docker rmi "${IMAGE_NAME}:${VERSION}" 2>/dev/null || true
@@ -118,8 +108,8 @@ help() {
     echo "Commands:"
     echo "  build           Build Docker image"
     echo "  multiplatform   Build multi-platform image (requires buildx)"
-    echo "  run             Start with docker-compose"
-    echo "  stop            Stop docker-compose"
+    echo "  run             Start via deployments/scripts/start.sh"
+    echo "  stop            Stop deployed containers"
     echo "  logs            View container logs"
     echo "  clean           Clean up Docker resources"
     echo "  help            Show this help"

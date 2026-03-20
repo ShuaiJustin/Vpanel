@@ -3,18 +3,8 @@
 
 set -e
 
-# 颜色定义
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
-# 获取项目根目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-DOCKER_DIR="$PROJECT_ROOT/deployments/docker"
+. "$SCRIPT_DIR/common.sh"
 
 # 清屏函数
 clear_screen() {
@@ -34,29 +24,6 @@ show_header() {
 pause() {
     echo ""
     read -p "按回车键继续..."
-}
-
-# 执行 docker compose 命令
-docker_compose_cmd() {
-    if docker compose version &> /dev/null; then
-        docker compose "$@"
-    else
-        docker-compose "$@"
-    fi
-}
-
-# 检查容器状态
-check_container_status() {
-    local current_dir=$(pwd)
-    cd "$DOCKER_DIR" 2>/dev/null || return 1
-    local result=1
-    
-    if docker_compose_cmd ps 2>/dev/null | grep -q "v-panel.*Up"; then
-        result=0
-    fi
-    
-    cd "$current_dir" 2>/dev/null
-    return $result
 }
 
 # Docker 相关操作
@@ -181,11 +148,10 @@ docker_menu() {
                 echo -e "${RED}========================================${NC}"
                 echo -e "${RED}这将删除:${NC}"
                 echo -e "  - 所有容器"
-                echo -e "  - 所有数据卷 (数据库、日志等)"
-                echo -e "  - 所有配置"
+                echo -e "  - 所有数据卷 (配置、数据库、日志、Xray)"
                 echo ""
                 echo -e "${YELLOW}建议: 在删除前先备份数据${NC}"
-                echo -e "  备份命令: docker run --rm -v v-panel-data:/data -v \$(pwd):/backup alpine tar czf /backup/v-panel-backup-\$(date +%Y%m%d-%H%M%S).tar.gz /data"
+                show_volume_backup_hint
                 echo ""
                 read -p "确认删除所有数据? 输入 'DELETE' 确认: " confirm
                 if [ "$confirm" = "DELETE" ]; then
@@ -505,10 +471,12 @@ system_check() {
     fi
     
     # 检查 Docker Compose
-    if docker compose version &> /dev/null; then
-        echo -e "${GREEN}✓${NC} Docker Compose: $(docker compose version)"
-    elif command -v docker-compose &> /dev/null; then
-        echo -e "${GREEN}✓${NC} Docker Compose: $(docker-compose --version)"
+    if compose_available; then
+        if docker compose version &> /dev/null; then
+            echo -e "${GREEN}✓${NC} Docker Compose: $(docker compose version)"
+        else
+            echo -e "${GREEN}✓${NC} Docker Compose: $(docker-compose --version)"
+        fi
     else
         echo -e "${RED}✗${NC} Docker Compose: 未安装"
     fi
@@ -557,7 +525,7 @@ main_menu() {
         if check_container_status 2>/dev/null; then
             # 读取端口
             if [ -f "$DOCKER_DIR/.env" ]; then
-                PORT=$(grep "^V_SERVER_PORT=" "$DOCKER_DIR/.env" 2>/dev/null | cut -d'=' -f2)
+                PORT=$(read_env_var "V_SERVER_PORT" "$DOCKER_DIR/.env")
                 PORT=${PORT:-8080}
             else
                 PORT=8080

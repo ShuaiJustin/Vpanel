@@ -34,7 +34,7 @@ build() {
     echo -e "${YELLOW}编译 ${os}/${arch}...${NC}"
     
     GOOS=$os GOARCH=$arch go build \
-        -ldflags "-X main.Version=$VERSION -s -w" \
+        -ldflags "-X main.version=$VERSION -s -w" \
         -o "$BUILD_DIR/$output_name" \
         $AGENT_CMD
     

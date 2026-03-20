@@ -1,4 +1,4 @@
-.PHONY: help build agent run dev test lint clean migrate install
+.PHONY: help build agent run dev test lint clean migrate install docker-build docker-up docker-down docker-logs
 
 # 默认目标
 .DEFAULT_GOAL := help
@@ -16,31 +16,31 @@ help: ## 显示帮助信息
 
 build: ## 编译 Panel
 	@echo "编译 Panel..."
-	@go build -ldflags "-X main.Version=$(VERSION) -s -w" -o $(PANEL_BINARY) ./cmd/v/main.go
+	@go build -ldflags "-X main.version=$(VERSION) -s -w" -o $(PANEL_BINARY) ./cmd/v/main.go
 	@echo "✓ 编译完成: $(PANEL_BINARY)"
 
 agent: ## 编译 Agent
 	@echo "编译 Agent..."
 	@mkdir -p bin
-	@go build -ldflags "-X main.Version=$(VERSION) -s -w" -o bin/$(AGENT_BINARY)-amd64 ./cmd/agent/main.go
+	@go build -ldflags "-X main.version=$(VERSION) -s -w" -o bin/$(AGENT_BINARY)-amd64 ./cmd/agent/main.go
 	@echo "✓ 编译完成: bin/$(AGENT_BINARY)-amd64"
 
 agent-linux-amd64: ## 编译 Linux amd64 Agent
 	@echo "编译 Linux amd64 Agent..."
 	@mkdir -p bin
-	@GOOS=linux GOARCH=amd64 go build -ldflags "-X main.Version=$(VERSION) -s -w" -o bin/$(AGENT_BINARY)-amd64 ./cmd/agent/main.go
+	@GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$(VERSION) -s -w" -o bin/$(AGENT_BINARY)-amd64 ./cmd/agent/main.go
 	@echo "✓ 编译完成: bin/$(AGENT_BINARY)-amd64"
 
 agent-linux-arm64: ## 编译 Linux arm64 Agent
 	@echo "编译 Linux arm64 Agent..."
 	@mkdir -p bin
-	@GOOS=linux GOARCH=arm64 go build -ldflags "-X main.Version=$(VERSION) -s -w" -o bin/$(AGENT_BINARY)-arm64 ./cmd/agent/main.go
+	@GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=$(VERSION) -s -w" -o bin/$(AGENT_BINARY)-arm64 ./cmd/agent/main.go
 	@echo "✓ 编译完成: bin/$(AGENT_BINARY)-arm64"
 
 agent-linux-arm: ## 编译 Linux arm Agent
 	@echo "编译 Linux arm Agent..."
 	@mkdir -p bin
-	@GOOS=linux GOARCH=arm go build -ldflags "-X main.Version=$(VERSION) -s -w" -o bin/$(AGENT_BINARY)-arm ./cmd/agent/main.go
+	@GOOS=linux GOARCH=arm go build -ldflags "-X main.version=$(VERSION) -s -w" -o bin/$(AGENT_BINARY)-arm ./cmd/agent/main.go
 	@echo "✓ 编译完成: bin/$(AGENT_BINARY)-arm"
 
 agent-all: agent-linux-amd64 agent-linux-arm64 agent-linux-arm ## 编译所有平台 Agent
@@ -110,8 +110,17 @@ deps: ## 下载依赖
 
 docker-build: ## 构建 Docker 镜像
 	@echo "构建 Docker 镜像..."
-	@docker build -t vpanel:$(VERSION) .
+	@docker build -t v-panel:$(VERSION) -f deployments/docker/Dockerfile .
 	@echo "✓ Docker 镜像构建完成"
+
+docker-up: ## 使用 Docker Compose 启动服务
+	@cd deployments/docker && if docker compose version > /dev/null 2>&1; then docker compose up -d; else docker-compose up -d; fi
+
+docker-down: ## 使用 Docker Compose 停止服务
+	@cd deployments/docker && if docker compose version > /dev/null 2>&1; then docker compose down; else docker-compose down; fi
+
+docker-logs: ## 查看 Docker Compose 日志
+	@cd deployments/docker && if docker compose version > /dev/null 2>&1; then docker compose logs -f; else docker-compose logs -f; fi
 
 deploy-panel: build ## 部署 Panel
 	@./scripts/quick-deploy.sh panel

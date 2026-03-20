@@ -1,13 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { ordersApi, paymentsApi, couponsApi } from '@/api/index'
+import { ordersApi, paymentsApi } from '@/api/index'
 
 export const useOrderStore = defineStore('order', () => {
   // 状态
   const orders = ref([])
   const currentOrder = ref(null)
   const paymentInfo = ref(null)
-  const couponInfo = ref(null)
   const loading = ref(false)
   const paymentLoading = ref(false)
   const error = ref(null)
@@ -73,6 +72,23 @@ export const useOrderStore = defineStore('order', () => {
     }
   }
 
+  const fetchOrderByOrderNo = async (orderNo) => {
+    loading.value = true
+    error.value = null
+
+    try {
+      const response = await ordersApi.getByOrderNo(orderNo)
+      currentOrder.value = response.order
+      return response
+    } catch (err) {
+      console.error('Fetch order by number error:', err)
+      error.value = err.message || '获取订单详情失败'
+      throw error.value
+    } finally {
+      loading.value = false
+    }
+  }
+
   const createOrder = async (data) => {
     loading.value = true
     error.value = null
@@ -114,24 +130,6 @@ export const useOrderStore = defineStore('order', () => {
     }
   }
 
-  const validateCoupon = async (code, planId, amount) => {
-    loading.value = true
-    error.value = null
-
-    try {
-      const response = await couponsApi.validate({ code, plan_id: planId, amount })
-      couponInfo.value = response.coupon
-      return response
-    } catch (err) {
-      console.error('Validate coupon error:', err)
-      couponInfo.value = null
-      error.value = err.message || '优惠券验证失败'
-      throw error.value
-    } finally {
-      loading.value = false
-    }
-  }
-
   const createPayment = async (orderNo, method) => {
     paymentLoading.value = true
     error.value = null
@@ -163,11 +161,8 @@ export const useOrderStore = defineStore('order', () => {
     paymentLoading.value = true
     try {
       const result = await paymentsApi.pollStatus(orderNo, timeout, interval)
-      if (result.status === 'paid') {
-        // 更新本地订单状态
-        if (currentOrder.value?.order_no === orderNo) {
-          currentOrder.value.status = 'paid'
-        }
+      if (currentOrder.value?.order_no === orderNo && result.status) {
+        currentOrder.value.status = result.status
       }
       return result
     } catch (err) {
@@ -190,7 +185,6 @@ export const useOrderStore = defineStore('order', () => {
   const clearOrder = () => {
     currentOrder.value = null
     paymentInfo.value = null
-    couponInfo.value = null
     error.value = null
   }
 
@@ -198,7 +192,6 @@ export const useOrderStore = defineStore('order', () => {
     orders.value = []
     currentOrder.value = null
     paymentInfo.value = null
-    couponInfo.value = null
     error.value = null
     pagination.value = { page: 1, pageSize: 10, total: 0 }
   }
@@ -208,7 +201,6 @@ export const useOrderStore = defineStore('order', () => {
     orders,
     currentOrder,
     paymentInfo,
-    couponInfo,
     loading,
     paymentLoading,
     error,
@@ -227,9 +219,9 @@ export const useOrderStore = defineStore('order', () => {
     // 方法
     fetchOrders,
     fetchOrder,
+    fetchOrderByOrderNo,
     createOrder,
     cancelOrder,
-    validateCoupon,
     createPayment,
     checkPaymentStatus,
     pollPaymentStatus,

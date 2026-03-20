@@ -1847,9 +1847,9 @@ const changeAdminPassword = async () => {
       adminForm.confirmPassword = ''
       
       // 注销当前会话
-      setTimeout(() => {
-        userStore.logout()
-        window.location.href = '/login'
+      setTimeout(async () => {
+        await userStore.logout()
+        window.location.href = '/user/login'
       }, 1500)
     } catch (error) {
       ElMessage.error('修改失败：' + error.message)

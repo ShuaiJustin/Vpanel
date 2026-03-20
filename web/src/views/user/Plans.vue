@@ -152,7 +152,7 @@ onMounted(async () => {
 
 <style scoped>
 .plans-page {
-  padding: 20px;
+  padding: clamp(12px, 2vw, 20px);
   max-width: 1200px;
   margin: 0 auto;
 }
@@ -166,6 +166,7 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
   max-width: 800px;
   margin: 0 auto;
 }
@@ -313,8 +314,30 @@ onMounted(async () => {
 }
 
 @media (max-width: 768px) {
+  .page-header {
+    margin-bottom: 24px;
+  }
+
+  .header-content {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .page-title,
+  .page-subtitle {
+    text-align: center;
+  }
+
   .plans-grid {
     grid-template-columns: 1fr;
+  }
+
+  .plan-card {
+    padding: 28px 18px 22px;
+  }
+
+  .price-amount {
+    font-size: 40px;
   }
 }
 </style>

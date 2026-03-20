@@ -11,8 +11,29 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     return sessionStorage.getItem(key) || localStorage.getItem(key)
   }
 
+  function getCurrentAuthStorage() {
+    if (localStorage.getItem('userToken')) {
+      return localStorage
+    }
+    return sessionStorage
+  }
+
   function getAuthStorage(remember) {
     return remember ? localStorage : sessionStorage
+  }
+
+  function syncUserInfoStorage(value) {
+    const storage = getCurrentAuthStorage()
+    const otherStorage = storage === localStorage ? sessionStorage : localStorage
+
+    if (value == null) {
+      storage.removeItem('userInfo')
+      otherStorage.removeItem('userInfo')
+      return
+    }
+
+    storage.setItem('userInfo', JSON.stringify(value))
+    otherStorage.removeItem('userInfo')
   }
 
   function clearPersistedAuth() {
@@ -167,7 +188,7 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     try {
       const response = await authApi.getProfile()
       user.value = response
-      localStorage.setItem('userInfo', JSON.stringify(response))
+      syncUserInfoStorage(response)
       return response
     } catch (err) {
       error.value = err.message || '获取用户信息失败'
@@ -183,7 +204,7 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     try {
       const response = await authApi.updateProfile(data)
       user.value = { ...user.value, ...response }
-      localStorage.setItem('userInfo', JSON.stringify(user.value))
+      syncUserInfoStorage(user.value)
       return response
     } catch (err) {
       error.value = err.message || '更新资料失败'

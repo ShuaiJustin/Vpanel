@@ -8,7 +8,7 @@ import { useViewport } from '@/composables/useViewport'
 import MobileLayout from './MobileLayout.vue'
 import UserLayout from './UserLayout.vue'
 
-const { isMobile } = useViewport()
+const { isMobile } = useViewport({ mobileBreakpoint: 1080, tabletBreakpoint: 1280 })
 
 const desktopLayout = markRaw(UserLayout)
 const mobileLayout = markRaw(MobileLayout)

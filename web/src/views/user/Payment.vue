@@ -1,142 +1,124 @@
 <template>
   <div class="payment-page">
-    <!-- 页面标题 -->
     <div class="page-header">
       <h1 class="page-title">订单支付</h1>
-      <p class="page-subtitle">请选择支付方式完成支付</p>
+      <p class="page-subtitle">订单金额以已创建订单为准，在这里选择支付方式完成付款。</p>
     </div>
 
-    <!-- 加载状态 -->
     <div v-if="loading" class="loading-container">
       <el-skeleton :rows="5" animated />
     </div>
 
     <template v-else-if="order">
-      <!-- 订单信息 -->
       <el-card shadow="never" class="order-card">
         <template #header>
           <span>订单信息</span>
         </template>
-        <el-descriptions :column="2" border>
+        <el-descriptions :column="descriptionColumns" border>
           <el-descriptions-item label="订单号">{{ order.order_no }}</el-descriptions-item>
-          <el-descriptions-item label="套餐">{{ order.plan_name }}</el-descriptions-item>
+          <el-descriptions-item label="订单状态">
+            <el-tag :type="getStatusInfo(order.status).type" size="small">
+              {{ getStatusInfo(order.status).label }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="套餐">
+            {{ order.plan_name || `套餐 #${order.plan_id}` }}
+          </el-descriptions-item>
           <el-descriptions-item label="原价">¥{{ formatPrice(order.original_amount) }}</el-descriptions-item>
-          <el-descriptions-item label="时长">{{ order.duration }}天</el-descriptions-item>
+          <el-descriptions-item v-if="order.discount_amount > 0" label="优惠">
+            -¥{{ formatPrice(order.discount_amount) }}
+          </el-descriptions-item>
+          <el-descriptions-item v-if="order.balance_used > 0" label="余额抵扣">
+            -¥{{ formatPrice(order.balance_used) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="应付金额">
+            <span class="price-highlight">¥{{ formatPrice(order.pay_amount) }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="创建时间">{{ order.created_at }}</el-descriptions-item>
+          <el-descriptions-item label="过期时间">{{ order.expired_at || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="支付方式">{{ getMethodLabel(order.payment_method) || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="支付流水号">{{ order.payment_no || '-' }}</el-descriptions-item>
         </el-descriptions>
       </el-card>
 
-      <!-- 优惠券 -->
-      <el-card shadow="never" class="coupon-card">
-        <template #header>
-          <span>优惠券</span>
-        </template>
-        <div class="coupon-input">
-          <el-input
-            v-model="couponCode"
-            placeholder="请输入优惠券码"
-            :disabled="couponApplied"
-          >
-            <template #append>
-              <el-button
-                v-if="!couponApplied"
-                :loading="validatingCoupon"
-                @click="applyCoupon"
-              >
-                使用
-              </el-button>
-              <el-button v-else type="danger" @click="removeCoupon">
-                移除
-              </el-button>
-            </template>
-          </el-input>
-          <div v-if="couponInfo" class="coupon-info">
-            <el-tag type="success" size="small">
-              {{ couponInfo.type === 'fixed' ? `减 ¥${formatPrice(couponInfo.value)}` : `${couponInfo.value}% 折扣` }}
-            </el-tag>
-            <span class="coupon-discount">-¥{{ formatPrice(discountAmount) }}</span>
+      <el-alert
+        v-if="!canPay"
+        type="info"
+        show-icon
+        :closable="false"
+        class="status-alert"
+        :title="statusAlertTitle"
+      />
+
+      <template v-else>
+        <el-card shadow="never" class="payment-card">
+          <template #header>
+            <span>支付方式</span>
+          </template>
+          <div v-if="paymentMethods.length > 0" class="payment-methods">
+            <button
+              v-for="method in paymentMethods"
+              :key="method.value"
+              type="button"
+              class="payment-method"
+              :class="{ 'payment-method--active': selectedMethod === method.value }"
+              @click="selectedMethod = method.value"
+            >
+              <el-icon :size="22">
+                <component :is="method.icon" />
+              </el-icon>
+              <span>{{ method.label }}</span>
+            </button>
           </div>
-        </div>
-      </el-card>
+          <el-empty v-else description="当前没有可用的支付方式" />
+        </el-card>
 
-      <!-- 余额抵扣 -->
-      <el-card v-if="userBalance > 0" shadow="never" class="balance-card">
-        <template #header>
-          <span>余额抵扣</span>
-        </template>
-        <div class="balance-option">
-          <el-checkbox v-model="useBalance">
-            使用余额抵扣（可用余额：¥{{ formatPrice(userBalance) }}）
-          </el-checkbox>
-          <span v-if="useBalance" class="balance-deduct">
-            -¥{{ formatPrice(balanceDeduct) }}
-          </span>
-        </div>
-      </el-card>
-
-      <!-- 支付方式 -->
-      <el-card shadow="never" class="payment-card">
-        <template #header>
-          <span>支付方式</span>
-        </template>
-        <div v-if="paymentMethods.length > 0" class="payment-methods">
-          <div
-            v-for="method in paymentMethods"
-            :key="method.value"
-            class="payment-method"
-            :class="{ 'payment-method--active': selectedMethod === method.value }"
-            @click="selectedMethod = method.value"
-          >
-            <el-icon :size="24"><component :is="method.icon" /></el-icon>
-            <span>{{ method.label }}</span>
+        <el-card shadow="never" class="summary-card">
+          <div class="summary-row">
+            <span>订单实付</span>
+            <span class="summary-value">¥{{ formatPrice(order.pay_amount) }}</span>
           </div>
-        </div>
-        <el-empty v-else description="当前未配置可用的在线支付方式" />
-      </el-card>
-
-      <!-- 支付金额 -->
-      <el-card shadow="never" class="summary-card">
-        <div class="summary-row">
-          <span>商品金额</span>
-          <span>¥{{ formatPrice(order.original_amount) }}</span>
-        </div>
-        <div v-if="discountAmount > 0" class="summary-row discount">
-          <span>优惠券</span>
-          <span>-¥{{ formatPrice(discountAmount) }}</span>
-        </div>
-        <div v-if="useBalance && balanceDeduct > 0" class="summary-row discount">
-          <span>余额抵扣</span>
-          <span>-¥{{ formatPrice(balanceDeduct) }}</span>
-        </div>
-        <div class="summary-row total">
-          <span>应付金额</span>
-          <span class="total-amount">¥{{ formatPrice(finalAmount) }}</span>
-        </div>
-        <el-button
-          type="primary"
-          size="large"
-          class="pay-button"
-          :loading="paying"
-          :disabled="finalAmount > 0 && !selectedMethod"
-          @click="handlePay"
-        >
-          {{ finalAmount > 0 ? '立即支付' : '确认订单' }}
-        </el-button>
-      </el-card>
+          <div class="summary-row summary-row--muted">
+            <span>说明</span>
+            <span>如需修改优惠券或金额，请返回重新创建订单</span>
+          </div>
+          <el-button
+            type="primary"
+            size="large"
+            class="pay-button"
+            :loading="paying"
+            :disabled="!selectedMethod"
+            @click="handlePay"
+          >
+            {{ selectedMethod === 'balance' ? '确认余额支付' : '立即支付' }}
+          </el-button>
+        </el-card>
+      </template>
     </template>
 
-    <!-- 支付二维码对话框 -->
+    <el-empty v-else description="订单不存在或已失效" />
+
     <el-dialog
       v-model="showQRDialog"
       title="扫码支付"
-      width="400px"
+      :width="qrDialogWidth"
       :close-on-click-modal="false"
     >
       <div class="qr-container">
         <div class="qr-code">
           <canvas ref="qrcodeCanvas"></canvas>
         </div>
-        <p class="qr-tip">请使用{{ selectedMethodLabel }}扫描二维码完成支付</p>
-        <p class="qr-amount">支付金额：<span>¥{{ formatPrice(finalAmount) }}</span></p>
+        <p class="qr-tip">请使用 {{ selectedMethodLabel }} 扫描二维码完成支付</p>
+        <p class="qr-amount">支付金额：<span>¥{{ formatPrice(order?.pay_amount || 0) }}</span></p>
+        <el-button
+          v-if="paymentLink"
+          type="primary"
+          plain
+          class="open-payment-button"
+          @click="window.open(paymentLink, '_blank', 'noopener,noreferrer')"
+        >
+          打开支付页面
+        </el-button>
         <el-progress
           v-if="polling"
           :percentage="pollProgress"
@@ -150,88 +132,77 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { CreditCard, Wallet } from '@element-plus/icons-vue'
-import { useOrderStore } from '@/stores/order'
-import { useBalanceStore } from '@/stores/balance'
-import { paymentsApi } from '@/api'
+import { CreditCard, Wallet, Coin } from '@element-plus/icons-vue'
 import QRCode from 'qrcode'
+import { useOrderStore } from '@/stores/order'
+import { paymentsApi } from '@/api'
+import { useViewport } from '@/composables/useViewport'
 
 const route = useRoute()
 const router = useRouter()
 const orderStore = useOrderStore()
-const balanceStore = useBalanceStore()
+const { isMobile } = useViewport({ mobileBreakpoint: 768, tabletBreakpoint: 1280 })
 
-// 引用
 const qrcodeCanvas = ref(null)
 
-// 状态
 const loading = ref(true)
-const couponCode = ref('')
-const couponApplied = ref(false)
-const validatingCoupon = ref(false)
-const useBalance = ref(false)
 const selectedMethod = ref('')
 const paying = ref(false)
 const showQRDialog = ref(false)
 const polling = ref(false)
 const pollProgress = ref(0)
-
 const paymentMethods = ref([])
+const paymentLink = ref('')
 
 const paymentMethodMeta = {
   alipay: { label: '支付宝', icon: CreditCard },
-  wechat: { label: '微信支付', icon: Wallet }
+  wechat: { label: '微信支付', icon: Wallet },
+  balance: { label: '余额支付', icon: Coin }
 }
 
-// 计算属性
+let pollProgressTimer = null
+
 const order = computed(() => orderStore.currentOrder)
-const couponInfo = computed(() => orderStore.couponInfo)
-const userBalance = computed(() => balanceStore.balance)
-
-const discountAmount = computed(() => {
-  if (!couponInfo.value || !order.value) return 0
-  if (couponInfo.value.type === 'fixed') {
-    return Math.min(couponInfo.value.value, order.value.original_amount)
+const descriptionColumns = computed(() => (isMobile.value ? 1 : 2))
+const qrDialogWidth = computed(() => (isMobile.value ? '92%' : '420px'))
+const canPay = computed(() => order.value?.status === 'pending')
+const statusAlertTitle = computed(() => {
+  const status = order.value?.status
+  if (status === 'paid' || status === 'completed') {
+    return '该订单已支付完成，无需重复付款。'
   }
-  return Math.round(order.value.original_amount * couponInfo.value.value / 100)
+  if (status === 'cancelled') {
+    return '该订单已取消，不能继续支付。'
+  }
+  if (status === 'refunded') {
+    return '该订单已退款，不能继续支付。'
+  }
+  return '当前订单无法支付。'
 })
-
-const balanceDeduct = computed(() => {
-  if (!useBalance.value || !order.value) return 0
-  const remaining = order.value.original_amount - discountAmount.value
-  return Math.min(userBalance.value, remaining)
-})
-
-const finalAmount = computed(() => {
-  if (!order.value) return 0
-  return Math.max(0, order.value.original_amount - discountAmount.value - balanceDeduct.value)
-})
-
 const selectedMethodLabel = computed(() => {
-  const method = paymentMethods.value.find(m => m.value === selectedMethod.value)
+  const method = paymentMethods.value.find(item => item.value === selectedMethod.value)
   return method?.label || ''
 })
 
-// 方法
-const formatPrice = (price) => (price / 100).toFixed(2)
+const formatPrice = price => (Number(price || 0) / 100).toFixed(2)
+const getStatusInfo = status => orderStore.getStatusInfo(status)
+const getMethodLabel = method => paymentMethodMeta[method]?.label || method || '-'
 
 const fetchPaymentMethods = async () => {
   try {
     const response = await paymentsApi.getMethods()
-    const methods = (response.methods || [])
-      .filter(method => method !== 'balance')
-      .map(method => ({
-        value: method,
-        label: paymentMethodMeta[method]?.label || method,
-        icon: paymentMethodMeta[method]?.icon || CreditCard
-      }))
+    const methods = (response.methods || []).map(method => ({
+      value: method,
+      label: paymentMethodMeta[method]?.label || method,
+      icon: paymentMethodMeta[method]?.icon || CreditCard
+    }))
 
     paymentMethods.value = methods
 
-    if (!methods.some(method => method.value === selectedMethod.value)) {
+    if (!methods.some(item => item.value === selectedMethod.value)) {
       selectedMethod.value = methods[0]?.value || ''
     }
   } catch (error) {
@@ -243,102 +214,112 @@ const fetchPaymentMethods = async () => {
 
 const initOrder = async () => {
   loading.value = true
+  paymentLink.value = ''
   try {
-    const planId = route.query.plan_id
-    const orderNo = route.query.order_no
+    const planId = Number(route.query.plan_id)
+    const orderId = Number(route.query.order_id)
+    const orderNo = String(route.query.order_no || '').trim()
 
-    if (orderNo) {
-      // 继续支付已有订单
-      await orderStore.fetchOrder(orderNo)
+    if (orderId) {
+      await orderStore.fetchOrder(orderId)
     } else if (planId) {
-      // 创建新订单
-      await orderStore.createOrder({ plan_id: parseInt(planId) })
+      const response = await orderStore.createOrder({ plan_id: planId })
+      const createdOrderId = response.order?.id
+      if (createdOrderId) {
+        router.replace({ name: 'user-payment', query: { order_id: createdOrderId } })
+      }
+    } else if (orderNo) {
+      await orderStore.fetchOrderByOrderNo(orderNo)
     } else {
       ElMessage.error('缺少订单参数')
-      router.push({ name: 'user-plans' })
+      router.replace({ name: 'user-plans' })
       return
     }
 
-    // 获取用户余额
-    await Promise.all([
-      balanceStore.fetchBalance(),
-      fetchPaymentMethods()
-    ])
+    await fetchPaymentMethods()
   } catch (error) {
     ElMessage.error(error || '加载订单失败')
-    router.push({ name: 'user-plans' })
+    router.replace({ name: 'user-plans' })
   } finally {
     loading.value = false
   }
 }
 
-const applyCoupon = async () => {
-  if (!couponCode.value.trim()) {
-    ElMessage.warning('请输入优惠券码')
+const generateQRCode = async payload => {
+  await nextTick()
+  if (!qrcodeCanvas.value) {
     return
   }
 
-  validatingCoupon.value = true
   try {
-    await orderStore.validateCoupon(
-      couponCode.value,
-      order.value.plan_id,
-      order.value.original_amount
-    )
-    couponApplied.value = true
-    ElMessage.success('优惠券已应用')
+    await QRCode.toCanvas(qrcodeCanvas.value, payload, {
+      width: isMobile.value ? 180 : 220,
+      margin: 2
+    })
   } catch (error) {
-    ElMessage.error(error || '优惠券无效')
-  } finally {
-    validatingCoupon.value = false
+    console.error('Failed to generate QR code:', error)
   }
 }
 
-const removeCoupon = () => {
-  couponCode.value = ''
-  couponApplied.value = false
-  orderStore.couponInfo = null
+const clearPollingTimer = () => {
+  if (pollProgressTimer) {
+    clearInterval(pollProgressTimer)
+    pollProgressTimer = null
+  }
 }
 
-const generateQRCode = async (url) => {
-  await nextTick()
-  if (qrcodeCanvas.value) {
-    try {
-      await QRCode.toCanvas(qrcodeCanvas.value, url, {
-        width: 200,
-        margin: 2
+const startPolling = async () => {
+  polling.value = true
+  pollProgress.value = 0
+  clearPollingTimer()
+
+  pollProgressTimer = setInterval(() => {
+    pollProgress.value = Math.min(pollProgress.value + 3, 97)
+  }, 3000)
+
+  try {
+    const result = await orderStore.pollPaymentStatus(order.value.order_no)
+    if (result.status === 'paid') {
+      pollProgress.value = 100
+      ElMessage.success('支付成功')
+      router.replace({
+        name: 'user-orders',
+        query: { payment: 'success', order_no: order.value.order_no }
       })
-    } catch (error) {
-      console.error('Failed to generate QR code:', error)
     }
+  } catch (error) {
+    ElMessage.error('支付超时，请返回订单页查看状态')
+  } finally {
+    clearPollingTimer()
+    polling.value = false
+    showQRDialog.value = false
   }
 }
 
 const handlePay = async () => {
-  if (finalAmount.value > 0 && !selectedMethod.value) {
+  if (!selectedMethod.value) {
     ElMessage.warning('请选择支付方式')
     return
   }
 
   paying.value = true
   try {
-    const paymentData = await orderStore.createPayment(
-      order.value.order_no,
-      finalAmount.value > 0 ? selectedMethod.value : 'balance'
-    )
-
+    const paymentData = await orderStore.createPayment(order.value.order_no, selectedMethod.value)
+    paymentLink.value = paymentData.payment?.payment_url || ''
     const qrPayload = paymentData.payment?.qrcode_data || paymentData.payment?.payment_url
 
     if (qrPayload) {
-      // 显示支付二维码
       showQRDialog.value = true
       await generateQRCode(qrPayload)
-      startPolling()
-    } else {
-      // 余额支付成功
-      ElMessage.success('支付成功')
-      router.push({ name: 'user-orders' })
+      await startPolling()
+      return
     }
+
+    ElMessage.success('支付成功')
+    router.replace({
+      name: 'user-orders',
+      query: { payment: 'success', order_no: order.value.order_no }
+    })
   } catch (error) {
     ElMessage.error(error || '创建支付失败')
   } finally {
@@ -346,38 +327,19 @@ const handlePay = async () => {
   }
 }
 
-const startPolling = async () => {
-  polling.value = true
-  pollProgress.value = 0
-
-  const interval = setInterval(() => {
-    pollProgress.value = Math.min(pollProgress.value + 1, 100)
-  }, 3000)
-
-  try {
-    const result = await orderStore.pollPaymentStatus(order.value.order_no)
-    if (result.status === 'paid') {
-      ElMessage.success('支付成功')
-      router.push({ name: 'user-orders' })
-    }
-  } catch (error) {
-    ElMessage.error('支付超时，请查看订单状态')
-  } finally {
-    clearInterval(interval)
-    polling.value = false
-    showQRDialog.value = false
-  }
-}
-
 onMounted(() => {
   initOrder()
+})
+
+onUnmounted(() => {
+  clearPollingTimer()
 })
 </script>
 
 <style scoped>
 .payment-page {
-  padding: 20px;
-  max-width: 600px;
+  padding: clamp(12px, 2vw, 20px);
+  max-width: 720px;
   margin: 0 auto;
 }
 
@@ -389,7 +351,7 @@ onMounted(() => {
   font-size: 24px;
   font-weight: 600;
   color: #303133;
-  margin: 0 0 8px 0;
+  margin: 0 0 8px;
 }
 
 .page-subtitle {
@@ -399,98 +361,77 @@ onMounted(() => {
 }
 
 .loading-container {
-  padding: 40px;
+  padding: 40px 0;
 }
 
 .order-card,
-.coupon-card,
-.balance-card,
 .payment-card,
-.summary-card {
+.summary-card,
+.status-alert {
   margin-bottom: 16px;
-  border-radius: 8px;
 }
 
-.coupon-input {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.coupon-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.coupon-discount {
-  color: #67c23a;
-  font-weight: 500;
-}
-
-.balance-option {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.balance-deduct {
-  color: #67c23a;
-  font-weight: 500;
+.price-highlight {
+  font-size: 16px;
+  font-weight: 700;
+  color: #2563eb;
 }
 
 .payment-methods {
-  display: flex;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px;
 }
 
 .payment-method {
-  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 20px;
-  border: 2px solid #ebeef5;
-  border-radius: 8px;
+  gap: 10px;
+  padding: 18px 14px;
+  border: 1px solid #dbe3f0;
+  border-radius: 14px;
+  background: #fff;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .payment-method:hover {
-  border-color: #409eff;
+  border-color: #93c5fd;
+  transform: translateY(-1px);
 }
 
 .payment-method--active {
-  border-color: #409eff;
-  background: #ecf5ff;
+  border-color: #2563eb;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.12);
+  background: rgba(239, 246, 255, 0.95);
 }
 
 .summary-row {
   display: flex;
   justify-content: space-between;
+  gap: 16px;
   padding: 12px 0;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid #f1f5f9;
 }
 
-.summary-row.discount {
-  color: #67c23a;
-}
-
-.summary-row.total {
+.summary-row:last-of-type {
   border-bottom: none;
-  font-weight: 500;
 }
 
-.total-amount {
-  font-size: 24px;
-  color: #f56c6c;
-  font-weight: 600;
+.summary-row--muted {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.summary-value {
+  font-weight: 700;
+  color: #0f172a;
 }
 
 .pay-button {
   width: 100%;
-  margin-top: 16px;
+  margin-top: 18px;
 }
 
 .qr-container {
@@ -498,11 +439,11 @@ onMounted(() => {
 }
 
 .qr-code {
-  display: inline-block;
+  display: inline-flex;
   padding: 16px;
   background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 16px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 }
 
 .qr-tip {
@@ -512,13 +453,26 @@ onMounted(() => {
 
 .qr-amount span {
   font-size: 20px;
-  color: #f56c6c;
-  font-weight: 600;
+  color: #ef4444;
+  font-weight: 700;
+}
+
+.open-payment-button {
+  margin-top: 12px;
 }
 
 .poll-tip {
   margin-top: 12px;
-  color: #909399;
-  font-size: 13px;
+  color: #64748b;
+}
+
+@media (max-width: 768px) {
+  .page-title {
+    font-size: 22px;
+  }
+
+  .payment-methods {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
