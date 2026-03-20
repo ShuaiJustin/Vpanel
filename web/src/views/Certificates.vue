@@ -1,14 +1,87 @@
 <template>
   <div class="certificates-container">
+    <div class="page-header">
+      <div class="page-heading">
+        <h1 class="page-title">证书管理</h1>
+        <p class="page-subtitle">集中处理证书申请、上传、续期和可用性检查</p>
+      </div>
+      <div class="page-actions">
+        <el-button type="primary" @click="handleApply">申请证书</el-button>
+        <el-button type="success" @click="handleUpload">上传证书</el-button>
+        <el-button @click="handleRefresh">刷新</el-button>
+      </div>
+    </div>
+
+    <div class="overview-strip">
+      <div class="overview-card">
+        <span class="overview-label">当前匹配</span>
+        <strong class="overview-value">{{ displayCertificateTotal }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">有效证书</span>
+        <strong class="overview-value is-success">{{ validCertificateCount }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">即将过期</span>
+        <strong class="overview-value is-warning">{{ expiringCertificateCount }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">异常证书</span>
+        <strong class="overview-value is-danger">{{ failedCertificateCount }}</strong>
+      </div>
+    </div>
+
+    <div class="toolbar-card">
+      <div class="toolbar-filters">
+        <el-input
+          v-model="searchQuery"
+          class="toolbar-search"
+          clearable
+          placeholder="搜索域名或提供商"
+          @input="handleFilterChange"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+        <el-select
+          v-model="providerFilter"
+          clearable
+          placeholder="提供商"
+          @change="handleFilterChange"
+        >
+          <el-option
+            v-for="provider in providerOptions"
+            :key="provider"
+            :label="formatProviderLabel(provider)"
+            :value="provider"
+          />
+        </el-select>
+        <el-select
+          v-model="statusFilter"
+          clearable
+          placeholder="状态"
+          @change="handleFilterChange"
+        >
+          <el-option
+            v-for="option in statusOptions"
+            :key="option.value"
+            :label="option.label"
+            :value="option.value"
+          />
+        </el-select>
+        <el-button @click="resetFilters">重置</el-button>
+      </div>
+      <div class="toolbar-actions">
+        <span class="toolbar-summary">当前筛选 {{ displayCertificateTotal }} 张证书，当前页 {{ paginatedCertificates.length }} 张</span>
+      </div>
+    </div>
+
     <el-card class="box-card">
       <template #header>
         <div class="card-header">
-          <span>SSL 证书管理</span>
-          <div class="header-actions">
-            <el-button type="primary" @click="handleApply">申请证书</el-button>
-            <el-button type="success" @click="handleUpload">上传证书</el-button>
-            <el-button type="info" @click="handleRefresh">刷新</el-button>
-          </div>
+          <span>证书列表</span>
+          <span class="toolbar-summary">展示 {{ paginatedCertificates.length }} / {{ displayCertificateTotal }} 张</span>
         </div>
       </template>
 
@@ -28,78 +101,123 @@
         </el-button>
       </div>
 
-      <!-- 证书列表 -->
-      <el-table
-        :data="certificates"
-        border
-        style="width: 100%"
-        v-loading="loading"
-      >
-        <el-table-column prop="domain" label="域名" min-width="150" />
-        <el-table-column prop="provider" label="提供商" width="120">
-          <template #default="scope">
-            <el-tag :type="getProviderType(scope.row.provider)">
-              {{ scope.row.provider }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="scope">
-            <el-tag :type="getStatusType(scope.row.status)">
-              {{ getStatusText(scope.row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="issueDate" label="创建日期" width="120" />
-        <el-table-column prop="expireDate" label="过期日期" width="120">
-          <template #default="scope">
-            <el-tag :type="getExpireStatusType(scope.row)">
-              {{ scope.row.expireDate }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="autoRenew" label="自动续期" width="100">
-          <template #default="scope">
-            <el-switch
-              v-model="scope.row.autoRenew"
-              @change="handleAutoRenewChange(scope.row)"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="300" fixed="right">
-          <template #default="scope">
-            <el-button
-              type="primary"
-              size="small"
-              @click="handleRenew(scope.row)"
-            >
-              续期
-            </el-button>
-            <el-button
-              type="success"
-              size="small"
-              @click="handleValidate(scope.row)"
-            >
-              验证
-            </el-button>
-            <el-button
-              type="warning"
-              size="small"
-              @click="handleBackup(scope.row)"
-            >
-              备份
-            </el-button>
-            <el-button
-              type="danger"
-              size="small"
-              @click="handleDelete(scope.row)"
-            >
-              删除
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <div class="table-shell">
+        <el-table
+          :data="paginatedCertificates"
+          border
+          stripe
+          v-loading="loading"
+          class="certificates-table"
+          row-key="id"
+          :empty-text="displayCertificateTotal ? '当前页暂无数据' : (hasCertificateFilters ? '暂无匹配的证书' : '暂无证书记录')"
+        >
+          <el-table-column label="证书对象" min-width="280">
+            <template #default="{ row }">
+              <div class="entity-cell">
+                <div class="entity-cell__header">
+                  <span class="entity-cell__title" :title="row.domain">{{ row.domain }}</span>
+                  <span :class="['metric-pill', getProviderPillClass(row.provider)]">
+                    {{ formatProviderLabel(row.provider) }}
+                  </span>
+                </div>
+                <div class="entity-cell__meta">
+                  <span>ID：{{ row.id }}</span>
+                  <span>{{ row.domain?.startsWith('*.') ? '通配符证书' : '单域名证书' }}</span>
+                </div>
+                <div class="entity-cell__hint">
+                  {{ row.domain?.startsWith('*.') ? '适合同一主域名下多个子域名复用。' : '适合单个业务域名直接使用。' }}
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="生命周期" min-width="220">
+            <template #default="{ row }">
+              <div class="stack-cell">
+                <div class="stack-item">
+                  <span class="stack-label">创建日期</span>
+                  <span class="stack-value">{{ row.issueDate }}</span>
+                </div>
+                <div class="stack-item">
+                  <span class="stack-label">过期日期</span>
+                  <span :class="['stack-value', getExpireValueClass(row)]">{{ row.expireDate }}</span>
+                </div>
+                <div class="entity-cell__hint">
+                  {{ getExpireHint(row) }}
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="续期与状态" min-width="250">
+            <template #default="{ row }">
+              <div class="stack-cell">
+                <div class="stack-item stack-item--inline">
+                  <span class="stack-label">证书状态</span>
+                  <span :class="['metric-pill', getStatusPillClass(row.status)]">
+                    {{ getStatusText(row.status) }}
+                  </span>
+                </div>
+                <div class="stack-item stack-item--inline">
+                  <span class="stack-label">自动续期</span>
+                  <el-switch
+                    v-model="row.autoRenew"
+                    @change="handleAutoRenewChange(row)"
+                  />
+                </div>
+                <div :class="['entity-cell__hint', row.errorMessage ? 'is-danger' : '']">
+                  {{ row.errorMessage || getRenewHint(row) }}
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="操作" width="190" align="right" fixed="right">
+            <template #default="{ row }">
+              <div class="operation-btns">
+                <el-button
+                  size="small"
+                  class="row-action row-action--primary"
+                  @click="handleRenew(row)"
+                >
+                  续期
+                </el-button>
+                <el-button
+                  size="small"
+                  class="row-action row-action--success"
+                  @click="handleValidate(row)"
+                >
+                  验证
+                </el-button>
+                <el-dropdown trigger="click" @command="(command) => handleRowCommand(command, row)">
+                  <el-button size="small" class="row-action row-action--more" circle title="更多操作">
+                    <el-icon><MoreFilled /></el-icon>
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="backup">备份证书</el-dropdown-item>
+                      <el-dropdown-item command="delete" divided>删除证书</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
     </el-card>
+
+    <div class="pagination-container">
+      <el-pagination
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next, jumper"
+        :total="displayCertificateTotal"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+      />
+    </div>
 
     <!-- 申请证书对话框 -->
     <el-dialog
@@ -576,6 +694,7 @@
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { MoreFilled, Search } from '@element-plus/icons-vue'
 import { certificatesApi, nodesApi } from '@/api'
 
 const router = useRouter()
@@ -585,6 +704,11 @@ const certificates = ref([])
 const loading = ref(false)
 const nodes = ref([])
 const nodesLoading = ref(false)
+const searchQuery = ref('')
+const providerFilter = ref('')
+const statusFilter = ref('')
+const currentPage = ref(1)
+const pageSize = ref(10)
 
 // 申请证书
 const applyDialogVisible = ref(false)
@@ -684,7 +808,56 @@ const normalizeCertificatesResponse = (response) => {
   return []
 }
 
+const providerOptions = computed(() => [...new Set(certificates.value.map((item) => item.provider).filter(Boolean))])
+const statusOptions = [
+  { label: '申请中', value: 'pending' },
+  { label: '有效', value: 'active' },
+  { label: '即将过期', value: 'expiring' },
+  { label: '已过期', value: 'expired' },
+  { label: '失败', value: 'failed' }
+]
+
+const filteredCertificates = computed(() => {
+  const query = searchQuery.value.trim().toLowerCase()
+
+  return certificates.value.filter((item) => {
+    const matchesQuery = !query || item.domain?.toLowerCase().includes(query) || String(item.provider || '').toLowerCase().includes(query)
+    const matchesProvider = !providerFilter.value || item.provider === providerFilter.value
+    const matchesStatus = !statusFilter.value || item.status === statusFilter.value
+
+    return matchesQuery && matchesProvider && matchesStatus
+  })
+})
+
+const displayCertificateTotal = computed(() => filteredCertificates.value.length)
+const hasCertificateFilters = computed(() => Boolean(searchQuery.value.trim() || providerFilter.value || statusFilter.value))
+const paginatedCertificates = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  const end = start + pageSize.value
+  return filteredCertificates.value.slice(start, end)
+})
+
+const totalCertificateCount = computed(() => filteredCertificates.value.length)
+const validCertificateCount = computed(() =>
+  filteredCertificates.value.filter((item) => ['valid', 'active'].includes(item.status)).length
+)
+const expiringCertificateCount = computed(() =>
+  filteredCertificates.value.filter((item) => getExpireStatusType(item) === 'warning').length
+)
+const failedCertificateCount = computed(() =>
+  filteredCertificates.value.filter((item) =>
+    ['failed', 'expired'].includes(item.status) || getExpireStatusType(item) === 'danger'
+  ).length
+)
+
 const normalizeDomain = (domain = '') => domain.replace(/^\*\./, '').trim().toLowerCase()
+
+const syncCurrentPage = () => {
+  const maxPage = Math.max(1, Math.ceil(displayCertificateTotal.value / pageSize.value))
+  if (currentPage.value > maxPage) {
+    currentPage.value = maxPage
+  }
+}
 
 const getApplyErrorMessage = (error) => {
   const rawMessage = [
@@ -750,6 +923,7 @@ const fetchCertificates = async ({ silent = false } = {}) => {
     const response = await certificatesApi.list()
     const data = normalizeCertificatesResponse(response)
     certificates.value = data.map(mapCertificate)
+    syncCurrentPage()
   } catch (error) {
     console.error('Failed to fetch certificates:', error)
     if (!silent) {
@@ -1271,6 +1445,117 @@ const handleRefresh = () => {
   fetchCertificates()
 }
 
+const handleFilterChange = () => {
+  currentPage.value = 1
+  syncCurrentPage()
+}
+
+const resetFilters = () => {
+  searchQuery.value = ''
+  providerFilter.value = ''
+  statusFilter.value = ''
+  currentPage.value = 1
+}
+
+const handleSizeChange = (value) => {
+  pageSize.value = value
+  syncCurrentPage()
+}
+
+const handleCurrentChange = (value) => {
+  currentPage.value = value
+}
+
+const handleRowCommand = (command, row) => {
+  if (command === 'backup') {
+    handleBackup(row)
+    return
+  }
+
+  if (command === 'delete') {
+    handleDelete(row)
+  }
+}
+
+const formatProviderLabel = (provider) => {
+  const labels = {
+    letsencrypt: "Let's Encrypt",
+    zerossl: 'ZeroSSL',
+    manual: '手动上传',
+    'self-signed': '自签名'
+  }
+
+  return labels[provider] || provider || '未识别'
+}
+
+const getProviderPillClass = (provider) => {
+  const classes = {
+    letsencrypt: 'is-success',
+    zerossl: 'is-primary',
+    manual: 'is-warning',
+    'self-signed': 'is-muted'
+  }
+
+  return classes[provider] || 'is-muted'
+}
+
+const getStatusPillClass = (status) => {
+  const classes = {
+    pending: 'is-primary',
+    failed: 'is-danger',
+    expired: 'is-danger',
+    expiring: 'is-warning',
+    valid: 'is-success',
+    active: 'is-success'
+  }
+
+  return classes[status] || 'is-muted'
+}
+
+const getExpireValueClass = (row) => {
+  const type = getExpireStatusType(row)
+  if (type === 'danger') return 'is-danger'
+  if (type === 'warning') return 'is-warning'
+  if (type === 'success') return 'is-success'
+  return ''
+}
+
+const getExpireHint = (row) => {
+  if (!row?.expireDate || row.expireDate === '-') {
+    return row?.status === 'pending' ? '等待签发完成后生成过期时间。' : '当前没有可用的过期时间记录。'
+  }
+
+  const expire = new Date(row.expireDate)
+  if (Number.isNaN(expire.getTime())) {
+    return '过期时间格式异常，请刷新后重试。'
+  }
+
+  const diff = expire.getTime() - Date.now()
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+
+  if (days < 0) {
+    return `证书已过期 ${Math.abs(days)} 天，请立即续期或重新签发。`
+  }
+
+  if (days < 30) {
+    return `距离过期还有 ${days} 天，建议尽快检查续期链路。`
+  }
+
+  return `距离过期还有 ${days} 天，当前处于稳定周期。`
+}
+
+const getRenewHint = (row) => {
+  if (!row.autoRenew) {
+    return '当前关闭自动续期，需要人工关注到期时间。'
+  }
+
+  if (['failed', 'expired'].includes(row.status)) {
+    return '建议先排查签发失败原因，再重新续期。'
+  }
+
+  return '已开启自动续期，系统会在到期前自动尝试更新。'
+}
+
 // 获取提供商类型
 const getProviderType = (provider) => {
   const types = {
@@ -1331,6 +1616,11 @@ const getExpireStatusType = (row) => {
 <style scoped>
 .certificates-container {
   padding: 20px;
+}
+
+.certificates-table {
+  width: 100%;
+  min-width: 930px;
 }
 
 .card-header {
@@ -1407,5 +1697,15 @@ const getExpireStatusType = (row) => {
   border-radius: 4px;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+@media (max-width: 768px) {
+  .certificates-container {
+    padding: 12px;
+  }
+
+  .certificates-table {
+    min-width: 760px;
+  }
 }
 </style> 

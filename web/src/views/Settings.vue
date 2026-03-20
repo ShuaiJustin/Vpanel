@@ -1,6 +1,11 @@
 <template>
   <div class="settings-container">
-    <h1>系统设置</h1>
+    <div class="page-header">
+      <div class="page-heading">
+        <h1>系统设置</h1>
+        <p class="page-subtitle">维护面板、数据库、邮件和核心运行参数</p>
+      </div>
+    </div>
     
     <el-tabs type="border-card" v-model="activeName" @tab-click="handleTabClick">
       <el-tab-pane label="服务器配置" name="server">

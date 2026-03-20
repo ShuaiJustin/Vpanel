@@ -1,14 +1,33 @@
 <template>
   <div class="admin-orders-page">
     <div class="page-header">
-      <div>
+      <div class="page-heading">
         <h1 class="page-title">订单管理</h1>
-        <p class="page-subtitle">查看订单、处理状态流转和执行人工退款。</p>
+        <p class="page-subtitle">查看订单、处理状态流转和执行人工退款</p>
       </div>
     </div>
 
-    <el-card shadow="never">
-      <div class="filter-bar">
+    <div class="overview-strip">
+      <div class="overview-card">
+        <span class="overview-label">订单总数</span>
+        <strong class="overview-value">{{ pagination.total }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">当前页待支付</span>
+        <strong class="overview-value is-warning">{{ pendingOrderCount }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">当前页可退款</span>
+        <strong class="overview-value is-danger">{{ refundableOrderCount }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">当前页实付总额</span>
+        <strong class="overview-value is-primary">¥{{ currentPageRevenue }}</strong>
+      </div>
+    </div>
+
+    <div class="toolbar-card orders-toolbar-card">
+      <div class="orders-toolbar">
         <el-select v-model="filter.status" placeholder="订单状态" clearable>
           <el-option label="待支付" value="pending" />
           <el-option label="已支付" value="paid" />
@@ -60,79 +79,111 @@
           <el-button @click="resetFilters">重置</el-button>
         </div>
       </div>
-
-      <div class="table-wrap">
-        <el-table :data="orders" v-loading="loading" style="width: 100%">
-          <el-table-column prop="order_no" label="订单号" min-width="180" />
-          <el-table-column prop="user_id" label="用户 ID" width="96" />
-          <el-table-column label="套餐" min-width="160">
-            <template #default="{ row }">
-              {{ row.plan_name || `套餐 #${row.plan_id}` }}
-            </template>
-          </el-table-column>
-          <el-table-column label="金额" min-width="160">
-            <template #default="{ row }">
-              <div class="amount-cell">
-                <span class="amount-current">¥{{ formatPrice(row.pay_amount) }}</span>
-                <span class="amount-meta">原价 ¥{{ formatPrice(row.original_amount) }}</span>
-                <span v-if="row.discount_amount > 0" class="amount-discount">
-                  优惠 -¥{{ formatPrice(row.discount_amount) }}
-                </span>
-                <span v-if="row.balance_used > 0" class="amount-meta">
-                  余额抵扣 -¥{{ formatPrice(row.balance_used) }}
-                </span>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="状态" width="110">
-            <template #default="{ row }">
-              <el-tag :type="getStatusType(row.status)" size="small">
-                {{ getStatusLabel(row.status) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="支付方式" width="120">
-            <template #default="{ row }">
-              {{ getMethodLabel(row.payment_method) || '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column v-if="!isCompact" prop="created_at" label="创建时间" width="180" />
-          <el-table-column label="操作" min-width="220">
-            <template #default="{ row }">
-              <div class="row-actions">
-                <el-button type="primary" link @click="viewDetail(row)">详情</el-button>
-                <el-button v-if="row.status === 'pending'" type="warning" link @click="updateStatus(row, 'cancelled')">
-                  取消
-                </el-button>
-                <el-button v-if="row.status === 'paid'" type="success" link @click="updateStatus(row, 'completed')">
-                  完成
-                </el-button>
-                <el-button
-                  v-if="canRefund(row)"
-                  type="danger"
-                  link
-                  @click="openRefundDialog(row)"
-                >
-                  退款
-                </el-button>
-              </div>
-            </template>
-          </el-table-column>
-        </el-table>
+      <div class="toolbar-actions">
+        <span class="toolbar-summary">当前页 {{ orders.length }} 笔订单，共 {{ pagination.total }} 笔</span>
       </div>
+    </div>
 
-      <div v-if="pagination.total > 0" class="pagination-container">
-        <el-pagination
-          v-model:current-page="pagination.page"
-          v-model:page-size="pagination.pageSize"
-          :total="pagination.total"
-          :page-sizes="[10, 20, 50]"
-          :layout="isMobile ? 'total, prev, next' : 'total, sizes, prev, pager, next'"
-          @size-change="handleSizeChange"
-          @current-change="handlePageChange"
-        />
-      </div>
-    </el-card>
+    <div class="table-shell">
+      <el-table :data="orders" v-loading="loading" border stripe class="orders-table" row-key="id">
+        <el-table-column label="订单对象" min-width="300">
+          <template #default="{ row }">
+            <div class="entity-cell">
+              <div class="entity-cell__header">
+                <span class="entity-cell__title">{{ row.order_no }}</span>
+                <span :class="['metric-pill', getStatusPillClass(row.status)]">{{ getStatusLabel(row.status) }}</span>
+              </div>
+              <div class="entity-cell__meta">
+                <span>用户 ID：{{ row.user_id }}</span>
+                <span>套餐：{{ row.plan_name || `套餐 #${row.plan_id}` }}</span>
+              </div>
+              <div class="entity-cell__hint">
+                创建于 {{ row.created_at }}{{ row.expired_at ? `，超时截止 ${row.expired_at}` : '' }}
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="金额明细" min-width="230">
+          <template #default="{ row }">
+            <div class="stack-cell">
+              <div class="stack-item">
+                <span class="stack-label">实付金额</span>
+                <span class="stack-value is-strong">¥{{ formatPrice(row.pay_amount) }}</span>
+              </div>
+              <div class="stack-item">
+                <span class="stack-label">原价</span>
+                <span class="stack-value">¥{{ formatPrice(row.original_amount) }}</span>
+              </div>
+              <div v-if="row.discount_amount > 0" class="stack-item">
+                <span class="stack-label">优惠抵扣</span>
+                <span class="stack-value is-success">-¥{{ formatPrice(row.discount_amount) }}</span>
+              </div>
+              <div v-if="row.balance_used > 0" class="stack-item">
+                <span class="stack-label">余额抵扣</span>
+                <span class="stack-value is-success">-¥{{ formatPrice(row.balance_used) }}</span>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="支付与状态" min-width="230">
+          <template #default="{ row }">
+            <div class="stack-cell">
+              <div class="stack-item">
+                <span class="stack-label">支付方式</span>
+                <span class="stack-value">{{ getMethodLabel(row.payment_method) || '-' }}</span>
+              </div>
+              <div class="stack-item">
+                <span class="stack-label">支付流水号</span>
+                <span class="stack-value">{{ row.payment_no || '-' }}</span>
+              </div>
+              <div class="stack-item">
+                <span class="stack-label">支付时间</span>
+                <span class="stack-value">{{ row.paid_at || '-' }}</span>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="操作" min-width="200" align="right" fixed="right">
+          <template #default="{ row }">
+            <div class="operation-btns">
+              <el-button size="small" class="row-action row-action--primary" @click="viewDetail(row)">详情</el-button>
+              <el-button
+                v-if="getStatusAction(row)"
+                size="small"
+                class="row-action"
+                :class="row.status === 'pending' ? 'row-action--warning' : 'row-action--success'"
+                @click="updateStatus(row, getStatusAction(row).status)"
+              >
+                {{ getStatusAction(row).label }}
+              </el-button>
+              <el-button
+                v-if="canRefund(row)"
+                size="small"
+                class="row-action row-action--danger"
+                @click="openRefundDialog(row)"
+              >
+                退款
+              </el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+
+    <div v-if="pagination.total > 0" class="pagination-container">
+      <el-pagination
+        v-model:current-page="pagination.page"
+        v-model:page-size="pagination.pageSize"
+        :total="pagination.total"
+        :page-sizes="[10, 20, 50]"
+        :layout="isMobile ? 'total, prev, next' : 'total, sizes, prev, pager, next'"
+        @size-change="handleSizeChange"
+        @current-change="handlePageChange"
+      />
+    </div>
 
     <el-dialog v-model="detailVisible" title="订单详情" :width="detailDialogWidth">
       <el-descriptions v-if="currentOrder" :column="detailColumns" border>
@@ -228,7 +279,6 @@ const refundForm = reactive({
   reason: ''
 })
 
-const isCompact = computed(() => viewportWidth.value <= 1366)
 const detailColumns = computed(() => (isMobile.value ? 1 : 2))
 const detailDialogWidth = computed(() => (isMobile.value ? '94%' : '720px'))
 const refundDialogWidth = computed(() => (isMobile.value ? '94%' : '520px'))
@@ -239,6 +289,9 @@ const refundMaxAmount = computed(() => {
 
   return (currentOrder.value.pay_amount + currentOrder.value.balance_used) / 100
 })
+const pendingOrderCount = computed(() => orders.value.filter((order) => order.status === 'pending').length)
+const refundableOrderCount = computed(() => orders.value.filter((order) => canRefund(order)).length)
+const currentPageRevenue = computed(() => (orders.value.reduce((sum, order) => sum + Number(order.pay_amount || 0), 0) / 100).toFixed(2))
 
 const statusMap = {
   pending: { label: '待支付', type: 'warning' },
@@ -256,13 +309,31 @@ const methodLabels = {
   balance: '余额支付'
 }
 
-const formatPrice = price => (Number(price || 0) / 100).toFixed(2)
-const getStatusType = status => statusMap[status]?.type || 'info'
-const getStatusLabel = status => statusMap[status]?.label || status || '-'
-const getMethodLabel = method => methodLabels[method] || method || '-'
-const canRefund = order => ['paid', 'completed'].includes(order.status)
+const formatPrice = (price) => (Number(price || 0) / 100).toFixed(2)
+const getStatusType = (status) => statusMap[status]?.type || 'info'
+const getStatusLabel = (status) => statusMap[status]?.label || status || '-'
+const getMethodLabel = (method) => methodLabels[method] || method || '-'
+const getStatusPillClass = (status) => {
+  const type = getStatusType(status)
+  if (type === 'success') return 'is-success'
+  if (type === 'warning') return 'is-warning'
+  if (type === 'danger') return 'is-danger'
+  return 'is-muted'
+}
+const canRefund = (order) => ['paid', 'completed'].includes(order.status)
+const getStatusAction = (order) => {
+  if (order.status === 'pending') {
+    return { label: '取消', status: 'cancelled' }
+  }
 
-const toAmountInCents = amount => {
+  if (order.status === 'paid') {
+    return { label: '完成', status: 'completed' }
+  }
+
+  return null
+}
+
+const toAmountInCents = (amount) => {
   if (amount === null || amount === undefined || amount === '') {
     return undefined
   }
@@ -329,18 +400,18 @@ const resetFilters = async () => {
   await fetchOrders()
 }
 
-const handlePageChange = async page => {
+const handlePageChange = async (page) => {
   pagination.page = page
   await fetchOrders()
 }
 
-const handleSizeChange = async pageSize => {
+const handleSizeChange = async (pageSize) => {
   pagination.page = 1
   pagination.pageSize = pageSize
   await fetchOrders()
 }
 
-const viewDetail = async order => {
+const viewDetail = async (order) => {
   try {
     const res = await ordersApi.admin.get(order.id)
     currentOrder.value = res.order
@@ -371,7 +442,7 @@ const updateStatus = async (order, status) => {
   }
 }
 
-const openRefundDialog = order => {
+const openRefundDialog = (order) => {
   currentOrder.value = order
   refundForm.amount = 0
   refundForm.reason = ''
@@ -424,26 +495,15 @@ onMounted(() => {
   padding: 20px;
 }
 
-.page-header {
-  margin-bottom: 20px;
+.orders-toolbar-card {
+  align-items: stretch;
 }
 
-.page-title {
-  margin: 0;
-  font-size: 28px;
-  font-weight: 700;
-}
-
-.page-subtitle {
-  margin: 8px 0 0;
-  color: #64748b;
-}
-
-.filter-bar {
+.orders-toolbar {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
-  margin-bottom: 20px;
+  width: 100%;
 }
 
 .search-input {
@@ -456,41 +516,9 @@ onMounted(() => {
   align-items: center;
 }
 
-.table-wrap {
-  overflow-x: auto;
-}
-
-.amount-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.amount-current {
-  font-weight: 700;
-  color: #0f172a;
-}
-
-.amount-meta {
-  font-size: 12px;
-  color: #64748b;
-}
-
-.amount-discount {
-  font-size: 12px;
-  color: #16a34a;
-}
-
-.row-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-}
-
-.pagination-container {
-  margin-top: 20px;
-  display: flex;
-  justify-content: flex-end;
+.orders-table {
+  width: 100%;
+  min-width: 980px;
 }
 
 .refund-summary {
@@ -520,17 +548,13 @@ onMounted(() => {
     padding: 12px;
   }
 
-  .page-title {
-    font-size: 24px;
+  .orders-table {
+    min-width: 760px;
   }
 
   .filter-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
-  }
-
-  .pagination-container {
-    justify-content: center;
   }
 }
 </style>

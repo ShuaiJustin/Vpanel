@@ -1,13 +1,42 @@
 <template>
   <div class="roles-page">
+    <div class="page-header">
+      <div class="page-heading">
+        <h1 class="page-title">角色管理</h1>
+        <p class="page-subtitle">整理角色权限、系统角色和用户归属关系</p>
+      </div>
+      <div class="page-actions">
+        <el-button type="primary" @click="showCreateDialog">
+          <el-icon><Plus /></el-icon>
+          新建角色
+        </el-button>
+      </div>
+    </div>
+
+    <div class="overview-strip">
+      <div class="overview-card">
+        <span class="overview-label">角色总数</span>
+        <strong class="overview-value">{{ roles.length }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">系统角色</span>
+        <strong class="overview-value is-warning">{{ systemRoleCount }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">自定义角色</span>
+        <strong class="overview-value is-primary">{{ customRoleCount }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">角色关联用户</span>
+        <strong class="overview-value is-success">{{ assignedUserCount }}</strong>
+      </div>
+    </div>
+
     <el-card>
       <template #header>
         <div class="card-header">
-          <span>角色管理</span>
-          <el-button type="primary" @click="showCreateDialog">
-            <el-icon><Plus /></el-icon>
-            新建角色
-          </el-button>
+          <span>角色列表</span>
+          <span class="toolbar-summary">共 {{ roles.length }} 个角色</span>
         </div>
       </template>
 
@@ -106,7 +135,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { roles as rolesApi, usersApi } from '@/api/index'
@@ -132,6 +161,12 @@ const rules = {
     { min: 2, max: 50, message: '长度在 2 到 50 个字符', trigger: 'blur' }
   ]
 }
+
+const systemRoleCount = computed(() => roles.value.filter((role) => role.is_system).length)
+const customRoleCount = computed(() => roles.value.filter((role) => !role.is_system).length)
+const assignedUserCount = computed(() =>
+  roles.value.reduce((sum, role) => sum + Number(role.user_count || 0), 0)
+)
 
 // 获取权限显示名称
 const getPermissionName = (key) => {

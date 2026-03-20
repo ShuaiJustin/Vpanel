@@ -1,6 +1,11 @@
 <template>
   <div class="ip-restriction-container">
-    <h1>IP 限制管理</h1>
+    <div class="page-header">
+      <div class="page-heading">
+        <h1>IP 限制管理</h1>
+        <p class="page-subtitle">查看在线设备、封禁策略和地域访问分布</p>
+      </div>
+    </div>
     
     <el-tabs type="border-card" v-model="activeTab">
       <!-- 统计仪表板 -->

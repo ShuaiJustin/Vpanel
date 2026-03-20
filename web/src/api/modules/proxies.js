@@ -71,21 +71,21 @@ export const proxiesApi = {
    * @param {Array<number|string>} ids - 代理 ID 列表
    * @returns {Promise<void>}
    */
-  batchEnable: (ids) => api.post('/proxies/batch', { action: 'enable', ids }),
+  batchEnable: (ids) => api.post('/proxies/batch', { operation: 'enable', ids }),
 
   /**
    * 批量禁用代理
    * @param {Array<number|string>} ids - 代理 ID 列表
    * @returns {Promise<void>}
    */
-  batchDisable: (ids) => api.post('/proxies/batch', { action: 'disable', ids }),
+  batchDisable: (ids) => api.post('/proxies/batch', { operation: 'disable', ids }),
 
   /**
    * 批量删除代理
    * @param {Array<number|string>} ids - 代理 ID 列表
    * @returns {Promise<void>}
    */
-  batchDelete: (ids) => api.post('/proxies/batch', { action: 'delete', ids }),
+  batchDelete: (ids) => api.post('/proxies/batch', { operation: 'delete', ids }),
 
   /**
    * 生成分享链接

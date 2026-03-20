@@ -1,235 +1,256 @@
 <template>
   <div class="admin-nodes-page">
     <div class="page-header">
-      <h1 class="page-title">节点管理</h1>
-      <div class="header-actions">
+      <div class="page-heading">
+        <h1 class="page-title">节点管理</h1>
+        <p class="page-subtitle">统一查看节点接入、TLS 配置、负载表现和安装状态</p>
+      </div>
+      <div class="page-actions">
         <el-button @click="fetchNodes">
-          <el-icon><Refresh /></el-icon>
+          <el-icon class="el-icon--left"><Refresh /></el-icon>
           刷新
         </el-button>
         <el-button type="primary" @click="showCreateDialog">
-          <el-icon><Plus /></el-icon>
+          <el-icon class="el-icon--left"><Plus /></el-icon>
           添加节点
         </el-button>
       </div>
     </div>
 
-    <!-- 统计卡片 -->
-    <el-row :gutter="20" class="stats-row">
-      <el-col :span="6">
-        <el-card shadow="never" class="stat-card">
-          <div class="stat-content">
-            <div class="stat-value">{{ nodeStore.nodeCount }}</div>
-            <div class="stat-label">总节点数</div>
-          </div>
-          <el-icon class="stat-icon"><Monitor /></el-icon>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="never" class="stat-card online">
-          <div class="stat-content">
-            <div class="stat-value">{{ nodeStore.onlineCount }}</div>
-            <div class="stat-label">在线节点</div>
-          </div>
-          <el-icon class="stat-icon"><CircleCheck /></el-icon>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="never" class="stat-card">
-          <div class="stat-content">
-            <div class="stat-value">{{ nodeStore.totalUsers }}</div>
-            <div class="stat-label">总用户数</div>
-          </div>
-          <el-icon class="stat-icon"><User /></el-icon>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="never" class="stat-card">
-          <div class="stat-content">
-            <div class="stat-value">{{ nodeStore.averageLatency }}ms</div>
-            <div class="stat-label">平均延迟</div>
-          </div>
-          <el-icon class="stat-icon"><Timer /></el-icon>
-        </el-card>
-      </el-col>
-    </el-row>
+    <div class="overview-strip">
+      <div class="overview-card">
+        <span class="overview-label">当前匹配</span>
+        <strong class="overview-value">{{ filteredNodeCount }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">在线节点</span>
+        <strong class="overview-value is-success">{{ filteredOnlineCount }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">TLS 已启用</span>
+        <strong class="overview-value is-primary">{{ filteredTlsCount }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">当前页用户</span>
+        <strong class="overview-value">{{ filteredUserCount }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">平均延迟</span>
+        <strong class="overview-value is-warning">{{ filteredAverageLatency }}ms</strong>
+      </div>
+    </div>
 
-    <!-- 筛选栏 -->
-    <el-card shadow="never" class="filter-card">
-      <el-row :gutter="16">
-        <el-col :span="6">
-          <el-input
-            v-model="nodeStore.filters.search"
-            placeholder="搜索节点名称/地址"
-            clearable
-            @clear="fetchNodes"
-            @keyup.enter="fetchNodes"
-          >
-            <template #prefix>
-              <el-icon><Search /></el-icon>
-            </template>
-          </el-input>
-        </el-col>
-        <el-col :span="4">
-          <el-select
-            v-model="nodeStore.filters.status"
-            placeholder="状态"
-            clearable
-            @change="fetchNodes"
-          >
-            <el-option label="在线" value="online" />
-            <el-option label="离线" value="offline" />
-            <el-option label="不健康" value="unhealthy" />
-          </el-select>
-        </el-col>
-        <el-col :span="4">
-          <el-select
-            v-model="nodeStore.filters.region"
-            placeholder="地区"
-            clearable
-            @change="fetchNodes"
-          >
-            <el-option
-              v-for="region in regions"
-              :key="region"
-              :label="region"
-              :value="region"
-            />
-          </el-select>
-        </el-col>
-        <el-col :span="4">
-          <el-button
-            @click="
-              nodeStore.clearFilters();
-              fetchNodes();
-            "
-            >重置</el-button
-          >
-        </el-col>
-      </el-row>
-    </el-card>
+    <div class="toolbar-card">
+      <div class="toolbar-filters">
+        <el-input
+          v-model="nodeStore.filters.search"
+          class="toolbar-search"
+          placeholder="搜索节点名称、地址或地区"
+          clearable
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+        <el-select
+          v-model="nodeStore.filters.status"
+          placeholder="状态"
+          clearable
+          @change="fetchNodes"
+        >
+          <el-option label="在线" value="online" />
+          <el-option label="离线" value="offline" />
+          <el-option label="不健康" value="unhealthy" />
+        </el-select>
+        <el-select
+          v-model="nodeStore.filters.region"
+          placeholder="地区"
+          clearable
+          @change="fetchNodes"
+        >
+          <el-option
+            v-for="region in regions"
+            :key="region"
+            :label="region"
+            :value="region"
+          />
+        </el-select>
+        <el-button @click="resetFilters">重置</el-button>
+      </div>
+      <div class="toolbar-actions">
+        <span class="toolbar-summary">
+          总记录 {{ nodeStore.total }} 条，当前页 {{ nodeStore.nodeCount }} 条，筛选后 {{ filteredNodeCount }} 条
+        </span>
+      </div>
+    </div>
 
-    <!-- 节点列表 -->
     <el-card shadow="never">
-      <el-table
-        :data="nodeStore.filteredNodes"
-        v-loading="nodeStore.loading"
-        style="width: 100%"
-      >
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column prop="name" label="名称" min-width="120">
+      <template #header>
+        <div class="card-header">
+          <span>节点列表</span>
+          <span class="toolbar-summary">集中处理详情、部署、Token 和脚本下载</span>
+        </div>
+      </template>
+
+      <div class="table-shell">
+        <el-table
+          :data="nodeStore.filteredNodes"
+          v-loading="nodeStore.loading"
+          border
+          stripe
+          row-key="id"
+          class="nodes-table"
+          :empty-text="hasActiveFilters ? '暂无匹配节点' : '暂无节点'"
+        >
+        <el-table-column label="节点对象" min-width="320">
           <template #default="{ row }">
-            <el-link type="primary" @click="viewNodeDetail(row)">{{
-              row.name
-            }}</el-link>
-          </template>
-        </el-table-column>
-        <el-table-column prop="address" label="地址" min-width="150">
-          <template #default="{ row }">
-            {{ row.address }}:{{ row.port }}
-          </template>
-        </el-table-column>
-        <el-table-column label="TLS / 证书" min-width="180">
-          <template #default="{ row }">
-            <div class="tls-cell">
-              <el-tag :type="row.tls_enabled ? 'success' : 'info'" size="small">
-                {{ row.tls_enabled ? 'TLS 已启用' : '未启用 TLS' }}
-              </el-tag>
-              <div v-if="row.tls_domain" class="tls-domain-text">{{ row.tls_domain }}</div>
-              <div v-if="row.certificate_id" class="tls-cert-text">
-                证书：{{ getAssignedCertificateDisplay(row.certificate_id) }}
+            <div class="entity-cell">
+              <div class="entity-cell__header">
+                <span class="entity-cell__title">{{ row.name }}</span>
+                <span :class="['metric-pill', getStatusPillClass(row.status)]">
+                  {{ getStatusText(row.status) }}
+                </span>
+              </div>
+              <div class="entity-cell__meta">
+                <span>ID：{{ row.id }}</span>
+                <span>地区：{{ row.region || '未设置' }}</span>
+                <span>权重：{{ row.weight }}</span>
+              </div>
+              <div class="node-address" :title="`${row.address}:${row.port}`">
+                {{ row.address }}:{{ row.port }}
+              </div>
+              <div v-if="parseTags(row.tags).length" class="stack-tags">
+                <el-tag
+                  v-for="tag in parseTags(row.tags).slice(0, 3)"
+                  :key="tag"
+                  size="small"
+                  effect="plain"
+                >
+                  {{ tag }}
+                </el-tag>
+                <el-tag
+                  v-if="parseTags(row.tags).length > 3"
+                  size="small"
+                  effect="plain"
+                  type="info"
+                >
+                  +{{ parseTags(row.tags).length - 3 }}
+                </el-tag>
               </div>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="100">
+
+        <el-table-column label="TLS 与接入" min-width="250">
           <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)" size="small">
-              {{ getStatusText(row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="region" label="地区" width="100" />
-        <el-table-column label="负载" width="120">
-          <template #default="{ row }">
-            <div class="load-info">
-              <span>{{ row.current_users }}/{{ row.max_users || "∞" }}</span>
-              <el-progress
-                v-if="row.max_users > 0"
-                :percentage="
-                  Math.round((row.current_users / row.max_users) * 100)
-                "
-                :stroke-width="4"
-                :show-text="false"
-                :status="getLoadStatus(row)"
-              />
+            <div class="stack-cell">
+              <div class="stack-item stack-item--inline">
+                <span class="stack-label">TLS 状态</span>
+                <span :class="['metric-pill', row.tls_enabled ? 'is-success' : 'is-muted']">
+                  {{ row.tls_enabled ? '已启用' : '未启用' }}
+                </span>
+              </div>
+              <div class="stack-item">
+                <span class="stack-label">TLS 域名</span>
+                <span class="stack-value">{{ row.tls_domain || '未配置' }}</span>
+              </div>
+              <div class="stack-item">
+                <span class="stack-label">系统证书</span>
+                <span class="stack-value">{{ row.certificate_id ? getAssignedCertificateDisplay(row.certificate_id) : '未关联' }}</span>
+              </div>
+              <div class="entity-cell__hint">
+                {{ getTlsHint(row) }}
+              </div>
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="latency" label="延迟" width="80">
+
+        <el-table-column label="负载与同步" min-width="250">
           <template #default="{ row }">
-            <span :class="getLatencyClass(row.latency)"
-              >{{ row.latency }}ms</span
-            >
+            <div class="stack-cell">
+              <div class="stack-item">
+                <span class="stack-label">用户负载</span>
+                <span class="stack-value is-strong">{{ row.current_users }}/{{ row.max_users || "∞" }}</span>
+              </div>
+              <el-progress
+                v-if="row.max_users > 0"
+                :percentage="getLoadPercent(row)"
+                :stroke-width="6"
+                :show-text="false"
+                :status="getLoadStatus(row)"
+              />
+              <div class="stack-item">
+                <span class="stack-label">节点延迟</span>
+                <span :class="['stack-value', getLatencyValueClass(row.latency)]">{{ row.latency }}ms</span>
+              </div>
+              <div class="stack-tags">
+                <span :class="['metric-pill', getSyncPillClass(row.sync_status)]">
+                  {{ getSyncStatusText(row.sync_status) }}
+                </span>
+                <span :class="['metric-pill', getInstallPillClass(row.install_status)]">
+                  {{ getInstallStatusText(row.install_status) }}
+                </span>
+              </div>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column prop="weight" label="权重" width="70" />
-        <el-table-column label="同步状态" width="100">
+
+        <el-table-column label="最近活动" min-width="220">
           <template #default="{ row }">
-            <el-tag :type="getSyncStatusType(row.sync_status)" size="small">
-              {{ getSyncStatusText(row.sync_status) }}
-            </el-tag>
+            <div class="stack-cell">
+              <div class="stack-item">
+                <span class="stack-label">最后在线</span>
+                <span class="stack-value">{{ formatTime(row.last_seen_at) }}</span>
+              </div>
+              <div class="stack-item">
+                <span class="stack-label">最后同步</span>
+                <span class="stack-value">{{ formatTime(row.synced_at) }}</span>
+              </div>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column label="安装状态" width="110">
+
+        <el-table-column label="操作" width="210" fixed="right" align="right">
           <template #default="{ row }">
-            <el-tag
-              :type="getInstallStatusType(row.install_status)"
-              size="small"
-            >
-              {{ getInstallStatusText(row.install_status) }}
-            </el-tag>
+            <div class="operation-btns">
+              <el-button size="small" class="row-action row-action--primary" @click="viewNodeDetail(row)">
+                详情
+              </el-button>
+              <el-button
+                size="small"
+                class="row-action row-action--success"
+                @click="showDeployDialog(row)"
+              >
+                部署
+              </el-button>
+              <el-dropdown trigger="click" @command="(command) => handleNodeCommand(command, row)">
+                <el-button size="small" class="row-action row-action--more" circle title="更多操作">
+                  <el-icon><MoreFilled /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="edit">编辑节点</el-dropdown-item>
+                    <el-dropdown-item command="token">Token 管理</el-dropdown-item>
+                    <el-dropdown-item command="script">下载脚本</el-dropdown-item>
+                    <el-dropdown-item command="progress">安装进度</el-dropdown-item>
+                    <el-dropdown-item command="delete" divided>删除节点</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="380" fixed="right">
-          <template #default="{ row }">
-            <el-button type="primary" link size="small" @click="editNode(row)"
-              >编辑</el-button
-            >
-            <el-button
-              type="success"
-              link
-              size="small"
-              @click="showDeployDialog(row)"
-              >部署</el-button
-            >
-            <el-button
-              type="info"
-              link
-              size="small"
-              @click="downloadDeployScript(row)"
-              >脚本</el-button
-            >
-            <el-button
-              type="warning"
-              link
-              size="small"
-              @click="showTokenDialog(row)"
-              >Token</el-button
-            >
-            <el-button type="danger" link size="small" @click="deleteNode(row)"
-              >删除</el-button
-            >
-          </template>
-        </el-table-column>
-      </el-table>
+        </el-table>
+      </div>
 
       <div v-if="nodeStore.total > 0" class="pagination-container">
         <el-pagination
           v-model:current-page="pagination.page"
+          v-model:page-size="pagination.pageSize"
           :total="nodeStore.total"
-          :page-size="pagination.pageSize"
-          layout="total, prev, pager, next"
+          :page-sizes="[10, 20, 50, 100]"
+          :layout="isMobile ? 'total, prev, next' : 'total, sizes, prev, pager, next'"
+          @size-change="handleSizeChange"
           @current-change="fetchNodes"
         />
       </div>
@@ -790,23 +811,22 @@ import {
   Plus,
   Refresh,
   Search,
-  Monitor,
-  CircleCheck,
-  User,
-  Timer,
   View,
   Hide,
   CopyDocument,
-  Upload,
   Connection,
+  Loading,
+  MoreFilled,
 } from "@element-plus/icons-vue";
 import { useNodeStore } from "@/stores/node";
 import { certificatesApi } from "@/api";
 import { nodesApi } from "@/api/modules/nodes";
 import { copyText } from "@/utils/clipboard";
+import { useViewport } from "@/composables/useViewport";
 
 const nodeStore = useNodeStore();
 const router = useRouter();
+const { isMobile } = useViewport();
 
 const pagination = reactive({ page: 1, pageSize: 20 });
 const dialogVisible = ref(false);
@@ -1017,6 +1037,34 @@ const selectedCertificate = computed(
     ) || null,
 );
 
+const filteredNodeCount = computed(() => nodeStore.filteredNodes.length);
+const filteredOnlineCount = computed(
+  () => nodeStore.filteredNodes.filter((node) => node.status === "online").length,
+);
+const filteredTlsCount = computed(
+  () => nodeStore.filteredNodes.filter((node) => node.tls_enabled).length,
+);
+const filteredUserCount = computed(() =>
+  nodeStore.filteredNodes.reduce((sum, node) => sum + (node.current_users || 0), 0),
+);
+const filteredAverageLatency = computed(() => {
+  const onlineWithLatency = nodeStore.filteredNodes.filter(
+    (node) => node.status === "online" && node.latency > 0,
+  );
+  if (!onlineWithLatency.length) return 0;
+  return Math.round(
+    onlineWithLatency.reduce((sum, node) => sum + node.latency, 0) /
+      onlineWithLatency.length,
+  );
+});
+const hasActiveFilters = computed(() =>
+  Boolean(
+    normalizeText(nodeStore.filters.search) ||
+      nodeStore.filters.status ||
+      nodeStore.filters.region,
+  ),
+);
+
 const fetchCertificates = async () => {
   certificatesLoading.value = true;
   try {
@@ -1096,6 +1144,15 @@ const getStatusText = (status) => {
   return texts[status] || status;
 };
 
+const getStatusPillClass = (status) => {
+  const classes = {
+    online: "is-success",
+    offline: "is-muted",
+    unhealthy: "is-danger",
+  };
+  return classes[status] || "is-muted";
+};
+
 const getSyncStatusType = (status) => {
   const types = { synced: "success", pending: "warning", failed: "danger" };
   return types[status] || "info";
@@ -1104,6 +1161,15 @@ const getSyncStatusType = (status) => {
 const getSyncStatusText = (status) => {
   const texts = { synced: "已同步", pending: "待同步", failed: "同步失败" };
   return texts[status] || status;
+};
+
+const getSyncPillClass = (status) => {
+  const classes = {
+    synced: "is-success",
+    pending: "is-warning",
+    failed: "is-danger",
+  };
+  return classes[status] || "is-muted";
 };
 
 const getInstallStatusType = (status) => {
@@ -1128,6 +1194,17 @@ const getInstallStatusText = (status) => {
   return texts[status] || "未安装";
 };
 
+const getInstallPillClass = (status) => {
+  const classes = {
+    idle: "is-muted",
+    queued: "is-warning",
+    running: "is-warning",
+    success: "is-success",
+    failed: "is-danger",
+  };
+  return classes[status] || "is-muted";
+};
+
 const getLoadStatus = (node) => {
   if (!node.max_users) return "";
   const ratio = node.current_users / node.max_users;
@@ -1140,6 +1217,33 @@ const getLatencyClass = (latency) => {
   if (latency < 100) return "latency-good";
   if (latency < 300) return "latency-medium";
   return "latency-bad";
+};
+
+const getLatencyValueClass = (latency) => {
+  if (latency < 100) return "is-success";
+  if (latency < 300) return "is-warning";
+  return "is-danger";
+};
+
+const getLoadPercent = (node) => {
+  if (!node.max_users) return 0;
+  return Math.min(100, Math.round((node.current_users / node.max_users) * 100));
+};
+
+const getTlsHint = (node) => {
+  if (!node.tls_enabled) {
+    return "当前节点未启用 TLS，适合纯 IP 或内网场景。";
+  }
+
+  if (node.certificate_id) {
+    return "TLS 已启用，证书与域名均已绑定到节点。";
+  }
+
+  if (node.tls_domain) {
+    return "TLS 已启用，但还未绑定系统证书。";
+  }
+
+  return "TLS 已启用，请补充域名和证书避免握手异常。";
 };
 
 // 获取步骤状态（用于 el-steps 组件）
@@ -1272,6 +1376,18 @@ const fetchNodes = async () => {
   } catch (e) {
     ElMessage.error(e.message || "获取节点列表失败");
   }
+};
+
+const resetFilters = async () => {
+  nodeStore.clearFilters();
+  pagination.page = 1;
+  await fetchNodes();
+};
+
+const handleSizeChange = async (pageSize) => {
+  pagination.page = 1;
+  pagination.pageSize = pageSize;
+  await fetchNodes();
 };
 
 const showCreateDialog = () => {
@@ -1429,6 +1545,32 @@ const showTokenDialog = (node) => {
   newToken.value = "";
   showToken.value = false;
   tokenDialogVisible.value = true;
+};
+
+const handleNodeCommand = (command, node) => {
+  if (command === "edit") {
+    editNode(node);
+    return;
+  }
+
+  if (command === "token") {
+    showTokenDialog(node);
+    return;
+  }
+
+  if (command === "script") {
+    downloadDeployScript(node);
+    return;
+  }
+
+  if (command === "progress") {
+    viewInstallStatus(node);
+    return;
+  }
+
+  if (command === "delete") {
+    deleteNode(node);
+  }
 };
 
 const handleGenerateToken = async () => {
@@ -1743,67 +1885,8 @@ onUnmounted(() => {
 .page-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.page-title {
-  font-size: 24px;
-  font-weight: 600;
-  margin: 0;
-}
-
-.header-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.stats-row {
-  margin-bottom: 20px;
-}
-
-.stat-card {
-  position: relative;
-  overflow: hidden;
-}
-
-.stat-card .stat-content {
-  position: relative;
-  z-index: 1;
-}
-
-.stat-card .stat-value {
-  font-size: 28px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-
-.stat-card .stat-label {
-  font-size: 14px;
-  color: var(--el-text-color-secondary);
-  margin-top: 4px;
-}
-
-.stat-card .stat-icon {
-  position: absolute;
-  right: 20px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 48px;
-  color: var(--el-color-primary-light-7);
-  opacity: 0.6;
-}
-
-.stat-card.online .stat-value {
-  color: var(--el-color-success);
-}
-
-.stat-card.online .stat-icon {
-  color: var(--el-color-success-light-5);
-}
-
-.filter-card {
-  margin-bottom: 20px;
+  align-items: flex-start;
+  gap: 16px;
 }
 
 .pagination-container {
@@ -1812,20 +1895,35 @@ onUnmounted(() => {
   justify-content: flex-end;
 }
 
-.load-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.nodes-table {
+  width: 100%;
+  min-width: 1080px;
 }
 
-.latency-good {
-  color: var(--el-color-success);
+.node-address {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
 }
-.latency-medium {
-  color: var(--el-color-warning);
+
+.page-actions {
+  display: flex;
+  gap: 12px;
 }
-.latency-bad {
-  color: var(--el-color-danger);
+
+.page-subtitle {
+  margin: 8px 0 0;
+}
+
+.card-header {
+  align-items: center;
 }
 
 .form-tip {
@@ -1949,16 +2047,17 @@ onUnmounted(() => {
   color: var(--el-color-primary);
 }
 
-.tls-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
+@media (max-width: 768px) {
+  .admin-nodes-page {
+    padding: 12px;
+  }
 
-.tls-domain-text,
-.tls-cert-text {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  line-height: 1.4;
+  .nodes-table {
+    min-width: 760px;
+  }
+
+  .page-actions {
+    width: 100%;
+  }
 }
 </style>

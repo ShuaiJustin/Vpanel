@@ -1,7 +1,10 @@
 <template>
   <div class="logs-container">
     <div class="header">
-      <h1>日志管理</h1>
+      <div class="page-heading">
+        <h1>日志管理</h1>
+        <p class="page-subtitle">按级别、来源和时间范围快速定位后台运行问题</p>
+      </div>
       <div class="actions">
         <el-button type="primary" @click="refreshLogs">
           <el-icon><Refresh /></el-icon>
@@ -15,6 +18,25 @@
           <el-icon><Delete /></el-icon>
           清理
         </el-button>
+      </div>
+    </div>
+
+    <div class="overview-strip">
+      <div class="overview-card">
+        <span class="overview-label">当前筛选总量</span>
+        <strong class="overview-value">{{ total }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">当前页日志</span>
+        <strong class="overview-value is-primary">{{ logs.length }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">当前页错误</span>
+        <strong class="overview-value is-danger">{{ currentErrorCount }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">当前页告警</span>
+        <strong class="overview-value is-warning">{{ currentWarningCount }}</strong>
       </div>
     </div>
 
@@ -248,6 +270,13 @@ const exportForm = reactive({
   format: 'json'
 })
 
+const currentErrorCount = computed(() =>
+  logs.value.filter((item) => item.level === 'error' || item.level === 'fatal').length
+)
+const currentWarningCount = computed(() =>
+  logs.value.filter((item) => item.level === 'warn').length
+)
+
 // 生命周期
 onMounted(() => {
   fetchLogs()
@@ -469,13 +498,6 @@ const formatDateTime = (dateStr) => {
 <style scoped>
 .logs-container {
   padding: 20px;
-}
-
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
 }
 
 .actions {

@@ -1,7 +1,10 @@
 <template>
   <div class="traffic-container">
     <div class="header">
-      <h1>流量统计</h1>
+      <div class="page-heading">
+        <h1>流量统计</h1>
+        <p class="page-subtitle">按时间维度查看整体流量趋势和用户流量明细</p>
+      </div>
       <div class="actions">
         <el-date-picker
           v-model="dateRange"

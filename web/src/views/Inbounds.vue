@@ -1,113 +1,195 @@
 <template>
-  <div>
+  <div class="inbounds-page">
     <div class="page-header">
-      <div class="title">协议管理</div>
+      <div class="page-heading">
+        <div class="title">代理服务</div>
+        <div class="page-subtitle">更清晰地查看协议、节点、有效期和分享信息</div>
+      </div>
       <el-button type="primary" class="add-btn" @click="openAddInboundDialog">
-        <el-icon class="el-icon--left"><Plus /></el-icon> 添加协议
+        <el-icon class="el-icon--left"><Plus /></el-icon> 添加代理
       </el-button>
     </div>
-    
+
+    <div class="overview-strip">
+      <div class="overview-card">
+        <span class="overview-label">当前页</span>
+        <strong class="overview-value">{{ paginatedInbounds.length }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">本页运行中</span>
+        <strong class="overview-value is-success">{{ enabledInboundCount }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">本页已停止</span>
+        <strong class="overview-value is-danger">{{ disabledInboundCount }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">总记录</span>
+        <strong class="overview-value">{{ total }}</strong>
+      </div>
+    </div>
+
+    <div class="toolbar-card">
+      <div class="toolbar-filters">
+        <el-input
+          v-model="filters.keyword"
+          clearable
+          class="toolbar-search"
+          placeholder="搜索名称、节点、地址或端口"
+        />
+        <el-select v-model="filters.protocol" clearable placeholder="协议类型">
+          <el-option
+            v-for="option in protocolOptions"
+            :key="option.value"
+            :label="option.label"
+            :value="option.value"
+          />
+        </el-select>
+        <el-select v-model="filters.status" clearable placeholder="运行状态">
+          <el-option label="运行中" value="enabled" />
+          <el-option label="已停止" value="disabled" />
+        </el-select>
+        <el-button @click="resetFilters">重置</el-button>
+        <el-button @click="loadInbounds">刷新</el-button>
+      </div>
+      <div class="toolbar-actions">
+        <span class="toolbar-summary">
+          匹配 {{ filteredInbounds.length }} 条，已选 {{ selectedInboundIds.length }} 条
+        </span>
+        <el-button
+          class="toolbar-batch-btn toolbar-batch-btn--success"
+          :disabled="!selectedInboundIds.length"
+          :loading="batchLoading === 'enable'"
+          @click="runBatchOperation('enable')"
+        >
+          批量启用
+        </el-button>
+        <el-button
+          class="toolbar-batch-btn toolbar-batch-btn--warning"
+          :disabled="!selectedInboundIds.length"
+          :loading="batchLoading === 'disable'"
+          @click="runBatchOperation('disable')"
+        >
+          批量停用
+        </el-button>
+        <el-button
+          class="toolbar-batch-btn toolbar-batch-btn--danger"
+          :disabled="!selectedInboundIds.length"
+          :loading="batchLoading === 'delete'"
+          @click="runBatchOperation('delete')"
+        >
+          批量删除
+        </el-button>
+      </div>
+    </div>
+
     <el-table
+      ref="inboundsTableRef"
       v-loading="loading"
-      :data="inbounds"
+      :data="paginatedInbounds"
       border
-      style="width: 100%"
       stripe
+      class="inbounds-table"
+      row-key="id"
+      :empty-text="filteredInbounds.length ? '当前页暂无数据' : (hasActiveFilters ? '暂无匹配的代理服务' : '暂无代理服务')"
+      @selection-change="handleSelectionChange"
     >
-      <el-table-column prop="remark" label="名称" min-width="120">
+      <el-table-column type="selection" width="48" reserve-selection />
+      <el-table-column label="代理服务" min-width="320">
         <template #default="{ row }">
-          <el-tooltip
-            effect="dark"
-            :content="row.protocol"
-            placement="top"
-          >
-            <span>{{ row.remark }}</span>
-          </el-tooltip>
-        </template>
-      </el-table-column>
-      
-      <el-table-column label="协议类型" width="120" align="center">
-        <template #default="{ row }">
-          <span :class="['protocol-tag', row.protocol]">
-            {{ row.protocol.toUpperCase() }}
-          </span>
-        </template>
-      </el-table-column>
-      
-      <el-table-column prop="port" label="端口" width="100" align="center" />
-      
-      <el-table-column prop="clientCount" label="用户数" width="100" align="center" />
-      
-      <el-table-column prop="created_at" label="创建时间" min-width="150" align="center" />
-
-      <el-table-column label="到期时间" min-width="180" align="center">
-        <template #default="{ row }">
-          <div class="expiry-cell">
-            <span>{{ row.expires_at_display || '-' }}</span>
-            <el-tag v-if="row.expiry_source_label" size="small" type="info">{{ row.expiry_source_label }}</el-tag>
+          <div class="service-cell">
+            <div class="service-cell__header">
+              <span class="service-name" :title="getInboundName(row)">{{ getInboundName(row) }}</span>
+              <span :class="['protocol-tag', normalizeProtocol(row.protocol)]">
+                {{ formatProtocolLabel(row.protocol) }}
+              </span>
+            </div>
+            <div class="service-cell__meta">
+              <span>节点：{{ getInboundNodeLabel(row) }}</span>
+              <span>端口：{{ row.port || '-' }}</span>
+              <span>用户：{{ getInboundClientCount(row) }}</span>
+            </div>
+            <div
+              v-if="getInboundServerDisplay(row)"
+              class="service-cell__server"
+              :title="getInboundServerDisplay(row)"
+            >
+              分享地址：{{ getInboundServerDisplay(row) }}
+            </div>
           </div>
         </template>
       </el-table-column>
 
-      <el-table-column label="流量限制" min-width="160" align="center">
+      <el-table-column label="生命周期" min-width="240">
         <template #default="{ row }">
-          <div class="expiry-cell">
-            <span>{{ row.traffic_limit_display || '-' }}</span>
-            <el-tag v-if="row.traffic_limit_source_label" size="small" type="info">{{ row.traffic_limit_source_label }}</el-tag>
+          <div class="detail-cell">
+            <div class="detail-item">
+              <span class="detail-label">创建时间</span>
+              <span class="detail-value">{{ row.created_at_display || '-' }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">到期时间</span>
+              <span class="detail-value">{{ row.expires_at_display || '未设置' }}</span>
+            </div>
+            <div v-if="row.expiry_source_label" class="detail-tags">
+              <el-tag size="small" effect="plain">{{ row.expiry_source_label }}</el-tag>
+            </div>
           </div>
         </template>
       </el-table-column>
-      
-      <el-table-column label="状态" width="100" align="center">
+
+      <el-table-column label="限制与状态" min-width="220">
         <template #default="{ row }">
-          <span :class="['status-tag', row.enable ? 'running' : 'stopped']">
-            {{ row.enable ? '运行中' : '已停止' }}
-          </span>
+          <div class="detail-cell">
+            <div class="detail-item">
+              <span class="detail-label">流量限制</span>
+              <span class="detail-value">{{ row.traffic_limit_display || '不限制' }}</span>
+            </div>
+            <div class="detail-item detail-item--status">
+              <span class="detail-label">运行状态</span>
+              <span :class="['status-tag', row.enable ? 'running' : 'stopped']">
+                {{ row.enable ? '运行中' : '已停止' }}
+              </span>
+            </div>
+            <div v-if="row.traffic_limit_source_label" class="detail-tags">
+              <el-tag size="small" effect="plain" type="warning">{{ row.traffic_limit_source_label }}</el-tag>
+            </div>
+          </div>
         </template>
       </el-table-column>
-      
-      <el-table-column label="操作" min-width="320" fixed="right">
+
+      <el-table-column label="操作" width="190" align="right">
         <template #default="{ row }">
           <div class="operation-btns">
             <el-button
               size="small"
-              type="primary"
+              class="row-action row-action--primary"
               @click="copyLink(row)"
             >
               链接
             </el-button>
-            
+
             <el-button
               size="small"
-              :type="row.enable ? 'warning' : 'success'"
+              class="row-action"
+              :class="row.enable ? 'row-action--warning' : 'row-action--success'"
               @click="toggleStatus(row)"
             >
-              {{ row.enable ? '停止' : '启动' }}
+              {{ row.enable ? '停用' : '启用' }}
             </el-button>
-            
-            <el-button
-              size="small"
-              type="info"
-              @click="editInbound(row)"
-            >
-              编辑
-            </el-button>
-            
-            <el-button
-              size="small"
-              type="danger"
-              @click="deleteInbound(row)"
-            >
-              删除
-            </el-button>
-            
-            <el-button
-              size="small"
-              type="primary"
-              @click="showQrCode(row)"
-            >
-              二维码
-            </el-button>
+
+            <el-dropdown trigger="click" @command="(command) => handleRowCommand(command, row)">
+              <el-button size="small" class="row-action row-action--more" circle title="更多操作">
+                <el-icon><MoreFilled /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="qr">二维码</el-dropdown-item>
+                  <el-dropdown-item command="edit">编辑</el-dropdown-item>
+                  <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </template>
       </el-table-column>
@@ -120,7 +202,7 @@
         v-model:page-size="pageSize"
         :page-sizes="[10, 20, 50, 100]"
         layout="total, sizes, prev, pager, next, jumper"
-        :total="total"
+        :total="filteredInbounds.length"
         @size-change="handleSizeChange"
         @current-change="handleCurrentChange"
       />
@@ -666,7 +748,7 @@
 import { ref, reactive, onMounted, computed, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { InfoFilled, Plus, Delete } from '@element-plus/icons-vue'
+import { Plus, Delete, MoreFilled } from '@element-plus/icons-vue'
 import api from '@/api/index'
 import QRCode from 'qrcode'
 
@@ -679,6 +761,14 @@ const inbounds = ref([])
 const nodeList = ref([])  // 节点列表
 const certificates = ref([])
 const certificatesLoading = ref(false)
+const inboundsTableRef = ref(null)
+const batchLoading = ref('')
+const selectedInboundIds = ref([])
+const filters = reactive({
+  keyword: '',
+  protocol: '',
+  status: ''
+})
 
 // 表单对话框
 const addInboundDialogVisible = ref(false)
@@ -776,6 +866,25 @@ const inboundForm = reactive({...defaultInboundForm})
 
 const unwrapApiData = (response) => response?.data ?? response ?? null
 const normalizeStringValue = (value) => typeof value === 'string' ? value.trim() : ''
+const normalizeProtocol = (value) => normalizeStringValue(value).toLowerCase()
+const formatProtocolLabel = (value) => {
+  const protocol = normalizeProtocol(value)
+  const labelMap = {
+    vmess: 'VMess',
+    vless: 'VLESS',
+    trojan: 'Trojan',
+    shadowsocks: 'Shadowsocks',
+    'dokodemo-door': 'Dokodemo'
+  }
+  return labelMap[protocol] || (protocol ? protocol.toUpperCase() : '-')
+}
+const protocolOptions = [
+  { label: 'VMess', value: 'vmess' },
+  { label: 'VLESS', value: 'vless' },
+  { label: 'Trojan', value: 'trojan' },
+  { label: 'Shadowsocks', value: 'shadowsocks' },
+  { label: 'Dokodemo', value: 'dokodemo-door' }
+]
 const firstStringValue = (value) => Array.isArray(value) ? normalizeStringValue(value[0]) : normalizeStringValue(value)
 const splitCommaValues = (value) => normalizeStringValue(value)
   .split(',')
@@ -829,7 +938,7 @@ const getExpirySourceLabel = (source) => {
 const formatProxyExpiryDisplay = (expiresAt, expirySource) => {
   if (expiresAt) return formatDateTime(expiresAt)
   if (expirySource === 'subscription') return '不限制'
-  return ''
+  return '未设置'
 }
 const invalidShareHosts = new Set(['', '0.0.0.0', '::', '[::]', '0:0:0:0:0:0:0:0'])
 const normalizeCertificatesResponse = (response) => {
@@ -880,6 +989,95 @@ const getNodeAddressByID = (nodeID) => {
   const node = nodeList.value.find((item) => String(item.id) === String(nodeID))
   return normalizeShareHost(node?.address)
 }
+const getNodeNameByID = (nodeID) => {
+  if (nodeID === null || nodeID === undefined) return ''
+  const node = nodeList.value.find((item) => String(item.id) === String(nodeID))
+  return normalizeStringValue(node?.name)
+}
+const getInboundName = (row = {}) => normalizeStringValue(row.remark || row.name) || `代理 #${row.id ?? '-'}`
+const getInboundClientCount = (row = {}) => {
+  const value = Number(row.clientCount ?? row.client_count ?? 0)
+  return Number.isFinite(value) ? value : 0
+}
+const getInboundNodeLabel = (row = {}) => getNodeNameByID(row.node_id) || '主服务器'
+const getInboundServerDisplay = (row = {}) => {
+  const settings = asObject(row.settings)
+  const candidates = [
+    getNodeAddressByID(row.node_id),
+    getSettingString(settings, 'server', 'add', 'address'),
+    row.server,
+    row.host
+  ]
+
+  for (const candidate of candidates) {
+    const normalized = normalizeShareHost(candidate)
+    if (normalized) return normalized
+  }
+
+  return ''
+}
+const mapInboundRow = (proxy = {}) => {
+  const expirySource = normalizeStringValue(proxy.expiry_source)
+  const trafficLimitSource = normalizeStringValue(proxy.traffic_limit_source || proxy.traffic_source)
+
+  return {
+    ...proxy,
+    remark: getInboundName(proxy),
+    protocol: normalizeProtocol(proxy.protocol),
+    enable: proxy.enabled ?? proxy.enable ?? false,
+    clientCount: getInboundClientCount(proxy),
+    created_at_display: formatDateTime(proxy.created_at) || '-',
+    traffic_limit_source: trafficLimitSource,
+    traffic_limit_source_label: getExpirySourceLabel(trafficLimitSource),
+    traffic_limit_display: formatProxyTrafficDisplay(proxy.traffic_limit),
+    expiry_source: expirySource,
+    expiry_source_label: getExpirySourceLabel(expirySource),
+    expires_at_display: formatProxyExpiryDisplay(proxy.expires_at, expirySource)
+  }
+}
+const filteredInbounds = computed(() => {
+  const keyword = normalizeStringValue(filters.keyword).toLowerCase()
+
+  return inbounds.value.filter((row) => {
+    if (filters.protocol && normalizeProtocol(row.protocol) !== filters.protocol) {
+      return false
+    }
+
+    if (filters.status === 'enabled' && !row.enable) {
+      return false
+    }
+
+    if (filters.status === 'disabled' && row.enable) {
+      return false
+    }
+
+    if (!keyword) {
+      return true
+    }
+
+    const searchable = [
+      getInboundName(row),
+      formatProtocolLabel(row.protocol),
+      getInboundNodeLabel(row),
+      getInboundServerDisplay(row),
+      row.created_at_display,
+      row.expires_at_display,
+      String(row.port ?? ''),
+      row.enable ? '运行中' : '已停止'
+    ]
+
+    return searchable.some((item) => String(item || '').toLowerCase().includes(keyword))
+  })
+})
+const paginatedInbounds = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredInbounds.value.slice(start, start + pageSize.value)
+})
+const enabledInboundCount = computed(() => paginatedInbounds.value.filter((item) => item.enable).length)
+const disabledInboundCount = computed(() => paginatedInbounds.value.length - enabledInboundCount.value)
+const hasActiveFilters = computed(() => Boolean(
+  normalizeStringValue(filters.keyword) || filters.protocol || filters.status
+))
 const availableCertificateOptions = computed(() => certificates.value)
 const firstAvailableCertificateOption = computed(() => availableCertificateOptions.value.find((cert) => !cert.disabled) || null)
 const selectedCertificateOption = computed(() => {
@@ -1053,12 +1251,108 @@ const total = ref(0)
 // 处理分页
 const handleSizeChange = (size) => {
   pageSize.value = size
-  loadInbounds()
+  currentPage.value = 1
 }
 
 const handleCurrentChange = (page) => {
   currentPage.value = page
-  loadInbounds()
+}
+
+const clearSelectionState = async () => {
+  selectedInboundIds.value = []
+  await nextTick()
+  inboundsTableRef.value?.clearSelection()
+}
+
+const syncTableSelection = async () => {
+  await nextTick()
+
+  if (!inboundsTableRef.value) {
+    return
+  }
+
+  inboundsTableRef.value.clearSelection()
+  const selectedIds = new Set(selectedInboundIds.value.map((id) => String(id)))
+
+  paginatedInbounds.value.forEach((row) => {
+    if (selectedIds.has(String(row.id))) {
+      inboundsTableRef.value.toggleRowSelection(row, true)
+    }
+  })
+}
+
+const handleSelectionChange = (rows) => {
+  const currentPageIds = new Set(paginatedInbounds.value.map((row) => String(row.id)))
+  const nextSelectedIds = selectedInboundIds.value.filter((id) => !currentPageIds.has(String(id)))
+
+  rows.forEach((row) => {
+    nextSelectedIds.push(row.id)
+  })
+
+  selectedInboundIds.value = Array.from(new Set(nextSelectedIds))
+}
+
+const resetFilters = () => {
+  filters.keyword = ''
+  filters.protocol = ''
+  filters.status = ''
+}
+
+const runBatchOperation = async (operation) => {
+  if (!selectedInboundIds.value.length || batchLoading.value) {
+    return
+  }
+
+  const actionTextMap = {
+    enable: '启用',
+    disable: '停用',
+    delete: '删除'
+  }
+  const actionText = actionTextMap[operation] || '处理'
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要${actionText}选中的 ${selectedInboundIds.value.length} 个代理服务吗？`,
+      '批量操作确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: operation === 'delete' ? 'warning' : 'info'
+      }
+    )
+  } catch {
+    return
+  }
+
+  batchLoading.value = operation
+  try {
+    await api.post('/proxies/batch', {
+      ids: selectedInboundIds.value,
+      operation
+    })
+    ElMessage.success(`批量${actionText}成功`)
+    await clearSelectionState()
+    await loadInbounds()
+  } catch (error) {
+    console.error(`Failed to batch ${operation} inbounds:`, error)
+    ElMessage.error(`批量${actionText}失败: ` + (error?.message || '未知错误'))
+  } finally {
+    batchLoading.value = ''
+  }
+}
+
+const handleRowCommand = (command, row) => {
+  if (command === 'edit') {
+    editInbound(row)
+    return
+  }
+  if (command === 'qr') {
+    showQrCode(row)
+    return
+  }
+  if (command === 'delete') {
+    deleteInbound(row)
+  }
 }
 
 const consumeRoutePreset = async () => {
@@ -1096,6 +1390,22 @@ onMounted(() => {
 watch(() => [route.query.create, route.query.tls_domain], () => {
   consumeRoutePreset()
 }, { immediate: true })
+
+watch(() => [filters.keyword, filters.protocol, filters.status], async () => {
+  currentPage.value = 1
+  await clearSelectionState()
+})
+
+watch(filteredInbounds, (rows) => {
+  const maxPage = Math.max(1, Math.ceil(rows.length / pageSize.value))
+  if (currentPage.value > maxPage) {
+    currentPage.value = maxPage
+  }
+})
+
+watch(paginatedInbounds, () => {
+  syncTableSelection()
+})
 
 // 加载节点列表
 const loadNodes = async () => {
@@ -1158,56 +1468,78 @@ const loadCertificates = async () => {
 const loadInbounds = async () => {
   loading.value = true
   try {
-    const response = await api.get('/proxies', {
-      params: {
-        limit: pageSize.value,
-        offset: (currentPage.value - 1) * pageSize.value
+    const allRows = []
+    const pageLimit = 200
+    let expectedTotal = 0
+    let offset = 0
+    let requestCount = 0
+
+    while (requestCount < 50) {
+      const response = await api.get('/proxies', {
+        params: {
+          limit: pageLimit,
+          offset
+        }
+      })
+      const data = unwrapApiData(response)
+      const list = Array.isArray(data) ? data : (data?.list || [])
+
+      if (!Array.isArray(list) || list.length === 0) {
+        if (!Array.isArray(data)) {
+          expectedTotal = Number(data?.total || allRows.length)
+        }
+        break
       }
-    })
-    const data = unwrapApiData(response)
-    
-    // 后端返回数组格式
-    if (Array.isArray(data)) {
-      inbounds.value = data.map(p => ({
-        id: p.id,
-        user_id: p.user_id,
-        remark: p.name || p.remark,
-        protocol: p.protocol,
-        port: p.port,
-        host: p.host || '',
-        node_id: p.node_id ?? null,
-        settings: p.settings || {},
-        enable: p.enabled,
-        clientCount: 0,
-        created_at: p.created_at,
-        traffic_limit: p.traffic_limit || 0,
-        traffic_limit_source: p.traffic_limit_source || '',
-        traffic_limit_source_label: getExpirySourceLabel(p.traffic_limit_source),
-        traffic_limit_display: formatProxyTrafficDisplay(p.traffic_limit, p.traffic_limit_source),
-        expires_at: p.expires_at || '',
-        expiry_source: p.expiry_source || '',
-        expiry_source_label: getExpirySourceLabel(p.expiry_source),
-        expires_at_display: formatProxyExpiryDisplay(p.expires_at, p.expiry_source)
-      }))
-      total.value = data.length
-    } else if (data) {
-      inbounds.value = (data.list || []).map(p => ({
-        ...p,
-        user_id: p.user_id,
-        traffic_limit_source_label: getExpirySourceLabel(p.traffic_limit_source),
-        traffic_limit_display: formatProxyTrafficDisplay(p.traffic_limit, p.traffic_limit_source),
-        expiry_source_label: getExpirySourceLabel(p.expiry_source),
-        expires_at_display: formatProxyExpiryDisplay(p.expires_at, p.expiry_source)
-      }))
-      total.value = data.total || 0
+
+      allRows.push(...list)
+      requestCount += 1
+
+      if (Array.isArray(data)) {
+        if (list.length < pageLimit) {
+          break
+        }
+      } else {
+        expectedTotal = Number(data?.total || allRows.length)
+        if (allRows.length >= expectedTotal || list.length < pageLimit) {
+          break
+        }
+      }
+
+      offset += pageLimit
     }
+
+    const dedupedRows = Array.from(new Map(allRows.map((item) => [item.id, item])).values())
+    inbounds.value = dedupedRows.map((p) => mapInboundRow({
+      id: p.id,
+      user_id: p.user_id,
+      name: p.name,
+      remark: p.remark,
+      protocol: p.protocol,
+      port: p.port,
+      host: p.host || '',
+      node_id: p.node_id ?? null,
+      settings: p.settings || {},
+      enabled: p.enabled,
+      clientCount: p.clientCount ?? p.client_count ?? 0,
+      created_at: p.created_at,
+      traffic_limit: p.traffic_limit || 0,
+      traffic_limit_source: p.traffic_limit_source || '',
+      expires_at: p.expires_at || '',
+      expiry_source: p.expiry_source || ''
+    }))
+    total.value = expectedTotal || dedupedRows.length
+    selectedInboundIds.value = selectedInboundIds.value.filter((id) =>
+      inbounds.value.some((row) => String(row.id) === String(id))
+    )
   } catch (error) {
     console.error('Failed to load inbounds:', error)
     ElMessage.error('加载入站列表失败')
     inbounds.value = []
     total.value = 0
+    await clearSelectionState()
   } finally {
     loading.value = false
+    syncTableSelection()
   }
 }
 
@@ -1222,8 +1554,7 @@ const formatTraffic = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-const formatProxyTrafficDisplay = (trafficLimit, source) => {
-  if (!source) return ''
+const formatProxyTrafficDisplay = (trafficLimit) => {
   if (!trafficLimit || trafficLimit <= 0) return '不限制'
   return formatTraffic(trafficLimit)
 }
@@ -1996,178 +2327,414 @@ const downloadQrCode = async () => {
 </script>
 
 <style scoped>
+.inbounds-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding: 10px 16px;
-  background-color: var(--el-bg-color, white);
-  border-radius: 4px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
-  border: 1px solid var(--el-border-color, transparent);
+  gap: 16px;
+  padding: 18px 20px;
+  background: linear-gradient(135deg, #ffffff 0%, #f7faff 100%);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.page-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .title {
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--el-text-color-primary, #333);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--el-text-color-primary, #1f2937);
+  letter-spacing: 0.02em;
+}
+
+.page-subtitle {
+  font-size: 13px;
+  color: var(--el-text-color-secondary, #6b7280);
 }
 
 .add-btn {
   font-size: 13px;
-  padding: 8px 16px;
+  padding: 10px 18px;
 }
 
-/* 表格调整 */
-:deep(.el-table) {
+.overview-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.overview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(248, 250, 252, 0.96) 100%);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+}
+
+.overview-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary, #6b7280);
+}
+
+.overview-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--el-text-color-primary, #111827);
+}
+
+.overview-value.is-success {
+  color: #16a34a;
+}
+
+.overview-value.is-danger {
+  color: #dc2626;
+}
+
+.toolbar-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+}
+
+.toolbar-filters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.toolbar-filters .el-select {
+  width: 140px;
+}
+
+.toolbar-search {
+  width: 280px;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.toolbar-summary {
+  font-size: 12px;
+  color: var(--el-text-color-secondary, #6b7280);
+}
+
+:deep(.toolbar-batch-btn.el-button) {
+  height: 34px;
+  margin: 0;
+  padding: 0 14px !important;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  font-size: 12px;
+}
+
+:deep(.toolbar-batch-btn.el-button.is-disabled) {
+  opacity: 0.5;
+}
+
+:deep(.toolbar-batch-btn--success.el-button) {
+  color: #166534;
+  background: #edfdf3;
+  border-color: #bbf7d0;
+  box-shadow: none;
+}
+
+:deep(.toolbar-batch-btn--warning.el-button) {
+  color: #b45309;
+  background: #fff7ed;
+  border-color: #fed7aa;
+  box-shadow: none;
+}
+
+:deep(.toolbar-batch-btn--danger.el-button) {
+  color: #b91c1c;
+  background: #fef2f2;
+  border-color: #fecaca;
+  box-shadow: none;
+}
+
+:deep(.inbounds-table.el-table) {
+  width: 100%;
+  table-layout: auto;
   background-color: var(--el-bg-color, #fff);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
-  border-radius: 4px;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.05);
   font-size: 13px;
 }
 
-:deep(.el-table th) {
-  background-color: var(--el-fill-color-light, #f5f7fa);
-  padding: 10px 0;
-  font-weight: 500;
-  color: var(--el-text-color-regular, #606266);
-  font-size: 13px;
+:deep(.inbounds-table.el-table--border) {
+  border: 1px solid rgba(148, 163, 184, 0.16);
 }
 
-:deep(.el-table td) {
-  padding: 8px 0;
+:deep(.inbounds-table .el-table__header th) {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #475569;
+  font-size: 12px;
+  letter-spacing: 0.02em;
 }
 
-:deep(.el-table--border) {
-  border: 1px solid var(--el-border-color, #ebeef5);
+:deep(.inbounds-table .el-table__cell) {
+  vertical-align: top;
+}
+
+:deep(.inbounds-table .cell) {
+  padding: 12px 12px;
+  line-height: 1.4;
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:deep(.inbounds-table .el-table__body tr:hover > td) {
+  background-color: #f8fbff;
+}
+
+:deep(.inbounds-table.el-table--striped .el-table__body tr.el-table__row--striped > td) {
+  background-color: #fcfdff;
 }
 
 :deep(.el-button--small) {
-  padding: 5px 11px;
   font-size: 12px;
 }
 
 .protocol-tag {
-  display: inline-block;
-  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
   font-size: 12px;
-  border-radius: 2px;
-  color: #fff;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .protocol-tag.vmess {
-  background-color: #409eff;
+  background-color: #eaf2ff;
+  color: #3568d4;
 }
 
 .protocol-tag.vless {
-  background-color: #67c23a;
+  background-color: #eaf8ef;
+  color: #23935a;
 }
 
 .protocol-tag.trojan {
-  background-color: #e6a23c;
+  background-color: #fff4e5;
+  color: #c97710;
 }
 
 .protocol-tag.shadowsocks {
-  background-color: #f56c6c;
+  background-color: #ffecec;
+  color: #dc4c64;
 }
 
-.protocol-tag.socks {
-  background-color: #909399;
-}
-
-.protocol-tag.http {
-  background-color: #9254de;
+.protocol-tag.dokodemo-door {
+  background-color: #f3f4f6;
+  color: #4b5563;
 }
 
 .status-tag {
-  display: inline-block;
-  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 3px 10px;
+  border-radius: 999px;
   font-size: 12px;
-  border-radius: 2px;
-  color: #fff;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .status-tag.running {
-  background-color: #67c23a;
+  background-color: #edf9f0;
+  color: #1f9d55;
 }
 
 .status-tag.stopped {
-  background-color: #f56c6c;
+  background-color: #fef0f0;
+  color: #d64545;
+}
+
+.service-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.service-cell__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.service-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary, #111827);
+}
+
+.service-cell__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary, #6b7280);
+}
+
+.service-cell__server {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: #334155;
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 10px;
+  padding: 6px 10px;
+}
+
+.detail-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detail-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.detail-item--status {
+  align-items: center;
+}
+
+.detail-label {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--el-text-color-secondary, #6b7280);
+}
+
+.detail-value {
+  text-align: right;
+  font-size: 13px;
+  color: var(--el-text-color-primary, #334155);
+  word-break: break-word;
+}
+
+.detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .operation-btns {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
+  align-items: center;
   flex-wrap: nowrap;
+  gap: 6px;
   width: 100%;
 }
 
 .operation-btns .el-button {
-  margin: 0 2px !important;
-  padding: 4px 8px;
+  margin: 0 !important;
+}
+
+:deep(.operation-btns .el-button) {
+  min-width: 0;
+  height: 30px;
+  padding: 0 11px !important;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+:deep(.operation-btns .row-action.el-button) {
+  border: 1px solid transparent;
   font-size: 12px;
+  font-weight: 600;
 }
 
-:deep(.el-table .operation-btns .el-button) {
-  color: #fff;
+:deep(.operation-btns .row-action--primary.el-button) {
+  color: #1d4ed8;
+  background: #eff6ff;
+  border-color: #bfdbfe;
 }
 
-:deep(.el-table .operation-btns .el-button--primary) {
-  background-color: #409eff;
-  border-color: #409eff;
+:deep(.operation-btns .row-action--success.el-button) {
+  color: #15803d;
+  background: #f0fdf4;
+  border-color: #bbf7d0;
 }
 
-:deep(.el-table .operation-btns .el-button--success) {
-  background-color: #67c23a;
-  border-color: #67c23a;
+:deep(.operation-btns .row-action--warning.el-button) {
+  color: #b45309;
+  background: #fffbeb;
+  border-color: #fde68a;
 }
 
-:deep(.el-table .operation-btns .el-button--warning) {
-  background-color: #e6a23c;
-  border-color: #e6a23c;
-}
-
-:deep(.el-table .operation-btns .el-button--danger) {
-  background-color: #f56c6c;
-  border-color: #f56c6c;
-}
-
-:deep(.el-table .operation-btns .el-button--info) {
-  background-color: #909399;
-  border-color: #909399;
+:deep(.operation-btns .row-action--more.el-button) {
+  width: 30px;
+  min-width: 30px;
+  padding: 0 !important;
+  color: #475569;
+  background: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.2);
 }
 
 .pagination-container {
-  margin-top: 20px;
   display: flex;
   justify-content: flex-end;
+  margin-top: 4px;
 }
 
 :deep(.el-pagination) {
   padding: 10px 0;
-  margin-right: 10px;
   font-weight: normal;
 }
 
 :deep(.el-pagination button) {
-  min-width: 28px;
-  height: 28px;
+  min-width: 30px;
+  height: 30px;
 }
 
 :deep(.el-pagination .el-select .el-input) {
-  width: 100px;
-}
-
-:deep(.el-table--striped .el-table__body tr.el-table__row--striped td) {
-  background-color: var(--el-fill-color-lighter, #fafafa);
-}
-
-:deep(.el-table .cell) {
-  padding: 0 6px;
-  line-height: 20px;
-  white-space: nowrap;
-  overflow: visible;
+  width: 104px;
 }
 
 .form-tip {
@@ -2245,19 +2812,67 @@ const downloadQrCode = async () => {
   margin-bottom: 10px;
 }
 
-/* 确保表格不会压缩内容 */
-:deep(.el-table) {
-  width: 100%;
-  table-layout: fixed;
+@media (max-width: 1200px) {
+  .overview-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .toolbar-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toolbar-actions {
+    justify-content: flex-start;
+  }
+
+  .service-cell__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
-/* 特别优化操作列样式 */
-:deep(.el-table__fixed-right) {
-  box-shadow: none;
-  height: 100% !important;
-}
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
 
-:deep(.el-table__fixed-right-patch) {
-  background-color: #f5f7fa;
+  .overview-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .toolbar-filters,
+  .toolbar-actions {
+    width: 100%;
+  }
+
+  .toolbar-search,
+  .toolbar-filters .el-select {
+    width: 100%;
+  }
+
+  :deep(.inbounds-table .cell) {
+    padding: 12px 10px;
+  }
+
+  .detail-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .detail-value {
+    text-align: left;
+  }
+
+  .operation-btns {
+    justify-content: flex-start;
+  }
+
+  .pagination-container {
+    justify-content: center;
+    overflow-x: auto;
+  }
 }
 </style>

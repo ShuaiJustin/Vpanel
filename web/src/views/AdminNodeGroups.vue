@@ -1,153 +1,194 @@
 <template>
   <div class="admin-node-groups-page">
     <div class="page-header">
-      <h1 class="page-title">节点分组管理</h1>
-      <div class="header-actions">
+      <div class="page-heading">
+        <h1 class="page-title">节点分组管理</h1>
+        <p class="page-subtitle">统一查看地区分组、调度策略、节点健康度和用户规模</p>
+      </div>
+      <div class="page-actions">
         <el-button @click="fetchGroups">
-          <el-icon><Refresh /></el-icon>
+          <el-icon class="el-icon--left"><Refresh /></el-icon>
           刷新
         </el-button>
         <el-button type="primary" @click="showCreateDialog">
-          <el-icon><Plus /></el-icon>
+          <el-icon class="el-icon--left"><Plus /></el-icon>
           创建分组
         </el-button>
       </div>
     </div>
 
-    <!-- 统计卡片 -->
-    <el-row :gutter="20" class="stats-row">
-      <el-col :span="6">
-        <el-card shadow="never" class="stat-card">
-          <div class="stat-content">
-            <div class="stat-value">{{ groupStore.groupCount }}</div>
-            <div class="stat-label">总分组数</div>
-          </div>
-          <el-icon class="stat-icon"><Folder /></el-icon>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="never" class="stat-card">
-          <div class="stat-content">
-            <div class="stat-value">{{ groupStore.totalNodesInGroups }}</div>
-            <div class="stat-label">总节点数</div>
-          </div>
-          <el-icon class="stat-icon"><Monitor /></el-icon>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="never" class="stat-card online">
-          <div class="stat-content">
-            <div class="stat-value">{{ groupStore.totalHealthyNodes }}</div>
-            <div class="stat-label">健康节点</div>
-          </div>
-          <el-icon class="stat-icon"><CircleCheck /></el-icon>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="never" class="stat-card">
-          <div class="stat-content">
-            <div class="stat-value">{{ groupStore.totalUsersInGroups }}</div>
-            <div class="stat-label">总用户数</div>
-          </div>
-          <el-icon class="stat-icon"><User /></el-icon>
-        </el-card>
-      </el-col>
-    </el-row>
+    <div class="overview-strip">
+      <div class="overview-card">
+        <span class="overview-label">当前匹配</span>
+        <strong class="overview-value">{{ displayGroupTotal }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">覆盖节点</span>
+        <strong class="overview-value is-primary">{{ coveredNodeTotal }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">健康节点</span>
+        <strong class="overview-value is-success">{{ healthyNodeTotal }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">覆盖用户</span>
+        <strong class="overview-value">{{ coveredUserTotal }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">空分组</span>
+        <strong class="overview-value is-warning">{{ emptyGroupCount }}</strong>
+      </div>
+    </div>
 
-    <!-- 筛选栏 -->
-    <el-card shadow="never" class="filter-card">
-      <el-row :gutter="16">
-        <el-col :span="6">
-          <el-input
-            v-model="groupStore.filters.search"
-            placeholder="搜索分组名称"
-            clearable
-            @clear="fetchGroups"
-            @keyup.enter="fetchGroups"
-          >
-            <template #prefix>
-              <el-icon><Search /></el-icon>
-            </template>
-          </el-input>
-        </el-col>
-        <el-col :span="4">
-          <el-select v-model="groupStore.filters.region" placeholder="地区" clearable @change="fetchGroups">
-            <el-option v-for="region in groupStore.regions" :key="region" :label="region" :value="region" />
-          </el-select>
-        </el-col>
-        <el-col :span="4">
-          <el-button @click="groupStore.clearFilters(); fetchGroups()">重置</el-button>
-        </el-col>
-      </el-row>
-    </el-card>
+    <div class="toolbar-card">
+      <div class="toolbar-filters">
+        <el-input
+          v-model="groupStore.filters.search"
+          class="toolbar-search"
+          placeholder="搜索分组名称、描述或地区"
+          clearable
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+        <el-select v-model="groupStore.filters.region" placeholder="地区" clearable>
+          <el-option
+            v-for="region in groupStore.regions"
+            :key="region"
+            :label="region"
+            :value="region"
+          />
+        </el-select>
+        <el-select v-model="strategyFilter" placeholder="调度策略" clearable>
+          <el-option
+            v-for="strategy in strategyOptions"
+            :key="strategy.value"
+            :label="strategy.label"
+            :value="strategy.value"
+          />
+        </el-select>
+        <el-button @click="resetFilters">重置</el-button>
+      </div>
+      <div class="toolbar-actions">
+        <span class="toolbar-summary">
+          当前页 {{ paginatedGroups.length }} 个分组，筛选后 {{ displayGroupTotal }} 个，总计 {{ groupStore.total }} 个
+        </span>
+      </div>
+    </div>
 
-    <!-- 分组列表 -->
-    <el-row :gutter="20">
-      <el-col :span="8" v-for="group in groupStore.filteredGroups" :key="group.id">
-        <el-card shadow="hover" class="group-card" @click="viewGroupDetail(group)">
-          <template #header>
-            <div class="group-header">
-              <span class="group-name">{{ group.name }}</span>
-              <el-dropdown @click.stop trigger="click">
-                <el-button link>
+    <div class="groups-shell" v-loading="groupStore.loading">
+      <div v-if="paginatedGroups.length" class="groups-grid">
+        <article
+          v-for="group in paginatedGroups"
+          :key="group.id"
+          class="group-panel"
+          @click="viewGroupDetail(group)"
+        >
+          <div class="group-panel__header">
+            <div class="group-panel__heading">
+              <div class="group-panel__title-row">
+                <h3 class="group-panel__title">{{ group.name }}</h3>
+                <span :class="['metric-pill', getStrategyClass(group.strategy)]">
+                  {{ getStrategyText(group.strategy) }}
+                </span>
+              </div>
+              <div class="group-panel__meta">
+                <span>ID：{{ group.id }}</span>
+                <span>地区：{{ group.region || '未设置地区' }}</span>
+              </div>
+            </div>
+
+            <div class="group-panel__menu" @click.stop>
+              <el-dropdown trigger="click" @command="(command) => handleGroupCommand(command, group)">
+                <el-button size="small" class="row-action row-action--more" circle title="更多操作">
                   <el-icon><MoreFilled /></el-icon>
                 </el-button>
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item @click="editGroup(group)">
-                      <el-icon><Edit /></el-icon>
-                      编辑
-                    </el-dropdown-item>
-                    <el-dropdown-item @click="manageNodes(group)">
-                      <el-icon><Setting /></el-icon>
-                      管理节点
-                    </el-dropdown-item>
-                    <el-dropdown-item divided @click="deleteGroup(group)">
-                      <el-icon><Delete /></el-icon>
-                      删除
-                    </el-dropdown-item>
+                    <el-dropdown-item command="edit">编辑分组</el-dropdown-item>
+                    <el-dropdown-item command="nodes">管理节点</el-dropdown-item>
+                    <el-dropdown-item command="delete" divided>删除分组</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
             </div>
-          </template>
-          <div class="group-content">
-            <div class="group-info">
-              <el-icon><Location /></el-icon>
-              <span>{{ group.region || '未设置地区' }}</span>
+          </div>
+
+          <div class="entity-cell__hint">
+            {{ group.description || getGroupHint(group) }}
+          </div>
+
+          <div class="group-panel__stats">
+            <div class="group-panel__stat">
+              <span class="group-panel__stat-value">{{ getNodeCount(group) }}</span>
+              <span class="group-panel__stat-label">节点</span>
             </div>
-            <div class="group-info">
-              <el-icon><Connection /></el-icon>
-              <span>{{ getStrategyText(group.strategy) }}</span>
+            <div class="group-panel__stat">
+              <span class="group-panel__stat-value is-success">{{ getHealthyCount(group) }}</span>
+              <span class="group-panel__stat-label">健康</span>
             </div>
-            <div class="group-description" v-if="group.description">
-              {{ group.description }}
-            </div>
-            <el-divider />
-            <div class="group-stats">
-              <div class="stat-item">
-                <span class="stat-num">{{ group.total_nodes || group.node_count || 0 }}</span>
-                <span class="stat-text">节点</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-num healthy">{{ group.healthy_nodes || 0 }}</span>
-                <span class="stat-text">健康</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-num">{{ group.total_users || group.user_count || 0 }}</span>
-                <span class="stat-text">用户</span>
-              </div>
+            <div class="group-panel__stat">
+              <span class="group-panel__stat-value">{{ getUserCount(group) }}</span>
+              <span class="group-panel__stat-label">用户</span>
             </div>
           </div>
-        </el-card>
-      </el-col>
-    </el-row>
 
-    <el-empty v-if="!groupStore.loading && groupStore.filteredGroups.length === 0" description="暂无分组" />
+          <div class="group-panel__health">
+            <div class="stack-item">
+              <span class="stack-label">健康占比</span>
+              <span class="stack-value">{{ getHealthRate(group) }}%</span>
+            </div>
+            <el-progress
+              :percentage="getHealthRate(group)"
+              :stroke-width="6"
+              :show-text="false"
+              :status="getHealthProgressStatus(group)"
+            />
+          </div>
 
-    <!-- 创建/编辑对话框 -->
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑分组' : '创建分组'" width="500px">
-      <el-form :model="form" :rules="rules" ref="formRef" label-width="100px">
+          <div class="group-panel__actions" @click.stop>
+            <el-button
+              size="small"
+              class="row-action row-action--primary"
+              @click="viewGroupDetail(group)"
+            >
+              详情
+            </el-button>
+            <el-button
+              size="small"
+              class="row-action row-action--success"
+              @click="manageNodes(group)"
+            >
+              管理节点
+            </el-button>
+          </div>
+        </article>
+      </div>
+
+      <el-empty
+        v-else
+        :description="hasActiveFilters ? '暂无匹配分组' : '暂无分组'"
+      />
+    </div>
+
+    <div v-if="displayGroupTotal > 0" class="pagination-container">
+      <el-pagination
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :total="displayGroupTotal"
+        :page-sizes="[6, 9, 12, 24]"
+        :layout="isMobile ? 'total, prev, next' : 'total, sizes, prev, pager, next'"
+        @size-change="handleSizeChange"
+      />
+    </div>
+
+    <el-dialog
+      v-model="dialogVisible"
+      :title="isEdit ? '编辑分组' : '创建分组'"
+      :width="isMobile ? 'calc(100vw - 24px)' : '520px'"
+    >
+      <el-form :model="form" :rules="rules" ref="formRef" :label-width="isMobile ? '84px' : '100px'">
         <el-form-item label="分组名称" prop="name">
           <el-input v-model="form.name" placeholder="请输入分组名称" />
         </el-form-item>
@@ -155,7 +196,7 @@
           <el-input v-model="form.description" type="textarea" :rows="2" placeholder="请输入分组描述" />
         </el-form-item>
         <el-form-item label="地区" prop="region">
-          <el-select v-model="form.region" filterable allow-create placeholder="选择或输入地区">
+          <el-select v-model="form.region" filterable allow-create placeholder="选择或输入地区" style="width: 100%">
             <el-option label="香港" value="香港" />
             <el-option label="日本" value="日本" />
             <el-option label="新加坡" value="新加坡" />
@@ -166,8 +207,8 @@
             <el-option label="英国" value="英国" />
           </el-select>
         </el-form-item>
-        <el-form-item label="负载均衡策略" prop="strategy">
-          <el-select v-model="form.strategy" placeholder="选择策略">
+        <el-form-item label="调度策略" prop="strategy">
+          <el-select v-model="form.strategy" placeholder="选择策略" style="width: 100%">
             <el-option label="轮询" value="round-robin" />
             <el-option label="最少连接" value="least-connections" />
             <el-option label="加权" value="weighted" />
@@ -181,23 +222,23 @@
       </template>
     </el-dialog>
 
-    <!-- 管理节点对话框 -->
-    <el-dialog v-model="nodesDialogVisible" title="管理分组节点" width="700px">
+    <el-dialog
+      v-model="nodesDialogVisible"
+      title="管理分组节点"
+      :width="isMobile ? 'calc(100vw - 24px)' : '760px'"
+    >
       <div v-if="currentGroup" class="nodes-dialog-content">
-        <div class="dialog-header">
-          <span>分组：{{ currentGroup.name }}</span>
-          <el-input
-            v-model="nodeSearch"
-            placeholder="搜索节点"
-            style="width: 200px;"
-            clearable
-          >
-            <template #prefix>
-              <el-icon><Search /></el-icon>
-            </template>
-          </el-input>
+        <div class="surface-inline nodes-dialog-summary">
+          <div class="stack-item">
+            <span class="stack-label">当前分组</span>
+            <span class="stack-value is-strong">{{ currentGroup.name }}</span>
+          </div>
+          <div class="stack-item">
+            <span class="stack-label">策略 / 地区</span>
+            <span class="stack-value">{{ getStrategyText(currentGroup.strategy) }} / {{ currentGroup.region || '未设置地区' }}</span>
+          </div>
         </div>
-        
+
         <el-transfer
           v-model="selectedNodeIds"
           :data="transferData"
@@ -206,43 +247,54 @@
           filterable
           filter-placeholder="搜索节点"
         />
-        
-        <div class="dialog-footer">
-          <el-button @click="nodesDialogVisible = false">取消</el-button>
-          <el-button type="primary" :loading="savingNodes" @click="saveGroupNodes">保存</el-button>
-        </div>
       </div>
+      <template #footer>
+        <el-button @click="nodesDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingNodes" @click="saveGroupNodes">保存</el-button>
+      </template>
     </el-dialog>
 
-    <!-- 分组详情对话框 -->
-    <el-dialog v-model="detailDialogVisible" title="分组详情" width="600px">
+    <el-dialog
+      v-model="detailDialogVisible"
+      title="分组详情"
+      :width="isMobile ? 'calc(100vw - 24px)' : '680px'"
+    >
       <div v-if="currentGroup" class="group-detail">
-        <el-descriptions :column="2" border>
+        <el-descriptions :column="isMobile ? 1 : 2" border>
           <el-descriptions-item label="ID">{{ currentGroup.id }}</el-descriptions-item>
           <el-descriptions-item label="名称">{{ currentGroup.name }}</el-descriptions-item>
           <el-descriptions-item label="地区">{{ currentGroup.region || '-' }}</el-descriptions-item>
           <el-descriptions-item label="策略">{{ getStrategyText(currentGroup.strategy) }}</el-descriptions-item>
-          <el-descriptions-item label="节点数">{{ currentGroup.total_nodes || 0 }}</el-descriptions-item>
-          <el-descriptions-item label="健康节点">{{ currentGroup.healthy_nodes || 0 }}</el-descriptions-item>
-          <el-descriptions-item label="用户数">{{ currentGroup.total_users || 0 }}</el-descriptions-item>
+          <el-descriptions-item label="节点数">{{ getNodeCount(currentGroup) }}</el-descriptions-item>
+          <el-descriptions-item label="健康节点">{{ getHealthyCount(currentGroup) }}</el-descriptions-item>
+          <el-descriptions-item label="用户数">{{ getUserCount(currentGroup) }}</el-descriptions-item>
           <el-descriptions-item label="创建时间">{{ formatTime(currentGroup.created_at) }}</el-descriptions-item>
-          <el-descriptions-item label="描述" :span="2">{{ currentGroup.description || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="描述" :span="isMobile ? 1 : 2">
+            {{ currentGroup.description || '-' }}
+          </el-descriptions-item>
         </el-descriptions>
-        
-        <div class="group-nodes-section" v-if="groupNodes.length">
-          <h4>分组节点</h4>
-          <el-table :data="groupNodes" size="small" style="width: 100%">
-            <el-table-column prop="name" label="名称" />
-            <el-table-column prop="address" label="地址" />
-            <el-table-column label="状态" width="80">
-              <template #default="{ row }">
-                <el-tag :type="getStatusType(row.status)" size="small">
-                  {{ getStatusText(row.status) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="current_users" label="用户数" width="80" />
-          </el-table>
+
+        <div class="group-nodes-section">
+          <div class="card-header">
+            <span>分组节点</span>
+            <span class="toolbar-summary">当前共 {{ groupNodes.length }} 个节点</span>
+          </div>
+
+          <div v-if="groupNodes.length" class="table-shell">
+            <el-table :data="groupNodes" size="small" border stripe class="group-nodes-table">
+              <el-table-column prop="name" label="名称" min-width="140" />
+              <el-table-column prop="address" label="地址" min-width="160" />
+              <el-table-column label="状态" width="90">
+                <template #default="{ row }">
+                  <span :class="['metric-pill', getNodeStatusClass(row.status)]">
+                    {{ getStatusText(row.status) }}
+                  </span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="current_users" label="用户数" width="90" />
+            </el-table>
+          </div>
+          <el-empty v-else description="该分组暂未分配节点" />
         </div>
       </div>
     </el-dialog>
@@ -250,17 +302,16 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  Plus, Refresh, Search, Folder, Monitor, CircleCheck, User,
-  MoreFilled, Edit, Setting, Delete, Location, Connection
-} from '@element-plus/icons-vue'
+import { MoreFilled, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { useNodeGroupStore } from '@/stores/nodeGroup'
 import { useNodeStore } from '@/stores/node'
+import { useViewport } from '@/composables/useViewport'
 
 const groupStore = useNodeGroupStore()
 const nodeStore = useNodeStore()
+const { isMobile } = useViewport()
 
 const dialogVisible = ref(false)
 const nodesDialogVisible = ref(false)
@@ -271,8 +322,10 @@ const savingNodes = ref(false)
 const formRef = ref(null)
 const currentGroup = ref(null)
 const groupNodes = ref([])
-const nodeSearch = ref('')
 const selectedNodeIds = ref([])
+const strategyFilter = ref('')
+const currentPage = ref(1)
+const pageSize = ref(9)
 
 const form = reactive({
   id: null,
@@ -286,27 +339,90 @@ const rules = {
   name: [{ required: true, message: '请输入分组名称', trigger: 'blur' }]
 }
 
-const transferData = computed(() => {
-  return nodeStore.nodes.map(node => ({
+const strategyOptions = [
+  { label: '轮询', value: 'round-robin' },
+  { label: '最少连接', value: 'least-connections' },
+  { label: '加权', value: 'weighted' },
+  { label: '地理位置', value: 'geographic' }
+]
+
+const transferData = computed(() =>
+  nodeStore.nodes.map((node) => ({
     key: node.id,
     label: `${node.name} (${node.address})`,
     disabled: false
   }))
+)
+
+const displayGroups = computed(() => {
+  if (!strategyFilter.value) {
+    return groupStore.filteredGroups
+  }
+
+  return groupStore.filteredGroups.filter((group) => group.strategy === strategyFilter.value)
 })
+
+const displayGroupTotal = computed(() => displayGroups.value.length)
+const coveredNodeTotal = computed(() => displayGroups.value.reduce((sum, group) => sum + getNodeCount(group), 0))
+const healthyNodeTotal = computed(() => displayGroups.value.reduce((sum, group) => sum + getHealthyCount(group), 0))
+const coveredUserTotal = computed(() => displayGroups.value.reduce((sum, group) => sum + getUserCount(group), 0))
+const emptyGroupCount = computed(() => displayGroups.value.filter((group) => getNodeCount(group) === 0).length)
+const hasActiveFilters = computed(() => Boolean(groupStore.filters.search || groupStore.filters.region || strategyFilter.value))
+const paginatedGroups = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  const end = start + pageSize.value
+  return displayGroups.value.slice(start, end)
+})
+
+const syncCurrentPage = () => {
+  const maxPage = Math.max(1, Math.ceil(displayGroupTotal.value / pageSize.value))
+  if (currentPage.value > maxPage) {
+    currentPage.value = maxPage
+  }
+}
+
+watch(
+  [() => groupStore.filters.search, () => groupStore.filters.region, strategyFilter],
+  () => {
+    currentPage.value = 1
+  }
+)
+
+watch(displayGroupTotal, () => {
+  syncCurrentPage()
+})
+
+const getNodeCount = (group) => Number(group?.total_nodes || group?.node_count || 0)
+const getHealthyCount = (group) => Number(group?.healthy_nodes || 0)
+const getUserCount = (group) => Number(group?.total_users || group?.user_count || 0)
 
 const getStrategyText = (strategy) => {
   const texts = {
     'round-robin': '轮询',
     'least-connections': '最少连接',
-    'weighted': '加权',
-    'geographic': '地理位置'
+    weighted: '加权',
+    geographic: '地理位置'
   }
-  return texts[strategy] || strategy
+  return texts[strategy] || strategy || '未设置'
 }
 
-const getStatusType = (status) => {
-  const types = { online: 'success', offline: 'info', unhealthy: 'danger' }
-  return types[status] || 'info'
+const getStrategyClass = (strategy) => {
+  const classes = {
+    'round-robin': 'is-primary',
+    'least-connections': 'is-success',
+    weighted: 'is-warning',
+    geographic: 'is-muted'
+  }
+  return classes[strategy] || 'is-muted'
+}
+
+const getNodeStatusClass = (status) => {
+  const classes = {
+    online: 'is-success',
+    offline: 'is-muted',
+    unhealthy: 'is-danger'
+  }
+  return classes[status] || 'is-muted'
 }
 
 const getStatusText = (status) => {
@@ -319,9 +435,35 @@ const formatTime = (time) => {
   return new Date(time).toLocaleString('zh-CN')
 }
 
-const filterNodes = (query, item) => {
-  return item.label.toLowerCase().includes(query.toLowerCase())
+const getHealthRate = (group) => {
+  const totalNodes = getNodeCount(group)
+  if (!totalNodes) return 0
+  return Math.round((getHealthyCount(group) / totalNodes) * 100)
 }
+
+const getHealthProgressStatus = (group) => {
+  const rate = getHealthRate(group)
+  if (rate >= 80) return 'success'
+  if (rate >= 50) return 'warning'
+  return 'exception'
+}
+
+const getGroupHint = (group) => {
+  const totalNodes = getNodeCount(group)
+  const totalUsers = getUserCount(group)
+
+  if (!totalNodes) {
+    return '当前分组还没有分配节点，适合先配置地区和策略后再接入节点。'
+  }
+
+  if (!totalUsers) {
+    return `当前已挂 ${totalNodes} 个节点，但暂时没有用户流量进入该分组。`
+  }
+
+  return `当前策略为 ${getStrategyText(group.strategy)}，已承载 ${totalUsers} 个用户连接。`
+}
+
+const filterNodes = (query, item) => item.label.toLowerCase().includes(query.toLowerCase())
 
 const fetchGroups = async () => {
   try {
@@ -337,6 +479,17 @@ const fetchAllNodes = async () => {
   } catch (e) {
     console.error('获取节点列表失败:', e)
   }
+}
+
+const resetFilters = () => {
+  groupStore.clearFilters()
+  strategyFilter.value = ''
+  currentPage.value = 1
+}
+
+const handleSizeChange = (value) => {
+  pageSize.value = value
+  syncCurrentPage()
 }
 
 const showCreateDialog = () => {
@@ -398,18 +551,33 @@ const deleteGroup = async (group) => {
   }
 }
 
+const handleGroupCommand = (command, group) => {
+  if (command === 'edit') {
+    editGroup(group)
+    return
+  }
+
+  if (command === 'nodes') {
+    manageNodes(group)
+    return
+  }
+
+  if (command === 'delete') {
+    deleteGroup(group)
+  }
+}
+
 const manageNodes = async (group) => {
   currentGroup.value = group
   await fetchAllNodes()
-  
-  // 获取当前分组的节点
+
   try {
     const nodes = await groupStore.fetchGroupNodes(group.id)
-    selectedNodeIds.value = nodes.map(n => n.id)
+    selectedNodeIds.value = nodes.map((node) => node.id)
   } catch (e) {
     selectedNodeIds.value = []
   }
-  
+
   nodesDialogVisible.value = true
 }
 
@@ -446,164 +614,165 @@ onMounted(fetchGroups)
   padding: 20px;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
+.groups-shell {
+  min-height: 220px;
 }
 
-.page-title {
-  font-size: 24px;
-  font-weight: 600;
-  margin: 0;
+.groups-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 18px;
 }
 
-.header-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.stats-row {
-  margin-bottom: 20px;
-}
-
-.stat-card {
-  position: relative;
-  overflow: hidden;
-}
-
-.stat-card .stat-content {
-  position: relative;
-  z-index: 1;
-}
-
-.stat-card .stat-value {
-  font-size: 28px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-
-.stat-card .stat-label {
-  font-size: 14px;
-  color: var(--el-text-color-secondary);
-  margin-top: 4px;
-}
-
-.stat-card .stat-icon {
-  position: absolute;
-  right: 20px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 48px;
-  color: var(--el-color-primary-light-7);
-  opacity: 0.6;
-}
-
-.stat-card.online .stat-value {
-  color: var(--el-color-success);
-}
-
-.stat-card.online .stat-icon {
-  color: var(--el-color-success-light-5);
-}
-
-.filter-card {
-  margin-bottom: 20px;
-}
-
-.group-card {
-  margin-bottom: 20px;
+.group-panel {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border-radius: 20px;
+  border: 1px solid var(--admin-border);
+  box-shadow: var(--admin-shadow-soft);
+  background: linear-gradient(180deg, var(--admin-surface-strong) 0%, var(--admin-surface) 100%);
   cursor: pointer;
-  transition: transform 0.2s;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
-.group-card:hover {
-  transform: translateY(-4px);
+.group-panel:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--admin-shadow);
+  border-color: var(--admin-border-strong);
 }
 
-.group-header {
+.group-panel__header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 14px;
 }
 
-.group-name {
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.group-content {
-  min-height: 120px;
-}
-
-.group-info {
+.group-panel__heading {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
-  color: var(--el-text-color-secondary);
-  margin-bottom: 8px;
+  min-width: 0;
 }
 
-.group-description {
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
-  margin-top: 12px;
-  line-height: 1.5;
-}
-
-.group-stats {
+.group-panel__title-row {
   display: flex;
-  justify-content: space-around;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.stat-item {
+.group-panel__title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+  font-weight: 700;
+  color: var(--admin-title);
+}
+
+.group-panel__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 12px;
+  color: var(--admin-text-muted);
+}
+
+.group-panel__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.group-panel__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--admin-border);
+  background: var(--admin-surface-soft);
   text-align: center;
 }
 
-.stat-num {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
+.group-panel__stat-value {
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--admin-title);
 }
 
-.stat-num.healthy {
-  color: var(--el-color-success);
+.group-panel__stat-value.is-success {
+  color: #15803d;
 }
 
-.stat-text {
+.group-panel__stat-label {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
-  display: block;
-  margin-top: 4px;
+  color: var(--admin-text-muted);
+}
+
+.group-panel__health {
+  display: grid;
+  gap: 8px;
+}
+
+.group-panel__actions {
+  display: flex;
+  gap: 10px;
 }
 
 .nodes-dialog-content {
-  padding: 10px 0;
+  display: grid;
+  gap: 16px;
 }
 
-.dialog-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.dialog-footer {
-  margin-top: 20px;
-  text-align: right;
+.nodes-dialog-summary {
+  display: grid;
+  gap: 8px;
 }
 
 .group-detail {
-  padding: 10px 0;
+  display: grid;
+  gap: 20px;
 }
 
 .group-nodes-section {
-  margin-top: 20px;
+  display: grid;
+  gap: 14px;
 }
 
-.group-nodes-section h4 {
-  margin-bottom: 12px;
-  color: var(--el-text-color-primary);
+.group-nodes-table {
+  min-width: 480px;
+}
+
+@media (max-width: 768px) {
+  .admin-node-groups-page {
+    padding: 12px;
+  }
+
+  .groups-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .group-panel {
+    padding: 16px;
+  }
+
+  .group-panel__stats {
+    grid-template-columns: 1fr;
+  }
+
+  .group-panel__actions {
+    flex-direction: column;
+  }
+
+  .group-panel__actions .el-button {
+    width: 100%;
+  }
+
+  .group-nodes-table {
+    min-width: 560px;
+  }
 }
 </style>

@@ -1,134 +1,172 @@
 <template>
   <div class="admin-giftcards-page">
     <div class="page-header">
-      <h1 class="page-title">礼品卡管理</h1>
-      <el-button type="primary" @click="showCreateDialog">
-        <el-icon><Plus /></el-icon>
-        批量创建
-      </el-button>
+      <div class="page-heading">
+        <h1 class="page-title">礼品卡管理</h1>
+        <p class="page-subtitle">统一维护礼品卡批次、状态切换和兑换记录</p>
+      </div>
+      <div class="page-actions">
+        <el-button type="primary" @click="showCreateDialog">
+          <el-icon class="el-icon--left"><Plus /></el-icon>
+          批量创建
+        </el-button>
+      </div>
     </div>
 
-    <!-- 统计卡片 -->
-    <div class="stats-row">
-      <el-card shadow="never" class="stat-card">
-        <div class="stat-value">{{ stats.total_cards || 0 }}</div>
-        <div class="stat-label">总数量</div>
-      </el-card>
-      <el-card shadow="never" class="stat-card stat-card--active">
-        <div class="stat-value">{{ stats.active_cards || 0 }}</div>
-        <div class="stat-label">可用</div>
-      </el-card>
-      <el-card shadow="never" class="stat-card stat-card--redeemed">
-        <div class="stat-value">{{ stats.redeemed_cards || 0 }}</div>
-        <div class="stat-label">已兑换</div>
-      </el-card>
-      <el-card shadow="never" class="stat-card stat-card--value">
-        <div class="stat-value">¥{{ formatPrice(stats.active_value || 0) }}</div>
-        <div class="stat-label">可用面值</div>
-      </el-card>
+    <div class="overview-strip">
+      <div class="overview-card">
+        <span class="overview-label">总数量</span>
+        <strong class="overview-value">{{ stats.total_cards || 0 }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">可用</span>
+        <strong class="overview-value is-success">{{ stats.active_cards || 0 }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">已兑换</span>
+        <strong class="overview-value is-muted">{{ stats.redeemed_cards || 0 }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">可用面值</span>
+        <strong class="overview-value is-primary">¥{{ formatPrice(stats.active_value || 0) }}</strong>
+      </div>
     </div>
 
-    <!-- 筛选 -->
-    <el-card shadow="never" class="filter-card">
-      <el-form :inline="!isMobile" class="filter-form">
-        <el-form-item label="状态">
-          <el-select v-model="filter.status" placeholder="全部" clearable @change="fetchGiftCards">
-            <el-option label="可用" value="active" />
-            <el-option label="已兑换" value="redeemed" />
-            <el-option label="已过期" value="expired" />
-            <el-option label="已禁用" value="disabled" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="批次">
-          <el-input v-model="filter.batch_id" placeholder="批次ID" clearable @change="fetchGiftCards" />
-        </el-form-item>
-      </el-form>
-    </el-card>
+    <div class="toolbar-card">
+      <div class="toolbar-filters">
+        <el-select v-model="filter.status" placeholder="状态" clearable>
+          <el-option label="可用" value="active" />
+          <el-option label="已兑换" value="redeemed" />
+          <el-option label="已过期" value="expired" />
+          <el-option label="已禁用" value="disabled" />
+        </el-select>
+        <el-input v-model="filter.batch_id" class="toolbar-search" placeholder="筛选批次 ID" clearable />
+        <el-button type="primary" @click="applyFilters">筛选</el-button>
+        <el-button @click="resetFilters">重置</el-button>
+      </div>
+      <div class="toolbar-actions">
+        <span class="toolbar-summary">当前页 {{ giftCards.length }} 张礼品卡，共 {{ pagination.total }} 张</span>
+        <el-button @click="handleRefresh">刷新</el-button>
+      </div>
+    </div>
 
-    <!-- 列表 -->
-    <el-card shadow="never">
-      <div class="table-wrap">
-      <el-table :data="giftCards" v-loading="loading" style="width: 100%">
-        <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="code" label="礼品卡码" width="220">
+    <div class="table-shell">
+      <el-table :data="giftCards" v-loading="loading" border stripe class="giftcards-table" row-key="id">
+        <el-table-column label="礼品卡信息" min-width="320">
           <template #default="{ row }">
-            <code class="gc-code">{{ row.code }}</code>
-            <el-button type="primary" link size="small" @click="copyCode(row.code)">
-              <el-icon><CopyDocument /></el-icon>
-            </el-button>
+            <div class="entity-cell">
+              <div class="entity-cell__header">
+                <span class="entity-cell__title">礼品卡 #{{ row.id }}</span>
+                <span :class="['metric-pill', getStatusPillClass(row.status)]">{{ getStatusLabel(row.status) }}</span>
+              </div>
+              <div class="entity-cell__meta">
+                <span>批次：{{ row.batch_id || '-' }}</span>
+              </div>
+              <div class="mono-code">
+                <span class="mono-code__value">{{ row.code }}</span>
+                <el-button text class="inline-copy-btn" @click="copyCode(row.code)">
+                  <el-icon><CopyDocument /></el-icon>
+                </el-button>
+              </div>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column label="面值" width="100">
+
+        <el-table-column label="面值与状态" min-width="220">
           <template #default="{ row }">
-            ¥{{ formatPrice(row.value) }}
+            <div class="stack-cell">
+              <div class="stack-item">
+                <span class="stack-label">面值</span>
+                <span class="stack-value is-strong">¥{{ formatPrice(row.value) }}</span>
+              </div>
+              <div class="stack-item">
+                <span class="stack-label">过期时间</span>
+                <span class="stack-value">{{ row.expires_at ? formatTime(row.expires_at) : '永不过期' }}</span>
+              </div>
+              <div class="entity-cell__hint">
+                {{ row.status === 'redeemed' ? '该礼品卡已完成兑换。' : '可用于后台营销、补偿或线下发卡。' }}
+              </div>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="100">
+
+        <el-table-column label="兑换记录" min-width="220">
           <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)" size="small">
-              {{ getStatusLabel(row.status) }}
-            </el-tag>
+            <div class="stack-cell">
+              <div class="stack-item">
+                <span class="stack-label">兑换时间</span>
+                <span class="stack-value">{{ row.redeemed_at ? formatTime(row.redeemed_at) : '未兑换' }}</span>
+              </div>
+              <div class="stack-item">
+                <span class="stack-label">当前状态</span>
+                <span class="stack-value">{{ getStatusLabel(row.status) }}</span>
+              </div>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column prop="batch_id" label="批次" :min-width="isMobile ? 140 : 180" />
-        <el-table-column label="过期时间" :min-width="isMobile ? 150 : 180">
+
+        <el-table-column label="操作" min-width="170" align="right" fixed="right">
           <template #default="{ row }">
-            {{ row.expires_at ? formatTime(row.expires_at) : '永不过期' }}
-          </template>
-        </el-table-column>
-        <el-table-column v-if="!isMobile" label="兑换时间" width="180">
-          <template #default="{ row }">
-            {{ row.redeemed_at ? formatTime(row.redeemed_at) : '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" :min-width="isMobile ? 120 : 150">
-          <template #default="{ row }">
-            <template v-if="row.status === 'active'">
-              <el-button type="warning" link @click="disableGiftCard(row)">禁用</el-button>
-            </template>
-            <template v-else-if="row.status === 'disabled'">
-              <el-button type="success" link @click="enableGiftCard(row)">启用</el-button>
-            </template>
-            <el-button 
-              v-if="row.status !== 'redeemed'" 
-              type="danger" 
-              link 
-              @click="deleteGiftCard(row)"
-            >删除</el-button>
+            <div class="operation-btns">
+              <el-button
+                v-if="row.status === 'active'"
+                size="small"
+                class="row-action row-action--warning"
+                @click="disableGiftCard(row)"
+              >
+                禁用
+              </el-button>
+              <el-button
+                v-else-if="row.status === 'disabled'"
+                size="small"
+                class="row-action row-action--success"
+                @click="enableGiftCard(row)"
+              >
+                启用
+              </el-button>
+              <el-button
+                v-if="row.status !== 'redeemed'"
+                size="small"
+                class="row-action row-action--danger"
+                @click="deleteGiftCard(row)"
+              >
+                删除
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
-      </div>
+    </div>
 
-      <div v-if="pagination.total > 0" class="pagination-container">
-        <el-pagination
-          v-model:current-page="pagination.page"
-          :total="pagination.total"
-          :page-size="pagination.pageSize"
-          layout="total, prev, pager, next"
-          @current-change="fetchGiftCards"
-        />
-      </div>
-    </el-card>
+    <div v-if="pagination.total > 0" class="pagination-container">
+      <el-pagination
+        v-model:current-page="pagination.page"
+        v-model:page-size="pagination.pageSize"
+        :total="pagination.total"
+        :page-sizes="[10, 20, 50]"
+        layout="total, sizes, prev, pager, next"
+        @current-change="fetchGiftCards"
+        @size-change="handleSizeChange"
+      />
+    </div>
 
-    <!-- 批量创建对话框 -->
     <el-dialog v-model="dialogVisible" title="批量创建礼品卡" :width="isMobile ? 'calc(100vw - 24px)' : '500px'">
       <el-form :model="form" :rules="rules" ref="formRef" :label-width="isMobile ? '76px' : '100px'">
         <el-form-item label="数量" prop="count">
           <el-input-number v-model="form.count" :min="1" :max="1000" />
-          <span style="margin-left: 8px; color: #909399;">最多1000张</span>
+          <span class="form-unit">最多 1000 张</span>
         </el-form-item>
         <el-form-item label="面值" prop="value">
           <el-input-number v-model="form.value" :min="0.01" :precision="2" />
-          <span style="margin-left: 8px;">元</span>
+          <span class="form-unit">元</span>
         </el-form-item>
         <el-form-item label="前缀" prop="prefix">
           <el-input v-model="form.prefix" placeholder="可选，如 GIFT" maxlength="10" />
         </el-form-item>
         <el-form-item label="过期时间" prop="expires_at">
-          <el-date-picker 
-            v-model="form.expires_at" 
-            type="datetime" 
+          <el-date-picker
+            v-model="form.expires_at"
+            type="datetime"
             placeholder="可选，留空永不过期"
             :disabled-date="disabledDate"
           />
@@ -140,7 +178,6 @@
       </template>
     </el-dialog>
 
-    <!-- 创建成功对话框 -->
     <el-dialog v-model="successDialogVisible" title="创建成功" :width="isMobile ? 'calc(100vw - 24px)' : '600px'">
       <div class="success-info">
         <p>成功创建 <strong>{{ createdResult.count }}</strong> 张礼品卡</p>
@@ -196,7 +233,7 @@ const rules = {
   value: [{ required: true, message: '请输入面值', trigger: 'blur' }]
 }
 
-const formatPrice = (price) => (price / 100).toFixed(2)
+const formatPrice = (price) => (Number(price || 0) / 100).toFixed(2)
 const formatTime = (time) => time ? new Date(time).toLocaleString('zh-CN') : '-'
 const disabledDate = (date) => date < new Date()
 const unwrapPayload = (response) => response?.data ?? response ?? {}
@@ -204,6 +241,14 @@ const unwrapPayload = (response) => response?.data ?? response ?? {}
 const getStatusType = (status) => {
   const types = { active: 'success', redeemed: 'info', expired: 'warning', disabled: 'danger' }
   return types[status] || 'info'
+}
+
+const getStatusPillClass = (status) => {
+  const type = getStatusType(status)
+  if (type === 'success') return 'is-success'
+  if (type === 'warning') return 'is-warning'
+  if (type === 'danger') return 'is-danger'
+  return 'is-muted'
 }
 
 const getStatusLabel = (status) => {
@@ -244,6 +289,28 @@ const fetchGiftCards = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const applyFilters = async () => {
+  pagination.page = 1
+  await fetchGiftCards()
+}
+
+const resetFilters = async () => {
+  filter.status = ''
+  filter.batch_id = ''
+  pagination.page = 1
+  await fetchGiftCards()
+}
+
+const handleRefresh = async () => {
+  await Promise.all([fetchGiftCards(), fetchStats()])
+}
+
+const handleSizeChange = async (pageSize) => {
+  pagination.page = 1
+  pagination.pageSize = pageSize
+  await fetchGiftCards()
 }
 
 const showCreateDialog = () => {
@@ -311,7 +378,7 @@ const deleteGiftCard = async (gc) => {
 
 const exportCodes = () => {
   if (!createdResult.value.gift_cards?.length) return
-  const codes = createdResult.value.gift_cards.map(gc => gc.code).join('\n')
+  const codes = createdResult.value.gift_cards.map((gc) => gc.code).join('\n')
   const blob = new Blob([codes], { type: 'text/plain' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -327,156 +394,20 @@ onMounted(() => {
 })
 </script>
 
-
 <style scoped>
 .admin-giftcards-page {
   padding: 20px;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.page-title {
-  font-size: 24px;
-  font-weight: 600;
-  margin: 0;
-}
-
-.stats-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.stat-card {
-  text-align: center;
-}
-
-.stat-card :deep(.el-card__body) {
-  padding: 20px;
-}
-
-.stat-value {
-  font-size: 28px;
-  font-weight: 600;
-  color: #303133;
-}
-
-.stat-label {
-  font-size: 14px;
-  color: #909399;
-  margin-top: 8px;
-}
-
-.stat-card--active .stat-value {
-  color: #67c23a;
-}
-
-.stat-card--redeemed .stat-value {
-  color: #909399;
-}
-
-.stat-card--value .stat-value {
-  color: #409eff;
-}
-
-.filter-card {
-  margin-bottom: 20px;
-}
-
-.filter-card :deep(.el-card__body) {
-  padding: 16px 20px;
-}
-
-.filter-form {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 0 16px;
-}
-
-.filter-form :deep(.el-form-item) {
-  margin-right: 0;
-  margin-bottom: 16px;
-}
-
-.filter-form :deep(.el-select),
-.filter-form :deep(.el-input) {
+.giftcards-table {
   width: 100%;
+  min-width: 980px;
 }
 
-.table-wrap {
-  overflow-x: auto;
-}
-
-.table-wrap :deep(.el-table) {
-  min-width: 860px;
-}
-
-.gc-code {
-  font-family: monospace;
-  background: #f5f7fa;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-.pagination-container {
-  margin-top: 20px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.success-info {
-  margin-bottom: 16px;
-}
-
-.success-info p {
-  margin: 8px 0;
-}
-
-.success-info code {
-  background: #f5f7fa;
-  padding: 2px 8px;
-  border-radius: 4px;
-}
-
-.codes-list {
-  max-height: 300px;
-  overflow-y: auto;
-  border: 1px solid #ebeef5;
-  border-radius: 4px;
-  padding: 12px;
-}
-
-.code-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid #f5f5f5;
-}
-
-.code-item:last-child {
-  border-bottom: none;
-}
-
-.code-item code {
-  font-family: monospace;
-  font-size: 14px;
-  min-width: 0;
-  word-break: break-all;
-}
-
-.more-hint {
-  text-align: center;
-  color: #909399;
-  padding: 12px 0;
+.form-unit {
+  margin-left: 8px;
+  font-size: 12px;
+  color: #64748b;
 }
 
 @media (max-width: 768px) {
@@ -484,22 +415,8 @@ onMounted(() => {
     padding: 12px;
   }
 
-  .filter-card :deep(.el-card__body) {
-    padding: 14px;
-  }
-
-  .table-wrap :deep(.el-table) {
+  .giftcards-table {
     min-width: 760px;
-  }
-
-  .pagination-container {
-    justify-content: center;
-  }
-
-  .code-item {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 8px;
   }
 }
 </style>

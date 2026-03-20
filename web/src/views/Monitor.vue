@@ -1,7 +1,10 @@
 <template>
   <div class="monitor-container">
     <div class="header">
-      <h1>系统监控</h1>
+      <div class="page-heading">
+        <h1>系统监控</h1>
+        <p class="page-subtitle">实时查看 CPU、内存、网络和磁盘运行状态</p>
+      </div>
       <div class="actions">
         <el-button type="primary" @click="refreshStats">刷新</el-button>
         <el-button type="success" @click="startAutoRefresh" v-if="!autoRefresh">自动刷新</el-button>

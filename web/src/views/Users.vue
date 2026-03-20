@@ -1,59 +1,167 @@
 <template>
   <div class="users-container">
     <div class="page-header">
-      <h1>用户管理</h1>
-      <div class="actions">
-        <el-button type="primary" @click="showAddDialog">添加用户</el-button>
+      <div class="page-heading">
+        <h1>用户管理</h1>
+        <p class="page-subtitle">统一维护账户资料、权限角色和启用状态</p>
+      </div>
+    </div>
+
+    <div class="overview-strip">
+      <div class="overview-card">
+        <span class="overview-label">当前匹配</span>
+        <strong class="overview-value">{{ displayTotal }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">管理员</span>
+        <strong class="overview-value is-danger">{{ adminUserCount }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">启用中</span>
+        <strong class="overview-value is-success">{{ enabledUserCount }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">已禁用</span>
+        <strong class="overview-value is-muted">{{ disabledUserCount }}</strong>
+      </div>
+    </div>
+
+    <div class="toolbar-card">
+      <div class="toolbar-filters">
         <el-input
           v-model="searchQuery"
-          class="search-input"
+          class="toolbar-search"
           placeholder="搜索用户名或邮箱"
           clearable
-          @input="handleSearch"
+          @input="handleFilterChange"
         >
           <template #prefix>
             <el-icon><Search /></el-icon>
           </template>
         </el-input>
+        <el-select
+          v-model="roleFilter"
+          clearable
+          placeholder="角色"
+          @change="handleFilterChange"
+        >
+          <el-option label="管理员" value="admin" />
+          <el-option label="普通用户" value="user" />
+        </el-select>
+        <el-select
+          v-model="statusFilter"
+          clearable
+          placeholder="状态"
+          @change="handleFilterChange"
+        >
+          <el-option label="启用中" value="enabled" />
+          <el-option label="已禁用" value="disabled" />
+        </el-select>
+        <el-button @click="resetFilters">重置</el-button>
+      </div>
+      <div class="toolbar-actions">
+        <span class="toolbar-summary">当前筛选 {{ displayTotal }} 个账户，当前页 {{ paginatedUsers.length }} 个</span>
+        <el-button type="primary" @click="showAddDialog">添加用户</el-button>
       </div>
     </div>
 
-    <div class="users-table-wrap">
-      <el-table :data="paginatedUsers" border v-loading="loading" class="users-table">
-      <el-table-column prop="username" label="用户名" min-width="140" />
-      <el-table-column prop="email" label="邮箱" :min-width="isCompact ? 180 : 220" />
-      <el-table-column prop="role" label="角色" :width="isCompact ? 96 : 110">
-        <template #default="{ row }">
-          <el-tag :type="row.role === 'admin' ? 'danger' : 'primary'">
-            {{ row.role === 'admin' ? '管理员' : '普通用户' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column v-if="showMetaColumns" prop="created" label="创建时间" width="180" />
-      <el-table-column v-if="showMetaColumns" prop="lastLogin" label="最后登录" width="180" />
-      <el-table-column prop="status" label="状态" :width="isCompact ? 90 : 100">
-        <template #default="{ row }">
-          <el-tag :type="row.status ? 'success' : 'danger'">
-            {{ row.status ? '启用' : '禁用' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" :min-width="isCompact ? 250 : 320">
-        <template #default="{ row }">
-          <el-space wrap class="row-actions">
-            <el-button size="small" type="primary" @click="handleEdit(row)">编辑</el-button>
-            <el-button size="small" @click="handleResetPassword(row)">重置密码</el-button>
-            <el-button
-              size="small"
-              :type="row.status ? 'warning' : 'success'"
-              @click="handleToggleStatus(row)"
-            >
-              {{ row.status ? '禁用' : '启用' }}
-            </el-button>
-            <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
-          </el-space>
-        </template>
-      </el-table-column>
+    <div class="users-table-wrap table-shell">
+      <el-table
+        :data="paginatedUsers"
+        border
+        stripe
+        row-key="id"
+        v-loading="loading"
+        class="users-table"
+        :empty-text="displayTotal ? '当前页暂无数据' : (hasActiveFilters ? '暂无匹配用户' : '暂无用户')"
+      >
+        <el-table-column label="用户信息" min-width="280">
+          <template #default="{ row }">
+            <div class="entity-cell">
+              <div class="entity-cell__header">
+                <span class="entity-cell__title" :title="row.username">{{ row.username }}</span>
+                <span :class="['metric-pill', row.role === 'admin' ? 'is-danger' : 'is-primary']">
+                  {{ row.role === 'admin' ? '管理员' : '普通用户' }}
+                </span>
+              </div>
+              <div class="entity-cell__meta">
+                <span>ID：{{ row.id }}</span>
+                <span :title="row.email">邮箱：{{ row.email }}</span>
+              </div>
+              <div class="entity-cell__hint">
+                {{ getUserHint(row) }}
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="账户概况" min-width="220">
+          <template #default="{ row }">
+            <div class="stack-cell">
+              <div class="stack-item">
+                <span class="stack-label">创建时间</span>
+                <span class="stack-value">{{ row.created }}</span>
+              </div>
+              <div class="stack-item">
+                <span class="stack-label">最后登录</span>
+                <span class="stack-value">{{ row.lastLogin }}</span>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="状态与权限" min-width="220">
+          <template #default="{ row }">
+            <div class="stack-cell">
+              <div class="stack-item stack-item--inline">
+                <span class="stack-label">账户状态</span>
+                <span :class="['metric-pill', row.status ? 'is-success' : 'is-muted']">
+                  {{ row.status ? '启用中' : '已禁用' }}
+                </span>
+              </div>
+              <div class="stack-item">
+                <span class="stack-label">后台权限</span>
+                <span class="stack-value is-strong">{{ row.role === 'admin' ? '完整管理权限' : '普通使用权限' }}</span>
+              </div>
+              <div class="entity-cell__hint">
+                {{ row.role === 'admin' ? '可访问后台管理和系统配置。' : '仅用于前台订阅与面板使用。' }}
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="操作" width="190" align="right" fixed="right">
+          <template #default="{ row }">
+            <div class="operation-btns">
+              <el-button
+                size="small"
+                class="row-action row-action--primary"
+                @click="handleEdit(row)"
+              >
+                编辑
+              </el-button>
+              <el-button
+                size="small"
+                class="row-action"
+                :class="row.status ? 'row-action--warning' : 'row-action--success'"
+                @click="handleToggleStatus(row)"
+              >
+                {{ row.status ? '禁用' : '启用' }}
+              </el-button>
+              <el-dropdown trigger="click" @command="(command) => handleRowCommand(command, row)">
+                <el-button size="small" class="row-action row-action--more" circle title="更多操作">
+                  <el-icon><MoreFilled /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="resetPassword">重置密码</el-dropdown-item>
+                    <el-dropdown-item command="delete" divided>删除用户</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
+          </template>
+        </el-table-column>
       </el-table>
     </div>
 
@@ -115,7 +223,7 @@
 <script setup>
 import { computed, h, nextTick, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search } from '@element-plus/icons-vue'
+import { MoreFilled, Search } from '@element-plus/icons-vue'
 import { usersApi } from '@/api'
 import { useViewport } from '@/composables/useViewport'
 
@@ -127,6 +235,8 @@ const saving = ref(false)
 const dialogVisible = ref(false)
 const dialogType = ref('add')
 const searchQuery = ref('')
+const roleFilter = ref('')
+const statusFilter = ref('')
 const currentPage = ref(1)
 const pageSize = ref(10)
 const userFormRef = ref(null)
@@ -182,19 +292,22 @@ const normalizeUser = (user) => ({
 
 const filteredUsers = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
-  if (!query) {
-    return users.value
-  }
 
-  return users.value.filter(user =>
-    user.username.toLowerCase().includes(query) ||
-    user.email.toLowerCase().includes(query)
-  )
+  return users.value.filter((user) => {
+    const matchesQuery = !query || user.username.toLowerCase().includes(query) || user.email.toLowerCase().includes(query)
+    const matchesRole = !roleFilter.value || user.role === roleFilter.value
+    const matchesStatus = !statusFilter.value || (statusFilter.value === 'enabled' ? user.status : !user.status)
+
+    return matchesQuery && matchesRole && matchesStatus
+  })
 })
 
 const displayTotal = computed(() => filteredUsers.value.length)
+const hasActiveFilters = computed(() => Boolean(searchQuery.value.trim() || roleFilter.value || statusFilter.value))
 const isCompact = computed(() => viewportWidth.value <= 1366)
-const showMetaColumns = computed(() => viewportWidth.value > 1200)
+const adminUserCount = computed(() => filteredUsers.value.filter((user) => user.role === 'admin').length)
+const enabledUserCount = computed(() => filteredUsers.value.filter((user) => user.status).length)
+const disabledUserCount = computed(() => filteredUsers.value.filter((user) => !user.status).length)
 
 const paginatedUsers = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
@@ -212,6 +325,18 @@ const syncCurrentPage = () => {
 const clearFormValidation = async () => {
   await nextTick()
   userFormRef.value?.clearValidate()
+}
+
+const getUserHint = (user) => {
+  if (!user.status) {
+    return '当前账户已禁用，不允许登录和订阅。'
+  }
+
+  if (user.lastLogin === '-') {
+    return '账户已创建，但暂时没有登录记录。'
+  }
+
+  return `最近一次登录时间：${user.lastLogin}`
 }
 
 const fetchUsers = async () => {
@@ -376,7 +501,26 @@ const handleDelete = async (row) => {
   }
 }
 
-const handleSearch = () => {
+const handleRowCommand = (command, row) => {
+  if (command === 'resetPassword') {
+    handleResetPassword(row)
+    return
+  }
+
+  if (command === 'delete') {
+    handleDelete(row)
+  }
+}
+
+const handleFilterChange = () => {
+  currentPage.value = 1
+  syncCurrentPage()
+}
+
+const resetFilters = () => {
+  searchQuery.value = ''
+  roleFilter.value = ''
+  statusFilter.value = ''
   currentPage.value = 1
 }
 
@@ -397,61 +541,20 @@ onMounted(fetchUsers)
   padding: 20px;
 }
 
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.page-header h1 {
-  margin: 0;
-}
-
-.actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 12px;
-  min-width: 0;
-}
-
-.search-input {
-  width: 260px;
-}
-
-.users-table-wrap {
-  width: 100%;
-  overflow-x: auto;
-}
-
 .users-table {
   width: 100%;
-  min-width: 720px;
+  min-width: 900px;
 }
 
 :deep(.users-table .cell) {
   word-break: break-word;
 }
 
-:deep(.row-actions) {
-  row-gap: 8px;
-}
-
-.pagination-container {
-  margin-top: 20px;
-  display: flex;
-  justify-content: center;
-}
-
 :deep(.temp-password-code) {
   display: inline-block;
   margin-top: 4px;
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: 10px;
   background: #f5f7fa;
   color: #111827;
   font-size: 14px;
@@ -462,23 +565,8 @@ onMounted(fetchUsers)
     padding: 12px;
   }
 
-  .page-header {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .actions {
-    align-items: stretch;
-    flex-direction: column;
-    width: 100%;
-  }
-
-  .search-input {
-    width: 100%;
-  }
-
   .users-table {
-    min-width: 560px;
+    min-width: 720px;
   }
 }
 </style>
