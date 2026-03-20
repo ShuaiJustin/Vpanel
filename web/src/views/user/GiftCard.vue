@@ -137,8 +137,8 @@ const fetchGiftCards = async () => {
       page: pagination.page,
       page_size: pagination.pageSize
     })
-    giftCards.value = res.data.gift_cards || []
-    pagination.total = res.data.total || 0
+    giftCards.value = res.gift_cards || []
+    pagination.total = res.total || 0
   } catch (error) {
     console.error('Failed to fetch gift cards:', error)
   } finally {
@@ -158,7 +158,7 @@ const handleRedeem = async () => {
 
   try {
     const res = await giftCardsApi.redeem({ code })
-    redeemResult.value = res.data
+    redeemResult.value = res
     showSuccessDialog.value = true
     redeemCode.value = ''
     // 刷新列表

@@ -4,6 +4,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -85,7 +86,7 @@ func (h *CouponHandler) ValidateCoupon(c *gin.Context) {
 
 // CreateCouponRequest represents a request to create a coupon.
 type CreateCouponRequest struct {
-	Code           string  `json:"code" binding:"required"`
+	Code           string  `json:"code"`
 	Name           string  `json:"name" binding:"required"`
 	Type           string  `json:"type" binding:"required"`
 	Value          int64   `json:"value" binding:"required"`
@@ -97,6 +98,24 @@ type CreateCouponRequest struct {
 	StartAt        string  `json:"start_at" binding:"required"`
 	ExpireAt       string  `json:"expire_at" binding:"required"`
 	IsActive       bool    `json:"is_active"`
+}
+
+func parseCouponTimestamp(value string) (time.Time, error) {
+	parsed, err := time.Parse("2006-01-02 15:04:05", value)
+	if err == nil {
+		return parsed, nil
+	}
+
+	return time.Parse("2006-01-02", value)
+}
+
+func normalizeCouponType(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "percent":
+		return coupon.TypePercentage
+	default:
+		return strings.ToLower(strings.TrimSpace(value))
+	}
 }
 
 // ListCoupons returns all coupons (admin only).
@@ -127,22 +146,18 @@ func (h *CouponHandler) CreateCoupon(c *gin.Context) {
 		return
 	}
 
-	startAt, err := time.Parse("2006-01-02 15:04:05", req.StartAt)
+	startAt, err := parseCouponTimestamp(req.StartAt)
 	if err != nil {
-		startAt, err = time.Parse("2006-01-02", req.StartAt)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid start_at format. Use YYYY-MM-DD or YYYY-MM-DD HH:MM:SS"})
-			return
-		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid start_at format. Use YYYY-MM-DD or YYYY-MM-DD HH:MM:SS"})
+		return
 	}
-	expireAt, err := time.Parse("2006-01-02 15:04:05", req.ExpireAt)
+	expireAt, err := parseCouponTimestamp(req.ExpireAt)
 	if err != nil {
-		expireAt, err = time.Parse("2006-01-02", req.ExpireAt)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid expire_at format. Use YYYY-MM-DD or YYYY-MM-DD HH:MM:SS"})
-			return
-		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid expire_at format. Use YYYY-MM-DD or YYYY-MM-DD HH:MM:SS"})
+		return
 	}
+
+	req.Type = normalizeCouponType(req.Type)
 
 	// Validate time range
 	if expireAt.Before(startAt) {
@@ -162,6 +177,7 @@ func (h *CouponHandler) CreateCoupon(c *gin.Context) {
 		PlanIDs:        req.PlanIDs,
 		StartAt:        startAt,
 		ExpireAt:       expireAt,
+		IsActive:       req.IsActive,
 	}
 
 	cp, err := h.couponService.Create(c.Request.Context(), createReq)
@@ -172,6 +188,63 @@ func (h *CouponHandler) CreateCoupon(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"coupon": h.toCouponResponse(cp)})
+}
+
+// UpdateCoupon updates a coupon (admin only).
+func (h *CouponHandler) UpdateCoupon(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid coupon ID"})
+		return
+	}
+
+	var req CreateCouponRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	startAt, err := parseCouponTimestamp(req.StartAt)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid start_at format. Use YYYY-MM-DD or YYYY-MM-DD HH:MM:SS"})
+		return
+	}
+	expireAt, err := parseCouponTimestamp(req.ExpireAt)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid expire_at format. Use YYYY-MM-DD or YYYY-MM-DD HH:MM:SS"})
+		return
+	}
+
+	req.Type = normalizeCouponType(req.Type)
+
+	if expireAt.Before(startAt) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "expire_at must be after start_at"})
+		return
+	}
+
+	updateReq := &coupon.CreateCouponRequest{
+		Code:           req.Code,
+		Name:           req.Name,
+		Type:           req.Type,
+		Value:          req.Value,
+		MinOrderAmount: req.MinOrderAmount,
+		MaxDiscount:    req.MaxDiscount,
+		TotalLimit:     req.TotalLimit,
+		PerUserLimit:   req.PerUserLimit,
+		PlanIDs:        req.PlanIDs,
+		StartAt:        startAt,
+		ExpireAt:       expireAt,
+		IsActive:       req.IsActive,
+	}
+
+	cp, err := h.couponService.Update(c.Request.Context(), id, updateReq)
+	if err != nil {
+		h.logger.Error("Failed to update coupon", logger.Err(err), logger.F("id", id))
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"coupon": h.toCouponResponse(cp)})
 }
 
 // DeleteCoupon deletes a coupon (admin only).

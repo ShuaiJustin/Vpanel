@@ -937,7 +937,7 @@ const startXray = async () => {
     
     const response = await api.post('/xray/start')
     
-    if (response.data) {
+    if (response) {
       ElMessage.success('Xray 服务已启动')
       xraySettings.running = true
       
@@ -970,7 +970,7 @@ const stopXray = async () => {
     
     const response = await api.post('/xray/stop')
     
-    if (response.data) {
+    if (response) {
       ElMessage.success('Xray 服务已停止')
       xraySettings.running = false
       
@@ -1065,7 +1065,7 @@ const restartXray = async () => {
       const startResponse = await api.post('/xray/start', {}, { timeout: startTimeout })
       
       // 检查启动是否成功
-      if (startResponse.data && startResponse.data.success) {
+      if (startResponse) {
         ElMessage.success({
           message: 'Xray 服务已成功重启',
           duration: 3000
@@ -1076,7 +1076,7 @@ const restartXray = async () => {
           refreshXrayVersions()
         }, 1000)
       } else {
-        throw new Error(startResponse.data?.message || '启动服务失败，服务器返回非成功状态')
+        throw new Error(startResponse.message || '启动服务失败，服务器返回非成功状态')
       }
     } catch (startError) {
       console.error('Failed to start Xray:', startError)
@@ -1094,7 +1094,7 @@ const restartXray = async () => {
         
         try {
           const statusResponse = await api.get('/xray/status', { timeout: 10000 })
-          if (statusResponse.data && statusResponse.data.running) {
+          if (statusResponse.running) {
             // 服务实际上已经在运行
             ElMessage.success('Xray服务已成功启动，但响应超时')
             setTimeout(() => {
@@ -1122,7 +1122,7 @@ const restartXray = async () => {
           await refreshXrayVersions()
           // 再次尝试启动
           const retryResponse = await api.post('/xray/start', {}, { timeout: startTimeout })
-          if (retryResponse.data && retryResponse.data.success) {
+          if (retryResponse) {
             ElMessage.success('Xray服务已在刷新版本后成功启动')
             setTimeout(() => {
               refreshXrayVersions()
@@ -1197,16 +1197,18 @@ const restartXray = async () => {
 }
 
 // 执行版本切换
-const performVersionSwitch = async (skipConfirm = false) => {
+const performVersionSwitch = async () => {
   try {
-    const response = await api.switchXrayVersion(xraySettings.selectedVersion);
-    if (response.data.success) {
+    const response = await api.post('/xray/switch-version', {
+      version: xraySettings.selectedVersion
+    })
+    if (response.success) {
       ElMessage.success(`已成功切换到版本 ${xraySettings.selectedVersion}`);
       // 更新当前版本
       xraySettings.currentVersion = xraySettings.selectedVersion;
       return true;
     } else {
-      ElMessage.error(response.data.message || '切换版本失败');
+      ElMessage.error(response.message || '切换版本失败');
       return false;
     }
   } catch (error) {
@@ -1341,7 +1343,6 @@ const loadXrayVersions = async () => {
     // 从API获取Xray版本信息
     try {
       const response = await api.get('/xray/versions')
-      // 注意：axios拦截器已经返回了response.data
       if (response && response.current_version) {
         xraySettings.currentVersion = response.current_version
       }
@@ -1402,7 +1403,6 @@ const syncVersionsFromGitHub = async () => {
     // 调用后端API同步版本
     const response = await api.post('/xray/sync-versions', {}, { timeout: 60000 })
     
-    // 注意：axios拦截器已经返回了response.data，所以直接使用response
     if (response && response.success) {
       // 同步成功，更新版本列表
       if (Array.isArray(response.versions) && response.versions.length > 0) {
@@ -1475,30 +1475,27 @@ const loadXraySettings = async () => {
     console.log('开始加载Xray设置，当前值：', { ...xraySettings });
     
     const response = await api.get('/settings/xray');
-    
-    if (response.data) {
-      // 确保使用正确的属性名从API响应获取数据
-      const newAutoUpdate = response.data.auto_update ?? false;
-      const newCustomConfig = response.data.custom_config ?? false;
-      const newConfigPath = response.data.config_path || '';
-      const newCheckInterval = response.data.check_interval || 24;
-      
-      // 将API返回值与当前值进行比较
-      console.log('Xray设置对比：', {
-        autoUpdate: { old: xraySettings.autoUpdate, new: newAutoUpdate },
-        customConfig: { old: xraySettings.customConfig, new: newCustomConfig },
-        configPath: { old: xraySettings.configPath, new: newConfigPath },
-        checkInterval: { old: xraySettings.checkInterval, new: newCheckInterval }
-      });
-      
-      // 设置新值
-      xraySettings.autoUpdate = newAutoUpdate;
-      xraySettings.customConfig = newCustomConfig;
-      xraySettings.configPath = newConfigPath;
-      xraySettings.checkInterval = newCheckInterval;
-      
-      console.log('Xray设置加载完成:', { ...xraySettings });
-    }
+
+    const newAutoUpdate = response.auto_update ?? false;
+    const newCustomConfig = response.custom_config ?? false;
+    const newConfigPath = response.config_path || '';
+    const newCheckInterval = response.check_interval || 24;
+
+    // 将API返回值与当前值进行比较
+    console.log('Xray设置对比：', {
+      autoUpdate: { old: xraySettings.autoUpdate, new: newAutoUpdate },
+      customConfig: { old: xraySettings.customConfig, new: newCustomConfig },
+      configPath: { old: xraySettings.configPath, new: newConfigPath },
+      checkInterval: { old: xraySettings.checkInterval, new: newCheckInterval }
+    });
+
+    // 设置新值
+    xraySettings.autoUpdate = newAutoUpdate;
+    xraySettings.customConfig = newCustomConfig;
+    xraySettings.configPath = newConfigPath;
+    xraySettings.checkInterval = newCheckInterval;
+
+    console.log('Xray设置加载完成:', { ...xraySettings });
   } catch (error) {
     console.error('Failed to load Xray settings:', error);
   }
@@ -1512,7 +1509,6 @@ const refreshXrayVersions = async () => {
     
     // 获取版本列表
     const response = await api.get('/xray/versions');
-    // 注意：axios拦截器已经返回了response.data
     if (response) {
       // 确保数据有效
       if (Array.isArray(response.supported_versions) && response.supported_versions.length > 0) {
@@ -1563,7 +1559,6 @@ const refreshXrayVersions = async () => {
 const refreshXrayStatus = async () => {
   try {
     const response = await api.get('/xray/status');
-    // 注意：axios拦截器已经返回了response.data
     if (response) {
       xraySettings.running = response.running || false;
       
@@ -1899,16 +1894,6 @@ const saveSecuritySettings = async () => {
   }
 }
 
-// 切换Xray版本
-const switchXrayVersion = async () => {
-  xraySettings.switching = true;
-  try {
-    await performVersionSwitch();
-  } finally {
-    xraySettings.switching = false;
-  }
-};
-
 // 测试自定义配置
 const testCustomConfig = async () => {
   if (!xraySettings.configPath) {
@@ -1943,7 +1928,7 @@ const saveXraySettings = async () => {
     // 发送正确的属性名与API匹配
     const response = await api.post('/settings/xray', requestData);
     
-    console.log('保存设置响应数据:', response.data);
+    console.log('保存设置响应数据:', response);
     
     // 保存成功后立即重新获取设置以验证
     await refreshXraySettings();
@@ -1970,22 +1955,20 @@ const saveXraySettings = async () => {
 const loadProtocolSettings = async () => {
   try {
     const response = await api.get('/settings/protocols')
-    if (response.data) {
-      // 协议设置
-      protocolSettings.enableTrojan = response.data.protocols?.trojan ?? true
-      protocolSettings.enableVMess = response.data.protocols?.vmess ?? true
-      protocolSettings.enableVLESS = response.data.protocols?.vless ?? true
-      protocolSettings.enableShadowsocks = response.data.protocols?.shadowsocks ?? true
-      protocolSettings.enableSocks = response.data.protocols?.socks ?? false
-      protocolSettings.enableHTTP = response.data.protocols?.http ?? false
-      
-      // 传输层设置
-      transportSettings.enableTCP = response.data.transports?.tcp ?? true
-      transportSettings.enableWebSocket = response.data.transports?.ws ?? true
-      transportSettings.enableHTTP2 = response.data.transports?.http2 ?? true
-      transportSettings.enableGRPC = response.data.transports?.grpc ?? true
-      transportSettings.enableQUIC = response.data.transports?.quic ?? false
-    }
+    // 协议设置
+    protocolSettings.enableTrojan = response.protocols?.trojan ?? true
+    protocolSettings.enableVMess = response.protocols?.vmess ?? true
+    protocolSettings.enableVLESS = response.protocols?.vless ?? true
+    protocolSettings.enableShadowsocks = response.protocols?.shadowsocks ?? true
+    protocolSettings.enableSocks = response.protocols?.socks ?? false
+    protocolSettings.enableHTTP = response.protocols?.http ?? false
+    
+    // 传输层设置
+    transportSettings.enableTCP = response.transports?.tcp ?? true
+    transportSettings.enableWebSocket = response.transports?.ws ?? true
+    transportSettings.enableHTTP2 = response.transports?.http2 ?? true
+    transportSettings.enableGRPC = response.transports?.grpc ?? true
+    transportSettings.enableQUIC = response.transports?.quic ?? false
   } catch (error) {
     console.error('Failed to load protocol settings:', error)
     ElMessage.error('加载协议设置失败')
@@ -2057,9 +2040,9 @@ const toggleAutoUpdate = async (newValue) => {
     // 发送请求
     const response = await api.post('/settings/xray', requestData);
     
-    console.log('自动更新响应数据:', response.data);
+    console.log('自动更新响应数据:', response);
     
-    if (response.data && response.data.success) {
+    if (response.success) {
       ElMessage.success(`自动更新已${newValue ? '启用' : '禁用'}`);
       
       // 设置一个延迟后再刷新设置，确保后端已完成持久化
@@ -2067,20 +2050,20 @@ const toggleAutoUpdate = async (newValue) => {
         try {
           // 进行多次验证确保设置生效
           const verify1 = await api.get('/settings/xray');
-          console.log('验证1结果:', verify1.data);
+          console.log('验证1结果:', verify1);
           
           // 再次刷新设置
           await refreshXraySettings();
           
           // 最终验证
           const verify2 = await api.get('/settings/xray');
-          console.log('验证2结果:', verify2.data);
+          console.log('验证2结果:', verify2);
           
           // 检查设置是否一致
-          if (verify2.data.auto_update !== newValue) {
+          if (verify2.auto_update !== newValue) {
             console.error('设置验证失败，值不一致:', {
               expected: newValue,
-              actual: verify2.data.auto_update
+              actual: verify2.auto_update
             });
             ElMessage.warning('设置可能未正确保存，请刷新页面后重试');
           } else {
@@ -2109,18 +2092,16 @@ const loadVersionDetails = async (version) => {
     xraySettings.loading = true
     
     const response = await api.get(`/xray/version/${version}/details`)
-    
-    if (response.data) {
-      xraySettings.versionDetails = {
-        version: response.data.version,
-        releaseDate: response.data.release_date,
-        description: response.data.description,
-        changelog: response.data.changelog || []
-      }
-      
-      // 显示版本详情对话框
-      xraySettings.showVersionDetails = true
+
+    xraySettings.versionDetails = {
+      version: response.version,
+      releaseDate: response.release_date,
+      description: response.description,
+      changelog: response.changelog || []
     }
+    
+    // 显示版本详情对话框
+    xraySettings.showVersionDetails = true
   } catch (error) {
     console.error('Failed to load version details:', error)
     ElMessage.error('加载版本详情失败：' + (error.message || '未知错误'))
@@ -2144,9 +2125,9 @@ const checkXrayUpdates = async () => {
     
     const response = await api.get('/xray/check-updates');
     
-    if (response.data && response.data.has_update) {
+    if (response.has_update) {
       ElMessageBox.confirm(
-        `发现新版本: ${response.data.latest_version}\n\n更新说明:\n${response.data.release_notes || ''}`,
+        `发现新版本: ${response.latest_version}\n\n更新说明:\n${response.release_notes || ''}`,
         '有可用更新',
         {
           confirmButtonText: '更新',
@@ -2155,7 +2136,7 @@ const checkXrayUpdates = async () => {
           dangerouslyUseHTMLString: true
         }
       ).then(() => {
-        downloadXrayVersion(response.data.latest_version);
+        downloadXrayVersion(response.latest_version);
       }).catch(() => {
         ElMessage.info('已取消更新');
       });
@@ -2280,26 +2261,26 @@ const retryFailedOperation = async () => {
     
     // 根据保存的操作类型执行对应的重试逻辑
     switch (errorDetails.retryAction) {
-      case 'switchVersion':
-        await performVersionSwitch(errorDetails.retryParams?.shouldRestart)
-        break
-      case 'restart':
-        await restartXray()
-        break
-      case 'saveSettings':
-        await saveXraySettings()
-        break
-      case 'updateVersion':
-        await downloadXrayVersion(errorDetails.retryParams?.version)
-        break
-      case 'syncVersions':
-        await syncVersionsFromGitHub()
-        break
-      case 'refreshVersions':
-        await refreshXrayVersions()
-        break
-      default:
-        console.warn('Unknown retry action:', errorDetails.retryAction)
+    case 'switchVersion':
+      await performVersionSwitch()
+      break
+    case 'restart':
+      await restartXray()
+      break
+    case 'saveSettings':
+      await saveXraySettings()
+      break
+    case 'updateVersion':
+      await downloadXrayVersion(errorDetails.retryParams?.version)
+      break
+    case 'syncVersions':
+      await syncVersionsFromGitHub()
+      break
+    case 'refreshVersions':
+      await refreshXrayVersions()
+      break
+    default:
+      console.warn('Unknown retry action:', errorDetails.retryAction)
     }
   } catch (error) {
     console.error('Retry operation failed:', error)
@@ -2352,28 +2333,6 @@ const getTimeAgo = () => {
   }
 }
 
-// 检查新版本
-const isNewVersion = (newVersion, currentVersion) => {
-  return newVersion > currentVersion;
-}
-
-const confirmSwitchVersion = async () => {
-  xraySettings.switching = true;
-  try {
-    await performVersionSwitch(true);
-    xraySettings.showVersionDialog = false;
-  } catch (error) {
-    console.error('Failed to switch version:', error);
-  } finally {
-    xraySettings.switching = false;
-  }
-};
-
-const openVersionSwitchDialog = () => {
-  xraySettings.showVersionDialog = true;
-}
-
-// 移除简单版本，保留更完整的实现
 // 处理版本切换
 const handleSwitchVersion = async () => {
   try {
@@ -2415,7 +2374,7 @@ const handleSwitchVersion = async () => {
         timeoutErrorMessage: '下载版本超时，请检查网络连接或手动下载'
       })
       
-      if (response.data && response.data.success) {
+      if (response.success) {
         // 切换成功
         xraySettings.currentVersion = xraySettings.selectedVersion
         
@@ -2440,7 +2399,7 @@ const handleSwitchVersion = async () => {
         await refreshXrayStatus()
       } else {
         // 切换不成功但服务器返回了响应
-        throw new Error(response.data?.message || '切换版本失败，服务器返回非成功状态')
+        throw new Error(response.message || '切换版本失败，服务器返回非成功状态')
       }
     } catch (error) {
       console.error('Failed to switch version:', error)

@@ -362,7 +362,7 @@ function goToDownload() {
 }
 
 function goToPlanUpgrade() {
-  router.push('/user/plan-change')
+  router.push({ name: 'user-plan-upgrade' })
 }
 
 function goToPlans() {

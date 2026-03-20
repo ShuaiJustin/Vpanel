@@ -184,16 +184,17 @@ import {
   SwitchButton
 } from '@element-plus/icons-vue'
 import { useTheme } from '@/composables/useTheme'
+import { usePortalAnnouncementsStore } from '@/stores/portalAnnouncements'
 import { useUserPortalStore } from '@/stores/userPortal'
 
 const router = useRouter()
 const route = useRoute()
 const { isDark, toggleDarkMode } = useTheme()
+const announcementsStore = usePortalAnnouncementsStore()
 const userStore = useUserPortalStore()
 
 // 状态
 const showMobileMenu = ref(false)
-const unreadCount = ref(0)
 const username = ref('用户')
 const accountStatus = ref('active')
 
@@ -213,6 +214,7 @@ const navItems = [
 // 计算属性
 const userInitial = computed(() => username.value.charAt(0).toUpperCase())
 const currentYear = computed(() => new Date().getFullYear())
+const unreadCount = computed(() => announcementsStore.unreadCount)
 const statusText = computed(() => {
   const statusMap = {
     active: '正常',
@@ -286,7 +288,7 @@ onMounted(() => {
     }
   }
   
-  // TODO: 加载未读公告数量
+  announcementsStore.fetchUnreadCount().catch(() => {})
 })
 </script>
 

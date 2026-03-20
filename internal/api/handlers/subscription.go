@@ -416,6 +416,16 @@ func (h *SubscriptionHandler) AdminList(c *gin.Context) {
 			filter.UserID = &userID
 		}
 	}
+	if minAccessCountStr := c.Query("min_access_count"); minAccessCountStr != "" {
+		if minAccessCount, err := strconv.ParseInt(minAccessCountStr, 10, 64); err == nil {
+			filter.MinAccessCount = &minAccessCount
+		}
+	}
+	if maxAccessCountStr := c.Query("max_access_count"); maxAccessCountStr != "" {
+		if maxAccessCount, err := strconv.ParseInt(maxAccessCountStr, 10, 64); err == nil {
+			filter.MaxAccessCount = &maxAccessCount
+		}
+	}
 
 	// Get subscriptions
 	subscriptions, total, err := h.service.ListAllSubscriptions(c.Request.Context(), filter)

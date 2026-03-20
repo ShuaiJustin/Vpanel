@@ -33,7 +33,7 @@ export function getUsageStats(params = {}) {
  * @returns {Promise}
  */
 export function getDashboardStats() {
-  return api.get(`${BASE_URL}/dashboard`)
+  return api.get('/portal/dashboard')
 }
 
 /**

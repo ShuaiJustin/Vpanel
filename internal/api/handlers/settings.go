@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -396,14 +397,38 @@ type XraySettingsRequest struct {
 	CheckInterval int    `json:"check_interval"`
 }
 
+const (
+	xraySettingsKey    = "xray_settings"
+	xrayProtocolsKey   = "xray_protocol_settings"
+	defaultCheckWindow = 24
+)
+
+func defaultXraySettings() XraySettingsRequest {
+	return XraySettingsRequest{
+		AutoUpdate:    false,
+		CustomConfig:  false,
+		ConfigPath:    "",
+		CheckInterval: defaultCheckWindow,
+	}
+}
+
 // GetXraySettings returns Xray-specific settings.
 func (h *SettingsHandler) GetXraySettings(c *gin.Context) {
-	// Return default Xray settings
+	settings := defaultXraySettings()
+	if err := h.settingsService.GetTyped(c.Request.Context(), xraySettingsKey, &settings); err != nil {
+		h.logger.Error("Failed to load Xray settings", logger.F("error", err))
+		middleware.RespondWithError(c, errors.NewDatabaseError("get xray settings", err))
+		return
+	}
+	if settings.CheckInterval <= 0 {
+		settings.CheckInterval = defaultCheckWindow
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"auto_update":    false,
-		"custom_config":  false,
-		"config_path":    "",
-		"check_interval": 24,
+		"auto_update":    settings.AutoUpdate,
+		"custom_config":  settings.CustomConfig,
+		"config_path":    settings.ConfigPath,
+		"check_interval": settings.CheckInterval,
 	})
 }
 
@@ -415,6 +440,23 @@ func (h *SettingsHandler) UpdateXraySettings(c *gin.Context) {
 			"success": false,
 			"error":   "Invalid request body",
 		})
+		return
+	}
+
+	if req.CheckInterval <= 0 {
+		req.CheckInterval = defaultCheckWindow
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		h.logger.Error("Failed to encode Xray settings", logger.F("error", err))
+		middleware.RespondWithError(c, errors.NewInternalError("encode xray settings", err))
+		return
+	}
+
+	if err := h.settingsService.Set(c.Request.Context(), xraySettingsKey, string(data)); err != nil {
+		h.logger.Error("Failed to save Xray settings", logger.F("error", err))
+		middleware.RespondWithError(c, errors.NewDatabaseError("save xray settings", err))
 		return
 	}
 
@@ -438,10 +480,9 @@ type ProtocolSettingsRequest struct {
 	Transports map[string]bool `json:"transports"`
 }
 
-// GetProtocolSettings returns protocol settings.
-func (h *SettingsHandler) GetProtocolSettings(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"protocols": map[string]bool{
+func defaultProtocolSettings() ProtocolSettingsRequest {
+	return ProtocolSettingsRequest{
+		Protocols: map[string]bool{
 			"trojan":      true,
 			"vmess":       true,
 			"vless":       true,
@@ -449,13 +490,42 @@ func (h *SettingsHandler) GetProtocolSettings(c *gin.Context) {
 			"socks":       false,
 			"http":        false,
 		},
-		"transports": map[string]bool{
+		Transports: map[string]bool{
 			"tcp":   true,
 			"ws":    true,
 			"http2": true,
 			"grpc":  true,
 			"quic":  false,
 		},
+	}
+}
+
+func mergeBoolSettings(defaults map[string]bool, overrides map[string]bool) map[string]bool {
+	merged := make(map[string]bool, len(defaults))
+	for key, value := range defaults {
+		merged[key] = value
+	}
+	for key, value := range overrides {
+		merged[key] = value
+	}
+	return merged
+}
+
+// GetProtocolSettings returns protocol settings.
+func (h *SettingsHandler) GetProtocolSettings(c *gin.Context) {
+	settings := defaultProtocolSettings()
+	var stored ProtocolSettingsRequest
+	if err := h.settingsService.GetTyped(c.Request.Context(), xrayProtocolsKey, &stored); err != nil {
+		h.logger.Error("Failed to load protocol settings", logger.F("error", err))
+		middleware.RespondWithError(c, errors.NewDatabaseError("get protocol settings", err))
+		return
+	}
+	settings.Protocols = mergeBoolSettings(settings.Protocols, stored.Protocols)
+	settings.Transports = mergeBoolSettings(settings.Transports, stored.Transports)
+
+	c.JSON(http.StatusOK, gin.H{
+		"protocols":  settings.Protocols,
+		"transports": settings.Transports,
 	})
 }
 
@@ -470,12 +540,29 @@ func (h *SettingsHandler) UpdateProtocolSettings(c *gin.Context) {
 		return
 	}
 
+	settings := defaultProtocolSettings()
+	settings.Protocols = mergeBoolSettings(settings.Protocols, req.Protocols)
+	settings.Transports = mergeBoolSettings(settings.Transports, req.Transports)
+
+	data, err := json.Marshal(settings)
+	if err != nil {
+		h.logger.Error("Failed to encode protocol settings", logger.F("error", err))
+		middleware.RespondWithError(c, errors.NewInternalError("encode protocol settings", err))
+		return
+	}
+
+	if err := h.settingsService.Set(c.Request.Context(), xrayProtocolsKey, string(data)); err != nil {
+		h.logger.Error("Failed to save protocol settings", logger.F("error", err))
+		middleware.RespondWithError(c, errors.NewDatabaseError("save protocol settings", err))
+		return
+	}
+
 	h.logger.Info("Protocol settings updated")
 
 	c.JSON(http.StatusOK, gin.H{
 		"success":    true,
 		"message":    "Protocol settings updated",
-		"protocols":  req.Protocols,
-		"transports": req.Transports,
+		"protocols":  settings.Protocols,
+		"transports": settings.Transports,
 	})
 }

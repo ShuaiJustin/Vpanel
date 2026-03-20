@@ -7,10 +7,11 @@
           <div class="header-actions">
             <el-input
               v-model="searchQuery"
-              placeholder="搜索用户名"
+              placeholder="搜索用户ID"
               clearable
               style="width: 200px; margin-right: 10px;"
-              @input="handleSearch"
+              @keyup.enter="handleSearch"
+              @clear="handleSearch"
             >
               <template #prefix>
                 <el-icon><Search /></el-icon>
@@ -29,17 +30,17 @@
               <el-option label="10-100次" value="10-100" />
               <el-option label="100次以上" value="100+" />
             </el-select>
+            <el-button type="primary" @click="handleSearch">查询</el-button>
           </div>
         </div>
       </template>
 
       <el-table
-        :data="filteredSubscriptions"
+        :data="subscriptions"
         v-loading="loading"
         style="width: 100%"
-        @sort-change="handleSortChange"
       >
-        <el-table-column prop="id" label="ID" width="80" sortable />
+        <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="user_id" label="用户ID" width="100" />
         <el-table-column prop="username" label="用户名" width="150">
           <template #default="{ row }">
@@ -61,14 +62,14 @@
             <span>{{ row.short_code || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="access_count" label="访问次数" width="120" sortable>
+        <el-table-column prop="access_count" label="访问次数" width="120">
           <template #default="{ row }">
             <el-tag :type="getAccessCountType(row.access_count)">
               {{ row.access_count || 0 }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="last_access_at" label="最后访问" width="180" sortable>
+        <el-table-column prop="last_access_at" label="最后访问" width="180">
           <template #default="{ row }">
             <span>{{ formatDate(row.last_access_at) }}</span>
           </template>
@@ -78,7 +79,7 @@
             <span>{{ row.last_ip || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="created_at" label="创建时间" width="180" sortable>
+        <el-table-column prop="created_at" label="创建时间" width="180">
           <template #default="{ row }">
             <span>{{ formatDate(row.created_at) }}</span>
           </template>
@@ -114,12 +115,14 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, DocumentCopy } from '@element-plus/icons-vue'
 import { subscriptionApi } from '@/api/index'
 
 // 状态
+const route = useRoute()
 const subscriptions = ref([])
 const loading = ref(false)
 const searchQuery = ref('')
@@ -127,42 +130,21 @@ const filterAccessCount = ref('')
 const currentPage = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
-const sortField = ref('')
-const sortOrder = ref('')
 
-// 计算属性 - 过滤后的订阅列表
-const filteredSubscriptions = computed(() => {
-  let result = [...subscriptions.value]
-  
-  // 搜索过滤
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase()
-    result = result.filter(sub => 
-      (sub.username && sub.username.toLowerCase().includes(query)) ||
-      (sub.token && sub.token.toLowerCase().includes(query))
-    )
+const buildAccessCountParams = () => {
+  switch (filterAccessCount.value) {
+    case '0':
+      return { max_access_count: 0 }
+    case '1-10':
+      return { min_access_count: 1, max_access_count: 10 }
+    case '10-100':
+      return { min_access_count: 11, max_access_count: 100 }
+    case '100+':
+      return { min_access_count: 101 }
+    default:
+      return {}
   }
-  
-  // 访问次数过滤
-  if (filterAccessCount.value) {
-    switch (filterAccessCount.value) {
-      case '0':
-        result = result.filter(sub => !sub.access_count || sub.access_count === 0)
-        break
-      case '1-10':
-        result = result.filter(sub => sub.access_count >= 1 && sub.access_count <= 10)
-        break
-      case '10-100':
-        result = result.filter(sub => sub.access_count > 10 && sub.access_count <= 100)
-        break
-      case '100+':
-        result = result.filter(sub => sub.access_count > 100)
-        break
-    }
-  }
-  
-  return result
-})
+}
 
 // 方法
 const fetchSubscriptions = async () => {
@@ -172,9 +154,22 @@ const fetchSubscriptions = async () => {
       page: currentPage.value,
       page_size: pageSize.value
     }
-    
+
+    if (searchQuery.value) {
+      if (!/^\d+$/.test(searchQuery.value.trim())) {
+        ElMessage.warning('当前仅支持按用户ID搜索订阅')
+        subscriptions.value = []
+        total.value = 0
+        return
+      }
+
+      params.user_id = Number(searchQuery.value.trim())
+    }
+
+    Object.assign(params, buildAccessCountParams())
+
     const response = await subscriptionApi.admin.list(params)
-    
+
     if (response && response.subscriptions) {
       subscriptions.value = response.subscriptions
       total.value = response.total || response.subscriptions.length
@@ -197,15 +192,12 @@ const fetchSubscriptions = async () => {
 
 const handleSearch = () => {
   currentPage.value = 1
+  fetchSubscriptions()
 }
 
 const handleFilterChange = () => {
   currentPage.value = 1
-}
-
-const handleSortChange = ({ prop, order }) => {
-  sortField.value = prop
-  sortOrder.value = order
+  fetchSubscriptions()
 }
 
 const handleSizeChange = (val) => {
@@ -301,6 +293,9 @@ const formatDate = (dateStr) => {
 
 // 生命周期
 onMounted(() => {
+  if (route.query.user_id) {
+    searchQuery.value = String(route.query.user_id)
+  }
   fetchSubscriptions()
 })
 </script>

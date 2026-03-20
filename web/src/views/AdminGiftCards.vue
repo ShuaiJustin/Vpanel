@@ -194,6 +194,7 @@ const rules = {
 const formatPrice = (price) => (price / 100).toFixed(2)
 const formatTime = (time) => time ? new Date(time).toLocaleString('zh-CN') : '-'
 const disabledDate = (date) => date < new Date()
+const unwrapPayload = (response) => response?.data ?? response ?? {}
 
 const getStatusType = (status) => {
   const types = { active: 'success', redeemed: 'info', expired: 'warning', disabled: 'danger' }
@@ -217,7 +218,7 @@ const copyCode = async (code) => {
 const fetchStats = async () => {
   try {
     const res = await giftCardsApi.admin.getStats()
-    stats.value = res.data || {}
+    stats.value = unwrapPayload(res)
   } catch (e) {
     console.error('Failed to fetch stats:', e)
   }
@@ -230,8 +231,9 @@ const fetchGiftCards = async () => {
     if (filter.status) params.status = filter.status
     if (filter.batch_id) params.batch_id = filter.batch_id
     const res = await giftCardsApi.admin.list(params)
-    giftCards.value = res.data.gift_cards || []
-    pagination.total = res.data.total || 0
+    const payload = unwrapPayload(res)
+    giftCards.value = payload.gift_cards || []
+    pagination.total = payload.total || 0
   } catch (e) {
     ElMessage.error(e.response?.data?.error || '获取礼品卡列表失败')
   } finally {
@@ -255,7 +257,7 @@ const submitForm = async () => {
       expires_at: form.expires_at?.toISOString()
     }
     const res = await giftCardsApi.admin.createBatch(data)
-    createdResult.value = res.data
+    createdResult.value = unwrapPayload(res)
     dialogVisible.value = false
     successDialogVisible.value = true
     fetchGiftCards()

@@ -45,10 +45,13 @@ export const plansApi = {
      * @param {number} data.price - 价格（分）
      * @param {number} data.duration - 时长（天）
      * @param {number} data.traffic_limit - 流量限制（字节）
-     * @param {number} data.speed_limit - 速度限制（字节/秒）
-     * @param {number} data.device_limit - 设备限制
+     * @param {string} data.plan_type - 套餐类型
+     * @param {string} data.reset_cycle - 流量重置周期
+     * @param {number} data.ip_limit - IP / 设备限制
      * @param {Array<string>} data.features - 功能列表
      * @param {number} data.sort_order - 排序
+     * @param {boolean} data.is_active - 是否启用
+     * @param {boolean} data.is_recommended - 是否推荐
      * @returns {Promise<Object>} 创建的套餐
      */
     create: (data) => api.post('/admin/plans', data),

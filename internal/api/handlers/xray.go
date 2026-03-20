@@ -179,6 +179,64 @@ func (h *XrayHandler) GetVersions(c *gin.Context) {
 	})
 }
 
+// GetVersionDetails returns details for a specific Xray version.
+// GET /api/xray/version/:version/details
+func (h *XrayHandler) GetVersionDetails(c *gin.Context) {
+	requestedVersion := c.Param("version")
+	if requestedVersion == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "version is required"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	defer cancel()
+
+	versions, err := h.versionManager.GetAvailableVersions(ctx)
+	if err != nil {
+		h.logger.Warn("failed to get version details from GitHub", logger.F("error", err))
+	}
+
+	currentVersion := h.versionManager.GetCurrentVersion()
+	for _, version := range versions {
+		if version.Version != requestedVersion {
+			continue
+		}
+
+		description := "可用版本"
+		if version.IsCurrent || requestedVersion == currentVersion {
+			description = "当前正在使用的版本"
+		} else if version.IsInstalled {
+			description = "已下载，可直接切换"
+		} else if version.DownloadURL != "" {
+			description = "可从 GitHub 下载并切换"
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"version":      version.Version,
+			"release_date": version.ReleaseDate,
+			"description":  description,
+			"changelog":    []string{},
+			"is_installed": version.IsInstalled,
+			"is_current":   version.IsCurrent || requestedVersion == currentVersion,
+		})
+		return
+	}
+
+	if requestedVersion == currentVersion {
+		c.JSON(http.StatusOK, gin.H{
+			"version":      requestedVersion,
+			"release_date": time.Time{},
+			"description":  "当前正在使用的版本",
+			"changelog":    []string{},
+			"is_installed": true,
+			"is_current":   true,
+		})
+		return
+	}
+
+	c.JSON(http.StatusNotFound, gin.H{"error": "Version not found"})
+}
+
 // SyncVersions syncs versions from GitHub.
 // POST /api/xray/sync-versions
 func (h *XrayHandler) SyncVersions(c *gin.Context) {

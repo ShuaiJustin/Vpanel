@@ -23,10 +23,10 @@
         v-for="plan in sortedPlans"
         :key="plan.id"
         class="plan-card"
-        :class="{ 'plan-card--popular': plan.is_popular }"
+        :class="{ 'plan-card--popular': plan.is_recommended }"
       >
         <!-- 热门标签 -->
-        <div v-if="plan.is_popular" class="popular-badge">
+        <div v-if="plan.is_recommended" class="popular-badge">
           <el-icon><Star /></el-icon>
           热门
         </div>
@@ -55,13 +55,9 @@
             <el-icon><Check /></el-icon>
             流量 {{ formatTraffic(plan.traffic_limit) }}
           </li>
-          <li v-if="plan.speed_limit">
+          <li v-if="plan.ip_limit">
             <el-icon><Check /></el-icon>
-            速度 {{ formatSpeed(plan.speed_limit) }}
-          </li>
-          <li v-if="plan.device_limit">
-            <el-icon><Check /></el-icon>
-            {{ plan.device_limit }} 台设备同时在线
+            {{ plan.ip_limit }} 台设备同时在线
           </li>
           <li v-for="feature in plan.features" :key="feature">
             <el-icon><Check /></el-icon>
@@ -74,7 +70,7 @@
           type="primary"
           size="large"
           class="plan-button"
-          :class="{ 'plan-button--popular': plan.is_popular }"
+          :class="{ 'plan-button--popular': plan.is_recommended }"
           @click="selectPlan(plan)"
         >
           立即购买
@@ -134,12 +130,6 @@ const formatTraffic = (bytes) => {
     i++
   }
   return `${size.toFixed(0)} ${units[i]}`
-}
-
-const formatSpeed = (bytesPerSec) => {
-  if (!bytesPerSec || bytesPerSec === 0) return '无限制'
-  const mbps = (bytesPerSec * 8) / (1024 * 1024)
-  return `${mbps.toFixed(0)} Mbps`
 }
 
 const selectPlan = (plan) => {

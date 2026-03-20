@@ -47,6 +47,7 @@ export const usePortalAnnouncementsStore = defineStore('portalAnnouncements', ()
       })
       announcements.value = response.announcements || []
       total.value = response.total || 0
+      unreadCount.value = response.unread_count || 0
       return response
     } catch (err) {
       error.value = err.message || '获取公告列表失败'
@@ -61,12 +62,16 @@ export const usePortalAnnouncementsStore = defineStore('portalAnnouncements', ()
     error.value = null
     try {
       const response = await announcementsApi.getAnnouncement(id)
-      currentAnnouncement.value = response
-      // 自动标记为已读
-      if (!response.is_read) {
-        await markAsRead(id)
+      const announcement = {
+        ...(response.announcement || response),
+        is_read: response.is_read ?? response.announcement?.is_read ?? false
       }
-      return response
+      currentAnnouncement.value = announcement
+      if (!announcement.is_read) {
+        await markAsRead(id)
+        announcement.is_read = true
+      }
+      return announcement
     } catch (err) {
       error.value = err.message || '获取公告详情失败'
       throw err
@@ -78,8 +83,8 @@ export const usePortalAnnouncementsStore = defineStore('portalAnnouncements', ()
   async function fetchUnreadCount() {
     try {
       const response = await announcementsApi.getUnreadCount()
-      unreadCount.value = response.count || 0
-      return response.count
+      unreadCount.value = response.unread_count || 0
+      return unreadCount.value
     } catch (err) {
       console.error('Failed to fetch unread count:', err)
     }
@@ -104,11 +109,23 @@ export const usePortalAnnouncementsStore = defineStore('portalAnnouncements', ()
 
   async function markAllAsRead() {
     try {
-      await announcementsApi.markAllAsRead()
+      const unreadIds = announcements.value
+        .filter(item => !item.is_read)
+        .map(item => item.id)
+
+      if (unreadIds.length === 0) {
+        unreadCount.value = 0
+        return
+      }
+
+      await announcementsApi.markAllAsRead(unreadIds)
       // 更新本地状态
       announcements.value.forEach(a => {
         a.is_read = true
       })
+      if (currentAnnouncement.value) {
+        currentAnnouncement.value.is_read = true
+      }
       unreadCount.value = 0
     } catch (err) {
       error.value = err.message || '标记全部已读失败'

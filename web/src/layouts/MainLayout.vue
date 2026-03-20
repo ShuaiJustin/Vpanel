@@ -60,6 +60,7 @@
             <el-icon><DataAnalysis /></el-icon>
             <span>监控与统计</span>
           </template>
+          <el-menu-item index="/admin/system-monitor">系统监控</el-menu-item>
           <el-menu-item index="/admin/traffic-monitor">流量监控</el-menu-item>
           <el-menu-item index="/admin/stats">统计数据</el-menu-item>
         </el-sub-menu>

@@ -154,19 +154,26 @@
             </el-select>
           </el-form-item>
           
-          <el-divider content-position="left">可疑活动检测</el-divider>
+          <el-divider content-position="left">可疑活动检测（暂未接线）</el-divider>
+
+          <el-alert
+            title="后端暂未提供可疑活动检测配置接口，以下选项仅保留展示。"
+            type="info"
+            :closable="false"
+            style="margin-bottom: 16px;"
+          />
           
           <el-form-item label="启用可疑活动检测">
-            <el-switch v-model="settingsForm.suspiciousDetectionEnabled"></el-switch>
+            <el-switch v-model="settingsForm.suspiciousDetectionEnabled" disabled></el-switch>
           </el-form-item>
           
           <el-form-item label="多国家检测时间窗口(分钟)" v-if="settingsForm.suspiciousDetectionEnabled">
-            <el-input-number v-model="settingsForm.suspiciousTimeWindow" :min="1" :max="60"></el-input-number>
+            <el-input-number v-model="settingsForm.suspiciousTimeWindow" :min="1" :max="60" disabled></el-input-number>
             <div class="form-tips">在此时间内从多个国家访问将被标记为可疑</div>
           </el-form-item>
           
           <el-form-item label="多国家阈值" v-if="settingsForm.suspiciousDetectionEnabled">
-            <el-input-number v-model="settingsForm.suspiciousCountryThreshold" :min="2" :max="10"></el-input-number>
+            <el-input-number v-model="settingsForm.suspiciousCountryThreshold" :min="2" :max="10" disabled></el-input-number>
             <div class="form-tips">触发可疑标记的国家数量</div>
           </el-form-item>
           
@@ -201,8 +208,8 @@
           </el-input>
         </div>
         
-        <el-table :data="filteredWhitelist" border v-loading="whitelistLoading" style="width: 100%">
-          <el-table-column prop="ip" label="IP/CIDR" width="180"></el-table-column>
+        <el-table :data="paginatedWhitelist" border v-loading="whitelistLoading" style="width: 100%">
+          <el-table-column prop="displayIp" label="IP/CIDR" width="180"></el-table-column>
           <el-table-column prop="type" label="类型" width="100">
             <template #default="scope">
               <el-tag :type="scope.row.type === 'global' ? 'primary' : 'success'">
@@ -217,12 +224,9 @@
           </el-table-column>
           <el-table-column prop="description" label="备注"></el-table-column>
           <el-table-column prop="createdAt" label="创建时间" width="180"></el-table-column>
-          <el-table-column label="操作" width="150">
+          <el-table-column label="操作" width="100">
             <template #default="scope">
-              <el-button-group>
-                <el-button size="small" type="primary" @click="editWhitelist(scope.row)">编辑</el-button>
-                <el-button size="small" type="danger" @click="deleteWhitelist(scope.row)">删除</el-button>
-              </el-button-group>
+              <el-button size="small" type="danger" @click="deleteWhitelist(scope.row)">删除</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -233,9 +237,7 @@
             v-model:page-size="whitelistPageSize"
             :page-sizes="[10, 20, 50, 100]"
             layout="total, sizes, prev, pager, next"
-            :total="whitelistTotal"
-            @size-change="fetchWhitelist"
-            @current-change="fetchWhitelist"
+            :total="whitelistDisplayTotal"
           />
         </div>
       </el-tab-pane>
@@ -259,8 +261,8 @@
           </el-input>
         </div>
         
-        <el-table :data="filteredBlacklist" border v-loading="blacklistLoading" style="width: 100%">
-          <el-table-column prop="ip" label="IP/CIDR" width="180"></el-table-column>
+        <el-table :data="paginatedBlacklist" border v-loading="blacklistLoading" style="width: 100%">
+          <el-table-column prop="displayIp" label="IP/CIDR" width="180"></el-table-column>
           <el-table-column prop="reason" label="原因"></el-table-column>
           <el-table-column prop="source" label="来源" width="100">
             <template #default="scope">
@@ -271,18 +273,15 @@
           </el-table-column>
           <el-table-column prop="expiresAt" label="过期时间" width="180">
             <template #default="scope">
-              <span :class="{ 'text-warning': isExpiringSoon(scope.row.expiresAt) }">
+              <span :class="{ 'text-warning': isExpiringSoon(scope.row.expiresAtRaw) }">
                 {{ scope.row.expiresAt || '永久' }}
               </span>
             </template>
           </el-table-column>
           <el-table-column prop="createdAt" label="创建时间" width="180"></el-table-column>
-          <el-table-column label="操作" width="150">
+          <el-table-column label="操作" width="100">
             <template #default="scope">
-              <el-button-group>
-                <el-button size="small" type="primary" @click="editBlacklist(scope.row)">编辑</el-button>
-                <el-button size="small" type="danger" @click="deleteBlacklist(scope.row)">删除</el-button>
-              </el-button-group>
+              <el-button size="small" type="danger" @click="deleteBlacklist(scope.row)">删除</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -293,9 +292,7 @@
             v-model:page-size="blacklistPageSize"
             :page-sizes="[10, 20, 50, 100]"
             layout="total, sizes, prev, pager, next"
-            :total="blacklistTotal"
-            @size-change="fetchBlacklist"
-            @current-change="fetchBlacklist"
+            :total="blacklistDisplayTotal"
           />
         </div>
       </el-tab-pane>
@@ -393,7 +390,7 @@
 
     <!-- 添加/编辑白名单对话框 -->
     <el-dialog 
-      :title="whitelistDialogType === 'add' ? '添加白名单' : '编辑白名单'" 
+      title="添加白名单"
       v-model="whitelistDialogVisible"
       width="500px"
     >
@@ -450,7 +447,7 @@
     
     <!-- 添加/编辑黑名单对话框 -->
     <el-dialog 
-      :title="blacklistDialogType === 'add' ? '添加黑名单' : '编辑黑名单'" 
+      title="添加黑名单"
       v-model="blacklistDialogVisible"
       width="500px"
     >
@@ -502,24 +499,33 @@ const stats = reactive({
   countryStats: []
 })
 
+const formatDateTime = (value) => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString('zh-CN', { hour12: false })
+}
+
+const parseIPOrCIDR = (value) => {
+  const normalized = value?.trim() || ''
+  if (normalized.includes('/')) {
+    return { ip: '', cidr: normalized }
+  }
+  return { ip: normalized, cidr: '' }
+}
+
 const refreshStats = async () => {
   statsLoading.value = true
   try {
     const response = await api.get('/admin/ip-restrictions/stats')
-    // 后端返回格式: { code: 200, message: "success", data: {...} }
-    if (response.code === 200 && response.data) {
-      // 映射后端字段到前端字段
-      stats.activeDevices = response.data.total_active_ips || 0
-      stats.activeUsers = response.data.active_users || 0
-      stats.whitelistCount = response.data.total_whitelisted || 0
-      stats.blacklistCount = response.data.total_blacklisted || 0
-      stats.blockedToday = response.data.blocked_today || 0
-      stats.suspiciousCount = response.data.suspicious_count || 0
-      stats.countryStats = response.data.country_stats || []
-    } else {
-      // 兼容旧格式（直接返回数据）
-      Object.assign(stats, response)
-    }
+    const data = response?.data || response
+    stats.activeDevices = data?.total_active_ips || 0
+    stats.activeUsers = data?.active_users || 0
+    stats.whitelistCount = data?.total_whitelisted || 0
+    stats.blacklistCount = data?.total_blacklisted || 0
+    stats.blockedToday = data?.blocked_today || 0
+    stats.suspiciousCount = data?.suspicious_count || 0
+    stats.countryStats = data?.country_stats || []
   } catch (error) {
     console.error('Failed to fetch stats:', error)
     ElMessage.error(`获取统计数据失败: ${error.message || '未知错误'}`)
@@ -536,6 +542,7 @@ const settingsForm = reactive({
   inactiveTimeout: 30,
   autoBlacklistEnabled: true,
   failedAttemptThreshold: 10,
+  failedAttemptWindow: 5,
   autoBlacklistDuration: 24,
   geoRestrictionEnabled: false,
   geoRestrictionMode: 'blacklist',
@@ -566,9 +573,24 @@ const countryOptions = [
 const fetchSettings = async () => {
   try {
     const response = await api.get('/admin/settings/ip-restriction')
-    // 处理新的API响应格式
-    const settings = response.code === 200 && response.data ? response.data : response
-    Object.assign(settingsForm, settings)
+    const settings = response?.data || response || {}
+    const allowedCountries = settings.allowed_countries || []
+    const blockedCountries = settings.blocked_countries || []
+
+    Object.assign(settingsForm, {
+      enabled: settings.enabled ?? settingsForm.enabled,
+      defaultMaxConcurrentIPs: settings.default_max_concurrent_ips ?? settingsForm.defaultMaxConcurrentIPs,
+      inactiveTimeout: settings.inactive_timeout ?? settingsForm.inactiveTimeout,
+      autoBlacklistEnabled: settings.auto_blacklist_enabled ?? settingsForm.autoBlacklistEnabled,
+      failedAttemptThreshold: settings.max_failed_attempts ?? settingsForm.failedAttemptThreshold,
+      failedAttemptWindow: settings.failed_attempt_window ?? settingsForm.failedAttemptWindow,
+      autoBlacklistDuration: settings.auto_blacklist_duration
+        ? Math.max(1, Math.round(settings.auto_blacklist_duration / 60))
+        : settingsForm.autoBlacklistDuration,
+      geoRestrictionEnabled: settings.geo_restriction_enabled ?? settingsForm.geoRestrictionEnabled,
+      geoRestrictionMode: allowedCountries.length > 0 ? 'whitelist' : 'blacklist',
+      geoCountries: allowedCountries.length > 0 ? allowedCountries : blockedCountries
+    })
   } catch (error) {
     console.error('Failed to fetch settings:', error)
   }
@@ -577,7 +599,24 @@ const fetchSettings = async () => {
 const saveSettings = async () => {
   settingsSaving.value = true
   try {
-    await api.put('/admin/settings/ip-restriction', settingsForm)
+    await api.put('/admin/settings/ip-restriction', {
+      enabled: settingsForm.enabled,
+      default_max_concurrent_ips: settingsForm.defaultMaxConcurrentIPs,
+      inactive_timeout: settingsForm.inactiveTimeout,
+      subscription_ip_limit_enabled: false,
+      default_subscription_ip_limit: 0,
+      geo_restriction_enabled: settingsForm.geoRestrictionEnabled,
+      allowed_countries: settingsForm.geoRestrictionEnabled && settingsForm.geoRestrictionMode === 'whitelist'
+        ? settingsForm.geoCountries
+        : [],
+      blocked_countries: settingsForm.geoRestrictionEnabled && settingsForm.geoRestrictionMode === 'blacklist'
+        ? settingsForm.geoCountries
+        : [],
+      auto_blacklist_enabled: settingsForm.autoBlacklistEnabled,
+      max_failed_attempts: settingsForm.failedAttemptThreshold,
+      failed_attempt_window: settingsForm.failedAttemptWindow,
+      auto_blacklist_duration: settingsForm.autoBlacklistDuration * 60
+    })
     ElMessage.success('设置已保存')
   } catch (error) {
     console.error('Failed to save settings:', error)
@@ -600,7 +639,6 @@ const whitelistPage = ref(1)
 const whitelistPageSize = ref(10)
 const whitelistTotal = ref(0)
 const whitelistDialogVisible = ref(false)
-const whitelistDialogType = ref('add')
 const whitelistFormRef = ref(null)
 const importWhitelistDialogVisible = ref(false)
 const importWhitelistText = ref('')
@@ -629,29 +667,36 @@ const filteredWhitelist = computed(() => {
   if (!whitelistSearch.value) return whitelist.value
   const query = whitelistSearch.value.toLowerCase()
   return whitelist.value.filter(item => 
-    item.ip.toLowerCase().includes(query) || 
+    item.displayIp.toLowerCase().includes(query) || 
     (item.description && item.description.toLowerCase().includes(query))
   )
+})
+
+const whitelistDisplayTotal = computed(() => (
+  whitelistSearch.value ? filteredWhitelist.value.length : whitelistTotal.value
+))
+
+const paginatedWhitelist = computed(() => {
+  const start = (whitelistPage.value - 1) * whitelistPageSize.value
+  return filteredWhitelist.value.slice(start, start + whitelistPageSize.value)
 })
 
 const fetchWhitelist = async () => {
   whitelistLoading.value = true
   try {
-    const response = await api.get('/admin/ip-whitelist', {
-      params: {
-        page: whitelistPage.value,
-        pageSize: whitelistPageSize.value
-      }
-    })
-    // 处理新的API响应格式: {code:200, data:[...], message:"success"}
-    if (response.code === 200 && response.data) {
-      whitelist.value = Array.isArray(response.data) ? response.data : (response.data.list || [])
-      whitelistTotal.value = response.data.total || whitelist.value.length
-    } else {
-      // 兼容旧格式
-      whitelist.value = response.list || response || []
-      whitelistTotal.value = response.total || whitelist.value.length
-    }
+    const response = await api.get('/admin/ip-whitelist')
+    const items = Array.isArray(response?.data)
+      ? response.data
+      : (Array.isArray(response) ? response : (response?.list || []))
+    whitelist.value = items.map(item => ({
+      ...item,
+      type: item.user_id ? 'user' : 'global',
+      userId: item.user_id || null,
+      username: getUsernameById(item.user_id),
+      displayIp: item.cidr || item.ip,
+      createdAt: formatDateTime(item.created_at)
+    }))
+    whitelistTotal.value = whitelist.value.length
   } catch (error) {
     console.error('Failed to fetch whitelist:', error)
     ElMessage.error('获取白名单失败')
@@ -661,7 +706,6 @@ const fetchWhitelist = async () => {
 }
 
 const showAddWhitelistDialog = () => {
-  whitelistDialogType.value = 'add'
   Object.assign(whitelistForm, { id: null, ip: '', type: 'global', userId: null, description: '' })
   whitelistDialogVisible.value = true
 }
@@ -672,12 +716,6 @@ const showImportWhitelistDialog = () => {
   importWhitelistDialogVisible.value = true
 }
 
-const editWhitelist = (row) => {
-  whitelistDialogType.value = 'edit'
-  Object.assign(whitelistForm, row)
-  whitelistDialogVisible.value = true
-}
-
 const saveWhitelist = async () => {
   if (!whitelistFormRef.value) return
   
@@ -686,13 +724,13 @@ const saveWhitelist = async () => {
     
     whitelistSaving.value = true
     try {
-      if (whitelistDialogType.value === 'add') {
-        await api.post('/admin/ip-whitelist', whitelistForm)
-        ElMessage.success('添加成功')
-      } else {
-        await api.put(`/admin/ip-whitelist/${whitelistForm.id}`, whitelistForm)
-        ElMessage.success('更新成功')
-      }
+      const target = parseIPOrCIDR(whitelistForm.ip)
+      await api.post('/admin/ip-whitelist', {
+        ...target,
+        user_id: whitelistForm.type === 'user' ? whitelistForm.userId : null,
+        description: whitelistForm.description
+      })
+      ElMessage.success('添加成功')
       whitelistDialogVisible.value = false
       fetchWhitelist()
       refreshStats()
@@ -706,7 +744,7 @@ const saveWhitelist = async () => {
 }
 
 const deleteWhitelist = (row) => {
-  ElMessageBox.confirm(`确定要删除白名单 ${row.ip} 吗?`, '警告', {
+  ElMessageBox.confirm(`确定要删除白名单 ${row.displayIp} 吗?`, '警告', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     type: 'warning'
@@ -757,7 +795,6 @@ const blacklistPage = ref(1)
 const blacklistPageSize = ref(10)
 const blacklistTotal = ref(0)
 const blacklistDialogVisible = ref(false)
-const blacklistDialogType = ref('add')
 const blacklistFormRef = ref(null)
 
 const blacklistForm = reactive({
@@ -781,9 +818,18 @@ const filteredBlacklist = computed(() => {
   if (!blacklistSearch.value) return blacklist.value
   const query = blacklistSearch.value.toLowerCase()
   return blacklist.value.filter(item => 
-    item.ip.toLowerCase().includes(query) || 
+    item.displayIp.toLowerCase().includes(query) || 
     (item.reason && item.reason.toLowerCase().includes(query))
   )
+})
+
+const blacklistDisplayTotal = computed(() => (
+  blacklistSearch.value ? filteredBlacklist.value.length : blacklistTotal.value
+))
+
+const paginatedBlacklist = computed(() => {
+  const start = (blacklistPage.value - 1) * blacklistPageSize.value
+  return filteredBlacklist.value.slice(start, start + blacklistPageSize.value)
 })
 
 const isExpiringSoon = (expiresAt) => {
@@ -797,21 +843,19 @@ const isExpiringSoon = (expiresAt) => {
 const fetchBlacklist = async () => {
   blacklistLoading.value = true
   try {
-    const response = await api.get('/admin/ip-blacklist', {
-      params: {
-        page: blacklistPage.value,
-        pageSize: blacklistPageSize.value
-      }
-    })
-    // 处理新的API响应格式: {code:200, data:[...], message:"success"}
-    if (response.code === 200 && response.data) {
-      blacklist.value = Array.isArray(response.data) ? response.data : (response.data.list || [])
-      blacklistTotal.value = response.data.total || blacklist.value.length
-    } else {
-      // 兼容旧格式
-      blacklist.value = response.list || response || []
-      blacklistTotal.value = response.total || blacklist.value.length
-    }
+    const response = await api.get('/admin/ip-blacklist')
+    const items = Array.isArray(response?.data)
+      ? response.data
+      : (Array.isArray(response) ? response : (response?.list || []))
+    blacklist.value = items.map(item => ({
+      ...item,
+      source: item.is_automatic ? 'auto' : 'manual',
+      displayIp: item.cidr || item.ip,
+      expiresAtRaw: item.expires_at,
+      expiresAt: formatDateTime(item.expires_at),
+      createdAt: formatDateTime(item.created_at)
+    }))
+    blacklistTotal.value = blacklist.value.length
   } catch (error) {
     console.error('Failed to fetch blacklist:', error)
     ElMessage.error('获取黑名单失败')
@@ -821,17 +865,7 @@ const fetchBlacklist = async () => {
 }
 
 const showAddBlacklistDialog = () => {
-  blacklistDialogType.value = 'add'
   Object.assign(blacklistForm, { id: null, ip: '', reason: '', expiresAt: null })
-  blacklistDialogVisible.value = true
-}
-
-const editBlacklist = (row) => {
-  blacklistDialogType.value = 'edit'
-  Object.assign(blacklistForm, {
-    ...row,
-    expiresAt: row.expiresAt ? new Date(row.expiresAt) : null
-  })
   blacklistDialogVisible.value = true
 }
 
@@ -843,18 +877,22 @@ const saveBlacklist = async () => {
     
     blacklistSaving.value = true
     try {
-      const data = {
-        ...blacklistForm,
-        expiresAt: blacklistForm.expiresAt ? blacklistForm.expiresAt.toISOString() : null
+      const target = parseIPOrCIDR(blacklistForm.ip)
+      const expiresIn = blacklistForm.expiresAt
+        ? Math.ceil((blacklistForm.expiresAt.getTime() - Date.now()) / 60000)
+        : 0
+
+      if (expiresIn < 0) {
+        ElMessage.warning('过期时间必须晚于当前时间')
+        return
       }
-      
-      if (blacklistDialogType.value === 'add') {
-        await api.post('/admin/ip-blacklist', data)
-        ElMessage.success('添加成功')
-      } else {
-        await api.put(`/admin/ip-blacklist/${blacklistForm.id}`, data)
-        ElMessage.success('更新成功')
-      }
+
+      await api.post('/admin/ip-blacklist', {
+        ...target,
+        reason: blacklistForm.reason,
+        expires_in: expiresIn
+      })
+      ElMessage.success('添加成功')
       blacklistDialogVisible.value = false
       fetchBlacklist()
       refreshStats()
@@ -868,7 +906,7 @@ const saveBlacklist = async () => {
 }
 
 const deleteBlacklist = (row) => {
-  ElMessageBox.confirm(`确定要删除黑名单 ${row.ip} 吗?`, '警告', {
+  ElMessageBox.confirm(`确定要删除黑名单 ${row.displayIp} 吗?`, '警告', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     type: 'warning'
@@ -903,12 +941,17 @@ const fetchOnlineIPs = async () => {
   onlineLoading.value = true
   try {
     const response = await api.get('/admin/ip-restrictions/online')
-    // 处理新的API响应格式
-    if (response.code === 200 && response.data) {
-      onlineIPs.value = Array.isArray(response.data) ? response.data : []
-    } else {
-      onlineIPs.value = response || []
-    }
+    const items = Array.isArray(response?.data)
+      ? response.data
+      : (Array.isArray(response) ? response : [])
+    onlineIPs.value = items.map(item => ({
+      ...item,
+      userId: item.user_id,
+      username: getUsernameById(item.user_id),
+      countryFlag: '',
+      lastActivity: formatDateTime(item.last_active),
+      deviceInfo: item.user_agent || item.device_type || '-'
+    }))
   } catch (error) {
     console.error('Failed to fetch online IPs:', error)
     ElMessage.error('获取在线 IP 失败')
@@ -949,26 +992,38 @@ const fetchIPHistory = async () => {
   historyLoading.value = true
   try {
     const params = {
-      page: historyPage.value,
-      pageSize: historyPageSize.value
+      limit: historyPageSize.value,
+      offset: (historyPage.value - 1) * historyPageSize.value
     }
     if (historyUserId.value) {
-      params.userId = historyUserId.value
-    }
-    if (historyDateRange.value && historyDateRange.value.length === 2) {
-      params.startDate = historyDateRange.value[0].toISOString()
-      params.endDate = historyDateRange.value[1].toISOString()
+      params.user_id = historyUserId.value
     }
     
     const response = await api.get('/admin/ip-restrictions/history', { params })
-    // 处理新的API响应格式
-    if (response.code === 200 && response.data) {
-      ipHistory.value = Array.isArray(response.data) ? response.data : (response.data.list || [])
-      historyTotal.value = response.data.total || ipHistory.value.length
-    } else {
-      ipHistory.value = response.list || response || []
-      historyTotal.value = response.total || ipHistory.value.length
+    const items = Array.isArray(response?.data)
+      ? response.data
+      : (Array.isArray(response) ? response : (response?.list || []))
+    let normalized = items.map(item => ({
+      ...item,
+      username: getUsernameById(item.user_id),
+      action: item.access_type,
+      createdAt: formatDateTime(item.created_at)
+    }))
+
+    if (historyDateRange.value && historyDateRange.value.length === 2) {
+      const [startDate, endDate] = historyDateRange.value
+      const rangeEnd = new Date(endDate)
+      rangeEnd.setHours(23, 59, 59, 999)
+      normalized = normalized.filter(item => {
+        const createdAt = new Date(item.created_at)
+        return createdAt >= startDate && createdAt <= rangeEnd
+      })
     }
+
+    ipHistory.value = normalized
+    historyTotal.value = items.length === historyPageSize.value
+      ? (historyPage.value * historyPageSize.value + 1)
+      : ((historyPage.value - 1) * historyPageSize.value + items.length)
   } catch (error) {
     console.error('Failed to fetch IP history:', error)
     ElMessage.error('获取 IP 历史失败')
@@ -980,15 +1035,25 @@ const fetchIPHistory = async () => {
 const fetchUsers = async () => {
   try {
     const response = await api.get('/users')
-    // /api/users 直接返回数组，不需要解包
-    userOptions.value = Array.isArray(response) ? response : (response.data || response.list || response.users || [])
+    userOptions.value = Array.isArray(response)
+      ? response
+      : (response.users || response.data || response.list || [])
   } catch (error) {
     console.error('Failed to fetch users:', error)
   }
 }
 
+const getUsernameById = (userId) => {
+  if (!userId) return '-'
+  const user = userOptions.value.find(item => Number(item.id) === Number(userId))
+  return user?.username || `#${userId}`
+}
+
 const getActionTagType = (action) => {
   const types = {
+    'subscription': 'success',
+    'proxy': 'primary',
+    'api': 'info',
     'connect': 'success',
     'disconnect': 'info',
     'kick': 'warning',
@@ -1000,6 +1065,9 @@ const getActionTagType = (action) => {
 
 const getActionLabel = (action) => {
   const labels = {
+    'subscription': '订阅访问',
+    'proxy': '代理访问',
+    'api': '接口访问',
     'connect': '连接',
     'disconnect': '断开',
     'kick': '踢出',
@@ -1010,13 +1078,13 @@ const getActionLabel = (action) => {
 }
 
 // ==================== 生命周期 ====================
-onMounted(() => {
+onMounted(async () => {
+  await fetchUsers()
   refreshStats()
   fetchSettings()
   fetchWhitelist()
   fetchBlacklist()
   fetchOnlineIPs()
-  fetchUsers()
 })
 </script>
 

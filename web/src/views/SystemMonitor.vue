@@ -347,48 +347,47 @@ const refreshData = async () => {
     console.log('Fetching system status from backend...')
     const response = await systemApi.getSystemStatus()
     console.log('API Response:', response)
-    
-    if (response && response.code === 200 && response.data) {
-      const data = response.data
-      
-      // 更新系统信息
-      if (data.systemInfo) {
-        console.log('Updating system info with:', data.systemInfo)
-        systemInfo.value = data.systemInfo
-        
-        // 确保load数组正确处理
-        if (!systemInfo.value.load || systemInfo.value.load === null) {
-          systemInfo.value.load = [0, 0, 0]
-        }
-      }
-      
-      // 更新CPU信息
-      if (data.cpuInfo) {
-        cpuInfo.value = data.cpuInfo
-        cpuUsage.value = data.cpuUsage || 0
-      }
-      
-      // 更新内存信息
-      if (data.memoryInfo) {
-        memoryInfo.value = data.memoryInfo
-        memoryUsage.value = data.memoryUsage || 0
-      }
-      
-      // 更新磁盘信息
-      if (data.diskInfo) {
-        diskInfo.value = data.diskInfo
-        diskUsage.value = data.diskUsage || 0
-      }
-      
-      // 更新进程列表
-      if (data.processes) {
-        processes.value = data.processes
-      }
-      
-      apiError.value = false
-    } else {
+
+    const data = response?.code === 200 && response?.data ? response.data : response
+
+    if (!data) {
       throw new Error('API返回数据格式不正确')
     }
+
+    // 更新系统信息
+    if (data.systemInfo) {
+      console.log('Updating system info with:', data.systemInfo)
+      systemInfo.value = data.systemInfo
+
+      if (!systemInfo.value.load || systemInfo.value.load === null) {
+        systemInfo.value.load = [0, 0, 0]
+      }
+    }
+
+    // 更新CPU信息
+    if (data.cpuInfo) {
+      cpuInfo.value = data.cpuInfo
+      cpuUsage.value = data.cpuUsage || 0
+    }
+
+    // 更新内存信息
+    if (data.memoryInfo) {
+      memoryInfo.value = data.memoryInfo
+      memoryUsage.value = data.memoryUsage || 0
+    }
+
+    // 更新磁盘信息
+    if (data.diskInfo) {
+      diskInfo.value = data.diskInfo
+      diskUsage.value = data.diskUsage || 0
+    }
+
+    // 更新进程列表
+    if (data.processes) {
+      processes.value = data.processes
+    }
+
+    apiError.value = false
   } catch (error) {
     console.error('获取系统状态失败:', error)
     apiError.value = true

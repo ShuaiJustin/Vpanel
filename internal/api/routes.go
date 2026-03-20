@@ -458,6 +458,7 @@ func (r *Router) Setup() {
 				xrayRoutes.POST("/validate", xrayHandler.ValidateConfig)
 				xrayRoutes.POST("/test-config", xrayHandler.TestConfig)
 				xrayRoutes.GET("/version", xrayHandler.GetVersion)
+				xrayRoutes.GET("/version/:version/details", xrayHandler.GetVersionDetails)
 				xrayRoutes.GET("/versions", xrayHandler.GetVersions)
 				xrayRoutes.POST("/sync-versions", xrayHandler.SyncVersions)
 				xrayRoutes.GET("/check-updates", xrayHandler.CheckUpdates)
@@ -660,6 +661,7 @@ func (r *Router) Setup() {
 			{
 				adminCoupons.GET("", couponHandler.ListCoupons)
 				adminCoupons.POST("", couponHandler.CreateCoupon)
+				adminCoupons.PUT("/:id", couponHandler.UpdateCoupon)
 				adminCoupons.DELETE("/:id", couponHandler.DeleteCoupon)
 				adminCoupons.POST("/batch", couponHandler.GenerateBatchCodes)
 			}

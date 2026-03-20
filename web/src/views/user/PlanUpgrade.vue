@@ -253,7 +253,7 @@ const confirmUpgrade = async () => {
     })
 
     ElMessage.success('升级成功')
-    router.push({ name: 'user-subscription' })
+    router.push({ name: 'UserSubscription' })
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error(error.response?.data?.message || '升级失败')
@@ -316,7 +316,7 @@ const fetchData = async () => {
   try {
     // 获取套餐列表
     const plansResponse = await plansApi.list()
-    plans.value = plansResponse.data || []
+    plans.value = Array.isArray(plansResponse.plans) ? plansResponse.plans : []
 
     // 获取用户信息（包含当前套餐）
     // 这里假设用户信息中有 plan_id 和 expires_at

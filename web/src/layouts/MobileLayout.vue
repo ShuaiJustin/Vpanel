@@ -71,7 +71,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
@@ -183,6 +183,11 @@ function handleLogout() {
     router.push('/user/login')
   }).catch(() => {})
 }
+
+onMounted(() => {
+  if (!hasPortalSession.value) return
+  announcementsStore.fetchUnreadCount().catch(() => {})
+})
 </script>
 
 <style scoped>

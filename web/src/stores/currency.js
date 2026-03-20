@@ -35,8 +35,8 @@ export const useCurrencyStore = defineStore('currency', () => {
     error.value = null
     try {
       const response = await currencyApi.getSupportedCurrencies()
-      currencies.value = response.data.currencies || []
-      baseCurrency.value = response.data.base_currency || 'CNY'
+      currencies.value = response.currencies || []
+      baseCurrency.value = response.base_currency || 'CNY'
     } catch (err) {
       error.value = err.message || '获取货币列表失败'
       console.error('Failed to fetch currencies:', err)
@@ -49,7 +49,7 @@ export const useCurrencyStore = defineStore('currency', () => {
   async function detectUserCurrency() {
     try {
       const response = await currencyApi.detectCurrency()
-      detectedCurrency.value = response.data.currency || baseCurrency.value
+      detectedCurrency.value = response.currency || baseCurrency.value
       // 如果用户没有手动选择货币，使用检测到的货币
       if (!selectedCurrency.value) {
         selectedCurrency.value = detectedCurrency.value
@@ -75,8 +75,8 @@ export const useCurrencyStore = defineStore('currency', () => {
 
     try {
       const response = await currencyApi.getExchangeRate(from, to)
-      exchangeRates.value[cacheKey] = response.data.rate
-      return response.data.rate
+      exchangeRates.value[cacheKey] = response.rate
+      return response.rate
     } catch (err) {
       console.error('Failed to get exchange rate:', err)
       return 1
@@ -89,7 +89,7 @@ export const useCurrencyStore = defineStore('currency', () => {
 
     try {
       const response = await currencyApi.convertAmount({ amount, from, to })
-      return response.data.converted_amount
+      return response.converted_amount
     } catch (err) {
       console.error('Failed to convert amount:', err)
       // 尝试使用缓存的汇率

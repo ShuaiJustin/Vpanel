@@ -65,6 +65,7 @@ type CreateCouponRequest struct {
 	PlanIDs        []int64   `json:"plan_ids"`
 	StartAt        time.Time `json:"start_at"`
 	ExpireAt       time.Time `json:"expire_at"`
+	IsActive       bool      `json:"is_active"`
 }
 
 // CouponFilter defines filter options for listing coupons.
@@ -92,9 +93,6 @@ func NewService(couponRepo repository.CouponRepository, log logger.Logger) *Serv
 
 // Create creates a new coupon.
 func (s *Service) Create(ctx context.Context, req *CreateCouponRequest) (*Coupon, error) {
-	if req.Code == "" {
-		return nil, fmt.Errorf("%w: code is required", ErrInvalidCoupon)
-	}
 	if req.Name == "" {
 		return nil, fmt.Errorf("%w: name is required", ErrInvalidCoupon)
 	}
@@ -106,6 +104,9 @@ func (s *Service) Create(ctx context.Context, req *CreateCouponRequest) (*Coupon
 	}
 	if req.ExpireAt.Before(req.StartAt) {
 		return nil, fmt.Errorf("%w: expire date must be after start date", ErrInvalidCoupon)
+	}
+	if req.Code == "" {
+		req.Code = s.generateCode("")
 	}
 
 	// Convert plan IDs to string
@@ -123,11 +124,53 @@ func (s *Service) Create(ctx context.Context, req *CreateCouponRequest) (*Coupon
 		PlanIDs:        planIDsStr,
 		StartAt:        req.StartAt,
 		ExpireAt:       req.ExpireAt,
-		IsActive:       true,
+		IsActive:       req.IsActive,
 	}
 
 	if err := s.couponRepo.Create(ctx, repoCoupon); err != nil {
 		s.logger.Error("Failed to create coupon", logger.Err(err))
+		return nil, err
+	}
+
+	return s.toCoupon(repoCoupon), nil
+}
+
+// Update updates an existing coupon.
+func (s *Service) Update(ctx context.Context, id int64, req *CreateCouponRequest) (*Coupon, error) {
+	repoCoupon, err := s.couponRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, ErrCouponNotFound
+	}
+	if req.Name == "" {
+		return nil, fmt.Errorf("%w: name is required", ErrInvalidCoupon)
+	}
+	if req.Type != TypeFixed && req.Type != TypePercentage {
+		return nil, fmt.Errorf("%w: invalid coupon type", ErrInvalidCoupon)
+	}
+	if req.Value <= 0 {
+		return nil, fmt.Errorf("%w: value must be positive", ErrInvalidCoupon)
+	}
+	if req.ExpireAt.Before(req.StartAt) {
+		return nil, fmt.Errorf("%w: expire date must be after start date", ErrInvalidCoupon)
+	}
+
+	if req.Code != "" {
+		repoCoupon.Code = strings.ToUpper(req.Code)
+	}
+	repoCoupon.Name = req.Name
+	repoCoupon.Type = req.Type
+	repoCoupon.Value = req.Value
+	repoCoupon.MinOrderAmount = req.MinOrderAmount
+	repoCoupon.MaxDiscount = req.MaxDiscount
+	repoCoupon.TotalLimit = req.TotalLimit
+	repoCoupon.PerUserLimit = req.PerUserLimit
+	repoCoupon.PlanIDs = s.planIDsToString(req.PlanIDs)
+	repoCoupon.StartAt = req.StartAt
+	repoCoupon.ExpireAt = req.ExpireAt
+	repoCoupon.IsActive = req.IsActive
+
+	if err := s.couponRepo.Update(ctx, repoCoupon); err != nil {
+		s.logger.Error("Failed to update coupon", logger.Err(err), logger.F("id", id))
 		return nil, err
 	}
 

@@ -11,6 +11,9 @@ export const statsApi = {
    */
   getDashboard: () => api.get('/stats/dashboard'),
 
+  // 兼容旧调用方
+  getDashboardStats: () => api.get('/stats/dashboard'),
+
   /**
    * 获取用户统计
    * @param {Object} params - 查询参数

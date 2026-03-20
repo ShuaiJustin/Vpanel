@@ -82,6 +82,8 @@ export const usePortalNodesStore = defineStore('portalNodes', () => {
     try {
       const response = await nodesApi.getNodes(params)
       nodes.value = response.nodes || response
+      regions.value = response.regions || regions.value
+      protocols.value = response.protocols || protocols.value
       return response
     } catch (err) {
       error.value = err.message || '获取节点列表失败'
@@ -93,6 +95,9 @@ export const usePortalNodesStore = defineStore('portalNodes', () => {
 
   async function fetchRegions() {
     try {
+      if (!nodes.value.length) {
+        await fetchNodes()
+      }
       const response = await nodesApi.getRegions()
       regions.value = response.regions || response
       return response
@@ -103,6 +108,9 @@ export const usePortalNodesStore = defineStore('portalNodes', () => {
 
   async function fetchProtocols() {
     try {
+      if (!nodes.value.length) {
+        await fetchNodes()
+      }
       const response = await nodesApi.getProtocols()
       protocols.value = response.protocols || response
       return response

@@ -26,8 +26,8 @@
         <div class="stat-label">已支付订单</div>
       </el-card>
       <el-card shadow="never" class="stat-card">
-        <div class="stat-value">¥{{ formatPrice(stats.total_refund) }}</div>
-        <div class="stat-label">退款金额</div>
+        <div class="stat-value">{{ stats.refunded_orders }}</div>
+        <div class="stat-label">退款订单数</div>
       </el-card>
     </div>
 
@@ -182,7 +182,7 @@ const stats = reactive({
   total_revenue: 0,
   total_orders: 0,
   paid_orders: 0,
-  total_refund: 0
+  refunded_orders: 0
 })
 
 const failedPaymentStats = reactive({
@@ -208,6 +208,30 @@ const pauseStats = reactive({
 })
 
 const formatPrice = (price) => ((price || 0) / 100).toFixed(2)
+const resetFailedPaymentStats = () => {
+  Object.assign(failedPaymentStats, {
+    total_failed: 0,
+    pending_retry: 0,
+    retry_exhausted: 0,
+    recovered_by_retry: 0,
+    failure_rate: 0,
+    recovery_rate: 0,
+    avg_retry_attempts: 0,
+    failures_by_method: {},
+    failures_by_reason: {}
+  })
+}
+const resetPauseStats = () => {
+  Object.assign(pauseStats, {
+    total_pauses: 0,
+    active_pauses: 0,
+    resumed_pauses: 0,
+    auto_resumed: 0,
+    avg_pause_days: 0,
+    pause_rate: 0,
+    abuse_patterns: []
+  })
+}
 
 // Convert failures_by_reason object to array for table display
 const failureReasonsList = computed(() => {
@@ -221,47 +245,25 @@ const failureReasonsList = computed(() => {
 const fetchFailedPaymentStats = async () => {
   try {
     const response = await api.get('/admin/reports/failed-payments')
-    if (response.data?.stats) {
-      Object.assign(failedPaymentStats, response.data.stats)
-    }
+    Object.assign(failedPaymentStats, response?.stats || response?.data?.stats || {})
   } catch (error) {
     console.error('Failed to fetch failed payment stats:', error)
-    Object.assign(failedPaymentStats, {
-      total_failed: 0,
-      pending_retry: 0,
-      retry_exhausted: 0,
-      recovered_by_retry: 0,
-      failure_rate: 0,
-      recovery_rate: 0,
-      avg_retry_attempts: 0,
-      failures_by_method: {},
-      failures_by_reason: {}
-    })
+    resetFailedPaymentStats()
   }
 }
 
 const fetchPauseStats = async () => {
   try {
     const response = await api.get('/admin/reports/pause-stats')
-    if (response.data?.stats) {
-      Object.assign(pauseStats, response.data.stats)
-    }
+    Object.assign(pauseStats, response?.stats || response?.data?.stats || response || {})
   } catch (error) {
     console.error('Failed to fetch pause stats:', error)
-    Object.assign(pauseStats, {
-      total_pauses: 0,
-      active_pauses: 0,
-      resumed_pauses: 0,
-      auto_resumed: 0,
-      avg_pause_days: 0,
-      pause_rate: 0,
-      abuse_patterns: []
-    })
+    resetPauseStats()
   }
 }
 
 const viewUser = (userId) => {
-  window.open(`/admin/users/${userId}`, '_blank')
+  window.open(`/admin/subscriptions?user_id=${userId}`, '_blank')
 }
 
 const fetchReports = async () => {
@@ -297,7 +299,7 @@ const fetchReports = async () => {
     
     if (orderStatsResponse.code === 200 && orderStatsResponse.data) {
       stats.paid_orders = orderStatsResponse.data.paid || 0
-      stats.total_refund = orderStatsResponse.data.refunded || 0
+      stats.refunded_orders = orderStatsResponse.data.refunded || 0
     }
 
     await Promise.all([

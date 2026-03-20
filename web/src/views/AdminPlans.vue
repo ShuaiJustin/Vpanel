@@ -62,14 +62,14 @@
         <el-form-item label="流量限制(GB)" prop="traffic_limit">
           <el-input-number v-model="form.traffic_limit" :min="0" placeholder="0表示无限制" />
         </el-form-item>
-        <el-form-item label="速度限制(Mbps)" prop="speed_limit">
-          <el-input-number v-model="form.speed_limit" :min="0" placeholder="0表示无限制" />
-        </el-form-item>
-        <el-form-item label="设备限制" prop="device_limit">
-          <el-input-number v-model="form.device_limit" :min="0" placeholder="0表示无限制" />
+        <el-form-item label="并发 IP 限制" prop="ip_limit">
+          <el-input-number v-model="form.ip_limit" :min="0" placeholder="0表示不限制" />
         </el-form-item>
         <el-form-item label="排序" prop="sort_order">
           <el-input-number v-model="form.sort_order" :min="0" />
+        </el-form-item>
+        <el-form-item label="启用状态">
+          <el-switch v-model="form.is_active" />
         </el-form-item>
         <el-form-item label="功能特性">
           <el-tag
@@ -123,9 +123,9 @@ const form = reactive({
   price: 0,
   duration: 30,
   traffic_limit: 0,
-  speed_limit: 0,
-  device_limit: 0,
+  ip_limit: 0,
   sort_order: 0,
+  is_active: true,
   features: []
 })
 
@@ -156,7 +156,7 @@ const fetchPlans = async () => {
 
 const showCreateDialog = () => {
   isEdit.value = false
-  Object.assign(form, { id: null, name: '', description: '', price: 0, duration: 30, traffic_limit: 0, speed_limit: 0, device_limit: 0, sort_order: 0, features: [] })
+  Object.assign(form, { id: null, name: '', description: '', price: 0, duration: 30, traffic_limit: 0, ip_limit: 0, sort_order: 0, is_active: true, features: [] })
   dialogVisible.value = true
 }
 
@@ -169,9 +169,9 @@ const editPlan = (plan) => {
     price: plan.price / 100,
     duration: plan.duration,
     traffic_limit: plan.traffic_limit ? plan.traffic_limit / (1024 * 1024 * 1024) : 0,
-    speed_limit: plan.speed_limit ? (plan.speed_limit * 8) / (1024 * 1024) : 0,
-    device_limit: plan.device_limit || 0,
+    ip_limit: plan.ip_limit || 0,
     sort_order: plan.sort_order || 0,
+    is_active: plan.is_active ?? true,
     features: plan.features || []
   })
   dialogVisible.value = true
@@ -187,9 +187,9 @@ const submitForm = async () => {
       price: Math.round(form.price * 100),
       duration: form.duration,
       traffic_limit: form.traffic_limit ? form.traffic_limit * 1024 * 1024 * 1024 : 0,
-      speed_limit: form.speed_limit ? (form.speed_limit * 1024 * 1024) / 8 : 0,
-      device_limit: form.device_limit,
+      ip_limit: form.ip_limit,
       sort_order: form.sort_order,
+      is_active: form.is_active,
       features: form.features
     }
     if (isEdit.value) {

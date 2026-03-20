@@ -49,15 +49,15 @@ export function getUnreadCount() {
  * @returns {Promise}
  */
 export function batchMarkAsRead(ids) {
-  return api.post(`${BASE_URL}/batch-read`, { ids })
+  return Promise.all((ids || []).map(id => markAsRead(id)))
 }
 
 /**
  * 标记所有为已读
  * @returns {Promise}
  */
-export function markAllAsRead() {
-  return api.post(`${BASE_URL}/read-all`)
+export function markAllAsRead(ids = []) {
+  return batchMarkAsRead(ids)
 }
 
 export default {

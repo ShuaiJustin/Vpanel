@@ -42,7 +42,9 @@ export function testLatency(id) {
  * @returns {Promise}
  */
 export function batchTestLatency(ids) {
-  return api.post(`${BASE_URL}/ping`, { ids })
+  return Promise.all((ids || []).map(id =>
+    testLatency(id).then(result => ({ id, ...result }))
+  ))
 }
 
 /**
@@ -50,7 +52,9 @@ export function batchTestLatency(ids) {
  * @returns {Promise}
  */
 export function getRegions() {
-  return api.get(`${BASE_URL}/regions`)
+  return api.get(BASE_URL).then(response => ({
+    regions: response?.regions || []
+  }))
 }
 
 /**
@@ -58,7 +62,9 @@ export function getRegions() {
  * @returns {Promise}
  */
 export function getProtocols() {
-  return api.get(`${BASE_URL}/protocols`)
+  return api.get(BASE_URL).then(response => ({
+    protocols: response?.protocols || []
+  }))
 }
 
 export default {

@@ -134,13 +134,13 @@ const getStatusLabel = (status) => ({ active: '活跃', expired: '已过期', co
 const fetchStats = async () => {
   try {
     const response = await api.get('/admin/trials/stats')
-    if (response.data && response.data.stats) Object.assign(stats, response.data.stats)
+    if (response?.stats) Object.assign(stats, response.stats)
   } catch (error) { console.error('Failed to fetch trial stats:', error) }
 }
 const fetchConfig = async () => {
   try {
     const response = await api.get('/trial')
-    if (response.data && response.data.trial_config) Object.assign(trialConfig, response.data.trial_config)
+    if (response?.trial_config) Object.assign(trialConfig, response.trial_config)
   } catch (error) { console.error('Failed to fetch trial config:', error) }
 }
 const searchUserTrial = async () => {
@@ -148,10 +148,10 @@ const searchUserTrial = async () => {
   searching.value = true
   try {
     const response = await api.get('/admin/trials/user/' + searchUserId.value)
-    searchResult.value = response.data && response.data.trial ? response.data.trial : null
+    searchResult.value = response?.trial || null
   } catch (error) {
-    if (error.response && error.response.status === 404) searchResult.value = null
-    else ElMessage.error(error.response && error.response.data && error.response.data.error ? error.response.data.error : '查询失败')
+    if (error.status === 404) searchResult.value = null
+    else ElMessage.error(error.message || '查询失败')
   } finally { searching.value = false }
 }
 const expireTrials = async () => {
@@ -159,10 +159,10 @@ const expireTrials = async () => {
     await ElMessageBox.confirm('确定要执行试用过期检查吗？', '确认', { type: 'warning' })
     expiring.value = true
     const response = await api.post('/admin/trials/expire')
-    ElMessage.success('已过期 ' + (response.data && response.data.expired_count ? response.data.expired_count : 0) + ' 个试用')
+    ElMessage.success('已过期 ' + (response?.expired_count || 0) + ' 个试用')
     fetchStats()
   } catch (error) {
-    if (error !== 'cancel') ElMessage.error(error.response && error.response.data && error.response.data.error ? error.response.data.error : '操作失败')
+    if (error !== 'cancel') ElMessage.error(error.message || '操作失败')
   } finally { expiring.value = false }
 }
 const showGrantDialog = () => { grantForm.user_id = null; grantForm.duration = trialConfig.duration || 7; grantDialogVisible.value = true }
@@ -174,7 +174,7 @@ const submitGrant = async () => {
     ElMessage.success('试用已授予')
     grantDialogVisible.value = false
     fetchStats()
-  } catch (error) { ElMessage.error(error.response && error.response.data && error.response.data.error ? error.response.data.error : '授予失败') }
+  } catch (error) { ElMessage.error(error.message || '授予失败') }
   finally { granting.value = false }
 }
 onMounted(() => { fetchStats(); fetchConfig() })
