@@ -1,40 +1,67 @@
 <template>
   <div class="change-password-container">
-    <div class="change-password-header">
-      <h2>修改密码</h2>
-      <p>修改您的登录密码</p>
+    <div class="page-header">
+      <div class="page-heading">
+        <h1 class="page-title">修改密码</h1>
+        <p class="page-subtitle">更新登录凭据并完成基础安全校验</p>
+      </div>
     </div>
-    
-    <div class="change-password-content">
-      <el-card class="change-password-card">
-        <el-form 
-          :model="passwordForm" 
-          label-width="120px" 
+
+    <div class="overview-strip">
+      <div class="overview-card">
+        <span class="overview-label">当前状态</span>
+        <strong class="overview-value" :class="passwordForm.newPassword ? 'is-primary' : ''">
+          {{ passwordForm.newPassword ? passwordStrengthText : '待输入' }}
+        </strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">最少长度</span>
+        <strong class="overview-value">8 位</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">安全校验</span>
+        <strong class="overview-value is-success">5 项</strong>
+      </div>
+    </div>
+
+    <div class="change-password-layout">
+      <el-card class="change-password-card" shadow="never">
+        <template #header>
+          <div class="card-header">
+            <span>更新登录密码</span>
+            <span class="card-hint">保存后将重新登录</span>
+          </div>
+        </template>
+
+        <el-form
+          ref="passwordFormRef"
+          :model="passwordForm"
+          :label-width="isMobile ? 'auto' : '110px'"
+          :label-position="isMobile ? 'top' : 'left'"
           class="password-form"
           :rules="rules"
-          ref="passwordFormRef"
         >
           <el-form-item label="当前密码" prop="currentPassword">
-            <el-input 
-              v-model="passwordForm.currentPassword" 
-              type="password" 
+            <el-input
+              v-model="passwordForm.currentPassword"
+              type="password"
               placeholder="请输入当前密码"
               show-password
-            ></el-input>
+            />
           </el-form-item>
-          
+
           <el-form-item label="新密码" prop="newPassword">
-            <el-input 
-              v-model="passwordForm.newPassword" 
-              type="password" 
+            <el-input
+              v-model="passwordForm.newPassword"
+              type="password"
               placeholder="请输入新密码"
               show-password
-            ></el-input>
-            <div class="password-strength" v-if="passwordForm.newPassword">
-              <span>密码强度:</span>
+            />
+            <div v-if="passwordForm.newPassword" class="password-strength">
+              <span class="strength-label">密码强度</span>
               <div class="strength-indicator">
-                <div 
-                  class="strength-bar" 
+                <div
+                  class="strength-bar"
                   :class="passwordStrengthClass"
                   :style="{ width: passwordStrength + '%' }"
                 ></div>
@@ -42,24 +69,34 @@
               <span class="strength-text" :class="passwordStrengthClass">{{ passwordStrengthText }}</span>
             </div>
           </el-form-item>
-          
+
           <el-form-item label="确认新密码" prop="confirmPassword">
-            <el-input 
-              v-model="passwordForm.confirmPassword" 
-              type="password" 
+            <el-input
+              v-model="passwordForm.confirmPassword"
+              type="password"
               placeholder="请再次输入新密码"
               show-password
-            ></el-input>
+            />
           </el-form-item>
-          
+
           <el-form-item>
-            <el-button type="primary" :loading="saving" @click="changePassword">确认修改</el-button>
-            <el-button :disabled="saving" @click="resetForm">重置</el-button>
+            <div class="form-actions">
+              <el-button type="primary" :loading="saving" @click="changePassword">确认修改</el-button>
+              <el-button :disabled="saving" @click="resetForm">重置</el-button>
+            </div>
           </el-form-item>
         </el-form>
-        
+      </el-card>
+
+      <el-card class="password-tips-card" shadow="never">
+        <template #header>
+          <div class="card-header">
+            <span>密码要求</span>
+            <span class="card-hint">建议定期更新</span>
+          </div>
+        </template>
+
         <div class="password-tips">
-          <h4>密码要求:</h4>
           <ul>
             <li>密码长度至少为8个字符</li>
             <li>包含至少一个大写字母和一个小写字母</li>
@@ -78,9 +115,11 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import { useViewport } from '@/composables/useViewport'
 
 const router = useRouter()
 const userStore = useUserStore()
+const { isMobile } = useViewport()
 const passwordFormRef = ref(null)
 const saving = ref(false)
 
@@ -222,49 +261,103 @@ const resetForm = () => {
   padding: 20px;
 }
 
-.change-password-header {
+.page-header {
   margin-bottom: 20px;
 }
 
-.change-password-header h2 {
+.page-title {
   font-size: 24px;
   margin: 0 0 8px;
   color: #303133;
 }
 
-.change-password-header p {
+.page-subtitle {
   margin: 0;
   color: #909399;
   font-size: 14px;
 }
 
-.change-password-content {
-  display: flex;
-  justify-content: center;
+.overview-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
 }
 
-.change-password-card {
-  width: 100%;
-  max-width: 700px;
+.overview-card {
+  padding: 18px 20px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+}
+
+.overview-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.overview-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.overview-value.is-primary {
+  color: #2563eb;
+}
+
+.overview-value.is-success {
+  color: #059669;
+}
+
+.change-password-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(260px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.card-hint {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.change-password-card,
+.password-tips-card {
+  border-radius: 18px;
 }
 
 .password-form {
-  max-width: 500px;
-  margin: 0 auto 20px;
+  margin-bottom: 0;
 }
 
 .password-strength {
   margin-top: 8px;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   font-size: 12px;
 }
 
+.strength-label {
+  color: #64748b;
+}
+
 .strength-indicator {
-  width: 100px;
+  flex: 1 1 100px;
   height: 5px;
   background-color: #e0e0e0;
-  margin: 0 8px;
   border-radius: 3px;
   overflow: hidden;
 }
@@ -310,16 +403,13 @@ const resetForm = () => {
   color: #409eff;
 }
 
-.password-tips {
-  border-top: 1px solid #ebeef5;
-  padding-top: 15px;
+.form-actions {
+  display: flex;
+  gap: 12px;
 }
 
-.password-tips h4 {
-  font-size: 14px;
-  color: #606266;
-  margin-top: 0;
-  margin-bottom: 10px;
+.password-tips {
+  color: #475569;
 }
 
 .password-tips ul {
@@ -331,5 +421,41 @@ const resetForm = () => {
   font-size: 12px;
   color: #909399;
   line-height: 1.8;
+}
+
+@media (max-width: 960px) {
+  .change-password-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .change-password-container {
+    padding: 12px;
+  }
+
+  .overview-strip {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .form-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .form-actions .el-button {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .password-strength {
+    align-items: stretch;
+  }
 }
 </style>

@@ -77,8 +77,8 @@
             <el-icon><Connection /></el-icon>
           </div>
           <div class="stat-content">
-            <div class="stat-label">连接次数</div>
-            <div class="stat-value">{{ stats.connections }}</div>
+            <div class="stat-label">使用节点</div>
+            <div class="stat-value">{{ stats.nodes }}</div>
           </div>
         </div>
       </el-col>
@@ -180,7 +180,6 @@
             {{ formatTraffic(row.total) }}
           </template>
         </el-table-column>
-        <el-table-column label="连接数" prop="connections" width="100" />
       </el-table>
       </div>
     </el-card>
@@ -218,7 +217,7 @@ const stats = reactive({
   upload: 0,
   download: 0,
   total: 0,
-  connections: 0
+  nodes: 0
 })
 
 const nodeUsage = ref([])
@@ -293,7 +292,7 @@ async function loadStats() {
     stats.upload = data?.summary?.upload || 0
     stats.download = data?.summary?.download || 0
     stats.total = data?.summary?.total || 0
-    stats.connections = data?.summary?.connections || 0
+    stats.nodes = data?.summary?.nodes || 0
     
     nodeUsage.value = Array.isArray(data?.node_usage) ? data.node_usage : []
     protocolUsage.value = Array.isArray(data?.protocol_usage) ? data.protocol_usage : []
@@ -414,7 +413,15 @@ function renderProtocolChart() {
 async function exportData() {
   exporting.value = true
   try {
-    await statsStore.exportStats({ range: timeRange.value })
+    const params = {}
+    if (timeRange.value === 'custom' && customRange.value?.length === 2) {
+      const dayMs = 24 * 60 * 60 * 1000
+      params.days = Math.max(1, Math.ceil((customRange.value[1] - customRange.value[0]) / dayMs) + 1)
+    } else {
+      const daysMap = { day: 1, week: 7, month: 30, year: 365 }
+      params.days = daysMap[timeRange.value] || 30
+    }
+    await statsStore.exportStats(params)
     ElMessage.success('数据导出成功')
   } catch (error) {
     ElMessage.error('导出失败')

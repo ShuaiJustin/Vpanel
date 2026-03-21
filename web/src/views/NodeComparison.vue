@@ -1,7 +1,10 @@
 <template>
   <div class="node-comparison-page">
     <div class="page-header">
-      <h1 class="page-title">节点性能对比</h1>
+      <div class="page-heading">
+        <h1 class="page-title">节点性能对比</h1>
+        <p class="page-subtitle">对比节点延迟、负载、同步状态和基础运行指标</p>
+      </div>
       <div class="header-actions">
         <el-button @click="fetchNodes" :loading="loading">
           <el-icon><Refresh /></el-icon>
@@ -41,29 +44,31 @@
       <template #header>
         <span>性能对比</span>
       </template>
-      <el-table :data="comparisonData" border style="width: 100%">
-        <el-table-column prop="metric" label="指标" width="150" fixed />
-        <el-table-column
-          v-for="node in selectedNodes"
-          :key="node.id"
-          :label="node.name"
-          min-width="150"
-        >
-          <template #default="{ row }">
-            <div class="metric-cell" :class="getCellClass(row, node)">
-              <span class="metric-value">{{ getMetricValue(row, node) }}</span>
-              <el-icon v-if="row.key !== 'name' && row.key !== 'region'" class="rank-icon">
-                <Trophy v-if="isTopPerformer(row, node)" />
-              </el-icon>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
+      <div class="table-shell">
+        <el-table :data="comparisonData" border style="width: 100%">
+          <el-table-column prop="metric" label="指标" width="150" fixed />
+          <el-table-column
+            v-for="node in selectedNodes"
+            :key="node.id"
+            :label="node.name"
+            min-width="150"
+          >
+            <template #default="{ row }">
+              <div class="metric-cell" :class="getCellClass(row, node)">
+                <span class="metric-value">{{ getMetricValue(row, node) }}</span>
+                <el-icon v-if="row.key !== 'name' && row.key !== 'region'" class="rank-icon">
+                  <Trophy v-if="isTopPerformer(row, node)" />
+                </el-icon>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
     </el-card>
 
     <!-- 可视化对比 -->
-    <el-row :gutter="20" v-if="selectedNodes.length > 0">
-      <el-col :span="12">
+    <el-row :gutter="isMobile ? 12 : 20" v-if="selectedNodes.length > 0">
+      <el-col :span="chartSpan">
         <el-card shadow="never" class="chart-card">
           <template #header>
             <span>延迟对比</span>
@@ -88,7 +93,7 @@
         </el-card>
       </el-col>
 
-      <el-col :span="12">
+      <el-col :span="chartSpan">
         <el-card shadow="never" class="chart-card">
           <template #header>
             <span>负载对比</span>
@@ -119,41 +124,43 @@
       <template #header>
         <span>详细数据</span>
       </template>
-      <el-table :data="selectedNodes" border style="width: 100%">
-        <el-table-column prop="name" label="名称" width="150" />
-        <el-table-column label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)" size="small">
-              {{ getStatusText(row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="region" label="地区" width="100" />
-        <el-table-column prop="address" label="地址" min-width="150" />
-        <el-table-column label="延迟" width="100" sortable :sort-method="sortByLatency">
-          <template #default="{ row }">
-            <span :class="getLatencyClass(row.latency)">{{ row.latency }}ms</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="负载" width="120" sortable :sort-method="sortByLoad">
-          <template #default="{ row }">
-            {{ row.current_users }}/{{ row.max_users || '∞' }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="weight" label="权重" width="80" sortable />
-        <el-table-column label="同步状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="getSyncStatusType(row.sync_status)" size="small">
-              {{ getSyncStatusText(row.sync_status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="最后在线" width="180">
-          <template #default="{ row }">
-            {{ formatTime(row.last_seen_at) }}
-          </template>
-        </el-table-column>
-      </el-table>
+      <div class="table-shell">
+        <el-table :data="selectedNodes" border style="width: 100%">
+          <el-table-column prop="name" label="名称" width="150" />
+          <el-table-column label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="getStatusType(row.status)" size="small">
+                {{ getStatusText(row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="region" label="地区" width="100" />
+          <el-table-column prop="address" label="地址" min-width="150" />
+          <el-table-column label="延迟" width="100" sortable :sort-method="sortByLatency">
+            <template #default="{ row }">
+              <span :class="getLatencyClass(row.latency)">{{ row.latency }}ms</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="负载" width="120" sortable :sort-method="sortByLoad">
+            <template #default="{ row }">
+              {{ row.current_users }}/{{ row.max_users || '∞' }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="weight" label="权重" width="80" sortable />
+          <el-table-column label="同步状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="getSyncStatusType(row.sync_status)" size="small">
+                {{ getSyncStatusText(row.sync_status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="最后在线" width="180">
+            <template #default="{ row }">
+              {{ formatTime(row.last_seen_at) }}
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
     </el-card>
 
     <el-empty v-if="selectedNodes.length === 0" description="请选择要对比的节点" />
@@ -165,11 +172,14 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh, Trophy } from '@element-plus/icons-vue'
 import { useNodeStore } from '@/stores/node'
+import { useViewport } from '@/composables/useViewport'
 
 const nodeStore = useNodeStore()
+const { isMobile } = useViewport()
 
 const loading = ref(false)
 const selectedNodeIds = ref([])
+const chartSpan = computed(() => (isMobile.value ? 24 : 12))
 
 const selectedNodes = computed(() => {
   return nodeStore.nodes.filter(n => selectedNodeIds.value.includes(n.id))
@@ -435,5 +445,53 @@ onMounted(fetchNodes)
   text-align: right;
   font-size: 13px;
   color: var(--el-text-color-secondary);
+}
+
+.table-shell {
+  overflow-x: auto;
+}
+
+.table-shell :deep(.el-table) {
+  min-width: 760px;
+}
+
+@media (max-width: 768px) {
+  .node-comparison-page {
+    padding: 12px;
+  }
+
+  .page-header,
+  .header-actions,
+  .selection-header,
+  .bar-item,
+  .metric-cell {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
+
+  .header-actions .el-button {
+    width: 100%;
+  }
+
+  .node-checkbox-label {
+    display: flex;
+    flex-wrap: wrap;
+    line-height: 1.6;
+  }
+
+  .bar-label,
+  .bar-value {
+    width: 100%;
+    text-align: left;
+  }
+
+  .bar-container {
+    width: 100%;
+    margin: 8px 0;
+  }
 }
 </style>

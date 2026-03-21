@@ -1,678 +1,526 @@
 <template>
-  <div class="traffic-container">
-    <div class="header">
-      <div class="page-heading">
-        <h1>流量统计</h1>
-        <p class="page-subtitle">按时间维度查看整体流量趋势和用户流量明细</p>
+  <div class="traffic-page">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">流量统计</h1>
+        <p class="page-subtitle">查看后台总流量趋势和用户流量排行</p>
       </div>
-      <div class="actions">
+      <div class="header-actions">
         <el-date-picker
           v-model="dateRange"
           type="daterange"
           range-separator="至"
           start-placeholder="开始日期"
           end-placeholder="结束日期"
-          :shortcuts="dateShortcuts"
-          @change="handleDateChange"
+          :style="{ width: datePickerWidth }"
         />
-        <el-button type="primary" @click="fetchTrafficData">查询</el-button>
-        <el-button type="success" @click="exportTrafficData">导出报表</el-button>
+        <el-button type="primary" :loading="loading" @click="fetchTrafficData">查询</el-button>
+        <el-button :disabled="filteredUsers.length === 0" @click="exportTrafficData">导出 CSV</el-button>
       </div>
     </div>
 
-    <!-- 总流量统计 -->
-    <el-row :gutter="20">
-      <el-col :span="6">
-        <el-card class="stat-card">
-          <div class="stat-value">{{ formatTraffic(totalStats.totalTraffic) }}</div>
-          <div class="stat-title">总流量</div>
+    <el-row :gutter="isMobile ? 12 : 20" class="summary-row">
+      <el-col :span="statCardSpan">
+        <el-card class="summary-card" shadow="never">
+          <div class="summary-label">总流量</div>
+          <div class="summary-value">{{ formatTraffic(totalStats.totalTraffic) }}</div>
         </el-card>
       </el-col>
-      <el-col :span="6">
-        <el-card class="stat-card">
-          <div class="stat-value">{{ formatTraffic(totalStats.uploadTraffic) }}</div>
-          <div class="stat-title">总上传</div>
+      <el-col :span="statCardSpan">
+        <el-card class="summary-card" shadow="never">
+          <div class="summary-label">总上传</div>
+          <div class="summary-value">{{ formatTraffic(totalStats.uploadTraffic) }}</div>
         </el-card>
       </el-col>
-      <el-col :span="6">
-        <el-card class="stat-card">
-          <div class="stat-value">{{ formatTraffic(totalStats.downloadTraffic) }}</div>
-          <div class="stat-title">总下载</div>
+      <el-col :span="statCardSpan">
+        <el-card class="summary-card" shadow="never">
+          <div class="summary-label">总下载</div>
+          <div class="summary-value">{{ formatTraffic(totalStats.downloadTraffic) }}</div>
         </el-card>
       </el-col>
-      <el-col :span="6">
-        <el-card class="stat-card">
-          <div class="stat-value">{{ totalStats.activeUsers }}</div>
-          <div class="stat-title">活跃用户</div>
+      <el-col :span="statCardSpan">
+        <el-card class="summary-card" shadow="never">
+          <div class="summary-label">活跃用户</div>
+          <div class="summary-value">{{ totalStats.activeUsers }}</div>
         </el-card>
       </el-col>
     </el-row>
 
-    <!-- 流量趋势图 -->
-    <el-card class="chart-card">
+    <el-card shadow="never" class="chart-card">
       <template #header>
         <div class="card-header">
           <span>流量趋势</span>
-          <el-radio-group v-model="trafficChartType" size="small">
-            <el-radio-button value="day">日</el-radio-button>
-            <el-radio-button value="week">周</el-radio-button>
-            <el-radio-button value="month">月</el-radio-button>
-          </el-radio-group>
+          <span class="card-meta">{{ rangeLabel }}</span>
         </div>
       </template>
-      <div id="traffic-chart" style="width: 100%; height: 300px;"></div>
+      <div ref="trafficChartRef" class="traffic-chart"></div>
     </el-card>
 
-    <!-- 用户流量表格 -->
-    <el-card class="user-traffic-card">
+    <el-card shadow="never" class="table-card">
       <template #header>
         <div class="card-header">
-          <span>用户流量明细</span>
-          <div class="header-actions">
+          <span>用户流量排行</span>
+          <div class="table-actions">
             <el-input
               v-model="searchQuery"
-              placeholder="搜索用户"
-              style="width: 200px; margin-right: 10px;"
               clearable
+              placeholder="搜索用户名/邮箱"
+              :style="{ width: searchWidth }"
             />
-            <el-select v-model="sortBy" placeholder="排序方式" style="width: 150px;">
-              <el-option label="流量降序" value="traffic_desc" />
-              <el-option label="流量升序" value="traffic_asc" />
+            <el-select v-model="sortBy" :style="{ width: sortWidth }">
+              <el-option label="总流量降序" value="total_desc" />
+              <el-option label="总流量升序" value="total_asc" />
               <el-option label="用户名" value="username" />
             </el-select>
           </div>
         </div>
       </template>
 
-      <el-table :data="filteredUserTraffic" v-loading="loading" style="width: 100%">
-        <el-table-column prop="username" label="用户名" width="150" />
-        <el-table-column prop="email" label="邮箱" width="200" />
-        <el-table-column label="总流量" width="150">
-          <template #default="scope">
-            {{ formatTraffic(scope.row.totalTraffic) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="上传流量" width="150">
-          <template #default="scope">
-            {{ formatTraffic(scope.row.uploadTraffic) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="下载流量" width="150">
-          <template #default="scope">
-            {{ formatTraffic(scope.row.downloadTraffic) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="流量使用" width="250">
-          <template #default="scope">
-            <el-progress 
-              :percentage="calculateTrafficPercentage(scope.row)" 
-              :status="getTrafficStatus(scope.row)"
-            />
-            <div>{{ formatTraffic(scope.row.totalTraffic) }} / {{ formatTraffic(scope.row.trafficLimit) }}</div>
-          </template>
-        </el-table-column>
-        <el-table-column label="最后在线" width="180">
-          <template #default="scope">
-            {{ formatDateTime(scope.row.lastOnline) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" fixed="right" width="120">
-          <template #default="scope">
-            <el-button size="small" type="primary" @click="showUserDetail(scope.row)">详情</el-button>
-            <el-button size="small" type="success" @click="resetUserTraffic(scope.row)">重置</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
-
-    <!-- 用户流量详情对话框 -->
-    <el-dialog title="用户流量详情" v-model="userDetailVisible" width="800px">
-      <template v-if="selectedUser">
-        <el-descriptions title="用户信息" :column="2" border>
-          <el-descriptions-item label="用户名">{{ selectedUser.username }}</el-descriptions-item>
-          <el-descriptions-item label="邮箱">{{ selectedUser.email }}</el-descriptions-item>
-          <el-descriptions-item label="流量限制">{{ formatTraffic(selectedUser.trafficLimit) }}</el-descriptions-item>
-          <el-descriptions-item label="流量使用">{{ formatTraffic(selectedUser.totalTraffic) }}</el-descriptions-item>
-          <el-descriptions-item label="上传流量">{{ formatTraffic(selectedUser.uploadTraffic) }}</el-descriptions-item>
-          <el-descriptions-item label="下载流量">{{ formatTraffic(selectedUser.downloadTraffic) }}</el-descriptions-item>
-          <el-descriptions-item label="注册时间">{{ formatDateTime(selectedUser.createdAt) }}</el-descriptions-item>
-          <el-descriptions-item label="最后在线">{{ formatDateTime(selectedUser.lastOnline) }}</el-descriptions-item>
-        </el-descriptions>
-
-        <div class="user-traffic-chart" id="user-traffic-chart" style="width: 100%; height: 300px; margin-top: 20px;"></div>
-
-        <el-table :data="selectedUser.trafficLog" style="width: 100%; margin-top: 20px;">
-          <el-table-column prop="date" label="日期" width="180" />
+      <div class="table-shell">
+        <el-table :data="filteredUsers" v-loading="loading" style="width: 100%">
+          <el-table-column prop="username" label="用户名" min-width="140" />
+          <el-table-column prop="email" label="邮箱" min-width="180" />
+          <el-table-column prop="proxy_count" label="代理数" width="100" />
           <el-table-column label="总流量" width="150">
-            <template #default="scope">
-              {{ formatTraffic(scope.row.total) }}
+            <template #default="{ row }">
+              {{ formatTraffic(row.total) }}
             </template>
           </el-table-column>
-          <el-table-column label="上传" width="150">
-            <template #default="scope">
-              {{ formatTraffic(scope.row.upload) }}
+          <el-table-column label="上传" width="140">
+            <template #default="{ row }">
+              {{ formatTraffic(row.upload) }}
             </template>
           </el-table-column>
-          <el-table-column label="下载" width="150">
-            <template #default="scope">
-              {{ formatTraffic(scope.row.download) }}
+          <el-table-column label="下载" width="140">
+            <template #default="{ row }">
+              {{ formatTraffic(row.download) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="使用占比" min-width="220">
+            <template #default="{ row }">
+              <template v-if="row.traffic_limit > 0">
+                <el-progress
+                  :percentage="getTrafficPercentage(row)"
+                  :status="getTrafficStatus(row)"
+                />
+                <div class="progress-note">
+                  {{ formatTraffic(row.total) }} / {{ formatTraffic(row.traffic_limit) }}
+                </div>
+              </template>
+              <span v-else class="limit-note">不限额</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="最后活跃" min-width="180">
+            <template #default="{ row }">
+              {{ formatDateTime(row.last_active) }}
             </template>
           </el-table-column>
         </el-table>
-      </template>
-    </el-dialog>
+      </div>
+    </el-card>
   </div>
 </template>
 
-<script>
-import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import * as echarts from 'echarts/core'
-import { LineChart, BarChart } from 'echarts/charts'
-import {
-  TitleComponent,
-  TooltipComponent,
-  GridComponent,
-  LegendComponent,
-  DataZoomComponent
-} from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
-import api from '@/api/index'
+<script setup>
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import * as echarts from 'echarts'
+import { ElMessage } from 'element-plus'
+import { statsApi } from '@/api'
+import { useViewport } from '@/composables/useViewport'
 
-// 注册必要的 ECharts 组件
-echarts.use([
-  TitleComponent,
-  TooltipComponent,
-  GridComponent,
-  LegendComponent,
-  DataZoomComponent,
-  LineChart,
-  BarChart,
-  CanvasRenderer
-])
+const { isMobile, isTablet } = useViewport({ mobileBreakpoint: 768, tabletBreakpoint: 1200 })
 
-export default {
-  name: 'Traffic',
-  setup() {
-    // 状态
-    const loading = ref(false)
-    const userTraffic = ref([])
-    const dateRange = ref([])
-    const searchQuery = ref('')
-    const sortBy = ref('traffic_desc')
-    const trafficChartType = ref('day')
-    const userDetailVisible = ref(false)
-    const selectedUser = ref(null)
-    
-    // 总流量统计
-    const totalStats = reactive({
+const loading = ref(false)
+const dateRange = ref([])
+const searchQuery = ref('')
+const sortBy = ref('total_desc')
+const users = ref([])
+const timeline = ref([])
+const trafficChartRef = ref(null)
+
+const totalStats = ref({
+  totalTraffic: 0,
+  uploadTraffic: 0,
+  downloadTraffic: 0,
+  activeUsers: 0
+})
+
+const statCardSpan = computed(() => (isMobile.value ? 24 : isTablet.value ? 12 : 6))
+const datePickerWidth = computed(() => (isMobile.value ? '100%' : isTablet.value ? '320px' : '360px'))
+const searchWidth = computed(() => (isMobile.value ? '100%' : '220px'))
+const sortWidth = computed(() => (isMobile.value ? '100%' : '160px'))
+const rangeLabel = computed(() => {
+  if (!Array.isArray(dateRange.value) || dateRange.value.length !== 2) {
+    return '最近 30 天'
+  }
+  return `${formatDate(dateRange.value[0])} 至 ${formatDate(dateRange.value[1])}`
+})
+
+const filteredUsers = computed(() => {
+  const keyword = searchQuery.value.trim().toLowerCase()
+  let result = users.value
+
+  if (keyword) {
+    result = result.filter((item) => {
+      const username = (item.username || '').toLowerCase()
+      const email = (item.email || '').toLowerCase()
+      return username.includes(keyword) || email.includes(keyword)
+    })
+  }
+
+  const sorted = [...result]
+  switch (sortBy.value) {
+    case 'total_asc':
+      sorted.sort((a, b) => a.total - b.total)
+      break
+    case 'username':
+      sorted.sort((a, b) => (a.username || '').localeCompare(b.username || ''))
+      break
+    default:
+      sorted.sort((a, b) => b.total - a.total)
+      break
+  }
+  return sorted
+})
+
+let trafficChart = null
+
+function createDefaultRange() {
+  const end = new Date()
+  const start = new Date()
+  start.setDate(start.getDate() - 30)
+  return [start, end]
+}
+
+function getRangeParams() {
+  const [start, end] = Array.isArray(dateRange.value) && dateRange.value.length === 2
+    ? dateRange.value
+    : createDefaultRange()
+
+  return {
+    period: 'custom',
+    start: start.toISOString(),
+    end: end.toISOString()
+  }
+}
+
+async function fetchTrafficData() {
+  loading.value = true
+  try {
+    const params = getRangeParams()
+    const [trafficResponse, detailResponse, userResponse, dashboardResponse] = await Promise.all([
+      statsApi.getTrafficStats(params),
+      statsApi.getDetailedStats(params),
+      statsApi.getUserStats(params),
+      statsApi.getDashboardStats()
+    ])
+
+    const trafficData = trafficResponse?.data || {}
+    totalStats.value = {
+      totalTraffic: trafficData.total || 0,
+      uploadTraffic: trafficData.up || 0,
+      downloadTraffic: trafficData.down || 0,
+      activeUsers: dashboardResponse?.data?.active_users || 0
+    }
+
+    timeline.value = detailResponse?.data?.timeline || []
+    users.value = (userResponse?.data || []).map((item) => ({
+      user_id: item.user_id,
+      username: item.username || '-',
+      email: item.email || '-',
+      proxy_count: item.proxy_count || 0,
+      upload: item.upload || 0,
+      download: item.download || 0,
+      total: item.total || 0,
+      traffic_limit: item.traffic_limit || 0,
+      last_active: item.last_active || ''
+    }))
+
+    renderTrafficChart()
+  } catch (error) {
+    users.value = []
+    timeline.value = []
+    totalStats.value = {
       totalTraffic: 0,
       uploadTraffic: 0,
       downloadTraffic: 0,
       activeUsers: 0
-    })
-
-    // 日期快捷选项
-    const dateShortcuts = [
-      {
-        text: '最近一周',
-        value: () => {
-          const end = new Date()
-          const start = new Date()
-          start.setTime(start.getTime() - 3600 * 1000 * 24 * 7)
-          return [start, end]
-        }
-      },
-      {
-        text: '最近一个月',
-        value: () => {
-          const end = new Date()
-          const start = new Date()
-          start.setTime(start.getTime() - 3600 * 1000 * 24 * 30)
-          return [start, end]
-        }
-      },
-      {
-        text: '最近三个月',
-        value: () => {
-          const end = new Date()
-          const start = new Date()
-          start.setTime(start.getTime() - 3600 * 1000 * 24 * 90)
-          return [start, end]
-        }
-      }
-    ]
-
-    // 过滤后的用户流量数据
-    const filteredUserTraffic = computed(() => {
-      let result = userTraffic.value
-
-      // 搜索过滤
-      if (searchQuery.value) {
-        const query = searchQuery.value.toLowerCase()
-        result = result.filter(user => 
-          user.username.toLowerCase().includes(query) ||
-          user.email.toLowerCase().includes(query)
-        )
-      }
-
-      // 排序
-      switch (sortBy.value) {
-        case 'traffic_desc':
-          result = result.slice().sort((a, b) => b.totalTraffic - a.totalTraffic)
-          break
-        case 'traffic_asc':
-          result = result.slice().sort((a, b) => a.totalTraffic - b.totalTraffic)
-          break
-        case 'username':
-          result = result.slice().sort((a, b) => a.username.localeCompare(b.username))
-          break
-      }
-
-      return result
-    })
-
-    // 获取流量数据
-    const fetchTrafficData = async () => {
-      loading.value = true
-      try {
-        const params = {
-          startTime: dateRange.value && dateRange.value[0] ? dateRange.value[0].toISOString() : undefined,
-          endTime: dateRange.value && dateRange.value[1] ? dateRange.value[1].toISOString() : undefined
-        }
-        
-        const response = await api.get('/stats/user', { params })
-        const data = response.data || response
-        userTraffic.value = data.users || []
-        
-        // 计算总流量统计
-        totalStats.totalTraffic = userTraffic.value.reduce((sum, user) => sum + (user.totalTraffic || 0), 0)
-        totalStats.uploadTraffic = userTraffic.value.reduce((sum, user) => sum + (user.uploadTraffic || 0), 0)
-        totalStats.downloadTraffic = userTraffic.value.reduce((sum, user) => sum + (user.downloadTraffic || 0), 0)
-        totalStats.activeUsers = userTraffic.value.filter(user => {
-          const lastOnline = new Date(user.lastOnline)
-          const now = new Date()
-          return (now - lastOnline) < 24 * 60 * 60 * 1000
-        }).length
-        
-        // 初始化图表
-        initTrafficChart()
-      } catch (error) {
-        ElMessage.error('获取流量数据失败')
-        console.error(error)
-        userTraffic.value = []
-      } finally {
-        loading.value = false
-      }
     }
-
-    // 导出流量数据
-    const exportTrafficData = () => {
-      ElMessage.success('流量报表导出成功')
-    }
-
-    // 显示用户详情
-    const showUserDetail = (user) => {
-      selectedUser.value = { ...user }
-      userDetailVisible.value = true
-      
-      // 在弹窗显示后初始化用户流量图表
-      nextTick(() => {
-        initUserTrafficChart()
-      })
-    }
-
-    // 重置用户流量
-    const resetUserTraffic = (user) => {
-      ElMessageBox.confirm(
-        `确定要重置 ${user.username} 的流量统计吗？`,
-        '警告',
-        {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning'
-        }
-      ).then(async () => {
-        try {
-          // TODO: 替换为实际的 API 调用
-          // TODO: 替换为实际 API 调用
-          // await trafficService.resetUserTraffic(user.id)
-          
-          // 重置本地数据
-          const index = userTraffic.value.findIndex(u => u.id === user.id)
-          if (index !== -1) {
-            userTraffic.value[index].totalTraffic = 0
-            userTraffic.value[index].uploadTraffic = 0
-            userTraffic.value[index].downloadTraffic = 0
-          }
-          
-          ElMessage.success('流量重置成功')
-          
-          // 重新计算总流量统计
-          totalStats.totalTraffic = userTraffic.value.reduce((sum, user) => sum + user.totalTraffic, 0)
-          totalStats.uploadTraffic = userTraffic.value.reduce((sum, user) => sum + user.uploadTraffic, 0)
-          totalStats.downloadTraffic = userTraffic.value.reduce((sum, user) => sum + user.downloadTraffic, 0)
-        } catch (error) {
-          ElMessage.error('流量重置失败')
-          console.error(error)
-        }
-      }).catch(() => {})
-    }
-
-    // 日期范围变化处理
-    const handleDateChange = () => {
-      // 这里可以立即触发查询，也可以等待用户点击查询按钮
-    }
-
-    // 初始化流量趋势图表
-    const initTrafficChart = () => {
-      const chartElement = document.getElementById('traffic-chart')
-      if (!chartElement) return
-      
-      const chart = echarts.init(chartElement)
-      
-      // 准备数据
-      const dates = []
-      const uploadData = []
-      const downloadData = []
-      
-      // 获取过去30天的日期
-      for (let i = 29; i >= 0; i--) {
-        const date = new Date()
-        date.setDate(date.getDate() - i)
-        dates.push(`${date.getMonth() + 1}-${date.getDate()}`)
-        
-        // 生成每天的流量数据 (TODO: 替换为实际 API 数据)
-        const uploadValue = Math.floor(Math.random() * 10 * 1024 * 1024 * 1024) // 0-10GB
-        const downloadValue = Math.floor(Math.random() * 20 * 1024 * 1024 * 1024) // 0-20GB
-        
-        uploadData.push(uploadValue)
-        downloadData.push(downloadValue)
-      }
-      
-      // 配置图表选项
-      const option = {
-        title: {
-          text: '流量趋势'
-        },
-        tooltip: {
-          trigger: 'axis',
-          formatter: function(params) {
-            let result = params[0].axisValue + '<br/>'
-            params.forEach(param => {
-              result += `${param.seriesName}: ${formatTraffic(param.value)}<br/>`
-            })
-            return result
-          }
-        },
-        legend: {
-          data: ['上传', '下载']
-        },
-        grid: {
-          left: '3%',
-          right: '4%',
-          bottom: '3%',
-          containLabel: true
-        },
-        xAxis: {
-          type: 'category',
-          boundaryGap: false,
-          data: dates
-        },
-        yAxis: {
-          type: 'value',
-          axisLabel: {
-            formatter: function(value) {
-              return formatTraffic(value)
-            }
-          }
-        },
-        series: [
-          {
-            name: '上传',
-            type: 'line',
-            stack: 'Total',
-            areaStyle: {},
-            emphasis: {
-              focus: 'series'
-            },
-            data: uploadData
-          },
-          {
-            name: '下载',
-            type: 'line',
-            stack: 'Total',
-            areaStyle: {},
-            emphasis: {
-              focus: 'series'
-            },
-            data: downloadData
-          }
-        ]
-      }
-      
-      chart.setOption(option)
-      
-      // 监听窗口大小变化，调整图表大小
-      window.addEventListener('resize', () => {
-        chart.resize()
-      })
-    }
-
-    // 初始化用户流量图表
-    const initUserTrafficChart = () => {
-      if (!selectedUser.value) return
-      
-      const chartElement = document.getElementById('user-traffic-chart')
-      if (!chartElement) return
-      
-      const chart = echarts.init(chartElement)
-      
-      // 准备数据
-      const dates = []
-      const uploadData = []
-      const downloadData = []
-      
-      // 使用用户的流量日志数据
-      selectedUser.value.trafficLog.slice().reverse().forEach(log => {
-        dates.push(log.date)
-        uploadData.push(log.upload)
-        downloadData.push(log.download)
-      })
-      
-      // 配置图表选项
-      const option = {
-        title: {
-          text: '用户流量趋势'
-        },
-        tooltip: {
-          trigger: 'axis',
-          formatter: function(params) {
-            let result = params[0].axisValue + '<br/>'
-            params.forEach(param => {
-              result += `${param.seriesName}: ${formatTraffic(param.value)}<br/>`
-            })
-            return result
-          }
-        },
-        legend: {
-          data: ['上传', '下载']
-        },
-        grid: {
-          left: '3%',
-          right: '4%',
-          bottom: '3%',
-          containLabel: true
-        },
-        xAxis: {
-          type: 'category',
-          boundaryGap: false,
-          data: dates
-        },
-        yAxis: {
-          type: 'value',
-          axisLabel: {
-            formatter: function(value) {
-              return formatTraffic(value)
-            }
-          }
-        },
-        series: [
-          {
-            name: '上传',
-            type: 'bar',
-            stack: 'total',
-            emphasis: {
-              focus: 'series'
-            },
-            data: uploadData
-          },
-          {
-            name: '下载',
-            type: 'bar',
-            stack: 'total',
-            emphasis: {
-              focus: 'series'
-            },
-            data: downloadData
-          }
-        ]
-      }
-      
-      chart.setOption(option)
-    }
-
-    // 计算流量使用百分比
-    const calculateTrafficPercentage = (user) => {
-      if (!user.trafficLimit) return 0
-      return Math.min(100, Math.round((user.totalTraffic / user.trafficLimit) * 100))
-    }
-
-    // 获取流量状态
-    const getTrafficStatus = (user) => {
-      const percentage = calculateTrafficPercentage(user)
-      if (percentage >= 90) return 'exception'
-      if (percentage >= 70) return 'warning'
-      return 'success'
-    }
-
-    // 格式化流量显示
-    const formatTraffic = (bytes) => {
-      if (bytes === 0) return '0 B'
-      const k = 1024
-      const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
-      const i = Math.floor(Math.log(bytes) / Math.log(k))
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-    }
-
-    // 格式化日期时间
-    const formatDateTime = (date) => {
-      if (!date) return '未知'
-      const d = new Date(date)
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-    }
-
-    // 监听图表类型变化
-    watch(trafficChartType, () => {
-      initTrafficChart()
-    })
-
-    // 初始化
-    onMounted(() => {
-      // 设置默认日期范围为最近30天
-      const end = new Date()
-      const start = new Date()
-      start.setTime(start.getTime() - 3600 * 1000 * 24 * 30)
-      dateRange.value = [start, end]
-      
-      // 获取流量数据
-      fetchTrafficData()
-    })
-
-    return {
-      loading,
-      userTraffic,
-      filteredUserTraffic,
-      dateRange,
-      dateShortcuts,
-      searchQuery,
-      sortBy,
-      totalStats,
-      trafficChartType,
-      userDetailVisible,
-      selectedUser,
-      fetchTrafficData,
-      exportTrafficData,
-      showUserDetail,
-      resetUserTraffic,
-      handleDateChange,
-      calculateTrafficPercentage,
-      getTrafficStatus,
-      formatTraffic,
-      formatDateTime
-    }
+    renderTrafficChart()
+    ElMessage.error(error?.message || '获取流量统计失败')
+  } finally {
+    loading.value = false
   }
 }
+
+function renderTrafficChart() {
+  if (!trafficChartRef.value) {
+    return
+  }
+
+  if (!trafficChart) {
+    trafficChart = echarts.init(trafficChartRef.value)
+  }
+
+  trafficChart.setOption({
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params) => {
+        const title = params?.[0]?.axisValue || ''
+        const lines = params.map((item) => `${item.seriesName}: ${formatTraffic(item.value)}`)
+        return [title, ...lines].join('<br>')
+      }
+    },
+    legend: {
+      data: ['上传', '下载']
+    },
+    grid: {
+      left: 16,
+      right: 16,
+      top: 48,
+      bottom: 16,
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      data: timeline.value.map((item) => formatTimelineLabel(item.time))
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: {
+        formatter: (value) => formatTraffic(value)
+      }
+    },
+    series: [
+      {
+        name: '上传',
+        type: 'line',
+        smooth: true,
+        areaStyle: { opacity: 0.12 },
+        data: timeline.value.map((item) => item.upload || 0),
+        color: '#67c23a'
+      },
+      {
+        name: '下载',
+        type: 'line',
+        smooth: true,
+        areaStyle: { opacity: 0.12 },
+        data: timeline.value.map((item) => item.download || 0),
+        color: '#409eff'
+      }
+    ]
+  })
+}
+
+function exportTrafficData() {
+  const rows = [
+    ['用户名', '邮箱', '代理数', '上传', '下载', '总流量', '流量限制', '最后活跃'],
+    ...filteredUsers.value.map((item) => [
+      item.username,
+      item.email,
+      item.proxy_count,
+      item.upload,
+      item.download,
+      item.total,
+      item.traffic_limit,
+      item.last_active
+    ])
+  ]
+
+  const csv = rows
+    .map((row) => row.map((value) => `"${String(value ?? '').replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+
+  const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `traffic-report-${Date.now()}.csv`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+function getTrafficPercentage(user) {
+  if (!user?.traffic_limit) {
+    return 0
+  }
+  return Math.min(100, Math.round((user.total / user.traffic_limit) * 100))
+}
+
+function getTrafficStatus(user) {
+  const percentage = getTrafficPercentage(user)
+  if (percentage >= 90) return 'exception'
+  if (percentage >= 70) return 'warning'
+  return 'success'
+}
+
+function formatTraffic(bytes) {
+  const value = Number(bytes) || 0
+  if (value <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+  let size = value
+  let index = 0
+  while (size >= 1024 && index < units.length - 1) {
+    size /= 1024
+    index += 1
+  }
+  return `${size.toFixed(2)} ${units[index]}`
+}
+
+function formatDateTime(value) {
+  if (!value) return '暂无'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '暂无'
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+function formatDate(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function formatTimelineLabel(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value || ''
+  }
+  return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function handleResize() {
+  trafficChart?.resize()
+}
+
+onMounted(() => {
+  dateRange.value = createDefaultRange()
+  fetchTrafficData()
+  window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  trafficChart?.dispose()
+  trafficChart = null
+})
 </script>
 
 <style scoped>
-.traffic-container {
+.traffic-page {
   padding: 20px;
 }
 
-.header {
+.page-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 16px;
   margin-bottom: 20px;
 }
 
-.actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.stat-card {
-  text-align: center;
-  padding: 20px;
-  margin-bottom: 20px;
-}
-
-.stat-value {
+.page-title {
+  margin: 0 0 8px;
   font-size: 24px;
-  font-weight: bold;
-  color: #409EFF;
-  margin-bottom: 10px;
+  font-weight: 600;
 }
 
-.stat-title {
-  font-size: 16px;
-  color: #606266;
+.page-subtitle {
+  margin: 0;
+  color: #909399;
 }
 
-.chart-card {
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.summary-row {
   margin-bottom: 20px;
 }
 
-.user-traffic-card {
+.summary-card {
+  min-height: 128px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.summary-label {
+  color: #909399;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.summary-value {
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.chart-card,
+.table-card {
   margin-bottom: 20px;
+}
+
+.traffic-chart {
+  width: 100%;
+  height: 340px;
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.header-actions {
+.card-meta {
+  color: #909399;
+  font-size: 13px;
+}
+
+.table-actions {
   display: flex;
   align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
+.table-shell {
+  overflow-x: auto;
 }
-</style> 
+
+.progress-note,
+.limit-note {
+  margin-top: 8px;
+  color: #909399;
+  font-size: 12px;
+}
+
+@media (max-width: 768px) {
+  .traffic-page {
+    padding: 16px;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .header-actions,
+  .table-actions {
+    width: 100%;
+  }
+
+  .summary-value {
+    font-size: 24px;
+  }
+}
+</style>

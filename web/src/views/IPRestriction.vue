@@ -89,23 +89,25 @@
               </el-button>
             </div>
           </template>
-          <el-table :data="stats.countryStats" border v-loading="statsLoading">
-            <el-table-column prop="country" label="国家/地区" width="150"></el-table-column>
-            <el-table-column prop="countryCode" label="代码" width="80"></el-table-column>
-            <el-table-column prop="activeCount" label="活跃连接" width="100"></el-table-column>
-            <el-table-column prop="totalCount" label="总访问次数" width="120"></el-table-column>
-            <el-table-column prop="percentage" label="占比">
-              <template #default="scope">
-                <el-progress :percentage="scope.row.percentage" :stroke-width="10" />
-              </template>
-            </el-table-column>
-          </el-table>
+          <div class="table-shell">
+            <el-table :data="stats.countryStats" border v-loading="statsLoading">
+              <el-table-column prop="country" label="国家/地区" width="150"></el-table-column>
+              <el-table-column prop="countryCode" label="代码" width="80"></el-table-column>
+              <el-table-column prop="activeCount" label="活跃连接" width="100"></el-table-column>
+              <el-table-column prop="totalCount" label="总访问次数" width="120"></el-table-column>
+              <el-table-column prop="percentage" label="占比">
+                <template #default="scope">
+                  <el-progress :percentage="scope.row.percentage" :stroke-width="10" />
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
         </el-card>
       </el-tab-pane>
       
       <!-- 全局设置 -->
       <el-tab-pane label="全局设置" name="settings">
-        <el-form :model="settingsForm" label-width="180px" class="settings-form">
+        <el-form :model="settingsForm" :label-width="settingsLabelWidth" class="settings-form">
           <el-divider content-position="left">并发 IP 限制</el-divider>
           
           <el-form-item label="启用 IP 限制">
@@ -213,28 +215,30 @@
           </el-input>
         </div>
         
-        <el-table :data="paginatedWhitelist" border v-loading="whitelistLoading" style="width: 100%">
-          <el-table-column prop="displayIp" label="IP/CIDR" width="180"></el-table-column>
-          <el-table-column prop="type" label="类型" width="100">
-            <template #default="scope">
-              <el-tag :type="scope.row.type === 'global' ? 'primary' : 'success'">
-                {{ scope.row.type === 'global' ? '全局' : '用户级' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="username" label="关联用户" width="120">
-            <template #default="scope">
-              {{ scope.row.username || '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="description" label="备注"></el-table-column>
-          <el-table-column prop="createdAt" label="创建时间" width="180"></el-table-column>
-          <el-table-column label="操作" width="100">
-            <template #default="scope">
-              <el-button size="small" type="danger" @click="deleteWhitelist(scope.row)">删除</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <div class="table-shell">
+          <el-table :data="paginatedWhitelist" border v-loading="whitelistLoading" style="width: 100%">
+            <el-table-column prop="displayIp" label="IP/CIDR" width="180"></el-table-column>
+            <el-table-column prop="type" label="类型" width="100">
+              <template #default="scope">
+                <el-tag :type="scope.row.type === 'global' ? 'primary' : 'success'">
+                  {{ scope.row.type === 'global' ? '全局' : '用户级' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="username" label="关联用户" width="120">
+              <template #default="scope">
+                {{ scope.row.username || '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="description" label="备注"></el-table-column>
+            <el-table-column prop="createdAt" label="创建时间" width="180"></el-table-column>
+            <el-table-column label="操作" width="100">
+              <template #default="scope">
+                <el-button size="small" type="danger" @click="deleteWhitelist(scope.row)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
         
         <div class="pagination-container">
           <el-pagination
@@ -266,30 +270,32 @@
           </el-input>
         </div>
         
-        <el-table :data="paginatedBlacklist" border v-loading="blacklistLoading" style="width: 100%">
-          <el-table-column prop="displayIp" label="IP/CIDR" width="180"></el-table-column>
-          <el-table-column prop="reason" label="原因"></el-table-column>
-          <el-table-column prop="source" label="来源" width="100">
-            <template #default="scope">
-              <el-tag :type="scope.row.source === 'auto' ? 'warning' : 'info'">
-                {{ scope.row.source === 'auto' ? '自动' : '手动' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="expiresAt" label="过期时间" width="180">
-            <template #default="scope">
-              <span :class="{ 'text-warning': isExpiringSoon(scope.row.expiresAtRaw) }">
-                {{ scope.row.expiresAt || '永久' }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="createdAt" label="创建时间" width="180"></el-table-column>
-          <el-table-column label="操作" width="100">
-            <template #default="scope">
-              <el-button size="small" type="danger" @click="deleteBlacklist(scope.row)">删除</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <div class="table-shell">
+          <el-table :data="paginatedBlacklist" border v-loading="blacklistLoading" style="width: 100%">
+            <el-table-column prop="displayIp" label="IP/CIDR" width="180"></el-table-column>
+            <el-table-column prop="reason" label="原因"></el-table-column>
+            <el-table-column prop="source" label="来源" width="100">
+              <template #default="scope">
+                <el-tag :type="scope.row.source === 'auto' ? 'warning' : 'info'">
+                  {{ scope.row.source === 'auto' ? '自动' : '手动' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="expiresAt" label="过期时间" width="180">
+              <template #default="scope">
+                <span :class="{ 'text-warning': isExpiringSoon(scope.row.expiresAtRaw) }">
+                  {{ scope.row.expiresAt || '永久' }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="createdAt" label="创建时间" width="180"></el-table-column>
+            <el-table-column label="操作" width="100">
+              <template #default="scope">
+                <el-button size="small" type="danger" @click="deleteBlacklist(scope.row)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
         
         <div class="pagination-container">
           <el-pagination
@@ -321,26 +327,28 @@
           </el-button>
         </div>
         
-        <el-table :data="filteredOnlineIPs" border v-loading="onlineLoading" style="width: 100%">
-          <el-table-column prop="username" label="用户名" width="150"></el-table-column>
-          <el-table-column prop="ip" label="IP 地址" width="150"></el-table-column>
-          <el-table-column prop="country" label="国家/地区" width="120">
-            <template #default="scope">
-              <span>{{ scope.row.countryFlag }} {{ scope.row.country }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="city" label="城市" width="120"></el-table-column>
-          <el-table-column prop="lastActivity" label="最后活动" width="180"></el-table-column>
-          <el-table-column prop="deviceInfo" label="设备信息"></el-table-column>
-          <el-table-column label="操作" width="120">
-            <template #default="scope">
-              <el-button size="small" type="danger" @click="kickUserIP(scope.row)">
-                <el-icon><Close /></el-icon>
-                踢出
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <div class="table-shell">
+          <el-table :data="filteredOnlineIPs" border v-loading="onlineLoading" style="width: 100%">
+            <el-table-column prop="username" label="用户名" width="150"></el-table-column>
+            <el-table-column prop="ip" label="IP 地址" width="150"></el-table-column>
+            <el-table-column prop="country" label="国家/地区" width="120">
+              <template #default="scope">
+                <span>{{ scope.row.countryFlag }} {{ scope.row.country }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="city" label="城市" width="120"></el-table-column>
+            <el-table-column prop="lastActivity" label="最后活动" width="180"></el-table-column>
+            <el-table-column prop="deviceInfo" label="设备信息"></el-table-column>
+            <el-table-column label="操作" width="120">
+              <template #default="scope">
+                <el-button size="small" type="danger" @click="kickUserIP(scope.row)">
+                  <el-icon><Close /></el-icon>
+                  踢出
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
       </el-tab-pane>
       
       <!-- IP 历史记录 -->
@@ -363,21 +371,23 @@
           </el-button>
         </div>
         
-        <el-table :data="ipHistory" border v-loading="historyLoading" style="width: 100%">
-          <el-table-column prop="username" label="用户名" width="150"></el-table-column>
-          <el-table-column prop="ip" label="IP 地址" width="150"></el-table-column>
-          <el-table-column prop="country" label="国家/地区" width="120"></el-table-column>
-          <el-table-column prop="city" label="城市" width="120"></el-table-column>
-          <el-table-column prop="action" label="操作类型" width="100">
-            <template #default="scope">
-              <el-tag :type="getActionTagType(scope.row.action)">
-                {{ getActionLabel(scope.row.action) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="createdAt" label="时间" width="180"></el-table-column>
-          <el-table-column prop="details" label="详情"></el-table-column>
-        </el-table>
+        <div class="table-shell">
+          <el-table :data="ipHistory" border v-loading="historyLoading" style="width: 100%">
+            <el-table-column prop="username" label="用户名" width="150"></el-table-column>
+            <el-table-column prop="ip" label="IP 地址" width="150"></el-table-column>
+            <el-table-column prop="country" label="国家/地区" width="120"></el-table-column>
+            <el-table-column prop="city" label="城市" width="120"></el-table-column>
+            <el-table-column prop="action" label="操作类型" width="100">
+              <template #default="scope">
+                <el-tag :type="getActionTagType(scope.row.action)">
+                  {{ getActionLabel(scope.row.action) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="createdAt" label="时间" width="180"></el-table-column>
+            <el-table-column prop="details" label="详情"></el-table-column>
+          </el-table>
+        </div>
         
         <div class="pagination-container">
           <el-pagination
@@ -397,9 +407,9 @@
     <el-dialog 
       title="添加白名单"
       v-model="whitelistDialogVisible"
-      width="500px"
+      :width="dialogWidth"
     >
-      <el-form :model="whitelistForm" :rules="whitelistRules" ref="whitelistFormRef" label-width="100px">
+      <el-form :model="whitelistForm" :rules="whitelistRules" ref="whitelistFormRef" :label-width="dialogFormLabelWidth">
         <el-form-item label="IP/CIDR" prop="ip">
           <el-input v-model="whitelistForm.ip" placeholder="例如: 192.168.1.1 或 10.0.0.0/8"></el-input>
         </el-form-item>
@@ -425,8 +435,8 @@
     </el-dialog>
     
     <!-- 批量导入白名单对话框 -->
-    <el-dialog title="批量导入白名单" v-model="importWhitelistDialogVisible" width="500px">
-      <el-form label-width="100px">
+    <el-dialog title="批量导入白名单" v-model="importWhitelistDialogVisible" :width="dialogWidth">
+      <el-form :label-width="dialogFormLabelWidth">
         <el-form-item label="IP 列表">
           <el-input 
             v-model="importWhitelistText" 
@@ -454,9 +464,9 @@
     <el-dialog 
       title="添加黑名单"
       v-model="blacklistDialogVisible"
-      width="500px"
+      :width="dialogWidth"
     >
-      <el-form :model="blacklistForm" :rules="blacklistRules" ref="blacklistFormRef" label-width="100px">
+      <el-form :model="blacklistForm" :rules="blacklistRules" ref="blacklistFormRef" :label-width="dialogFormLabelWidth">
         <el-form-item label="IP/CIDR" prop="ip">
           <el-input v-model="blacklistForm.ip" placeholder="例如: 192.168.1.1 或 10.0.0.0/8"></el-input>
         </el-form-item>
@@ -488,9 +498,14 @@ import {
   Refresh, Plus, Upload, Search, Close
 } from '@element-plus/icons-vue'
 import api from '@/api/index'
+import { useViewport } from '@/composables/useViewport'
 
 // 当前标签页
 const activeTab = ref('stats')
+const { isMobile } = useViewport()
+const settingsLabelWidth = computed(() => (isMobile.value ? '110px' : '180px'))
+const dialogFormLabelWidth = computed(() => (isMobile.value ? '84px' : '100px'))
+const dialogWidth = computed(() => (isMobile.value ? 'calc(100vw - 24px)' : '500px'))
 
 // ==================== 统计数据 ====================
 const statsLoading = ref(false)
@@ -1146,6 +1161,7 @@ onMounted(async () => {
   margin-bottom: 20px;
   display: flex;
   align-items: center;
+  gap: 10px;
 }
 
 .pagination-container {
@@ -1154,7 +1170,48 @@ onMounted(async () => {
   justify-content: center;
 }
 
+.table-shell {
+  overflow-x: auto;
+}
+
+.table-shell :deep(.el-table) {
+  min-width: 820px;
+}
+
 .text-warning {
   color: var(--el-color-warning);
+}
+
+@media (max-width: 768px) {
+  .ip-restriction-container {
+    padding: 12px;
+  }
+
+  .actions {
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .actions > * {
+    width: 100% !important;
+    margin-left: 0 !important;
+  }
+
+  .country-stats .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .settings-form :deep(.el-form-item__label) {
+    width: 100% !important;
+    text-align: left;
+    line-height: 1.4;
+    padding-bottom: 6px;
+  }
+
+  .settings-form :deep(.el-form-item__content) {
+    margin-left: 0 !important;
+  }
 }
 </style>

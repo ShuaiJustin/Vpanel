@@ -2,9 +2,12 @@ package handlers
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -18,6 +21,11 @@ import (
 type LogHandler struct {
 	service *log.Service
 	logger  logger.Logger
+}
+
+type cleanupLogsRequest struct {
+	RetentionDays *int `json:"retention_days"`
+	Days          *int `json:"days"`
 }
 
 // NewLogHandler creates a new log handler.
@@ -166,7 +174,11 @@ func (h *LogHandler) DeleteLogs(c *gin.Context) {
 // Cleanup deletes logs older than retention period.
 // POST /api/logs/cleanup
 func (h *LogHandler) Cleanup(c *gin.Context) {
-	days, _ := strconv.Atoi(c.DefaultQuery("days", "30"))
+	days, err := parseCleanupRetentionDays(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
 	deleted, err := h.service.Cleanup(c.Request.Context(), days)
 	if err != nil {
@@ -175,7 +187,18 @@ func (h *LogHandler) Cleanup(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"deleted": deleted, "days": days})
+	h.logger.Info("logs cleaned up",
+		logger.F("deleted", deleted),
+		logger.F("retention_days", days),
+	)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":        "Cleanup completed",
+		"deleted_count":  deleted,
+		"retention_days": days,
+		"deleted":        deleted,
+		"days":           days,
+	})
 }
 
 // ExportLogs exports logs in JSON or CSV format.
@@ -253,4 +276,46 @@ func (h *LogHandler) ExportLogs(c *gin.Context) {
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Unsupported format. Use 'json' or 'csv'"})
 	}
+}
+
+func parseCleanupRetentionDays(c *gin.Context) (int, error) {
+	const defaultRetentionDays = 30
+
+	var req cleanupLogsRequest
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		return 0, fmt.Errorf("invalid cleanup request")
+	}
+
+	if req.RetentionDays != nil {
+		return validateCleanupRetentionDays(*req.RetentionDays)
+	}
+	if req.Days != nil {
+		return validateCleanupRetentionDays(*req.Days)
+	}
+
+	if value := strings.TrimSpace(c.Query("retention_days")); value != "" {
+		return parseCleanupRetentionDaysValue(value)
+	}
+	if value := strings.TrimSpace(c.Query("days")); value != "" {
+		return parseCleanupRetentionDaysValue(value)
+	}
+
+	return defaultRetentionDays, nil
+}
+
+func parseCleanupRetentionDaysValue(value string) (int, error) {
+	days, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("retention_days must be a positive integer")
+	}
+
+	return validateCleanupRetentionDays(days)
+}
+
+func validateCleanupRetentionDays(days int) (int, error) {
+	if days < 1 {
+		return 0, fmt.Errorf("retention_days must be greater than 0")
+	}
+
+	return days, nil
 }

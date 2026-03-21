@@ -19,6 +19,14 @@ func NewProxyRepository(db *gorm.DB) ProxyRepository {
 	return &proxyRepository{db: db}
 }
 
+func (r *proxyRepository) validProxyQuery(ctx context.Context) *gorm.DB {
+	query := r.db.WithContext(ctx).Model(&Proxy{})
+	if !r.db.Migrator().HasTable((&User{}).TableName()) {
+		return query
+	}
+	return query.Joins("JOIN users ON users.id = proxies.user_id")
+}
+
 // Create creates a new proxy.
 func (r *proxyRepository) Create(ctx context.Context, proxy *Proxy) error {
 	result := r.db.WithContext(ctx).Create(proxy)
@@ -85,7 +93,7 @@ func (r *proxyRepository) GetByProtocol(ctx context.Context, protocol string) ([
 // GetEnabled retrieves all enabled proxies.
 func (r *proxyRepository) GetEnabled(ctx context.Context) ([]*Proxy, error) {
 	var proxies []*Proxy
-	result := r.db.WithContext(ctx).Where("enabled = ?", true).Find(&proxies)
+	result := r.validProxyQuery(ctx).Where("proxies.enabled = ?", true).Find(&proxies)
 	if result.Error != nil {
 		return nil, errors.NewDatabaseError("failed to get enabled proxies", result.Error)
 	}
@@ -115,7 +123,7 @@ func (r *proxyRepository) CountByUserID(ctx context.Context, userID int64) (int6
 // GetByPort retrieves a proxy by port.
 func (r *proxyRepository) GetByPort(ctx context.Context, port int) (*Proxy, error) {
 	var proxy Proxy
-	result := r.db.WithContext(ctx).Where("port = ?", port).First(&proxy)
+	result := r.validProxyQuery(ctx).Where("proxies.port = ?", port).First(&proxy)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			return nil, nil // No conflict
@@ -191,15 +199,14 @@ func (r *proxyRepository) CountByProtocol(ctx context.Context) ([]*ProtocolCount
 // GetByNodeID retrieves all enabled proxies for a specific node.
 func (r *proxyRepository) GetByNodeID(ctx context.Context, nodeID int64) ([]*Proxy, error) {
 	var proxies []*Proxy
-	
-	// 直接通过 node_id 查询启用的代理
-	result := r.db.WithContext(ctx).
-		Where("node_id = ? AND enabled = ?", nodeID, true).
+
+	result := r.validProxyQuery(ctx).
+		Where("proxies.node_id = ? AND proxies.enabled = ?", nodeID, true).
 		Find(&proxies)
-	
+
 	if result.Error != nil {
 		return nil, errors.NewDatabaseError("failed to get proxies by node ID", result.Error)
 	}
-	
+
 	return proxies, nil
 }

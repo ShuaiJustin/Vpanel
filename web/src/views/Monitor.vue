@@ -12,8 +12,8 @@
       </div>
     </div>
 
-    <el-row :gutter="20">
-      <el-col :span="12">
+    <el-row :gutter="isMobile ? 12 : 20">
+      <el-col :span="panelSpan">
         <el-card class="box-card">
           <template #header>
             <div class="card-header">
@@ -34,7 +34,7 @@
         </el-card>
       </el-col>
       
-      <el-col :span="12">
+      <el-col :span="panelSpan">
         <el-card class="box-card">
           <template #header>
             <div class="card-header">
@@ -57,8 +57,8 @@
       </el-col>
     </el-row>
 
-    <el-row :gutter="20" style="margin-top: 20px;">
-      <el-col :span="12">
+    <el-row :gutter="isMobile ? 12 : 20" style="margin-top: 20px;">
+      <el-col :span="panelSpan">
         <el-card class="box-card">
           <template #header>
             <div class="card-header">
@@ -92,7 +92,7 @@
         </el-card>
       </el-col>
       
-      <el-col :span="12">
+      <el-col :span="panelSpan">
         <el-card class="box-card">
           <template #header>
             <div class="card-header">
@@ -115,7 +115,7 @@
       </el-col>
     </el-row>
 
-    <el-row :gutter="20" style="margin-top: 20px;">
+    <el-row :gutter="isMobile ? 12 : 20" style="margin-top: 20px;">
       <el-col :span="24">
         <el-card class="box-card">
           <template #header>
@@ -124,7 +124,7 @@
             </div>
           </template>
           <div class="system-info">
-            <el-descriptions :column="3" border>
+            <el-descriptions :column="infoColumns" border>
               <el-descriptions-item label="主机名">{{ systemInfo.hostname }}</el-descriptions-item>
               <el-descriptions-item label="操作系统">{{ systemInfo.os }}</el-descriptions-item>
               <el-descriptions-item label="系统版本">{{ systemInfo.platform }} {{ systemInfo.release }}</el-descriptions-item>
@@ -146,10 +146,13 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '@/api/index'
+import { useViewport } from '@/composables/useViewport'
 
 export default {
   name: 'Monitor',
   setup() {
+    const { isMobile, isTablet } = useViewport({ mobileBreakpoint: 768, tabletBreakpoint: 1200 })
+
     // 状态
     const stats = reactive({
       cpu: 0,
@@ -189,6 +192,8 @@ export default {
     const autoRefresh = ref(false)
     const refreshTimer = ref(null)
     const currentTime = ref(new Date().toLocaleString())
+    const panelSpan = computed(() => (isMobile.value ? 24 : 12))
+    const infoColumns = computed(() => (isMobile.value ? 1 : isTablet.value ? 2 : 3))
 
     // 计算属性
     const diskUsagePercentage = computed(() => {
@@ -351,7 +356,10 @@ export default {
       systemInfo,
       networkTotal,
       autoRefresh,
+      isMobile,
       currentTime,
+      panelSpan,
+      infoColumns,
       diskUsagePercentage,
       getCpuStatus,
       getCpuStatusType,
@@ -456,5 +464,37 @@ export default {
 
 .system-info {
   padding: 10px;
+}
+
+@media (max-width: 768px) {
+  .monitor-container {
+    padding: 12px;
+  }
+
+  .header,
+  .actions,
+  .chart-container,
+  .network-stats {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .actions {
+    width: 100%;
+  }
+
+  .actions > * {
+    width: 100%;
+  }
+
+  .gauge-chart,
+  .chart-info,
+  .network-item {
+    width: 100%;
+  }
+
+  .chart-info {
+    padding-left: 0;
+  }
 }
 </style> 

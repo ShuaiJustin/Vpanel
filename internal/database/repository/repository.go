@@ -3,6 +3,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -57,6 +58,69 @@ func (u *User) CanAccess() bool {
 // TableName returns the table name for User.
 func (User) TableName() string {
 	return "users"
+}
+
+// BeforeDelete cleans up user-owned runtime resources before the user row is removed.
+func (u *User) BeforeDelete(tx *gorm.DB) error {
+	if u == nil || u.ID == 0 {
+		return nil
+	}
+
+	if tx.Migrator().HasTable("subscriptions") && tx.Migrator().HasTable("subscription_ip_access") {
+		if err := tx.Exec(
+			"DELETE FROM subscription_ip_access WHERE subscription_id IN (SELECT id FROM subscriptions WHERE user_id = ?)",
+			u.ID,
+		).Error; err != nil {
+			return err
+		}
+	}
+
+	for _, table := range []string{
+		"proxies",
+		"subscriptions",
+		"user_node_assignments",
+		"login_history",
+		"active_ips",
+		"ip_history",
+		"trials",
+		"subscription_pauses",
+		"password_reset_tokens",
+		"email_verification_tokens",
+		"two_factor_secrets",
+		"announcement_reads",
+		"commercial_invite_codes",
+	} {
+		if !tx.Migrator().HasTable(table) {
+			continue
+		}
+		if err := tx.Exec(fmt.Sprintf("DELETE FROM %s WHERE user_id = ?", table), u.ID).Error; err != nil {
+			return err
+		}
+	}
+
+	if tx.Migrator().HasTable("pending_downgrades") {
+		if err := tx.Exec("DELETE FROM pending_downgrades WHERE user_id = ?", u.ID).Error; err != nil {
+			return err
+		}
+	}
+
+	if tx.Migrator().HasTable("tickets") && tx.Migrator().HasTable("ticket_messages") {
+		if err := tx.Exec("DELETE FROM ticket_messages WHERE ticket_id IN (SELECT id FROM tickets WHERE user_id = ?)", u.ID).Error; err != nil {
+			return err
+		}
+	}
+	if tx.Migrator().HasTable("ticket_messages") {
+		if err := tx.Exec("DELETE FROM ticket_messages WHERE user_id = ?", u.ID).Error; err != nil {
+			return err
+		}
+	}
+	if tx.Migrator().HasTable("tickets") {
+		if err := tx.Exec("DELETE FROM tickets WHERE user_id = ?", u.ID).Error; err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Proxy represents a proxy configuration in the database.
@@ -186,11 +250,14 @@ type ProtocolTrafficStats struct {
 
 // UserTrafficStats represents traffic statistics by user.
 type UserTrafficStats struct {
-	UserID     int64
-	Username   string
-	Upload     int64
-	Download   int64
-	ProxyCount int64
+	UserID       int64
+	Username     string
+	Email        string
+	Upload       int64
+	Download     int64
+	ProxyCount   int64
+	TrafficLimit int64
+	LastActive   *time.Time
 }
 
 // TrafficTimelinePoint represents a point in the traffic timeline.

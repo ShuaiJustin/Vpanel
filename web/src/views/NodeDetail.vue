@@ -20,14 +20,14 @@
       </div>
     </div>
 
-    <el-row :gutter="20" v-loading="loading">
+    <el-row :gutter="isMobile ? 12 : 20" v-loading="loading">
       <!-- 基本信息 -->
-      <el-col :span="16">
+      <el-col :span="mainColumnSpan">
         <el-card shadow="never" class="info-card">
           <template #header>
             <span>基本信息</span>
           </template>
-          <el-descriptions :column="2" border v-if="node">
+          <el-descriptions :column="detailColumns" border v-if="node">
             <el-descriptions-item label="ID">{{ node.id }}</el-descriptions-item>
             <el-descriptions-item label="名称">{{ node.name }}</el-descriptions-item>
             <el-descriptions-item label="地址">{{ node.address }}</el-descriptions-item>
@@ -69,20 +69,20 @@
               </el-radio-group>
             </div>
           </template>
-          <el-row :gutter="20">
-            <el-col :span="8">
+          <el-row :gutter="isMobile ? 12 : 20">
+            <el-col :span="trafficStatSpan">
               <div class="traffic-stat">
                 <div class="traffic-value">{{ formatBytes(trafficStats.upload) }}</div>
                 <div class="traffic-label">上传流量</div>
               </div>
             </el-col>
-            <el-col :span="8">
+            <el-col :span="trafficStatSpan">
               <div class="traffic-stat">
                 <div class="traffic-value">{{ formatBytes(trafficStats.download) }}</div>
                 <div class="traffic-label">下载流量</div>
               </div>
             </el-col>
-            <el-col :span="8">
+            <el-col :span="trafficStatSpan">
               <div class="traffic-stat">
                 <div class="traffic-value">{{ formatBytes(trafficStats.upload + trafficStats.download) }}</div>
                 <div class="traffic-label">总流量</div>
@@ -96,24 +96,26 @@
           <template #header>
             <span>流量 Top 用户</span>
           </template>
-          <el-table :data="topUsers" size="small" style="width: 100%">
-            <el-table-column prop="user_id" label="用户 ID" width="100" />
-            <el-table-column prop="username" label="用户名" />
-            <el-table-column label="上传" width="120">
-              <template #default="{ row }">{{ formatBytes(row.upload) }}</template>
-            </el-table-column>
-            <el-table-column label="下载" width="120">
-              <template #default="{ row }">{{ formatBytes(row.download) }}</template>
-            </el-table-column>
-            <el-table-column label="总流量" width="120">
-              <template #default="{ row }">{{ formatBytes(row.upload + row.download) }}</template>
-            </el-table-column>
-          </el-table>
+          <div class="table-shell">
+            <el-table :data="topUsers" size="small" style="width: 100%">
+              <el-table-column prop="user_id" label="用户 ID" width="100" />
+              <el-table-column prop="username" label="用户名" />
+              <el-table-column label="上传" width="120">
+                <template #default="{ row }">{{ formatBytes(row.upload) }}</template>
+              </el-table-column>
+              <el-table-column label="下载" width="120">
+                <template #default="{ row }">{{ formatBytes(row.download) }}</template>
+              </el-table-column>
+              <el-table-column label="总流量" width="120">
+                <template #default="{ row }">{{ formatBytes(row.upload + row.download) }}</template>
+              </el-table-column>
+            </el-table>
+          </div>
         </el-card>
       </el-col>
 
       <!-- 右侧面板 -->
-      <el-col :span="8">
+      <el-col :span="sideColumnSpan">
         <!-- 实时状态 -->
         <el-card shadow="never" class="info-card">
           <template #header>
@@ -254,7 +256,7 @@
     </el-row>
 
     <!-- Token 管理对话框 -->
-    <el-dialog v-model="tokenDialogVisible" title="Token 管理" width="500px">
+    <el-dialog v-model="tokenDialogVisible" title="Token 管理" :width="tokenDialogWidth">
       <div class="token-dialog-content">
         <div class="token-info">
           <div class="token-label">当前 Token</div>
@@ -302,10 +304,12 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Refresh, View, Hide, CopyDocument } from '@element-plus/icons-vue'
 import { useNodeStore } from '@/stores/node'
 import { nodeGroupsApi } from '@/api'
+import { useViewport } from '@/composables/useViewport'
 
 const route = useRoute()
 const router = useRouter()
 const nodeStore = useNodeStore()
+const { isMobile } = useViewport()
 
 const loading = ref(false)
 const syncing = ref(false)
@@ -322,6 +326,11 @@ const nodeGroups = ref([])
 
 const node = computed(() => nodeStore.currentNode)
 const recentRecoveryEvents = computed(() => Array.isArray(node.value?.recent_recovery_events) ? node.value.recent_recovery_events : [])
+const mainColumnSpan = computed(() => (isMobile.value ? 24 : 16))
+const sideColumnSpan = computed(() => (isMobile.value ? 24 : 8))
+const detailColumns = computed(() => (isMobile.value ? 1 : 2))
+const trafficStatSpan = computed(() => (isMobile.value ? 24 : 8))
+const tokenDialogWidth = computed(() => (isMobile.value ? 'calc(100vw - 24px)' : '500px'))
 
 const loadPercentage = computed(() => {
   if (!node.value?.max_users) return 0
@@ -711,6 +720,14 @@ onMounted(async () => {
   width: 120px;
 }
 
+.table-shell {
+  overflow-x: auto;
+}
+
+.table-shell :deep(.el-table) {
+  min-width: 560px;
+}
+
 .groups-list {
   padding: 10px 0;
 }
@@ -841,5 +858,56 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--el-text-color-secondary);
   word-break: break-word;
+}
+
+@media (max-width: 768px) {
+  .node-detail-page {
+    padding: 12px;
+  }
+
+  .page-header,
+  .header-left,
+  .header-actions,
+  .card-header,
+  .status-item,
+  .token-info,
+  .token-actions,
+  .recovery-event-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .header-actions,
+  .token-actions,
+  .core-actions {
+    width: 100%;
+  }
+
+  .header-actions .el-button,
+  .token-actions .el-button,
+  .core-actions .el-button {
+    width: 100%;
+  }
+
+  .load-progress,
+  .core-version {
+    width: 100%;
+    max-width: none;
+    text-align: left;
+  }
+
+  .token-label {
+    width: auto;
+  }
+
+  .token-text {
+    width: 100%;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .traffic-stat {
+    padding: 14px 0;
+  }
 }
 </style>

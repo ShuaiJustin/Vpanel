@@ -1,8 +1,8 @@
 <template>
   <div class="stats-page">
     <!-- 概览卡片 -->
-    <el-row :gutter="20" class="overview-row">
-      <el-col :span="6">
+    <el-row :gutter="isMobile ? 12 : 20" class="overview-row">
+      <el-col :span="statCardSpan">
         <el-card class="stat-card">
           <div class="stat-content">
             <div class="stat-icon users">
@@ -18,7 +18,7 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :span="statCardSpan">
         <el-card class="stat-card">
           <div class="stat-content">
             <div class="stat-icon proxies">
@@ -34,7 +34,7 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :span="statCardSpan">
         <el-card class="stat-card">
           <div class="stat-content">
             <div class="stat-icon traffic">
@@ -50,7 +50,7 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :span="statCardSpan">
         <el-card class="stat-card">
           <div class="stat-content">
             <div class="stat-icon online">
@@ -69,8 +69,8 @@
     </el-row>
 
     <!-- 协议统计 -->
-    <el-row :gutter="20" class="charts-row">
-      <el-col :span="12">
+    <el-row :gutter="isMobile ? 12 : 20" class="charts-row">
+      <el-col :span="chartSpan">
         <el-card>
           <template #header>
             <div class="card-header">
@@ -80,7 +80,7 @@
           <div class="chart-container" ref="protocolChartRef"></div>
         </el-card>
       </el-col>
-      <el-col :span="12">
+      <el-col :span="chartSpan">
         <el-card>
           <template #header>
             <div class="card-header">
@@ -108,34 +108,36 @@
           </el-button>
         </div>
       </template>
-      <el-table :data="protocolStats" v-loading="loading" style="width: 100%">
-        <el-table-column prop="protocol" label="协议" width="150">
-          <template #default="{ row }">
-            <el-tag :type="getProtocolTagType(row.protocol)">{{ row.protocol.toUpperCase() }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="count" label="代理数量" width="120" />
-        <el-table-column prop="traffic" label="流量使用" width="150">
-          <template #default="{ row }">
-            {{ formatBytes(row.traffic) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 'active' ? 'success' : 'danger'" size="small">
-              {{ row.status === 'active' ? '正常' : '异常' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="流量占比">
-          <template #default="{ row }">
-            <el-progress 
-              :percentage="getTrafficPercentage(row.traffic)" 
-              :color="getProtocolColor(row.protocol)"
-            />
-          </template>
-        </el-table-column>
-      </el-table>
+      <div class="table-shell">
+        <el-table :data="protocolStats" v-loading="loading" style="width: 100%">
+          <el-table-column prop="protocol" label="协议" width="150">
+            <template #default="{ row }">
+              <el-tag :type="getProtocolTagType(row.protocol)">{{ row.protocol.toUpperCase() }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="count" label="代理数量" width="120" />
+          <el-table-column prop="traffic" label="流量使用" width="150">
+            <template #default="{ row }">
+              {{ formatBytes(row.traffic) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="status" label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="row.status === 'active' ? 'success' : 'danger'" size="small">
+                {{ row.status === 'active' ? '正常' : '异常' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="流量占比">
+            <template #default="{ row }">
+              <el-progress
+                :percentage="getTrafficPercentage(row.traffic)"
+                :color="getProtocolColor(row.protocol)"
+              />
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
     </el-card>
 
     <!-- 用户统计 -->
@@ -145,26 +147,28 @@
           <span>用户流量排行</span>
         </div>
       </template>
-      <el-table :data="userStats" v-loading="loading" style="width: 100%">
-        <el-table-column prop="username" label="用户名" width="150" />
-        <el-table-column prop="proxy_count" label="代理数" width="100" />
-        <el-table-column prop="upload" label="上传流量" width="120">
-          <template #default="{ row }">
-            {{ formatBytes(row.upload) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="download" label="下载流量" width="120">
-          <template #default="{ row }">
-            {{ formatBytes(row.download) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="total" label="总流量" width="120">
-          <template #default="{ row }">
-            {{ formatBytes(row.total) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="last_active" label="最后活跃" />
-      </el-table>
+      <div class="table-shell">
+        <el-table :data="userStats" v-loading="loading" style="width: 100%">
+          <el-table-column prop="username" label="用户名" width="150" />
+          <el-table-column prop="proxy_count" label="代理数" width="100" />
+          <el-table-column prop="upload" label="上传流量" width="120">
+            <template #default="{ row }">
+              {{ formatBytes(row.upload) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="download" label="下载流量" width="120">
+            <template #default="{ row }">
+              {{ formatBytes(row.download) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="total" label="总流量" width="120">
+            <template #default="{ row }">
+              {{ formatBytes(row.total) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="last_active" label="最后活跃" />
+        </el-table>
+      </div>
       <div v-if="userStats.length === 0" class="empty-data">
         暂无用户统计数据
       </div>
@@ -173,13 +177,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { User, Connection, DataLine, Monitor, Refresh } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { statsApi } from '@/api/index'
+import { useViewport } from '@/composables/useViewport'
 
 const loading = ref(false)
 const trafficPeriod = ref('today')
+const { isMobile, isTablet } = useViewport({ mobileBreakpoint: 768, tabletBreakpoint: 1200 })
+const statCardSpan = computed(() => (isMobile.value ? 24 : isTablet.value ? 12 : 6))
+const chartSpan = computed(() => (isMobile.value ? 24 : 12))
 
 const protocolChartRef = ref(null)
 const trafficChartRef = ref(null)
@@ -561,5 +569,38 @@ onUnmounted(() => {
   text-align: center;
   padding: 40px;
   color: #909399;
+}
+
+.table-shell {
+  overflow-x: auto;
+}
+
+.table-shell :deep(.el-table) {
+  min-width: 760px;
+}
+
+@media (max-width: 768px) {
+  .stats-page {
+    padding: 12px;
+  }
+
+  .stat-card {
+    height: auto;
+  }
+
+  .stat-content,
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .stat-icon {
+    margin-right: 0;
+  }
+
+  .chart-container {
+    height: 260px;
+  }
 }
 </style>

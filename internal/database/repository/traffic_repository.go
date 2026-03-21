@@ -129,7 +129,6 @@ func (r *trafficRepository) GetTotalByUser(ctx context.Context, userID int64) (u
 	return result.Upload, result.Download, nil
 }
 
-
 // GetTotalByProxy retrieves total upload and download for a proxy.
 func (r *trafficRepository) GetTotalByProxy(ctx context.Context, proxyID int64) (upload, download int64, err error) {
 	var result struct {
@@ -201,10 +200,10 @@ func (r *trafficRepository) GetTrafficByUser(ctx context.Context, start, end tim
 	var results []*UserTrafficStats
 	query := r.db.WithContext(ctx).
 		Table("traffic t").
-		Select("t.user_id, u.username, COALESCE(SUM(t.upload), 0) as upload, COALESCE(SUM(t.download), 0) as download, COUNT(DISTINCT t.proxy_id) as proxy_count").
+		Select("t.user_id, u.username, u.email, u.traffic_limit, COALESCE(SUM(t.upload), 0) as upload, COALESCE(SUM(t.download), 0) as download, COUNT(DISTINCT t.proxy_id) as proxy_count, MAX(t.recorded_at) as last_active").
 		Joins("JOIN users u ON t.user_id = u.id").
 		Where("t.recorded_at BETWEEN ? AND ?", start, end).
-		Group("t.user_id, u.username").
+		Group("t.user_id, u.username, u.email, u.traffic_limit").
 		Order("(COALESCE(SUM(t.upload), 0) + COALESCE(SUM(t.download), 0)) DESC")
 
 	if limit > 0 {
@@ -226,7 +225,7 @@ func (r *trafficRepository) GetTrafficTimeline(ctx context.Context, start, end t
 		Upload   int64
 		Download int64
 	}
-	
+
 	var tempResults []*tempResult
 
 	groupClause := r.timelineGroupingClause(interval)
@@ -249,7 +248,7 @@ func (r *trafficRepository) GetTrafficTimeline(ctx context.Context, start, end t
 		// Parse the time string based on the format
 		var parsedTime time.Time
 		var parseErr error
-		
+
 		switch interval {
 		case "hour":
 			parsedTime, parseErr = time.Parse("2006-01-02 15:00:00", temp.TimeStr)
@@ -260,19 +259,19 @@ func (r *trafficRepository) GetTrafficTimeline(ctx context.Context, start, end t
 		default:
 			parsedTime, parseErr = time.Parse("2006-01-02 15:00:00", temp.TimeStr)
 		}
-		
+
 		if parseErr != nil {
 			// If parsing fails, use a zero time
 			parsedTime = time.Time{}
 		}
-		
+
 		results[i] = &TrafficTimelinePoint{
 			Time:     parsedTime,
 			Upload:   temp.Upload,
 			Download: temp.Download,
 		}
 	}
-	
+
 	return results, nil
 }
 
@@ -284,7 +283,7 @@ func (r *trafficRepository) GetTrafficTimelineByUser(ctx context.Context, userID
 		Upload   int64
 		Download int64
 	}
-	
+
 	var tempResults []*tempResult
 
 	groupClause := r.timelineGroupingClause(interval)
@@ -307,7 +306,7 @@ func (r *trafficRepository) GetTrafficTimelineByUser(ctx context.Context, userID
 		// Parse the time string based on the format
 		var parsedTime time.Time
 		var parseErr error
-		
+
 		switch interval {
 		case "hour":
 			parsedTime, parseErr = time.Parse("2006-01-02 15:00:00", temp.TimeStr)
@@ -318,18 +317,18 @@ func (r *trafficRepository) GetTrafficTimelineByUser(ctx context.Context, userID
 		default:
 			parsedTime, parseErr = time.Parse("2006-01-02 15:00:00", temp.TimeStr)
 		}
-		
+
 		if parseErr != nil {
 			// If parsing fails, use a zero time
 			parsedTime = time.Time{}
 		}
-		
+
 		results[i] = &TrafficTimelinePoint{
 			Time:     parsedTime,
 			Upload:   temp.Upload,
 			Download: temp.Download,
 		}
 	}
-	
+
 	return results, nil
 }

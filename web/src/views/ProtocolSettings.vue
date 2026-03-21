@@ -1,9 +1,27 @@
 <template>
   <div class="protocol-settings-container">
     <div class="page-header">
-      <div class="title">协议设置</div>
+      <div class="page-heading">
+        <h1 class="page-title">协议设置</h1>
+        <p class="page-subtitle">统一管理基础协议、传输层能力和 Trojan 默认参数</p>
+      </div>
     </div>
-    
+
+    <div class="overview-strip">
+      <div class="overview-card">
+        <span class="overview-label">已启用协议</span>
+        <strong class="overview-value is-success">{{ enabledProtocolCount }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">已启用传输层</span>
+        <strong class="overview-value is-primary">{{ enabledTransportCount }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">Trojan 默认端口</span>
+        <strong class="overview-value">{{ trojanDefaultPort }}</strong>
+      </div>
+    </div>
+
     <el-card shadow="hover" class="settings-card">
       <template #header>
         <div class="card-header">
@@ -158,8 +176,8 @@
         </el-form-item>
         
         <el-form-item label="Trojan 默认发送/接收窗口大小">
-          <el-row :gutter="20">
-            <el-col :span="12">
+          <el-row :gutter="isMobile ? 12 : 20">
+            <el-col :span="isMobile ? 24 : 12">
               <el-input-number 
                 v-model="trojanSendWindow" 
                 :min="1" 
@@ -170,7 +188,7 @@
               />
               <div class="setting-description">发送窗口大小</div>
             </el-col>
-            <el-col :span="12">
+            <el-col :span="isMobile ? 24 : 12">
               <el-input-number 
                 v-model="trojanReceiveWindow" 
                 :min="1" 
@@ -239,8 +257,11 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useViewport } from '@/composables/useViewport'
+
+const { isMobile } = useViewport()
 
 // 协议开关
 const enableTrojan = ref(true)
@@ -264,6 +285,27 @@ const trojanReceiveWindow = ref(2 * 1024 * 1024) // 2MB
 const trojanTCPFastOpen = ref(true)
 const trojanDefaultFlow = ref('none')
 const trojanPasswordPolicy = ref('alphanumeric')
+
+const enabledProtocolCount = computed(() =>
+  [
+    enableTrojan.value,
+    enableVMess.value,
+    enableVLESS.value,
+    enableShadowsocks.value,
+    enableSocks.value,
+    enableHTTP.value
+  ].filter(Boolean).length
+)
+
+const enabledTransportCount = computed(() =>
+  [
+    enableTCP.value,
+    enableWebSocket.value,
+    enableHTTP2.value,
+    enableGRPC.value,
+    enableQUIC.value
+  ].filter(Boolean).length
+)
 
 // 保存基础设置
 const saveSettings = async () => {
@@ -441,20 +483,66 @@ const resetAllSettings = () => {
   margin-bottom: 20px;
 }
 
-.title {
+.page-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 0 0 8px;
+}
+
+.page-subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.overview-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.overview-card {
+  padding: 18px 20px;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+}
+
+.overview-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.overview-value {
   font-size: 22px;
-  font-weight: 600;
-  color: #303133;
+  font-weight: 700;
+  color: #111827;
+}
+
+.overview-value.is-success {
+  color: #059669;
+}
+
+.overview-value.is-primary {
+  color: #2563eb;
 }
 
 .settings-card {
   margin-bottom: 20px;
+  border-radius: 18px;
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .card-header span {
@@ -464,7 +552,7 @@ const resetAllSettings = () => {
 
 .protocol-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 20px;
 }
 
@@ -473,7 +561,8 @@ const resetAllSettings = () => {
   flex-direction: column;
   gap: 8px;
   padding: 16px;
-  border-radius: 4px;
+  min-height: 100%;
+  border-radius: 14px;
   background-color: #f8f9fa;
 }
 
@@ -497,14 +586,40 @@ const resetAllSettings = () => {
 
 .form-actions, .global-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 12px;
   margin-top: 20px;
 }
 
 @media (max-width: 768px) {
+  .protocol-settings-container {
+    padding: 12px;
+  }
+
+  .overview-strip {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
   .protocol-grid {
     grid-template-columns: 1fr;
   }
+
+  .card-header {
+    align-items: flex-start;
+  }
+
+  .form-actions,
+  .global-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .form-actions .el-button,
+  .global-actions .el-button {
+    width: 100%;
+    margin-left: 0;
+  }
 }
-</style> 
+</style>

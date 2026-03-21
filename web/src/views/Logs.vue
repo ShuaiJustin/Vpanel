@@ -42,9 +42,9 @@
 
     <!-- 过滤控件 -->
     <el-card class="filter-card">
-      <el-form :inline="true" :model="filterForm" class="filter-form">
+      <el-form :inline="!isMobile" :model="filterForm" class="filter-form">
         <el-form-item label="日志级别">
-          <el-select v-model="filterForm.level" placeholder="全部级别" clearable style="width: 120px">
+          <el-select v-model="filterForm.level" placeholder="全部级别" clearable class="filter-select">
             <el-option label="Debug" value="debug" />
             <el-option label="Info" value="info" />
             <el-option label="Warn" value="warn" />
@@ -53,10 +53,10 @@
           </el-select>
         </el-form-item>
         <el-form-item label="日志来源">
-          <el-input v-model="filterForm.source" placeholder="来源" clearable style="width: 150px" />
+          <el-input v-model="filterForm.source" placeholder="来源" clearable class="filter-source" />
         </el-form-item>
         <el-form-item label="关键词">
-          <el-input v-model="filterForm.keyword" placeholder="搜索关键词" clearable style="width: 200px">
+          <el-input v-model="filterForm.keyword" placeholder="搜索关键词" clearable class="filter-keyword">
             <template #prefix>
               <el-icon><Search /></el-icon>
             </template>
@@ -70,10 +70,10 @@
             start-placeholder="开始时间"
             end-placeholder="结束时间"
             value-format="YYYY-MM-DDTHH:mm:ssZ"
-            style="width: 360px"
+            class="filter-range"
           />
         </el-form-item>
-        <el-form-item>
+        <el-form-item class="filter-actions">
           <el-button type="primary" @click="handleFilter">查询</el-button>
           <el-button @click="resetFilter">重置</el-button>
         </el-form-item>
@@ -81,37 +81,39 @@
     </el-card>
 
     <!-- 日志列表 -->
-    <el-table
-      :data="logs"
-      border
-      v-loading="loading"
-      style="width: 100%"
-      :row-class-name="getRowClassName"
-      @row-click="handleRowClick"
-    >
-      <el-table-column prop="id" label="ID" width="80" />
-      <el-table-column prop="level" label="级别" width="100">
-        <template #default="scope">
-          <el-tag :type="getLevelTagType(scope.row.level)" size="small">
-            {{ (scope.row.level || '').toUpperCase() }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="source" label="来源" width="150" />
-      <el-table-column prop="message" label="消息" min-width="300" show-overflow-tooltip />
-      <el-table-column prop="created_at" label="时间" width="180">
-        <template #default="scope">
-          {{ formatDateTime(scope.row.created_at) }}
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="100" fixed="right">
-        <template #default="scope">
-          <el-button type="primary" link size="small" @click.stop="showLogDetail(scope.row)">
-            详情
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <div class="table-shell">
+      <el-table
+        :data="logs"
+        border
+        v-loading="loading"
+        class="logs-table"
+        :row-class-name="getRowClassName"
+        @row-click="handleRowClick"
+      >
+        <el-table-column prop="id" label="ID" width="80" />
+        <el-table-column prop="level" label="级别" width="100">
+          <template #default="scope">
+            <el-tag :type="getLevelTagType(scope.row.level)" size="small">
+              {{ (scope.row.level || '').toUpperCase() }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="source" label="来源" width="150" />
+        <el-table-column prop="message" label="消息" min-width="300" show-overflow-tooltip />
+        <el-table-column prop="created_at" label="时间" width="180">
+          <template #default="scope">
+            {{ formatDateTime(scope.row.created_at) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="100" fixed="right">
+          <template #default="scope">
+            <el-button type="primary" link size="small" @click.stop="showLogDetail(scope.row)">
+              详情
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
 
     <!-- 分页控件 -->
     <div class="pagination-container">
@@ -119,7 +121,7 @@
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
         :page-sizes="[20, 50, 100, 200]"
-        layout="total, sizes, prev, pager, next, jumper"
+        :layout="isMobile ? 'total, prev, next' : 'total, sizes, prev, pager, next, jumper'"
         :total="total"
         @size-change="handleSizeChange"
         @current-change="handleCurrentChange"
@@ -130,12 +132,12 @@
     <el-dialog
       v-model="detailDialogVisible"
       title="日志详情"
-      width="760px"
+      :width="detailDialogWidth"
       class="log-detail-dialog"
       destroy-on-close
     >
       <div v-if="selectedLog" class="log-detail-content">
-      <el-descriptions :column="2" border class="log-detail-meta">
+      <el-descriptions :column="detailDescriptionColumns" border class="log-detail-meta">
         <el-descriptions-item label="ID">{{ selectedLog.id }}</el-descriptions-item>
         <el-descriptions-item label="级别">
           <el-tag :type="getLevelTagType(selectedLog.level)" size="small">
@@ -146,10 +148,10 @@
         <el-descriptions-item label="时间">{{ formatDateTime(selectedLog.created_at) }}</el-descriptions-item>
         <el-descriptions-item label="用户 ID" v-if="selectedLog.user_id">{{ selectedLog.user_id }}</el-descriptions-item>
         <el-descriptions-item label="IP 地址" v-if="selectedLog.ip">{{ selectedLog.ip }}</el-descriptions-item>
-        <el-descriptions-item label="User Agent" :span="2" v-if="selectedLog.user_agent">
+        <el-descriptions-item label="User Agent" :span="detailDescriptionColumns" v-if="selectedLog.user_agent">
           <div class="log-detail-text">{{ selectedLog.user_agent }}</div>
         </el-descriptions-item>
-        <el-descriptions-item label="请求 ID" :span="2" v-if="selectedLog.request_id">
+        <el-descriptions-item label="请求 ID" :span="detailDescriptionColumns" v-if="selectedLog.request_id">
           <div class="log-detail-text">{{ selectedLog.request_id }}</div>
         </el-descriptions-item>
       </el-descriptions>
@@ -165,8 +167,8 @@
     </el-dialog>
 
     <!-- 清理对话框 -->
-    <el-dialog v-model="cleanupDialogVisible" title="清理日志" width="400px">
-      <el-form :model="cleanupForm" label-width="100px">
+    <el-dialog v-model="cleanupDialogVisible" title="清理日志" :width="compactDialogWidth">
+      <el-form :model="cleanupForm" :label-width="isMobile ? '88px' : '100px'">
         <el-form-item label="保留天数">
           <el-input-number v-model="cleanupForm.retentionDays" :min="1" :max="365" />
           <span style="margin-left: 10px; color: #909399;">天</span>
@@ -189,8 +191,8 @@
     </el-dialog>
 
     <!-- 导出对话框 -->
-    <el-dialog v-model="exportDialogVisible" title="导出日志" width="400px">
-      <el-form :model="exportForm" label-width="100px">
+    <el-dialog v-model="exportDialogVisible" title="导出日志" :width="compactDialogWidth">
+      <el-form :model="exportForm" :label-width="isMobile ? '88px' : '100px'">
         <el-form-item label="导出格式">
           <el-radio-group v-model="exportForm.format">
             <el-radio value="json">JSON</el-radio>
@@ -221,6 +223,9 @@ import { computed, ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Download, Delete } from '@element-plus/icons-vue'
 import { logsApi } from '@/api'
+import { useViewport } from '@/composables/useViewport'
+
+const { isMobile } = useViewport()
 
 // 状态
 const logs = ref([])
@@ -255,6 +260,10 @@ const formattedLogFields = computed(() => {
 
   return JSON.stringify(selectedLog.value.fields, null, 2)
 })
+
+const detailDialogWidth = computed(() => (isMobile.value ? '94%' : '760px'))
+const compactDialogWidth = computed(() => (isMobile.value ? '92%' : '400px'))
+const detailDescriptionColumns = computed(() => (isMobile.value ? 1 : 2))
 
 // 清理弹窗
 const cleanupDialogVisible = ref(false)
@@ -377,29 +386,21 @@ const showCleanupDialog = () => {
 
 // 执行清理
 const handleCleanup = async () => {
+  cleanupLoading.value = true
   try {
-    await ElMessageBox.confirm(
-      `确定要删除 ${cleanupForm.retentionDays} 天前的所有日志吗？此操作不可恢复！`,
-      '警告',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    )
-
-    cleanupLoading.value = true
     const response = await logsApi.cleanup({
       retention_days: cleanupForm.retentionDays
     })
-    
-    ElMessage.success(`清理完成，共删除 ${response.deleted_count} 条日志`)
+
+    const deletedCount = Number(response.deleted_count ?? response.deleted ?? 0)
+
+    ElMessage.success(`清理完成，共删除 ${deletedCount} 条日志`)
     cleanupDialogVisible.value = false
-    fetchLogs()
+    await fetchLogs()
   } catch (error) {
-    if (error !== 'cancel' && !error.cancelled) {
+    if (!error.cancelled) {
       console.error('Failed to cleanup logs:', error)
-      ElMessage.error('清理日志失败')
+      ElMessage.error(error.message || '清理日志失败')
     }
   } finally {
     cleanupLoading.value = false
@@ -502,6 +503,7 @@ const formatDateTime = (dateStr) => {
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
@@ -513,6 +515,30 @@ const formatDateTime = (dateStr) => {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.filter-select {
+  width: 120px;
+}
+
+.filter-source {
+  width: 150px;
+}
+
+.filter-keyword {
+  width: 200px;
+}
+
+.filter-range {
+  width: 360px;
+}
+
+.table-shell {
+  overflow-x: auto;
+}
+
+.logs-table {
+  min-width: 900px;
 }
 
 .pagination-container {
@@ -601,11 +627,53 @@ const formatDateTime = (dateStr) => {
   }
 
   .actions {
-    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .actions .el-button {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 0;
+  }
+
+  .filter-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filter-form :deep(.el-form-item) {
+    width: 100%;
+    margin-right: 0;
+    margin-bottom: 0;
+  }
+
+  .filter-select,
+  .filter-source,
+  .filter-keyword,
+  .filter-range {
+    width: 100%;
+  }
+
+  .filter-actions :deep(.el-form-item__content) {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .filter-actions .el-button {
+    flex: 1 1 0;
+  }
+
+  :deep(.logs-table .cell) {
+    padding: 12px 10px;
   }
 
   .log-detail-section-title {
     font-size: 13px;
+  }
+
+  .pagination-container {
+    justify-content: center;
+    overflow-x: auto;
   }
 }
 

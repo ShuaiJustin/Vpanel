@@ -50,6 +50,27 @@ func getRequestID(c *gin.Context) string {
 	return ""
 }
 
+func parseStatsRange(c *gin.Context) (string, time.Time, time.Time, bool, *errors.AppError) {
+	period := c.DefaultQuery("period", "today")
+	startStr := c.Query("start")
+	endStr := c.Query("end")
+
+	if period == "custom" || startStr != "" || endStr != "" {
+		start, err := time.Parse(time.RFC3339, startStr)
+		if err != nil {
+			return "", time.Time{}, time.Time{}, false, errors.NewValidationError("invalid start date", err)
+		}
+		end, err := time.Parse(time.RFC3339, endStr)
+		if err != nil {
+			return "", time.Time{}, time.Time{}, false, errors.NewValidationError("invalid end date", err)
+		}
+		return "custom", start, end, false, nil
+	}
+
+	start, end := getPeriodRange(period)
+	return period, start, end, true, nil
+}
+
 // DashboardStats represents dashboard statistics.
 type DashboardStats struct {
 	TotalUsers      int64 `json:"total_users"`
@@ -254,29 +275,13 @@ type TrafficStats struct {
 // GetTrafficStats returns traffic statistics.
 func (h *StatsHandler) GetTrafficStats(c *gin.Context) {
 	ctx := c.Request.Context()
-	period := c.DefaultQuery("period", "today")
-
-	var start, end time.Time
-	var cacheKey string
-
-	if period == "custom" {
-		startStr := c.Query("start")
-		endStr := c.Query("end")
-		var err error
-		start, err = time.Parse(time.RFC3339, startStr)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, errors.NewValidationError("invalid start date", err).ToResponse(getRequestID(c)))
-			return
-		}
-		end, err = time.Parse(time.RFC3339, endStr)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, errors.NewValidationError("invalid end date", err).ToResponse(getRequestID(c)))
-			return
-		}
-		// Don't cache custom ranges as they vary too much
-		cacheKey = ""
-	} else {
-		start, end = getPeriodRange(period)
+	period, start, end, cacheable, rangeErr := parseStatsRange(c)
+	if rangeErr != nil {
+		c.JSON(http.StatusBadRequest, rangeErr.ToResponse(getRequestID(c)))
+		return
+	}
+	cacheKey := ""
+	if cacheable {
 		cacheKey = fmt.Sprintf("%s%s", trafficStatsCachePrefix, period)
 	}
 
@@ -335,24 +340,33 @@ func (h *StatsHandler) GetTrafficStats(c *gin.Context) {
 
 // UserStats represents user statistics.
 type UserStats struct {
-	UserID     int64  `json:"user_id"`
-	Username   string `json:"username"`
-	Upload     int64  `json:"upload"`
-	Download   int64  `json:"download"`
-	Total      int64  `json:"total"`
-	ProxyCount int64  `json:"proxy_count"`
-	LastActive string `json:"last_active"`
+	UserID       int64  `json:"user_id"`
+	Username     string `json:"username"`
+	Email        string `json:"email"`
+	Upload       int64  `json:"upload"`
+	Download     int64  `json:"download"`
+	Total        int64  `json:"total"`
+	ProxyCount   int64  `json:"proxy_count"`
+	TrafficLimit int64  `json:"traffic_limit"`
+	LastActive   string `json:"last_active"`
 }
 
 // GetUserStats returns user statistics.
 func (h *StatsHandler) GetUserStats(c *gin.Context) {
 	ctx := c.Request.Context()
-	period := c.DefaultQuery("period", "today")
 	limit := 10 // Default limit
+	period, start, end, cacheable, rangeErr := parseStatsRange(c)
+	if rangeErr != nil {
+		c.JSON(http.StatusBadRequest, rangeErr.ToResponse(getRequestID(c)))
+		return
+	}
 
 	// Try to get from cache first
-	cacheKey := fmt.Sprintf("%s%s", userStatsCachePrefix, period)
-	if h.cache != nil {
+	cacheKey := ""
+	if cacheable {
+		cacheKey = fmt.Sprintf("%s%s", userStatsCachePrefix, period)
+	}
+	if cacheKey != "" && h.cache != nil {
 		if cached, err := h.cache.Get(ctx, cacheKey); err == nil && cached != nil {
 			var stats []UserStats
 			if err := json.Unmarshal(cached, &stats); err == nil {
@@ -366,8 +380,6 @@ func (h *StatsHandler) GetUserStats(c *gin.Context) {
 		}
 	}
 
-	start, end := getPeriodRange(period)
-
 	trafficStats, err := h.repos.Traffic.GetTrafficByUser(ctx, start, end, limit)
 	if err != nil {
 		h.logger.Error("failed to get user stats", logger.F("error", err))
@@ -377,19 +389,25 @@ func (h *StatsHandler) GetUserStats(c *gin.Context) {
 
 	stats := make([]UserStats, 0, len(trafficStats))
 	for _, ts := range trafficStats {
+		lastActive := ""
+		if ts.LastActive != nil {
+			lastActive = ts.LastActive.Format(time.RFC3339)
+		}
 		stats = append(stats, UserStats{
-			UserID:     ts.UserID,
-			Username:   ts.Username,
-			Upload:     ts.Upload,
-			Download:   ts.Download,
-			Total:      ts.Upload + ts.Download,
-			ProxyCount: ts.ProxyCount,
-			LastActive: "",
+			UserID:       ts.UserID,
+			Username:     ts.Username,
+			Email:        ts.Email,
+			Upload:       ts.Upload,
+			Download:     ts.Download,
+			Total:        ts.Upload + ts.Download,
+			ProxyCount:   ts.ProxyCount,
+			TrafficLimit: ts.TrafficLimit,
+			LastActive:   lastActive,
 		})
 	}
 
 	// Cache the result
-	if h.cache != nil {
+	if cacheKey != "" && h.cache != nil {
 		if data, err := json.Marshal(stats); err == nil {
 			if err := h.cache.Set(ctx, cacheKey, data, statsCacheTTL); err != nil {
 				h.logger.Warn("failed to cache user stats", logger.F("error", err))
@@ -425,9 +443,11 @@ type DetailedStats struct {
 // GetDetailedStats returns detailed statistics.
 func (h *StatsHandler) GetDetailedStats(c *gin.Context) {
 	ctx := c.Request.Context()
-	period := c.DefaultQuery("period", "today")
-
-	start, end := getPeriodRange(period)
+	period, start, end, _, rangeErr := parseStatsRange(c)
+	if rangeErr != nil {
+		c.JSON(http.StatusBadRequest, rangeErr.ToResponse(getRequestID(c)))
+		return
+	}
 
 	// Get total traffic
 	upload, download, err := h.repos.Traffic.GetTotalTrafficByPeriod(ctx, start, end)
@@ -469,13 +489,20 @@ func (h *StatsHandler) GetDetailedStats(c *gin.Context) {
 	// Get user stats
 	userTraffic, _ := h.repos.Traffic.GetTrafficByUser(ctx, start, end, 10)
 	for _, ut := range userTraffic {
+		lastActive := ""
+		if ut.LastActive != nil {
+			lastActive = ut.LastActive.Format(time.RFC3339)
+		}
 		stats.ByUser = append(stats.ByUser, UserStats{
-			UserID:     ut.UserID,
-			Username:   ut.Username,
-			Upload:     ut.Upload,
-			Download:   ut.Download,
-			Total:      ut.Upload + ut.Download,
-			ProxyCount: ut.ProxyCount,
+			UserID:       ut.UserID,
+			Username:     ut.Username,
+			Email:        ut.Email,
+			Upload:       ut.Upload,
+			Download:     ut.Download,
+			Total:        ut.Upload + ut.Download,
+			ProxyCount:   ut.ProxyCount,
+			TrafficLimit: ut.TrafficLimit,
+			LastActive:   lastActive,
 		})
 	}
 

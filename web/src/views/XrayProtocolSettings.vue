@@ -1,18 +1,38 @@
 <template>
   <div class="protocol-settings-container">
     <div class="page-header">
-      <div class="title">系统设置</div>
+      <div class="page-heading">
+        <h1 class="page-title">协议管理</h1>
+        <p class="page-subtitle">管理 Xray 支持协议和传输层能力，方便在不同设备下快速调整</p>
+      </div>
     </div>
-    
+
+    <div class="overview-strip">
+      <div class="overview-card">
+        <span class="overview-label">已启用协议</span>
+        <strong class="overview-value is-success">{{ enabledProtocolCount }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">已启用传输层</span>
+        <strong class="overview-value is-primary">{{ enabledTransportCount }}</strong>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">当前页</span>
+        <strong class="overview-value">协议管理</strong>
+      </div>
+    </div>
+
     <div class="settings-tabs">
-      <div class="tab-header">
-        <div class="tab-item">服务器配置</div>
-        <div class="tab-item">数据库配置</div>
-        <div class="tab-item">日志配置</div>
-        <div class="tab-item">Xray内核配置</div>
-        <div class="tab-item">管理员配置</div>
-        <div class="tab-item">安全设置</div>
-        <div class="tab-item active">协议管理</div>
+      <div class="tab-header-shell">
+        <div class="tab-header">
+          <div class="tab-item">服务器配置</div>
+          <div class="tab-item">数据库配置</div>
+          <div class="tab-item">日志配置</div>
+          <div class="tab-item">Xray内核配置</div>
+          <div class="tab-item">管理员配置</div>
+          <div class="tab-item">安全设置</div>
+          <div class="tab-item active">协议管理</div>
+        </div>
       </div>
       
       <div class="tab-content">
@@ -169,7 +189,7 @@
           </div>
         </div>
         
-        <div class="settings-footer">
+        <div :class="['settings-footer', { 'settings-footer--stacked': isMobile }]">
           <el-button type="primary" @click="saveSettings">保存协议配置</el-button>
           <el-button type="success" @click="saveAndRestart">保存并重启Xray</el-button>
         </div>
@@ -179,8 +199,11 @@
 </template>
 
 <script setup>
-import { reactive } from 'vue'
+import { computed, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useViewport } from '@/composables/useViewport'
+
+const { isMobile } = useViewport()
 
 // 协议设置
 const protocols = reactive({
@@ -200,6 +223,14 @@ const transports = reactive({
   grpc: true,
   quic: false
 })
+
+const enabledProtocolCount = computed(() =>
+  Object.values(protocols).filter(Boolean).length
+)
+
+const enabledTransportCount = computed(() =>
+  Object.values(transports).filter(Boolean).length
+)
 
 // 保存设置
 const saveSettings = async () => {
@@ -251,22 +282,70 @@ const saveAndRestart = async () => {
   margin-bottom: 20px;
 }
 
-.title {
+.page-title {
   font-size: 24px;
-  font-weight: 500;
+  font-weight: 700;
   color: var(--el-text-color-primary, #333);
+  margin: 0 0 8px;
+}
+
+.page-subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.overview-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.overview-card {
+  padding: 18px 20px;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+}
+
+.overview-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.overview-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.overview-value.is-success {
+  color: #059669;
+}
+
+.overview-value.is-primary {
+  color: #2563eb;
 }
 
 .settings-tabs {
   background-color: var(--el-bg-color, #fff);
-  border-radius: 4px;
+  border-radius: 18px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
   overflow: hidden;
   border: 1px solid var(--el-border-color, #e8e8e8);
 }
 
+.tab-header-shell {
+  overflow-x: auto;
+}
+
 .tab-header {
   display: flex;
+  min-width: max-content;
   border-bottom: 1px solid var(--el-border-color, #e8e8e8);
   background-color: var(--el-fill-color-light, #fafafa);
 }
@@ -275,6 +354,7 @@ const saveAndRestart = async () => {
   padding: 12px 16px;
   font-size: 14px;
   cursor: pointer;
+  white-space: nowrap;
   color: var(--el-text-color-regular, #666);
   transition: all 0.3s;
 }
@@ -307,6 +387,7 @@ const saveAndRestart = async () => {
 .protocol-row {
   display: flex;
   align-items: center;
+  gap: 16px;
   padding: 12px 0;
   border-bottom: 1px solid var(--el-border-color-lighter, #f0f0f0);
 }
@@ -361,4 +442,62 @@ const saveAndRestart = async () => {
   justify-content: center;
   gap: 20px;
 }
-</style> 
+
+.settings-footer--stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.settings-footer--stacked .el-button {
+  width: 100%;
+  margin-left: 0;
+}
+
+@media (max-width: 900px) {
+  .overview-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .protocol-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .protocol-label,
+  .protocol-switch,
+  .protocol-desc,
+  .protocol-status {
+    width: 100%;
+  }
+
+  .protocol-desc {
+    padding: 0;
+  }
+
+  .protocol-status {
+    text-align: left;
+  }
+}
+
+@media (max-width: 768px) {
+  .protocol-settings-container {
+    padding: 12px;
+  }
+
+  .tab-content {
+    padding: 16px;
+  }
+
+  .settings-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .settings-footer .el-button {
+    width: 100%;
+    margin-left: 0;
+  }
+}
+</style>

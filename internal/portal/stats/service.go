@@ -8,31 +8,42 @@ import (
 	"fmt"
 	"time"
 
+	"gorm.io/gorm"
+
 	"v/internal/database/repository"
 )
 
 // Service provides statistics operations for the user portal.
 type Service struct {
-	trafficRepo repository.TrafficRepository
-	userRepo    repository.UserRepository
+	db              *gorm.DB
+	trafficRepo     repository.TrafficRepository
+	nodeTrafficRepo repository.NodeTrafficRepository
+	userRepo        repository.UserRepository
 }
 
 // NewService creates a new stats service.
-func NewService(trafficRepo repository.TrafficRepository, userRepo repository.UserRepository) *Service {
+func NewService(
+	db *gorm.DB,
+	trafficRepo repository.TrafficRepository,
+	nodeTrafficRepo repository.NodeTrafficRepository,
+	userRepo repository.UserRepository,
+) *Service {
 	return &Service{
-		trafficRepo: trafficRepo,
-		userRepo:    userRepo,
+		db:              db,
+		trafficRepo:     trafficRepo,
+		nodeTrafficRepo: nodeTrafficRepo,
+		userRepo:        userRepo,
 	}
 }
 
 // TrafficSummary represents a summary of traffic usage.
 type TrafficSummary struct {
-	Upload      int64   `json:"upload"`
-	Download    int64   `json:"download"`
-	Total       int64   `json:"total"`
-	UploadStr   string  `json:"upload_str"`
-	DownloadStr string  `json:"download_str"`
-	TotalStr    string  `json:"total_str"`
+	Upload      int64  `json:"upload"`
+	Download    int64  `json:"download"`
+	Total       int64  `json:"total"`
+	UploadStr   string `json:"upload_str"`
+	DownloadStr string `json:"download_str"`
+	TotalStr    string `json:"total_str"`
 }
 
 // DailyTraffic represents traffic for a single day.
@@ -45,11 +56,31 @@ type DailyTraffic struct {
 
 // TrafficStats represents traffic statistics for a period.
 type TrafficStats struct {
-	Summary   *TrafficSummary  `json:"summary"`
-	Daily     []*DailyTraffic  `json:"daily"`
-	StartDate string           `json:"start_date"`
-	EndDate   string           `json:"end_date"`
-	Period    string           `json:"period"` // day, week, month
+	Summary   *TrafficSummary `json:"summary"`
+	Daily     []*DailyTraffic `json:"daily"`
+	StartDate string          `json:"start_date"`
+	EndDate   string          `json:"end_date"`
+	Period    string          `json:"period"` // day, week, month, year, custom
+}
+
+// NodeUsage represents user traffic grouped by node.
+type NodeUsage struct {
+	NodeID     int64   `json:"node_id"`
+	NodeName   string  `json:"node_name"`
+	Upload     int64   `json:"upload"`
+	Download   int64   `json:"download"`
+	Traffic    int64   `json:"traffic"`
+	Percentage float64 `json:"percentage"`
+}
+
+// ProtocolUsage represents user traffic grouped by protocol.
+type ProtocolUsage struct {
+	Protocol   string  `json:"protocol"`
+	Count      int64   `json:"count"`
+	Upload     int64   `json:"upload"`
+	Download   int64   `json:"download"`
+	Traffic    int64   `json:"traffic"`
+	Percentage float64 `json:"percentage"`
 }
 
 // GetTrafficSummary retrieves total traffic for a user.
@@ -58,16 +89,31 @@ func (s *Service) GetTrafficSummary(ctx context.Context, userID int64) (*Traffic
 	if err != nil {
 		return nil, err
 	}
+	return newTrafficSummary(upload, download), nil
+}
 
-	total := upload + download
-	return &TrafficSummary{
-		Upload:      upload,
-		Download:    download,
-		Total:       total,
-		UploadStr:   FormatBytes(upload),
-		DownloadStr: FormatBytes(download),
-		TotalStr:    FormatBytes(total),
-	}, nil
+// GetTrafficSummaryInRange retrieves traffic for a user within a time range.
+func (s *Service) GetTrafficSummaryInRange(ctx context.Context, userID int64, start, end time.Time) (*TrafficSummary, error) {
+	if s.db == nil {
+		daily, err := s.GetDailyTrafficInRange(ctx, userID, start, end)
+		if err != nil {
+			return nil, err
+		}
+		return AggregateDaily(daily), nil
+	}
+
+	var result struct {
+		Upload   int64
+		Download int64
+	}
+	if err := s.db.WithContext(ctx).
+		Table("traffic").
+		Select("COALESCE(SUM(upload), 0) as upload, COALESCE(SUM(download), 0) as download").
+		Where("user_id = ? AND recorded_at BETWEEN ? AND ?", userID, start, end).
+		Scan(&result).Error; err != nil {
+		return nil, err
+	}
+	return newTrafficSummary(result.Upload, result.Download), nil
 }
 
 // GetDailyTraffic retrieves daily traffic for a user within a date range.
@@ -81,14 +127,16 @@ func (s *Service) GetDailyTraffic(ctx context.Context, userID int64, days int) (
 
 	end := time.Now()
 	start := end.AddDate(0, 0, -days)
+	return s.GetDailyTrafficInRange(ctx, userID, start, end)
+}
 
-	// Get traffic timeline filtered by user ID
+// GetDailyTrafficInRange retrieves daily traffic for a user within a time range.
+func (s *Service) GetDailyTrafficInRange(ctx context.Context, userID int64, start, end time.Time) ([]*DailyTraffic, error) {
 	timeline, err := s.trafficRepo.GetTrafficTimelineByUser(ctx, userID, start, end, "day")
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert to DailyTraffic
 	daily := make([]*DailyTraffic, len(timeline))
 	for i, point := range timeline {
 		daily[i] = &DailyTraffic{
@@ -104,40 +152,21 @@ func (s *Service) GetDailyTraffic(ctx context.Context, userID int64, days int) (
 
 // GetTrafficStats retrieves traffic statistics for a period.
 func (s *Service) GetTrafficStats(ctx context.Context, userID int64, period string) (*TrafficStats, error) {
-	var days int
-	switch period {
-	case "week":
-		days = 7
-	case "month":
-		days = 30
-	case "year":
-		days = 365
-	default:
-		period = "month"
-		days = 30
+	resolvedPeriod, start, end, err := ResolveRange(period, "", "")
+	if err != nil {
+		return nil, err
 	}
+	return s.GetTrafficStatsInRange(ctx, userID, resolvedPeriod, start, end)
+}
 
-	end := time.Now()
-	start := end.AddDate(0, 0, -days)
-
-	// Get summary
-	upload, download, err := s.trafficRepo.GetTotalTrafficByPeriod(ctx, start, end)
+// GetTrafficStatsInRange retrieves traffic statistics within an explicit time range.
+func (s *Service) GetTrafficStatsInRange(ctx context.Context, userID int64, period string, start, end time.Time) (*TrafficStats, error) {
+	summary, err := s.GetTrafficSummaryInRange(ctx, userID, start, end)
 	if err != nil {
 		return nil, err
 	}
 
-	total := upload + download
-	summary := &TrafficSummary{
-		Upload:      upload,
-		Download:    download,
-		Total:       total,
-		UploadStr:   FormatBytes(upload),
-		DownloadStr: FormatBytes(download),
-		TotalStr:    FormatBytes(total),
-	}
-
-	// Get daily data
-	daily, err := s.GetDailyTraffic(ctx, userID, days)
+	daily, err := s.GetDailyTrafficInRange(ctx, userID, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -151,6 +180,123 @@ func (s *Service) GetTrafficStats(ctx context.Context, userID int64, period stri
 	}, nil
 }
 
+// GetUsageStats retrieves usage grouped by node and protocol for a time range.
+func (s *Service) GetUsageStats(ctx context.Context, userID int64, period, startDate, endDate string) (*TrafficSummary, []*NodeUsage, []*ProtocolUsage, error) {
+	resolvedPeriod, start, end, err := ResolveRange(period, startDate, endDate)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	summary, err := s.GetTrafficSummaryInRange(ctx, userID, start, end)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	byNode, err := s.getNodeUsage(ctx, userID, start, end, summary.Total)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	byProtocol, err := s.getProtocolUsage(ctx, userID, start, end, summary.Total)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	if resolvedPeriod == "" {
+		resolvedPeriod = "month"
+	}
+
+	return summary, byNode, byProtocol, nil
+}
+
+func (s *Service) getNodeUsage(ctx context.Context, userID int64, start, end time.Time, total int64) ([]*NodeUsage, error) {
+	if s.db == nil {
+		return []*NodeUsage{}, nil
+	}
+
+	type nodeUsageRow struct {
+		NodeID   int64
+		NodeName string
+		Upload   int64
+		Download int64
+	}
+
+	var rows []nodeUsageRow
+	if err := s.db.WithContext(ctx).
+		Table("node_traffic nt").
+		Select("nt.node_id, n.name as node_name, COALESCE(SUM(nt.upload), 0) as upload, COALESCE(SUM(nt.download), 0) as download").
+		Joins("JOIN nodes n ON n.id = nt.node_id").
+		Where("nt.user_id = ? AND nt.recorded_at BETWEEN ? AND ?", userID, start, end).
+		Group("nt.node_id, n.name").
+		Order("(COALESCE(SUM(nt.upload), 0) + COALESCE(SUM(nt.download), 0)) DESC").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	result := make([]*NodeUsage, 0, len(rows))
+	for _, row := range rows {
+		traffic := row.Upload + row.Download
+		percentage := float64(0)
+		if total > 0 {
+			percentage = float64(traffic) / float64(total) * 100
+		}
+		result = append(result, &NodeUsage{
+			NodeID:     row.NodeID,
+			NodeName:   row.NodeName,
+			Upload:     row.Upload,
+			Download:   row.Download,
+			Traffic:    traffic,
+			Percentage: percentage,
+		})
+	}
+
+	return result, nil
+}
+
+func (s *Service) getProtocolUsage(ctx context.Context, userID int64, start, end time.Time, total int64) ([]*ProtocolUsage, error) {
+	if s.db == nil {
+		return []*ProtocolUsage{}, nil
+	}
+
+	type protocolUsageRow struct {
+		Protocol string
+		Count    int64
+		Upload   int64
+		Download int64
+	}
+
+	var rows []protocolUsageRow
+	if err := s.db.WithContext(ctx).
+		Table("traffic t").
+		Select("p.protocol, COUNT(DISTINCT t.proxy_id) as count, COALESCE(SUM(t.upload), 0) as upload, COALESCE(SUM(t.download), 0) as download").
+		Joins("JOIN proxies p ON p.id = t.proxy_id").
+		Where("t.user_id = ? AND t.recorded_at BETWEEN ? AND ?", userID, start, end).
+		Group("p.protocol").
+		Order("(COALESCE(SUM(t.upload), 0) + COALESCE(SUM(t.download), 0)) DESC").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	result := make([]*ProtocolUsage, 0, len(rows))
+	for _, row := range rows {
+		traffic := row.Upload + row.Download
+		percentage := float64(0)
+		if total > 0 {
+			percentage = float64(traffic) / float64(total) * 100
+		}
+		result = append(result, &ProtocolUsage{
+			Protocol:   row.Protocol,
+			Count:      row.Count,
+			Upload:     row.Upload,
+			Download:   row.Download,
+			Traffic:    traffic,
+			Percentage: percentage,
+		})
+	}
+
+	return result, nil
+}
+
 // ExportTrafficCSV exports traffic data as CSV.
 func (s *Service) ExportTrafficCSV(ctx context.Context, userID int64, days int) ([]byte, error) {
 	daily, err := s.GetDailyTraffic(ctx, userID, days)
@@ -161,12 +307,10 @@ func (s *Service) ExportTrafficCSV(ctx context.Context, userID int64, days int) 
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
 
-	// Write header
 	if err := writer.Write([]string{"Date", "Upload (bytes)", "Download (bytes)", "Total (bytes)", "Upload", "Download", "Total"}); err != nil {
 		return nil, err
 	}
 
-	// Write data
 	for _, d := range daily {
 		record := []string{
 			d.Date,
@@ -197,6 +341,10 @@ func AggregateDaily(daily []*DailyTraffic) *TrafficSummary {
 		upload += d.Upload
 		download += d.Download
 	}
+	return newTrafficSummary(upload, download)
+}
+
+func newTrafficSummary(upload, download int64) *TrafficSummary {
 	total := upload + download
 	return &TrafficSummary{
 		Upload:      upload,
@@ -205,6 +353,37 @@ func AggregateDaily(daily []*DailyTraffic) *TrafficSummary {
 		UploadStr:   FormatBytes(upload),
 		DownloadStr: FormatBytes(download),
 		TotalStr:    FormatBytes(total),
+	}
+}
+
+// ResolveRange validates and resolves a period or explicit date range.
+func ResolveRange(period, startDate, endDate string) (string, time.Time, time.Time, error) {
+	period = ValidatePeriod(period)
+	now := time.Now()
+
+	switch period {
+	case "custom":
+		start, err := time.ParseInLocation("2006-01-02", startDate, now.Location())
+		if err != nil {
+			return "", time.Time{}, time.Time{}, fmt.Errorf("invalid start date")
+		}
+		end, err := time.ParseInLocation("2006-01-02", endDate, now.Location())
+		if err != nil {
+			return "", time.Time{}, time.Time{}, fmt.Errorf("invalid end date")
+		}
+		end = end.Add(24*time.Hour - time.Nanosecond)
+		return period, start, end, nil
+	case "day":
+		start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		return period, start, now, nil
+	case "week":
+		return period, now.AddDate(0, 0, -7), now, nil
+	case "month":
+		return period, now.AddDate(0, 0, -30), now, nil
+	case "year":
+		return period, now.AddDate(0, 0, -365), now, nil
+	default:
+		return "month", now.AddDate(0, 0, -30), now, nil
 	}
 }
 
@@ -234,7 +413,7 @@ func FormatBytes(bytes int64) string {
 // ValidatePeriod validates and normalizes a period string.
 func ValidatePeriod(period string) string {
 	switch period {
-	case "day", "week", "month", "year":
+	case "day", "week", "month", "year", "custom":
 		return period
 	default:
 		return "month"

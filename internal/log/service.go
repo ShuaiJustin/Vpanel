@@ -4,6 +4,7 @@ package log
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
 	"time"
 
@@ -13,11 +14,14 @@ import (
 
 // Service provides logging operations with database persistence.
 type Service struct {
-	repo   repository.LogRepository
-	logger logger.Logger
-	writer *AsyncWriter
-	mu     sync.RWMutex
+	repo          repository.LogRepository
+	logger        logger.Logger
+	writer        *AsyncWriter
+	retentionDays int
+	mu            sync.RWMutex
 }
+
+const defaultRetentionDays = 30
 
 // Config holds log service configuration.
 type Config struct {
@@ -40,13 +44,14 @@ func NewService(repo repository.LogRepository, log logger.Logger, cfg Config) *S
 	if cfg.FlushInterval == 0 {
 		cfg.FlushInterval = 5 * time.Second
 	}
-	if cfg.RetentionDays == 0 {
-		cfg.RetentionDays = 30
+	if cfg.RetentionDays <= 0 {
+		cfg.RetentionDays = defaultRetentionDays
 	}
 
 	s := &Service{
-		repo:   repo,
-		logger: log,
+		repo:          repo,
+		logger:        log,
+		retentionDays: cfg.RetentionDays,
 	}
 
 	s.writer = NewAsyncWriter(repo, log, cfg.BufferSize, cfg.BatchSize, cfg.FlushInterval)
@@ -113,6 +118,10 @@ func (s *Service) Delete(ctx context.Context, filter *repository.LogFilter) (int
 
 // Cleanup deletes logs older than retention period.
 func (s *Service) Cleanup(ctx context.Context, retentionDays int) (int64, error) {
+	if retentionDays < 1 {
+		return 0, fmt.Errorf("retention days must be greater than 0")
+	}
+
 	before := time.Now().AddDate(0, 0, -retentionDays)
 	deleted, err := s.repo.DeleteOlderThan(ctx, before)
 	if err != nil {
@@ -137,7 +146,7 @@ func (s *Service) StartCleanupScheduler(ctx context.Context) {
 		for {
 			select {
 			case <-ticker.C:
-				if _, err := s.Cleanup(ctx, 30); err != nil {
+				if _, err := s.Cleanup(ctx, s.retentionDays); err != nil {
 					s.logger.Error("scheduled cleanup failed", logger.F("error", err))
 				}
 			case <-ctx.Done():

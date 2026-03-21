@@ -5,6 +5,8 @@ import (
 	"context"
 	"time"
 
+	"gorm.io/gorm"
+
 	"v/internal/database/repository"
 	"v/internal/logger"
 )
@@ -78,44 +80,42 @@ type TrafficFilter struct {
 
 // TrafficService provides traffic statistics aggregation operations.
 type TrafficService struct {
-	trafficRepo repository.NodeTrafficRepository
-	groupRepo   repository.NodeGroupRepository
-	logger      logger.Logger
+	db              *gorm.DB
+	nodeTrafficRepo repository.NodeTrafficRepository
+	trafficRepo     repository.TrafficRepository
+	userRepo        repository.UserRepository
+	nodeRepo        repository.NodeRepository
+	groupRepo       repository.NodeGroupRepository
+	logger          logger.Logger
 }
 
 // NewTrafficService creates a new traffic service.
 func NewTrafficService(
-	trafficRepo repository.NodeTrafficRepository,
+	db *gorm.DB,
+	nodeTrafficRepo repository.NodeTrafficRepository,
+	trafficRepo repository.TrafficRepository,
+	userRepo repository.UserRepository,
+	nodeRepo repository.NodeRepository,
 	groupRepo repository.NodeGroupRepository,
 	log logger.Logger,
 ) *TrafficService {
 	return &TrafficService{
-		trafficRepo: trafficRepo,
-		groupRepo:   groupRepo,
-		logger:      log,
+		db:              db,
+		nodeTrafficRepo: nodeTrafficRepo,
+		trafficRepo:     trafficRepo,
+		userRepo:        userRepo,
+		nodeRepo:        nodeRepo,
+		groupRepo:       groupRepo,
+		logger:          log,
 	}
 }
 
 // RecordTraffic records a traffic entry for a node.
 func (s *TrafficService) RecordTraffic(ctx context.Context, record *TrafficRecord) error {
-	traffic := &repository.NodeTraffic{
-		NodeID:     record.NodeID,
-		UserID:     record.UserID,
-		ProxyID:    record.ProxyID,
-		Upload:     record.Upload,
-		Download:   record.Download,
-		RecordedAt: time.Now(),
+	if record == nil {
+		return nil
 	}
-
-	if err := s.trafficRepo.Create(ctx, traffic); err != nil {
-		s.logger.Error("Failed to record traffic",
-			logger.Err(err),
-			logger.F("node_id", record.NodeID),
-			logger.F("user_id", record.UserID))
-		return err
-	}
-
-	return nil
+	return s.RecordTrafficBatch(ctx, []*TrafficRecord{record})
 }
 
 // RecordTrafficBatch records multiple traffic entries.
@@ -124,20 +124,108 @@ func (s *TrafficService) RecordTrafficBatch(ctx context.Context, records []*Traf
 		return nil
 	}
 
-	now := time.Now()
-	traffic := make([]*repository.NodeTraffic, len(records))
-	for i, r := range records {
-		traffic[i] = &repository.NodeTraffic{
-			NodeID:     r.NodeID,
-			UserID:     r.UserID,
-			ProxyID:    r.ProxyID,
-			Upload:     r.Upload,
-			Download:   r.Download,
-			RecordedAt: now,
-		}
+	normalized := normalizeTrafficRecords(records)
+	if len(normalized) == 0 {
+		return nil
 	}
 
-	if err := s.trafficRepo.CreateBatch(ctx, traffic); err != nil {
+	now := time.Now()
+
+	if s.db == nil {
+		traffic := make([]*repository.NodeTraffic, len(normalized))
+		for i, r := range normalized {
+			traffic[i] = &repository.NodeTraffic{
+				NodeID:     r.NodeID,
+				UserID:     r.UserID,
+				ProxyID:    r.ProxyID,
+				Upload:     r.Upload,
+				Download:   r.Download,
+				RecordedAt: now,
+			}
+		}
+
+		if err := s.nodeTrafficRepo.CreateBatch(ctx, traffic); err != nil {
+			s.logger.Error("Failed to record traffic batch", logger.Err(err))
+			return err
+		}
+		return nil
+	}
+
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		nodeTrafficRecords := make([]*repository.NodeTraffic, 0, len(normalized))
+		globalTrafficRecords := make([]*repository.Traffic, 0, len(normalized))
+		userTotals := make(map[int64]int64)
+		nodeUploads := make(map[int64]int64)
+		nodeDownloads := make(map[int64]int64)
+
+		for _, record := range normalized {
+			nodeTrafficRecords = append(nodeTrafficRecords, &repository.NodeTraffic{
+				NodeID:     record.NodeID,
+				UserID:     record.UserID,
+				ProxyID:    record.ProxyID,
+				Upload:     record.Upload,
+				Download:   record.Download,
+				RecordedAt: now,
+			})
+
+			if record.ProxyID != nil && *record.ProxyID > 0 {
+				globalTrafficRecords = append(globalTrafficRecords, &repository.Traffic{
+					UserID:     record.UserID,
+					ProxyID:    *record.ProxyID,
+					Upload:     record.Upload,
+					Download:   record.Download,
+					RecordedAt: now,
+				})
+			}
+
+			total := record.Upload + record.Download
+			userTotals[record.UserID] += total
+			nodeUploads[record.NodeID] += record.Upload
+			nodeDownloads[record.NodeID] += record.Download
+		}
+
+		if len(nodeTrafficRecords) > 0 {
+			if err := tx.Create(&nodeTrafficRecords).Error; err != nil {
+				return err
+			}
+		}
+
+		if len(globalTrafficRecords) > 0 {
+			if err := tx.Create(&globalTrafficRecords).Error; err != nil {
+				return err
+			}
+		}
+
+		for userID, total := range userTotals {
+			if total <= 0 {
+				continue
+			}
+			if err := tx.Model(&repository.User{}).
+				Where("id = ?", userID).
+				Update("traffic_used", gorm.Expr("traffic_used + ?", total)).Error; err != nil {
+				return err
+			}
+		}
+
+		for nodeID, upload := range nodeUploads {
+			download := nodeDownloads[nodeID]
+			total := upload + download
+			if total <= 0 {
+				continue
+			}
+			if err := tx.Model(&repository.Node{}).
+				Where("id = ?", nodeID).
+				Updates(map[string]interface{}{
+					"traffic_up":    gorm.Expr("traffic_up + ?", upload),
+					"traffic_down":  gorm.Expr("traffic_down + ?", download),
+					"traffic_total": gorm.Expr("traffic_total + ?", total),
+				}).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}); err != nil {
 		s.logger.Error("Failed to record traffic batch", logger.Err(err))
 		return err
 	}
@@ -145,9 +233,43 @@ func (s *TrafficService) RecordTrafficBatch(ctx context.Context, records []*Traf
 	return nil
 }
 
+func normalizeTrafficRecords(records []*TrafficRecord) []*TrafficRecord {
+	normalized := make([]*TrafficRecord, 0, len(records))
+	for _, record := range records {
+		if record == nil || record.UserID <= 0 || record.NodeID <= 0 {
+			continue
+		}
+
+		upload := record.Upload
+		download := record.Download
+		if upload < 0 {
+			upload = 0
+		}
+		if download < 0 {
+			download = 0
+		}
+		if upload == 0 && download == 0 {
+			continue
+		}
+
+		normalizedRecord := &TrafficRecord{
+			NodeID:   record.NodeID,
+			UserID:   record.UserID,
+			Upload:   upload,
+			Download: download,
+		}
+		if record.ProxyID != nil && *record.ProxyID > 0 {
+			proxyID := *record.ProxyID
+			normalizedRecord.ProxyID = &proxyID
+		}
+		normalized = append(normalized, normalizedRecord)
+	}
+	return normalized
+}
+
 // GetTotalTraffic returns total traffic across all nodes within a time range.
 func (s *TrafficService) GetTotalTraffic(ctx context.Context, start, end time.Time) (*TrafficStats, error) {
-	upload, download, err := s.trafficRepo.GetTotalTraffic(ctx, start, end)
+	upload, download, err := s.nodeTrafficRepo.GetTotalTraffic(ctx, start, end)
 	if err != nil {
 		s.logger.Error("Failed to get total traffic", logger.Err(err))
 		return nil, err
@@ -162,7 +284,7 @@ func (s *TrafficService) GetTotalTraffic(ctx context.Context, start, end time.Ti
 
 // GetTrafficByNode returns traffic statistics for a specific node.
 func (s *TrafficService) GetTrafficByNode(ctx context.Context, nodeID int64, start, end time.Time) (*NodeTrafficStats, error) {
-	upload, download, err := s.trafficRepo.GetTotalByNodeInRange(ctx, nodeID, start, end)
+	upload, download, err := s.nodeTrafficRepo.GetTotalByNodeInRange(ctx, nodeID, start, end)
 	if err != nil {
 		s.logger.Error("Failed to get traffic by node",
 			logger.Err(err),
@@ -180,7 +302,7 @@ func (s *TrafficService) GetTrafficByNode(ctx context.Context, nodeID int64, sta
 
 // GetTrafficByUser returns traffic statistics for a specific user across all nodes.
 func (s *TrafficService) GetTrafficByUser(ctx context.Context, userID int64, start, end time.Time) (*UserTrafficStats, error) {
-	upload, download, err := s.trafficRepo.GetTotalByUserInRange(ctx, userID, start, end)
+	upload, download, err := s.nodeTrafficRepo.GetTotalByUserInRange(ctx, userID, start, end)
 	if err != nil {
 		s.logger.Error("Failed to get traffic by user",
 			logger.Err(err),
@@ -198,7 +320,7 @@ func (s *TrafficService) GetTrafficByUser(ctx context.Context, userID int64, sta
 
 // GetTrafficByUserOnNode returns traffic statistics for a user on a specific node.
 func (s *TrafficService) GetTrafficByUserOnNode(ctx context.Context, userID, nodeID int64) (*UserNodeTrafficStats, error) {
-	upload, download, err := s.trafficRepo.GetTotalByUserOnNode(ctx, userID, nodeID)
+	upload, download, err := s.nodeTrafficRepo.GetTotalByUserOnNode(ctx, userID, nodeID)
 	if err != nil {
 		s.logger.Error("Failed to get traffic by user on node",
 			logger.Err(err),
@@ -218,7 +340,7 @@ func (s *TrafficService) GetTrafficByUserOnNode(ctx context.Context, userID, nod
 
 // GetTrafficStatsByNode returns traffic statistics grouped by node.
 func (s *TrafficService) GetTrafficStatsByNode(ctx context.Context, start, end time.Time) ([]*NodeTrafficStats, error) {
-	repoStats, err := s.trafficRepo.GetStatsByNode(ctx, start, end)
+	repoStats, err := s.nodeTrafficRepo.GetStatsByNode(ctx, start, end)
 	if err != nil {
 		s.logger.Error("Failed to get traffic stats by node", logger.Err(err))
 		return nil, err
@@ -239,7 +361,7 @@ func (s *TrafficService) GetTrafficStatsByNode(ctx context.Context, start, end t
 
 // GetTrafficStatsByGroup returns traffic statistics grouped by node group.
 func (s *TrafficService) GetTrafficStatsByGroup(ctx context.Context, start, end time.Time) ([]*GroupTrafficStats, error) {
-	repoStats, err := s.trafficRepo.GetStatsByGroup(ctx, start, end)
+	repoStats, err := s.nodeTrafficRepo.GetStatsByGroup(ctx, start, end)
 	if err != nil {
 		s.logger.Error("Failed to get traffic stats by group", logger.Err(err))
 		return nil, err
@@ -281,7 +403,7 @@ func (s *TrafficService) GetTrafficByGroup(ctx context.Context, groupID int64, s
 	// Aggregate traffic for all nodes in the group
 	var totalUpload, totalDownload int64
 	for _, nodeID := range nodeIDs {
-		upload, download, err := s.trafficRepo.GetTotalByNodeInRange(ctx, nodeID, start, end)
+		upload, download, err := s.nodeTrafficRepo.GetTotalByNodeInRange(ctx, nodeID, start, end)
 		if err != nil {
 			s.logger.Error("Failed to get traffic for node in group",
 				logger.Err(err),
@@ -304,7 +426,7 @@ func (s *TrafficService) GetTrafficByGroup(ctx context.Context, groupID int64, s
 // GetUserTrafficBreakdownByNode returns traffic breakdown by node for a specific user.
 func (s *TrafficService) GetUserTrafficBreakdownByNode(ctx context.Context, userID int64, start, end time.Time) ([]*UserNodeTrafficStats, error) {
 	// Get all traffic records for the user in the time range
-	records, err := s.trafficRepo.GetByUserAndDateRange(ctx, userID, start, end)
+	records, err := s.nodeTrafficRepo.GetByUserAndDateRange(ctx, userID, start, end)
 	if err != nil {
 		s.logger.Error("Failed to get user traffic records",
 			logger.Err(err),
@@ -337,7 +459,7 @@ func (s *TrafficService) GetUserTrafficBreakdownByNode(ctx context.Context, user
 
 // GetTopUsersByTraffic returns top users by traffic on a specific node.
 func (s *TrafficService) GetTopUsersByTraffic(ctx context.Context, nodeID int64, start, end time.Time, limit int) ([]*UserNodeTrafficStats, error) {
-	repoStats, err := s.trafficRepo.GetStatsByUser(ctx, nodeID, start, end, limit)
+	repoStats, err := s.nodeTrafficRepo.GetStatsByUser(ctx, nodeID, start, end, limit)
 	if err != nil {
 		s.logger.Error("Failed to get top users by traffic",
 			logger.Err(err),
@@ -362,7 +484,7 @@ func (s *TrafficService) GetTopUsersByTraffic(ctx context.Context, nodeID int64,
 // CleanupOldRecords deletes traffic records older than the specified duration.
 func (s *TrafficService) CleanupOldRecords(ctx context.Context, retention time.Duration) (int64, error) {
 	before := time.Now().Add(-retention)
-	deleted, err := s.trafficRepo.DeleteOlderThan(ctx, before)
+	deleted, err := s.nodeTrafficRepo.DeleteOlderThan(ctx, before)
 	if err != nil {
 		s.logger.Error("Failed to cleanup old traffic records",
 			logger.Err(err),
@@ -378,7 +500,7 @@ func (s *TrafficService) CleanupOldRecords(ctx context.Context, retention time.D
 
 // DeleteByNode deletes all traffic records for a specific node.
 func (s *TrafficService) DeleteByNode(ctx context.Context, nodeID int64) error {
-	if err := s.trafficRepo.DeleteByNodeID(ctx, nodeID); err != nil {
+	if err := s.nodeTrafficRepo.DeleteByNodeID(ctx, nodeID); err != nil {
 		s.logger.Error("Failed to delete traffic by node",
 			logger.Err(err),
 			logger.F("node_id", nodeID))
@@ -389,13 +511,12 @@ func (s *TrafficService) DeleteByNode(ctx context.Context, nodeID int64) error {
 	return nil
 }
 
-
 // AggregatedTrafficStats represents comprehensive aggregated traffic statistics.
 type AggregatedTrafficStats struct {
-	TotalUpload   int64               `json:"total_upload"`
-	TotalDownload int64               `json:"total_download"`
-	Total         int64               `json:"total"`
-	ByNode        []*NodeTrafficStats `json:"by_node,omitempty"`
+	TotalUpload   int64                `json:"total_upload"`
+	TotalDownload int64                `json:"total_download"`
+	Total         int64                `json:"total"`
+	ByNode        []*NodeTrafficStats  `json:"by_node,omitempty"`
 	ByGroup       []*GroupTrafficStats `json:"by_group,omitempty"`
 }
 
@@ -403,7 +524,7 @@ type AggregatedTrafficStats struct {
 // This aggregates traffic by user, proxy, node, and group as specified in Requirements 8.2.
 func (s *TrafficService) GetAggregatedStats(ctx context.Context, start, end time.Time) (*AggregatedTrafficStats, error) {
 	// Get total traffic
-	totalUpload, totalDownload, err := s.trafficRepo.GetTotalTraffic(ctx, start, end)
+	totalUpload, totalDownload, err := s.nodeTrafficRepo.GetTotalTraffic(ctx, start, end)
 	if err != nil {
 		s.logger.Error("Failed to get total traffic for aggregation", logger.Err(err))
 		return nil, err
@@ -436,13 +557,13 @@ func (s *TrafficService) GetAggregatedStats(ctx context.Context, start, end time
 // This is used to validate Property 19: Traffic Aggregation Consistency.
 func (s *TrafficService) VerifyAggregationConsistency(ctx context.Context, start, end time.Time) (bool, error) {
 	// Get total traffic
-	totalUpload, totalDownload, err := s.trafficRepo.GetTotalTraffic(ctx, start, end)
+	totalUpload, totalDownload, err := s.nodeTrafficRepo.GetTotalTraffic(ctx, start, end)
 	if err != nil {
 		return false, err
 	}
 
 	// Get traffic by node
-	nodeStats, err := s.trafficRepo.GetStatsByNode(ctx, start, end)
+	nodeStats, err := s.nodeTrafficRepo.GetStatsByNode(ctx, start, end)
 	if err != nil {
 		return false, err
 	}
@@ -462,7 +583,7 @@ func (s *TrafficService) VerifyAggregationConsistency(ctx context.Context, start
 // This is used to validate Property 19: Traffic Aggregation Consistency for user-level aggregation.
 func (s *TrafficService) VerifyUserTrafficConsistency(ctx context.Context, userID int64, start, end time.Time) (bool, error) {
 	// Get total traffic for user
-	totalUpload, totalDownload, err := s.trafficRepo.GetTotalByUserInRange(ctx, userID, start, end)
+	totalUpload, totalDownload, err := s.nodeTrafficRepo.GetTotalByUserInRange(ctx, userID, start, end)
 	if err != nil {
 		return false, err
 	}
@@ -487,7 +608,7 @@ func (s *TrafficService) VerifyUserTrafficConsistency(ctx context.Context, userI
 // AggregateTrafficByProxy aggregates traffic statistics by proxy.
 func (s *TrafficService) AggregateTrafficByProxy(ctx context.Context, start, end time.Time) ([]*ProxyTrafficStats, error) {
 	// Get all traffic records in the time range
-	records, err := s.trafficRepo.GetByDateRange(ctx, start, end)
+	records, err := s.nodeTrafficRepo.GetByDateRange(ctx, start, end)
 	if err != nil {
 		s.logger.Error("Failed to get traffic records for proxy aggregation", logger.Err(err))
 		return nil, err
@@ -531,7 +652,7 @@ type UserProxyTrafficStats struct {
 // AggregateTrafficByUserAndProxy returns traffic aggregated by user and proxy.
 func (s *TrafficService) AggregateTrafficByUserAndProxy(ctx context.Context, start, end time.Time) ([]*UserProxyTrafficStats, error) {
 	// Get all traffic records in the time range
-	records, err := s.trafficRepo.GetByDateRange(ctx, start, end)
+	records, err := s.nodeTrafficRepo.GetByDateRange(ctx, start, end)
 	if err != nil {
 		s.logger.Error("Failed to get traffic records for user-proxy aggregation", logger.Err(err))
 		return nil, err

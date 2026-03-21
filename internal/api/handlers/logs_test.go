@@ -612,5 +612,72 @@ func TestLogHandler_GetLogInvalidID(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+func TestLogHandler_CleanupUsesJSONRetentionDays(t *testing.T) {
+	db := setupLogHandlerTestDB(t)
+	handler := createTestLogHandler(t, db)
+	repo := repository.NewLogRepository(db)
+
+	logs := []*repository.Log{
+		{
+			Level:     "info",
+			Message:   "old log",
+			Source:    "cleanup-test",
+			CreatedAt: time.Now().AddDate(0, 0, -10),
+		},
+		{
+			Level:     "info",
+			Message:   "recent log",
+			Source:    "cleanup-test",
+			CreatedAt: time.Now().AddDate(0, 0, -2),
+		},
+	}
+	require.NoError(t, repo.CreateBatch(context.Background(), logs))
+
+	router := gin.New()
+	router.POST("/api/logs/cleanup", handler.Cleanup)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/logs/cleanup",
+		bytes.NewBufferString(`{"retention_days":7}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var response struct {
+		DeletedCount  int64 `json:"deleted_count"`
+		RetentionDays int   `json:"retention_days"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.EqualValues(t, 1, response.DeletedCount)
+	require.Equal(t, 7, response.RetentionDays)
+
+	remaining, err := repo.Count(context.Background(), nil)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, remaining)
+}
+
+func TestLogHandler_CleanupRejectsInvalidRetentionDays(t *testing.T) {
+	db := setupLogHandlerTestDB(t)
+	handler := createTestLogHandler(t, db)
+
+	router := gin.New()
+	router.POST("/api/logs/cleanup", handler.Cleanup)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/logs/cleanup?days=-1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+
+	var response map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Contains(t, response["error"], "retention_days")
+}
+
 // Ensure io is used
 var _ = io.EOF

@@ -50,7 +50,7 @@ export const logsApi = {
    * @param {number} options.retention_days - 保留天数 (默认 30)
    * @returns {Promise<Object>} 清理结果
    */
-  cleanup: (options = {}) => api.post('/logs/cleanup', options),
+  cleanup: (options = {}) => api.post('/logs/cleanup', options, { silent: true }),
 
   /**
    * 导出日志

@@ -64,7 +64,7 @@ export const usePortalStatsStore = defineStore('portalStats', () => {
           upload: trafficResponse?.total_upload || 0,
           download: trafficResponse?.total_download || 0,
           total: trafficResponse?.total_traffic || 0,
-          connections: trafficResponse?.total_connections || 0
+          nodes: Array.isArray(usageResponse?.by_node) ? usageResponse.by_node.length : 0
         },
         node_usage: Array.isArray(usageResponse?.by_node) ? usageResponse.by_node : [],
         protocol_usage: Array.isArray(usageResponse?.by_protocol) ? usageResponse.by_protocol : [],

@@ -571,7 +571,7 @@
   <el-dialog 
     v-model="xraySettings.showVersionDetails" 
     title="Xray版本详情" 
-    width="600px"
+    :width="versionDetailsDialogWidth"
     destroy-on-close
   >
     <el-descriptions :column="1" border>
@@ -606,7 +606,7 @@
   <el-dialog 
     v-model="xraySettings.updateProgress.visible" 
     :title="`Xray 更新 - ${xraySettings.downloadingVersion}`"
-    width="500px"
+    :width="updateProgressDialogWidth"
     :close-on-click-modal="false"
     :close-on-press-escape="false"
     :show-close="xraySettings.updateProgress.status === 'completed' || xraySettings.updateProgress.status === 'error'"
@@ -651,7 +651,7 @@
   <el-dialog
     v-model="errorDetails.visible"
     title="错误详情"
-    width="600px"
+    :width="errorDialogWidth"
     destroy-on-close
   >
     <div class="error-details-container">
@@ -753,12 +753,17 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import api, { systemApi } from '@/api/index'
 import { InfoFilled, CopyDocument, Refresh, Connection, Download, Link, Loading, ArrowRight } from '@element-plus/icons-vue'
+import { useViewport } from '@/composables/useViewport'
 
 // store
 const userStore = useUserStore()
+const { isMobile } = useViewport()
 
 // 当前活动标签页
 const activeName = ref('server')
+const versionDetailsDialogWidth = computed(() => (isMobile.value ? 'calc(100vw - 24px)' : '600px'))
+const updateProgressDialogWidth = computed(() => (isMobile.value ? 'calc(100vw - 24px)' : '500px'))
+const errorDialogWidth = computed(() => (isMobile.value ? 'calc(100vw - 24px)' : '600px'))
 
 // 同步时间处理
 const lastSyncTime = ref(localStorage.getItem('xray_last_sync_time') || '')
@@ -2780,5 +2785,46 @@ const openGitHubReleases = () => {
   margin-left: 15px;
   font-size: 12px;
   color: #909399;
+}
+
+@media (max-width: 768px) {
+  .settings-container {
+    padding: 12px;
+  }
+
+  .settings-form {
+    max-width: 100%;
+  }
+
+  .settings-form :deep(.el-form-item__label) {
+    width: 100% !important;
+    text-align: left;
+    line-height: 1.4;
+    padding-bottom: 6px;
+  }
+
+  .settings-form :deep(.el-form-item__content) {
+    margin-left: 0 !important;
+  }
+
+  .protocol-description,
+  .version-control,
+  .sync-info-title,
+  .error-header,
+  .dialog-footer {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .version-control :deep(.el-select),
+  .version-control :deep(.el-button),
+  .version-actions,
+  .version-actions :deep(.el-button),
+  .dialog-footer :deep(.el-button) {
+    width: 100%;
+    margin-left: 0 !important;
+  }
 }
 </style> 

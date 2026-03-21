@@ -20,6 +20,7 @@ import (
 // NodeAgentHandler handles Node Agent API requests.
 type NodeAgentHandler struct {
 	nodeService     *node.Service
+	trafficService  *node.TrafficService
 	nodeRepo        repository.NodeRepository
 	configGenerator *xray.ConfigGenerator
 	recoveryTracker *NodeRecoveryTracker
@@ -29,6 +30,7 @@ type NodeAgentHandler struct {
 // NewNodeAgentHandler creates a new NodeAgentHandler.
 func NewNodeAgentHandler(
 	nodeService *node.Service,
+	trafficService *node.TrafficService,
 	nodeRepo repository.NodeRepository,
 	configGenerator *xray.ConfigGenerator,
 	recoveryTracker *NodeRecoveryTracker,
@@ -39,6 +41,7 @@ func NewNodeAgentHandler(
 	}
 	return &NodeAgentHandler{
 		nodeService:     nodeService,
+		trafficService:  trafficService,
 		nodeRepo:        nodeRepo,
 		configGenerator: configGenerator,
 		recoveryTracker: recoveryTracker,
@@ -64,9 +67,18 @@ type RegisterResponse struct {
 
 // HeartbeatRequest represents a node heartbeat request.
 type HeartbeatRequest struct {
-	NodeID  int64        `json:"node_id" binding:"required"`
-	Token   string       `json:"token" binding:"required"`
-	Metrics *NodeMetrics `json:"metrics"`
+	NodeID  int64           `json:"node_id" binding:"required"`
+	Token   string          `json:"token" binding:"required"`
+	Metrics *NodeMetrics    `json:"metrics"`
+	Traffic []TrafficRecord `json:"traffic,omitempty"`
+}
+
+// TrafficRecord represents per-user traffic reported by the node agent.
+type TrafficRecord struct {
+	UserID   int64  `json:"user_id"`
+	ProxyID  *int64 `json:"proxy_id,omitempty"`
+	Upload   int64  `json:"upload"`
+	Download int64  `json:"download"`
 }
 
 // NodeMetrics represents metrics from a node.
@@ -274,6 +286,36 @@ func (h *NodeAgentHandler) Heartbeat(c *gin.Context) {
 	} else {
 		h.logger.Warn("心跳请求中没有指标数据",
 			logger.F("node_id", nodeData.ID))
+	}
+
+	if len(req.Traffic) > 0 && h.trafficService != nil {
+		records := make([]*node.TrafficRecord, 0, len(req.Traffic))
+		for _, traffic := range req.Traffic {
+			if traffic.UserID <= 0 {
+				continue
+			}
+			records = append(records, &node.TrafficRecord{
+				NodeID:   nodeData.ID,
+				UserID:   traffic.UserID,
+				ProxyID:  traffic.ProxyID,
+				Upload:   traffic.Upload,
+				Download: traffic.Download,
+			})
+		}
+
+		if len(records) > 0 {
+			if err := h.trafficService.RecordTrafficBatch(c.Request.Context(), records); err != nil {
+				h.logger.Error("Failed to record traffic from heartbeat",
+					logger.F("node_id", nodeData.ID),
+					logger.F("record_count", len(records)),
+					logger.F("error", err.Error()))
+				c.JSON(http.StatusInternalServerError, HeartbeatResponse{
+					Success: false,
+					Message: "Failed to record traffic",
+				})
+				return
+			}
+		}
 	}
 
 	// Get any pending commands for this node

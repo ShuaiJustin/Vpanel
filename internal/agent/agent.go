@@ -35,6 +35,7 @@ type Agent struct {
 	panelClient      *PanelClient
 	metricsCollector *MetricsCollector
 	commandExecutor  *CommandExecutor
+	trafficReporter  *trafficReporter
 
 	// State
 	mu                  sync.RWMutex
@@ -84,9 +85,10 @@ type RegisterResponse struct {
 
 // HeartbeatRequest represents a heartbeat request to the Panel.
 type HeartbeatRequest struct {
-	NodeID  int64        `json:"node_id"`
-	Token   string       `json:"token"`
-	Metrics *NodeMetrics `json:"metrics"`
+	NodeID  int64           `json:"node_id"`
+	Token   string          `json:"token"`
+	Metrics *NodeMetrics    `json:"metrics"`
+	Traffic []TrafficRecord `json:"traffic,omitempty"`
 }
 
 // HeartbeatResponse represents a heartbeat response from the Panel.
@@ -151,6 +153,7 @@ func New(cfg *Config, log logger.Logger) (*Agent, error) {
 
 	// Initialize command executor
 	agent.commandExecutor = NewCommandExecutor(agent, log)
+	agent.trafficReporter = newTrafficReporter(cfg.Xray, log)
 
 	return agent, nil
 }
@@ -340,11 +343,25 @@ func (a *Agent) sendHeartbeat() {
 
 	// Collect metrics
 	metrics := a.collectMetrics()
+	var trafficSnapshot *TrafficSnapshot
+	var trafficRecords []TrafficRecord
+	if a.trafficReporter != nil {
+		snapshot, records, err := a.trafficReporter.PrepareDelta(a.ctx)
+		if err != nil {
+			a.logger.Warn("failed to collect xray traffic stats",
+				logger.F("node_id", nodeID),
+				logger.F("error", err.Error()))
+		} else {
+			trafficSnapshot = snapshot
+			trafficRecords = records
+		}
+	}
 
 	req := &HeartbeatRequest{
 		NodeID:  nodeID,
 		Token:   a.config.Node.Token,
 		Metrics: metrics,
+		Traffic: trafficRecords,
 	}
 
 	resp, err := a.panelClient.Heartbeat(a.ctx, req)
@@ -370,7 +387,12 @@ func (a *Agent) sendHeartbeat() {
 
 	a.logger.Debug("heartbeat sent successfully",
 		logger.F("node_id", nodeID),
-		logger.F("commands_received", len(resp.Commands)))
+		logger.F("commands_received", len(resp.Commands)),
+		logger.F("traffic_records", len(trafficRecords)))
+
+	if trafficSnapshot != nil {
+		a.trafficReporter.Commit(trafficSnapshot)
+	}
 
 	// Process any commands from the response
 	if len(resp.Commands) > 0 {

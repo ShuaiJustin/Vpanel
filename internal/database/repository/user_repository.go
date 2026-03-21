@@ -87,7 +87,12 @@ func (r *userRepository) Update(ctx context.Context, user *User) error {
 
 // Delete deletes a user by ID.
 func (r *userRepository) Delete(ctx context.Context, id int64) error {
-	result := r.db.WithContext(ctx).Delete(&User{}, id)
+	user, err := r.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	result := r.db.WithContext(ctx).Delete(user)
 	if result.Error != nil {
 		return errors.NewDatabaseError("failed to delete user", result.Error)
 	}

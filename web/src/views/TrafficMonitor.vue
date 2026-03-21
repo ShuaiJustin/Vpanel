@@ -1,10 +1,20 @@
 <template>
   <div class="traffic-monitor">
+    <div class="page-header">
+      <div class="page-heading">
+        <h1 class="page-title">流量监控</h1>
+        <p class="page-subtitle">查看实时流量曲线、历史流量统计和连接明细</p>
+      </div>
+      <div class="page-actions">
+        <el-button type="primary" @click="refreshData">刷新数据</el-button>
+      </div>
+    </div>
+
     <el-card class="box-card">
       <template #header>
         <div class="card-header">
-          <span>流量监控</span>
-          <el-button type="primary" @click="refreshData">刷新数据</el-button>
+          <span>流量概览</span>
+          <span class="toolbar-summary">共 {{ trafficData.length }} 条记录</span>
         </div>
       </template>
       
@@ -24,30 +34,32 @@
         </el-card>
       </div>
       
-      <el-table :data="trafficData" style="width: 100%" v-loading="loading">
-        <el-table-column prop="timestamp" label="时间" width="180">
-          <template #default="{ row }">
-            {{ formatDate(row.timestamp) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="inbound" label="入站流量" width="150">
-          <template #default="{ row }">
-            {{ formatTraffic(row.inbound) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="outbound" label="出站流量" width="150">
-          <template #default="{ row }">
-            {{ formatTraffic(row.outbound) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="total" label="总流量" width="150">
-          <template #default="{ row }">
-            {{ formatTraffic(row.total) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="protocol" label="协议" width="120" />
-        <el-table-column prop="client" label="客户端" />
-      </el-table>
+      <div class="table-shell">
+        <el-table :data="trafficData" style="width: 100%" v-loading="loading">
+          <el-table-column prop="timestamp" label="时间" width="180">
+            <template #default="{ row }">
+              {{ formatDate(row.timestamp) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="inbound" label="入站流量" width="150">
+            <template #default="{ row }">
+              {{ formatTraffic(row.inbound) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="outbound" label="出站流量" width="150">
+            <template #default="{ row }">
+              {{ formatTraffic(row.outbound) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="total" label="总流量" width="150">
+            <template #default="{ row }">
+              {{ formatTraffic(row.total) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="protocol" label="协议" width="120" />
+          <el-table-column prop="client" label="客户端" />
+        </el-table>
+      </div>
     </el-card>
   </div>
 </template>
@@ -295,5 +307,34 @@ onUnmounted(() => {
 .chart {
   height: 300px;
   margin-top: 10px;
+}
+
+.table-shell {
+  overflow-x: auto;
+}
+
+.table-shell :deep(.el-table) {
+  min-width: 880px;
+}
+
+@media (max-width: 768px) {
+  .traffic-monitor {
+    padding: 12px;
+  }
+
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .chart-card {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .chart {
+    height: 260px;
+  }
 }
 </style> 

@@ -246,7 +246,15 @@ func (r *Router) Setup() {
 	nodeGroupService := node.NewGroupService(r.repos.NodeGroup, r.repos.Node, r.logger)
 	r.nodeHealthChecker = node.NewHealthChecker(nil, r.repos.Node, r.repos.Certificate, r.repos.HealthCheck, r.logger)
 	r.nodeHealthChecker.SetNotificationService(r.notificationService)
-	nodeTrafficService := node.NewTrafficService(r.repos.NodeTraffic, r.repos.NodeGroup, r.logger)
+	nodeTrafficService := node.NewTrafficService(
+		r.repos.DB(),
+		r.repos.NodeTraffic,
+		r.repos.Traffic,
+		r.repos.User,
+		r.repos.Node,
+		r.repos.NodeGroup,
+		r.logger,
+	)
 	nodeDeployService := node.NewRemoteDeployService(r.logger, r.repos.Node)
 	r.nodeRecoveryTracker = handlers.NewNodeRecoveryTracker(r.logger)
 	proxyHandler.WithRecoveryTracker(r.nodeRecoveryTracker)
@@ -258,7 +266,7 @@ func (r *Router) Setup() {
 	// Create Xray config generator for nodes
 	configGenerator := xray.NewConfigGenerator(r.repos.Proxy, r.repos.Certificate, r.logger)
 	nodeConfigTestHandler := handlers.NewNodeConfigTestHandler(configGenerator, r.logger)
-	nodeAgentHandler := handlers.NewNodeAgentHandler(nodeService, r.repos.Node, configGenerator, r.nodeRecoveryTracker, r.logger)
+	nodeAgentHandler := handlers.NewNodeAgentHandler(nodeService, nodeTrafficService, r.repos.Node, configGenerator, r.nodeRecoveryTracker, r.logger)
 
 	// Create node management handlers
 	nodeHandler := handlers.NewNodeHandler(nodeService, nodeGroupService, nodeDeployService, r.nodeRecoveryTracker, r.logger)
@@ -1277,7 +1285,7 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 	helpService := help.NewService(r.repos.HelpArticle)
 	portalNodeService := portalnode.NewService(r.repos.Proxy, r.repos.User, r.repos.Node).
 		WithEntitlementService(r.entitlementService)
-	statsService := stats.NewService(r.repos.Traffic, r.repos.User)
+	statsService := stats.NewService(r.repos.DB(), r.repos.Traffic, r.repos.NodeTraffic, r.repos.User)
 
 	// Create portal handlers
 	portalAuthHandler := handlers.NewPortalAuthHandler(portalAuthService, r.authService, r.repos.User, r.repos.Proxy, r.logger).

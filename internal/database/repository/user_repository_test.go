@@ -21,7 +21,17 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	}
 
 	// Auto migrate
-	if err := db.AutoMigrate(&User{}, &Proxy{}, &Traffic{}); err != nil {
+	if err := db.AutoMigrate(
+		&User{},
+		&Proxy{},
+		&Traffic{},
+		&Subscription{},
+		&LoginHistory{},
+		&UserNodeAssignment{},
+		&PasswordResetToken{},
+		&EmailVerificationToken{},
+		&TwoFactorSecret{},
+	); err != nil {
 		t.Fatalf("Failed to migrate: %v", err)
 	}
 
@@ -203,6 +213,97 @@ func TestUserRepository_Delete(t *testing.T) {
 	err = repo.Delete(ctx, 99999)
 	if !errors.IsNotFound(err) {
 		t.Errorf("Expected not found error for non-existent user, got: %v", err)
+	}
+}
+
+func TestUserRepository_DeleteCleansRuntimeDependencies(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewUserRepository(db)
+	ctx := context.Background()
+	now := time.Now()
+
+	user := &User{
+		Username:     "cleanup-user",
+		PasswordHash: "hashedpassword",
+		Email:        "cleanup@example.com",
+	}
+	if err := repo.Create(ctx, user); err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	if err := db.WithContext(ctx).Create(&Proxy{
+		UserID:   user.ID,
+		Name:     "cleanup-proxy",
+		Protocol: "vmess",
+		Port:     20001,
+		Enabled:  true,
+	}).Error; err != nil {
+		t.Fatalf("Failed to create proxy: %v", err)
+	}
+	if err := db.WithContext(ctx).Create(&Subscription{
+		UserID: user.ID,
+		Token:  "cleanup-subscription-token",
+	}).Error; err != nil {
+		t.Fatalf("Failed to create subscription: %v", err)
+	}
+	if err := db.WithContext(ctx).Create(&LoginHistory{
+		UserID: user.ID,
+		IP:     "127.0.0.1",
+	}).Error; err != nil {
+		t.Fatalf("Failed to create login history: %v", err)
+	}
+	if err := db.WithContext(ctx).Create(&UserNodeAssignment{
+		UserID:     user.ID,
+		NodeID:     1,
+		AssignedAt: now,
+		UpdatedAt:  now,
+	}).Error; err != nil {
+		t.Fatalf("Failed to create assignment: %v", err)
+	}
+	if err := db.WithContext(ctx).Create(&PasswordResetToken{
+		UserID:    user.ID,
+		Token:     "cleanup-reset-token",
+		ExpiresAt: now.Add(time.Hour),
+	}).Error; err != nil {
+		t.Fatalf("Failed to create password reset token: %v", err)
+	}
+	if err := db.WithContext(ctx).Create(&EmailVerificationToken{
+		UserID:    user.ID,
+		Email:     user.Email,
+		Token:     "cleanup-verify-token",
+		ExpiresAt: now.Add(time.Hour),
+	}).Error; err != nil {
+		t.Fatalf("Failed to create email verification token: %v", err)
+	}
+	if err := db.WithContext(ctx).Create(&TwoFactorSecret{
+		UserID: user.ID,
+		Secret: "cleanup-secret",
+	}).Error; err != nil {
+		t.Fatalf("Failed to create two-factor secret: %v", err)
+	}
+
+	if err := repo.Delete(ctx, user.ID); err != nil {
+		t.Fatalf("Failed to delete user: %v", err)
+	}
+
+	for _, check := range []struct {
+		table string
+	}{
+		{table: "proxies"},
+		{table: "subscriptions"},
+		{table: "login_history"},
+		{table: "user_node_assignments"},
+		{table: "password_reset_tokens"},
+		{table: "email_verification_tokens"},
+		{table: "two_factor_secrets"},
+	} {
+		var count int64
+		if err := db.WithContext(ctx).Table(check.table).Where("user_id = ?", user.ID).Count(&count).Error; err != nil {
+			t.Fatalf("Failed to count %s: %v", check.table, err)
+		}
+		if count != 0 {
+			t.Fatalf("Expected %s to be cleaned up, got %d rows", check.table, count)
+		}
 	}
 }
 

@@ -35,45 +35,31 @@ func (h *PortalStatsHandler) GetTrafficStats(c *gin.Context) {
 		return
 	}
 
-	// Parse period parameter
 	period := c.DefaultQuery("period", "month")
-	period = stats.ValidatePeriod(period)
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
 
-	// Get daily traffic for chart
-	days := 30
-	if period == "week" {
-		days = 7
-	} else if period == "day" {
-		days = 1
-	} else if period == "year" {
-		days = 365
-	}
-
-	daily, err := h.statsService.GetDailyTraffic(c.Request.Context(), userID.(int64), days)
+	resolvedPeriod, start, end, err := stats.ResolveRange(period, startDate, endDate)
 	if err != nil {
-		h.logger.Error("failed to get daily traffic", logger.F("error", err), logger.F("user_id", userID))
-		// Return empty data instead of error to avoid frontend issues
-		daily = []*stats.DailyTraffic{}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
-	// Ensure daily is not nil
-	if daily == nil {
-		daily = []*stats.DailyTraffic{}
-	}
-
-	// Calculate totals
-	var totalUpload, totalDownload int64
-	for _, d := range daily {
-		totalUpload += d.Upload
-		totalDownload += d.Download
+	trafficStats, err := h.statsService.GetTrafficStatsInRange(c.Request.Context(), userID.(int64), resolvedPeriod, start, end)
+	if err != nil {
+		h.logger.Error("failed to get traffic stats", logger.F("error", err), logger.F("user_id", userID))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取流量统计失败"})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"total_upload":   totalUpload,
-		"total_download": totalDownload,
-		"total_traffic":  totalUpload + totalDownload,
-		"daily":          daily,
-		"period":         period,
+		"total_upload":   trafficStats.Summary.Upload,
+		"total_download": trafficStats.Summary.Download,
+		"total_traffic":  trafficStats.Summary.Total,
+		"daily":          trafficStats.Daily,
+		"period":         trafficStats.Period,
+		"start_date":     trafficStats.StartDate,
+		"end_date":       trafficStats.EndDate,
 	})
 }
 
@@ -85,24 +71,16 @@ func (h *PortalStatsHandler) GetUsageStats(c *gin.Context) {
 		return
 	}
 
-	// Get traffic summary
-	summary, err := h.statsService.GetTrafficSummary(c.Request.Context(), userID.(int64))
+	period := c.DefaultQuery("period", "month")
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
+
+	summary, byNode, byProtocol, err := h.statsService.GetUsageStats(c.Request.Context(), userID.(int64), period, startDate, endDate)
 	if err != nil {
 		h.logger.Error("failed to get usage stats", logger.F("error", err), logger.F("user_id", userID))
-		// Return empty data instead of error
-		summary = &stats.TrafficSummary{
-			Upload:      0,
-			Download:    0,
-			Total:       0,
-			UploadStr:   "0 B",
-			DownloadStr: "0 B",
-			TotalStr:    "0 B",
-		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取使用统计失败"})
+		return
 	}
-
-	// Initialize empty arrays for node and protocol usage
-	byNode := []map[string]interface{}{}
-	byProtocol := []map[string]interface{}{}
 
 	c.JSON(http.StatusOK, gin.H{
 		"summary":     summary,

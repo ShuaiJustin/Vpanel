@@ -40,67 +40,69 @@
         </div>
       </template>
 
-      <el-table :data="roles" v-loading="loading" style="width: 100%">
-        <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="name" label="角色名称" width="150">
-          <template #default="{ row }">
-            <el-tag :type="row.is_system ? 'danger' : 'primary'">{{ row.name }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="description" label="描述" min-width="200" />
-        <el-table-column prop="permissions" label="权限" min-width="250">
-          <template #default="{ row }">
-            <div class="permissions-list">
-              <el-tag 
-                v-for="perm in row.permissions" 
-                :key="perm" 
-                size="small" 
-                type="info"
-                style="margin: 2px"
-              >
-                {{ getPermissionName(perm) }}
+      <div class="table-shell">
+        <el-table :data="roles" v-loading="loading" style="width: 100%">
+          <el-table-column prop="id" label="ID" width="80" />
+          <el-table-column prop="name" label="角色名称" width="150">
+            <template #default="{ row }">
+              <el-tag :type="row.is_system ? 'danger' : 'primary'">{{ row.name }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="description" label="描述" min-width="200" />
+          <el-table-column prop="permissions" label="权限" min-width="250">
+            <template #default="{ row }">
+              <div class="permissions-list">
+                <el-tag
+                  v-for="perm in row.permissions"
+                  :key="perm"
+                  size="small"
+                  type="info"
+                >
+                  {{ getPermissionName(perm) }}
+                </el-tag>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="user_count" label="用户数" width="100" />
+          <el-table-column label="类型" width="100">
+            <template #default="{ row }">
+              <el-tag :type="row.is_system ? 'warning' : 'success'" size="small">
+                {{ row.is_system ? '系统角色' : '自定义' }}
               </el-tag>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="user_count" label="用户数" width="100" />
-        <el-table-column label="类型" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.is_system ? 'warning' : 'success'" size="small">
-              {{ row.is_system ? '系统角色' : '自定义' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right">
-          <template #default="{ row }">
-            <el-button 
-              type="primary" 
-              size="small" 
-              @click="editRole(row)"
-              :disabled="row.is_system"
-            >
-              编辑
-            </el-button>
-            <el-button 
-              type="danger" 
-              size="small" 
-              @click="deleteRole(row)"
-              :disabled="row.is_system || row.user_count > 0"
-            >
-              删除
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="180" fixed="right">
+            <template #default="{ row }">
+              <el-button
+                type="primary"
+                size="small"
+                @click="editRole(row)"
+                :disabled="row.is_system"
+              >
+                编辑
+              </el-button>
+              <el-button
+                type="danger"
+                size="small"
+                @click="deleteRole(row)"
+                :disabled="row.is_system || row.user_count > 0"
+              >
+                删除
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
     </el-card>
 
     <!-- 创建/编辑角色对话框 -->
     <el-dialog 
       v-model="dialogVisible" 
       :title="isEdit ? '编辑角色' : '新建角色'"
-      width="600px"
+      :width="dialogWidth"
+      class="role-dialog"
     >
-      <el-form :model="roleForm" :rules="rules" ref="formRef" label-width="100px">
+      <el-form :model="roleForm" :rules="rules" ref="formRef" :label-width="formLabelWidth" class="role-form">
         <el-form-item label="角色名称" prop="name">
           <el-input v-model="roleForm.name" placeholder="请输入角色名称" />
         </el-form-item>
@@ -139,6 +141,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { roles as rolesApi, usersApi } from '@/api/index'
+import { useViewport } from '@/composables/useViewport'
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -148,6 +151,7 @@ const dialogVisible = ref(false)
 const isEdit = ref(false)
 const editingId = ref(null)
 const formRef = ref(null)
+const { isMobile } = useViewport()
 
 const roleForm = ref({
   name: '',
@@ -167,6 +171,8 @@ const customRoleCount = computed(() => roles.value.filter((role) => !role.is_sys
 const assignedUserCount = computed(() =>
   roles.value.reduce((sum, role) => sum + Number(role.user_count || 0), 0)
 )
+const dialogWidth = computed(() => (isMobile.value ? 'calc(100vw - 24px)' : '600px'))
+const formLabelWidth = computed(() => (isMobile.value ? '84px' : '100px'))
 
 // 获取权限显示名称
 const getPermissionName = (key) => {
@@ -309,8 +315,38 @@ onMounted(() => {
   gap: 4px;
 }
 
+.table-shell {
+  overflow-x: auto;
+}
+
+.table-shell :deep(.el-table) {
+  min-width: 860px;
+}
+
 .el-checkbox {
   display: block;
   margin-bottom: 8px;
+}
+
+.role-form :deep(.el-checkbox) {
+  align-items: flex-start;
+  margin-right: 0;
+}
+
+.role-form :deep(.el-checkbox__label) {
+  white-space: normal;
+  line-height: 1.6;
+}
+
+@media (max-width: 768px) {
+  .roles-page {
+    padding: 12px;
+  }
+
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
 }
 </style>
