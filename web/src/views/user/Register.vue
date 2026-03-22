@@ -2,8 +2,12 @@
   <div class="register-page">
     <div class="register-card">
       <div class="register-header">
-        <h1 class="register-title">创建账户</h1>
-        <p class="register-subtitle">注册一个新账户开始使用</p>
+        <h1 class="register-title">
+          创建账户
+        </h1>
+        <p class="register-subtitle">
+          注册一个新账户开始使用
+        </p>
       </div>
 
       <el-form
@@ -57,7 +61,10 @@
           />
         </el-form-item>
 
-        <el-form-item v-if="showInviteCode" prop="inviteCode">
+        <el-form-item
+          v-if="showInviteCode"
+          prop="inviteCode"
+        >
           <el-input
             v-model="registerForm.inviteCode"
             placeholder="邀请码（可选）"
@@ -66,13 +73,24 @@
           />
         </el-form-item>
 
-        <el-form-item prop="agreement" class="agreement-item">
+        <el-form-item
+          prop="agreement"
+          class="agreement-item"
+        >
           <el-checkbox v-model="registerForm.agreement">
             <span class="agreement-text">
               我已阅读并同意
-              <a href="#" class="agreement-link" @click.prevent="showTerms">服务条款</a>
+              <a
+                href="#"
+                class="agreement-link"
+                @click.prevent="showTerms"
+              >服务条款</a>
               和
-              <a href="#" class="agreement-link" @click.prevent="showPrivacy">隐私政策</a>
+              <a
+                href="#"
+                class="agreement-link"
+                @click.prevent="showPrivacy"
+              >隐私政策</a>
             </span>
           </el-checkbox>
         </el-form-item>
@@ -91,22 +109,31 @@
       </el-form>
 
       <!-- 密码强度指示器 -->
-      <div v-if="registerForm.password" class="password-strength">
+      <div
+        v-if="registerForm.password"
+        class="password-strength"
+      >
         <div class="strength-bar">
           <div 
             class="strength-fill" 
             :class="passwordStrengthClass"
             :style="{ width: passwordStrengthPercent + '%' }"
-          ></div>
+          />
         </div>
-        <span class="strength-text" :class="passwordStrengthClass">
+        <span
+          class="strength-text"
+          :class="passwordStrengthClass"
+        >
           {{ passwordStrengthText }}
         </span>
       </div>
 
       <div class="register-footer">
         <span>已有账户？</span>
-        <router-link to="/user/login" class="login-link">
+        <router-link
+          to="/user/login"
+          class="login-link"
+        >
           立即登录
         </router-link>
       </div>
@@ -121,7 +148,9 @@
       :show-close="false"
     >
       <div class="success-content">
-        <el-icon class="success-icon"><CircleCheck /></el-icon>
+        <el-icon class="success-icon">
+          <CircleCheck />
+        </el-icon>
         <h3>账户创建成功！</h3>
         <p v-if="needEmailVerification">
           我们已向 <strong>{{ registerForm.email }}</strong> 发送了一封验证邮件，
@@ -132,7 +161,10 @@
         </p>
       </div>
       <template #footer>
-        <el-button type="primary" @click="goToLogin">
+        <el-button
+          type="primary"
+          @click="goToLogin"
+        >
           前往登录
         </el-button>
       </template>

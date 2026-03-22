@@ -20,16 +20,28 @@
           />
         </div>
         <div class="header-right">
-          <el-dropdown trigger="click" @command="handleCommand">
+          <el-dropdown
+            trigger="click"
+            @command="handleCommand"
+          >
             <span class="user-dropdown">
               {{ username }}
               <el-icon class="el-icon--right"><arrow-down /></el-icon>
             </span>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="profile">个人资料</el-dropdown-item>
-                <el-dropdown-item command="password">修改密码</el-dropdown-item>
-                <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
+                <el-dropdown-item command="profile">
+                  个人资料
+                </el-dropdown-item>
+                <el-dropdown-item command="password">
+                  修改密码
+                </el-dropdown-item>
+                <el-dropdown-item
+                  divided
+                  command="logout"
+                >
+                  退出登录
+                </el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>

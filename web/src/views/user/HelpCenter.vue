@@ -2,8 +2,12 @@
   <div class="help-center-page">
     <!-- 搜索区域 -->
     <div class="search-section">
-      <h1 class="search-title">帮助中心</h1>
-      <p class="search-subtitle">搜索您需要的帮助文档</p>
+      <h1 class="search-title">
+        帮助中心
+      </h1>
+      <p class="search-subtitle">
+        搜索您需要的帮助文档
+      </p>
       <div class="search-box">
         <el-input
           v-model="searchQuery"
@@ -13,37 +17,69 @@
           clearable
           @keyup.enter="handleSearch"
         />
-        <el-button type="primary" size="large" @click="handleSearch">
+        <el-button
+          type="primary"
+          size="large"
+          @click="handleSearch"
+        >
           搜索
         </el-button>
       </div>
     </div>
 
     <!-- 搜索结果 -->
-    <div v-if="isSearching" class="search-results">
+    <div
+      v-if="isSearching"
+      class="search-results"
+    >
       <div class="results-header">
         <h2>搜索结果</h2>
-        <el-button link @click="clearSearch">清除搜索</el-button>
+        <el-button
+          link
+          @click="clearSearch"
+        >
+          清除搜索
+        </el-button>
       </div>
 
-      <div v-if="loading" class="loading-state">
-        <el-icon class="loading-icon"><Loading /></el-icon>
+      <div
+        v-if="loading"
+        class="loading-state"
+      >
+        <el-icon class="loading-icon">
+          <Loading />
+        </el-icon>
         <p>搜索中...</p>
       </div>
 
-      <el-empty v-else-if="searchResults.length === 0" description="未找到相关文章" />
+      <el-empty
+        v-else-if="searchResults.length === 0"
+        description="未找到相关文章"
+      />
 
-      <div v-else class="articles-list">
+      <div
+        v-else
+        class="articles-list"
+      >
         <div 
           v-for="article in searchResults" 
           :key="article.id"
           class="article-item"
           @click="viewArticle(article)"
         >
-          <h3 class="article-title">{{ article.title }}</h3>
-          <p class="article-summary">{{ article.summary }}</p>
+          <h3 class="article-title">
+            {{ article.title }}
+          </h3>
+          <p class="article-summary">
+            {{ article.summary }}
+          </p>
           <div class="article-meta">
-            <el-tag size="small" type="info">{{ article.category }}</el-tag>
+            <el-tag
+              size="small"
+              type="info"
+            >
+              {{ article.category }}
+            </el-tag>
             <span class="view-count">
               <el-icon><View /></el-icon>
               {{ article.view_count }}
@@ -54,9 +90,15 @@
     </div>
 
     <!-- 分类浏览 -->
-    <div v-else class="categories-section">
+    <div
+      v-else
+      class="categories-section"
+    >
       <!-- 精选文章 -->
-      <div v-if="featuredArticles.length > 0" class="featured-section">
+      <div
+        v-if="featuredArticles.length > 0"
+        class="featured-section"
+      >
         <h2 class="section-title">
           <el-icon><Star /></el-icon>
           精选文章
@@ -68,14 +110,20 @@
             class="featured-card"
             @click="viewArticle(article)"
           >
-            <h3 class="card-title">{{ article.title }}</h3>
-            <p class="card-summary">{{ article.summary }}</p>
+            <h3 class="card-title">
+              {{ article.title }}
+            </h3>
+            <p class="card-summary">
+              {{ article.summary }}
+            </p>
           </div>
         </div>
       </div>
 
       <!-- 分类列表 -->
-      <h2 class="section-title">按分类浏览</h2>
+      <h2 class="section-title">
+        按分类浏览
+      </h2>
       <div class="categories-grid">
         <div 
           v-for="category in categories" 
@@ -87,33 +135,57 @@
             <el-icon><component :is="category.icon" /></el-icon>
           </div>
           <div class="category-info">
-            <h3 class="category-name">{{ category.name }}</h3>
+            <h3 class="category-name">
+              {{ category.name }}
+            </h3>
             <span class="category-count">{{ category.count }} 篇文章</span>
           </div>
-          <el-icon class="category-arrow"><ArrowRight /></el-icon>
+          <el-icon class="category-arrow">
+            <ArrowRight />
+          </el-icon>
         </div>
       </div>
 
       <!-- 分类文章列表 -->
-      <div v-if="selectedCategory" class="category-articles">
+      <div
+        v-if="selectedCategory"
+        class="category-articles"
+      >
         <div class="category-header">
           <h2>{{ getCategoryName(selectedCategory) }}</h2>
-          <el-button link @click="selectedCategory = null">返回分类</el-button>
+          <el-button
+            link
+            @click="selectedCategory = null"
+          >
+            返回分类
+          </el-button>
         </div>
 
-        <div v-if="loading" class="loading-state">
-          <el-icon class="loading-icon"><Loading /></el-icon>
+        <div
+          v-if="loading"
+          class="loading-state"
+        >
+          <el-icon class="loading-icon">
+            <Loading />
+          </el-icon>
         </div>
 
-        <div v-else class="articles-list">
+        <div
+          v-else
+          class="articles-list"
+        >
           <div 
             v-for="article in categoryArticles" 
             :key="article.id"
             class="article-item"
             @click="viewArticle(article)"
           >
-            <h3 class="article-title">{{ article.title }}</h3>
-            <p class="article-summary">{{ article.summary }}</p>
+            <h3 class="article-title">
+              {{ article.title }}
+            </h3>
+            <p class="article-summary">
+              {{ article.summary }}
+            </p>
             <div class="article-meta">
               <span class="view-count">
                 <el-icon><View /></el-icon>
@@ -146,13 +218,19 @@
     </div>
 
     <!-- 联系支持 -->
-    <el-card class="support-card" shadow="never">
+    <el-card
+      class="support-card"
+      shadow="never"
+    >
       <div class="support-content">
         <div class="support-info">
           <h3>没有找到答案？</h3>
           <p>如果帮助文档无法解决您的问题，请提交工单获取人工支持。</p>
         </div>
-        <el-button type="primary" @click="createTicket">
+        <el-button
+          type="primary"
+          @click="createTicket"
+        >
           <el-icon><ChatDotRound /></el-icon>
           提交工单
         </el-button>
@@ -162,7 +240,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { 

@@ -1,7 +1,9 @@
 <template>
   <div class="register-container">
     <h2>注册账号</h2>
-    <button @click="goToLogin">返回登录</button>
+    <button @click="goToLogin">
+      返回登录
+    </button>
   </div>
 </template>
 

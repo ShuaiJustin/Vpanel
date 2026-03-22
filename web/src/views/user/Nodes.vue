@@ -2,8 +2,12 @@
   <div class="nodes-page">
     <!-- 页面标题 -->
     <div class="page-header">
-      <h1 class="page-title">节点列表</h1>
-      <p class="page-subtitle">选择合适的节点获取最佳连接体验</p>
+      <h1 class="page-title">
+        节点列表
+      </h1>
+      <p class="page-subtitle">
+        选择合适的节点获取最佳连接体验
+      </p>
     </div>
 
     <!-- 筛选和操作栏 -->
@@ -43,19 +47,46 @@
           clearable
           style="width: 120px"
         >
-          <el-option label="在线" value="online" />
-          <el-option label="离线" value="offline" />
-          <el-option label="维护中" value="maintenance" />
+          <el-option
+            label="在线"
+            value="online"
+          />
+          <el-option
+            label="离线"
+            value="offline"
+          />
+          <el-option
+            label="维护中"
+            value="maintenance"
+          />
         </el-select>
       </div>
 
       <div class="filter-right">
-        <el-select v-model="sortBy" style="width: 140px">
-          <el-option label="默认排序" value="default" />
-          <el-option label="按名称" value="name" />
-          <el-option label="按地区" value="region" />
-          <el-option label="按延迟" value="latency" />
-          <el-option label="按负载" value="load" />
+        <el-select
+          v-model="sortBy"
+          style="width: 140px"
+        >
+          <el-option
+            label="默认排序"
+            value="default"
+          />
+          <el-option
+            label="按名称"
+            value="name"
+          />
+          <el-option
+            label="按地区"
+            value="region"
+          />
+          <el-option
+            label="按延迟"
+            value="latency"
+          />
+          <el-option
+            label="按负载"
+            value="load"
+          />
         </el-select>
 
         <el-button-group>
@@ -73,7 +104,11 @@
           </el-button>
         </el-button-group>
 
-        <el-button type="primary" @click="testAllLatency" :loading="testingAll">
+        <el-button
+          type="primary"
+          :loading="testingAll"
+          @click="testAllLatency"
+        >
           <el-icon><Timer /></el-icon>
           测速全部
         </el-button>
@@ -81,16 +116,27 @@
     </div>
 
     <!-- 加载状态 -->
-    <div v-if="loading" class="loading-state">
-      <el-icon class="loading-icon"><Loading /></el-icon>
+    <div
+      v-if="loading"
+      class="loading-state"
+    >
+      <el-icon class="loading-icon">
+        <Loading />
+      </el-icon>
       <p>加载节点列表...</p>
     </div>
 
     <!-- 空状态 -->
-    <el-empty v-else-if="filteredNodes.length === 0" description="暂无可用节点" />
+    <el-empty
+      v-else-if="filteredNodes.length === 0"
+      description="暂无可用节点"
+    />
 
     <!-- 卡片视图 -->
-    <div v-else-if="viewMode === 'card'" class="nodes-grid">
+    <div
+      v-else-if="viewMode === 'card'"
+      class="nodes-grid"
+    >
       <NodeCard
         v-for="node in filteredNodes"
         :key="node.id"
@@ -103,8 +149,15 @@
     </div>
 
     <!-- 列表视图 -->
-    <el-table v-else :data="filteredNodes" class="nodes-table">
-      <el-table-column label="节点名称" min-width="200">
+    <el-table
+      v-else
+      :data="filteredNodes"
+      class="nodes-table"
+    >
+      <el-table-column
+        label="节点名称"
+        min-width="200"
+      >
         <template #default="{ row }">
           <div class="node-name-cell">
             <span class="node-flag">{{ getRegionFlag(row.region) }}</span>
@@ -113,27 +166,46 @@
         </template>
       </el-table-column>
 
-      <el-table-column label="地区" prop="region" width="100">
+      <el-table-column
+        label="地区"
+        prop="region"
+        width="100"
+      >
         <template #default="{ row }">
           {{ getRegionLabel(row.region) }}
         </template>
       </el-table-column>
 
-      <el-table-column label="协议" prop="protocol" width="100">
+      <el-table-column
+        label="协议"
+        prop="protocol"
+        width="100"
+      >
         <template #default="{ row }">
-          <el-tag size="small">{{ row.protocol }}</el-tag>
+          <el-tag size="small">
+            {{ row.protocol }}
+          </el-tag>
         </template>
       </el-table-column>
 
-      <el-table-column label="状态" width="100">
+      <el-table-column
+        label="状态"
+        width="100"
+      >
         <template #default="{ row }">
-          <el-tag :type="getStatusType(row.status)" size="small">
+          <el-tag
+            :type="getStatusType(row.status)"
+            size="small"
+          >
             {{ getStatusLabel(row.status) }}
           </el-tag>
         </template>
       </el-table-column>
 
-      <el-table-column label="负载" width="120">
+      <el-table-column
+        label="负载"
+        width="120"
+      >
         <template #default="{ row }">
           <el-progress 
             :percentage="row.load" 
@@ -145,24 +217,49 @@
         </template>
       </el-table-column>
 
-      <el-table-column label="延迟" width="100">
+      <el-table-column
+        label="延迟"
+        width="100"
+      >
         <template #default="{ row }">
-          <span v-if="testingNodes[row.id]" class="latency-testing">
+          <span
+            v-if="testingNodes[row.id]"
+            class="latency-testing"
+          >
             <el-icon class="is-loading"><Loading /></el-icon>
           </span>
-          <span v-else-if="latencyResults[row.id]" :class="getLatencyClass(latencyResults[row.id])">
+          <span
+            v-else-if="latencyResults[row.id]"
+            :class="getLatencyClass(latencyResults[row.id])"
+          >
             {{ latencyResults[row.id] }}ms
           </span>
-          <span v-else class="latency-unknown">-</span>
+          <span
+            v-else
+            class="latency-unknown"
+          >-</span>
         </template>
       </el-table-column>
 
-      <el-table-column label="操作" width="150" fixed="right">
+      <el-table-column
+        label="操作"
+        width="150"
+        fixed="right"
+      >
         <template #default="{ row }">
-          <el-button link type="primary" @click="testLatency(row)" :loading="testingNodes[row.id]">
+          <el-button
+            link
+            type="primary"
+            :loading="testingNodes[row.id]"
+            @click="testLatency(row)"
+          >
             测速
           </el-button>
-          <el-button link type="primary" @click="copyNodeConfig(row)">
+          <el-button
+            link
+            type="primary"
+            @click="copyNodeConfig(row)"
+          >
             复制
           </el-button>
         </template>
@@ -176,6 +273,8 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Grid, List, Timer, Loading } from '@element-plus/icons-vue'
 import { usePortalNodesStore } from '@/stores/portalNodes'
+import { proxiesApi } from '@/api/modules/proxies'
+import { copyText } from '@/utils/clipboard'
 import NodeCard from '@/components/user/NodeCard.vue'
 
 const nodesStore = usePortalNodesStore()
@@ -332,9 +431,15 @@ async function testAllLatency() {
   ElMessage.success('测速完成')
 }
 
-function copyNodeConfig(node) {
-  // 这里应该调用 API 获取节点配置并复制
-  ElMessage.success(`已复制 ${node.name} 配置`)
+async function copyNodeConfig(node) {
+  try {
+    const response = await proxiesApi.generateLink(node.id)
+    const link = response?.link
+    await copyText(link)
+    ElMessage.success(`已复制 ${node.name} 配置`)
+  } catch (error) {
+    ElMessage.error(`复制失败: ${node.name}`)
+  }
 }
 
 // 加载数据
@@ -474,7 +579,16 @@ onMounted(() => {
 
   .filter-left,
   .filter-right {
+    display: grid;
+    grid-template-columns: 1fr;
     flex-wrap: wrap;
+  }
+
+  .filter-left :deep(.el-select),
+  .filter-right :deep(.el-select),
+  .filter-right :deep(.el-button-group),
+  .filter-right :deep(.el-button) {
+    width: 100% !important;
   }
 
   .nodes-grid {

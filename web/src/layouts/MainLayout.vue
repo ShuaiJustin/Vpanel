@@ -1,5 +1,8 @@
 <template>
-  <div class="app-container" :class="{ 'dark-mode': isDark, 'is-mobile': isMobile }">
+  <div
+    class="app-container"
+    :class="{ 'dark-mode': isDark, 'is-mobile': isMobile }"
+  >
     <transition name="overlay-fade">
       <button
         v-if="isMobile && isMobileMenuOpen"
@@ -10,17 +13,25 @@
       />
     </transition>
     <!-- 侧边栏 -->
-      <div
-        class="sidebar"
-        :class="{
-          collapsed: isCollapse && !isMobile,
-          'is-mobile': isMobile,
+    <div
+      class="sidebar"
+      :class="{
+        collapsed: isCollapse && !isMobile,
+        'is-mobile': isMobile,
         'mobile-open': isMobileMenuOpen
       }"
+    >
+      <div
+        class="logo"
+        :class="{ collapsed: isCollapse && !isMobile }"
       >
-      <div class="logo" :class="{ collapsed: isCollapse && !isMobile }">
-        <span v-if="isCollapse && !isMobile" class="logo-short">V</span>
-        <h1 v-else>V 管理面板</h1>
+        <span
+          v-if="isCollapse && !isMobile"
+          class="logo-short"
+        >V</span>
+        <h1 v-else>
+          V 管理面板
+        </h1>
       </div>
       <el-menu
         class="sidebar-menu"
@@ -51,8 +62,12 @@
             <el-icon><User /></el-icon>
             <span>用户管理</span>
           </template>
-          <el-menu-item index="/admin/users">用户列表</el-menu-item>
-          <el-menu-item index="/admin/roles">角色管理</el-menu-item>
+          <el-menu-item index="/admin/users">
+            用户列表
+          </el-menu-item>
+          <el-menu-item index="/admin/roles">
+            角色管理
+          </el-menu-item>
         </el-sub-menu>
         
         <el-sub-menu index="monitor">
@@ -60,9 +75,15 @@
             <el-icon><DataAnalysis /></el-icon>
             <span>监控与统计</span>
           </template>
-          <el-menu-item index="/admin/system-monitor">系统监控</el-menu-item>
-          <el-menu-item index="/admin/traffic-monitor">流量监控</el-menu-item>
-          <el-menu-item index="/admin/stats">统计数据</el-menu-item>
+          <el-menu-item index="/admin/system-monitor">
+            系统监控
+          </el-menu-item>
+          <el-menu-item index="/admin/traffic-monitor">
+            流量监控
+          </el-menu-item>
+          <el-menu-item index="/admin/stats">
+            统计数据
+          </el-menu-item>
         </el-sub-menu>
         
         <el-menu-item index="/admin/certificates">
@@ -70,30 +91,60 @@
           <span>证书管理</span>
         </el-menu-item>
 
-        <el-sub-menu index="commercial" v-if="isAdmin">
+        <el-sub-menu
+          v-if="isAdmin"
+          index="commercial"
+        >
           <template #title>
             <el-icon><ShoppingCart /></el-icon>
             <span>商业化管理</span>
           </template>
-          <el-menu-item index="/admin/plans">套餐管理</el-menu-item>
-          <el-menu-item index="/admin/orders">订单管理</el-menu-item>
-          <el-menu-item index="/admin/coupons">优惠券管理</el-menu-item>
-          <el-menu-item index="/admin/gift-cards">礼品卡管理</el-menu-item>
-          <el-menu-item index="/admin/trials">试用管理</el-menu-item>
-          <el-menu-item index="/admin/payment-settings">支付配置</el-menu-item>
-          <el-menu-item index="/admin/reports">财务报表</el-menu-item>
+          <el-menu-item index="/admin/plans">
+            套餐管理
+          </el-menu-item>
+          <el-menu-item index="/admin/orders">
+            订单管理
+          </el-menu-item>
+          <el-menu-item index="/admin/coupons">
+            优惠券管理
+          </el-menu-item>
+          <el-menu-item index="/admin/gift-cards">
+            礼品卡管理
+          </el-menu-item>
+          <el-menu-item index="/admin/trials">
+            试用管理
+          </el-menu-item>
+          <el-menu-item index="/admin/payment-settings">
+            支付配置
+          </el-menu-item>
+          <el-menu-item index="/admin/reports">
+            财务报表
+          </el-menu-item>
         </el-sub-menu>
 
-        <el-sub-menu index="nodes" v-if="isAdmin">
+        <el-sub-menu
+          v-if="isAdmin"
+          index="nodes"
+        >
           <template #title>
             <el-icon><Connection /></el-icon>
             <span>节点管理</span>
           </template>
-          <el-menu-item index="/admin/node-dashboard">集群概览</el-menu-item>
-          <el-menu-item index="/admin/nodes">节点列表</el-menu-item>
-          <el-menu-item index="/admin/node-groups">节点分组</el-menu-item>
-          <el-menu-item index="/admin/node-map">地理分布</el-menu-item>
-          <el-menu-item index="/admin/node-comparison">性能对比</el-menu-item>
+          <el-menu-item index="/admin/node-dashboard">
+            集群概览
+          </el-menu-item>
+          <el-menu-item index="/admin/nodes">
+            节点列表
+          </el-menu-item>
+          <el-menu-item index="/admin/node-groups">
+            节点分组
+          </el-menu-item>
+          <el-menu-item index="/admin/node-map">
+            地理分布
+          </el-menu-item>
+          <el-menu-item index="/admin/node-comparison">
+            性能对比
+          </el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu index="settings">
@@ -101,9 +152,15 @@
             <el-icon><Setting /></el-icon>
             <span>系统设置</span>
           </template>
-          <el-menu-item index="/admin/settings">配置管理</el-menu-item>
-          <el-menu-item index="/admin/logs">日志管理</el-menu-item>
-          <el-menu-item index="/admin/ip-restriction">IP 限制</el-menu-item>
+          <el-menu-item index="/admin/settings">
+            配置管理
+          </el-menu-item>
+          <el-menu-item index="/admin/logs">
+            日志管理
+          </el-menu-item>
+          <el-menu-item index="/admin/ip-restriction">
+            IP 限制
+          </el-menu-item>
         </el-sub-menu>
       </el-menu>
     </div>
@@ -124,30 +181,83 @@
               <Expand v-else />
             </el-icon>
           </el-button>
-          <span v-if="isMobile" class="header-title">{{ currentTitle }}</span>
+          <span
+            v-if="isMobile"
+            class="header-title"
+          >{{ currentTitle }}</span>
         </div>
         <div class="header-right">
-          <el-button circle @click="toggleTheme" class="theme-toggle-btn" title="切换主题">
+          <el-button
+            circle
+            class="theme-toggle-btn"
+            title="切换主题"
+            @click="toggleTheme"
+          >
             <el-icon><Sunny v-if="isDark" /><Moon v-else /></el-icon>
           </el-button>
-          <el-dropdown v-if="isMobile" trigger="click" @command="handleMobileUserCommand">
-            <el-button circle class="mobile-user-menu-btn">
+          <el-dropdown
+            v-if="isMobile"
+            trigger="click"
+            @command="handleMobileUserCommand"
+          >
+            <el-button
+              circle
+              class="mobile-user-menu-btn"
+            >
               <el-icon><User /></el-icon>
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="profile">个人资料</el-dropdown-item>
-                <el-dropdown-item command="password">修改密码</el-dropdown-item>
-                <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
+                <el-dropdown-item command="profile">
+                  个人资料
+                </el-dropdown-item>
+                <el-dropdown-item command="password">
+                  修改密码
+                </el-dropdown-item>
+                <el-dropdown-item
+                  command="logout"
+                  divided
+                >
+                  退出登录
+                </el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
-          <div v-else class="user-info">
-            <el-avatar size="small" class="user-avatar">{{ username.charAt(0).toUpperCase() }}</el-avatar>
+          <div
+            v-else
+            class="user-info"
+          >
+            <el-avatar
+              size="small"
+              class="user-avatar"
+            >
+              {{ username.charAt(0).toUpperCase() }}
+            </el-avatar>
             <span class="username">{{ username }}</span>
-            <el-button link size="small" @click="goToProfile" class="user-action-btn">个人资料</el-button>
-            <el-button link size="small" @click="goToChangePassword" class="user-action-btn">修改密码</el-button>
-            <el-button link size="small" @click="confirmLogout" class="user-action-btn logout-btn">退出登录</el-button>
+            <el-button
+              link
+              size="small"
+              class="user-action-btn"
+              @click="goToProfile"
+            >
+              个人资料
+            </el-button>
+            <el-button
+              link
+              size="small"
+              class="user-action-btn"
+              @click="goToChangePassword"
+            >
+              修改密码
+            </el-button>
+            <el-button
+              link
+              size="small"
+              class="user-action-btn logout-btn"
+              @click="confirmLogout"
+            >
+              退出登录
+            </el-button>
           </div>
         </div>
       </header>
@@ -181,13 +291,14 @@ import {
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useTheme } from '@/composables/useTheme'
-import { useViewport } from '@/composables/useViewport'
+import { VIEWPORT_BREAKPOINTS, useViewport } from '@/composables/useViewport'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
 const { isDark, toggleDarkMode } = useTheme()
-const { isMobile } = useViewport({ mobileBreakpoint: 1024, tabletBreakpoint: 1280 })
+const { viewportWidth } = useViewport()
+const isMobile = computed(() => viewportWidth.value <= VIEWPORT_BREAKPOINTS.adminNavigation)
 
 const isCollapse = ref(false)
 const isMobileMenuOpen = ref(false)
@@ -456,8 +567,8 @@ watch(isMobile, mobile => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 0 20px;
+  gap: var(--vp-inline-gap);
+  padding: 0 var(--vp-page-padding);
   position: sticky;
   top: 0;
   z-index: 900;
@@ -515,7 +626,7 @@ watch(isMobile, mobile => {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  padding: 20px;
+  padding: var(--vp-page-padding);
   overflow: auto;
   background-color: #f0f2f5;
 }
@@ -645,7 +756,7 @@ watch(isMobile, mobile => {
   }
 }
 
-@media (max-width: 1366px) {
+@media (max-width: 1280px) {
   .header {
     padding: 0 14px;
   }

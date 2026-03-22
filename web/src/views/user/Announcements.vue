@@ -2,23 +2,46 @@
   <div class="announcements-page">
     <!-- 页面标题 -->
     <div class="page-header">
-      <h1 class="page-title">公告中心</h1>
-      <p class="page-subtitle">查看系统公告和重要通知</p>
+      <h1 class="page-title">
+        公告中心
+      </h1>
+      <p class="page-subtitle">
+        查看系统公告和重要通知
+      </p>
     </div>
 
     <!-- 筛选栏 -->
     <div class="filter-bar">
-      <el-radio-group v-model="selectedCategory" size="default">
-        <el-radio-button value="">全部</el-radio-button>
-        <el-radio-button value="general">公告</el-radio-button>
-        <el-radio-button value="maintenance">维护</el-radio-button>
-        <el-radio-button value="update">更新</el-radio-button>
-        <el-radio-button value="promotion">活动</el-radio-button>
+      <el-radio-group
+        v-model="selectedCategory"
+        size="default"
+      >
+        <el-radio-button value="">
+          全部
+        </el-radio-button>
+        <el-radio-button value="general">
+          公告
+        </el-radio-button>
+        <el-radio-button value="maintenance">
+          维护
+        </el-radio-button>
+        <el-radio-button value="update">
+          更新
+        </el-radio-button>
+        <el-radio-button value="promotion">
+          活动
+        </el-radio-button>
       </el-radio-group>
 
       <div class="filter-right">
-        <el-badge :value="unreadCount" :hidden="unreadCount === 0">
-          <el-button @click="markAllAsRead" :disabled="unreadCount === 0">
+        <el-badge
+          :value="unreadCount"
+          :hidden="unreadCount === 0"
+        >
+          <el-button
+            :disabled="unreadCount === 0"
+            @click="markAllAsRead"
+          >
             全部已读
           </el-button>
         </el-badge>
@@ -26,16 +49,27 @@
     </div>
 
     <!-- 加载状态 -->
-    <div v-if="loading" class="loading-state">
-      <el-icon class="loading-icon"><Loading /></el-icon>
+    <div
+      v-if="loading"
+      class="loading-state"
+    >
+      <el-icon class="loading-icon">
+        <Loading />
+      </el-icon>
       <p>加载公告列表...</p>
     </div>
 
     <!-- 空状态 -->
-    <el-empty v-else-if="filteredAnnouncements.length === 0" description="暂无公告" />
+    <el-empty
+      v-else-if="filteredAnnouncements.length === 0"
+      description="暂无公告"
+    />
 
     <!-- 公告列表 -->
-    <div v-else class="announcements-list">
+    <div
+      v-else
+      class="announcements-list"
+    >
       <div 
         v-for="item in filteredAnnouncements" 
         :key="item.id"
@@ -44,33 +78,51 @@
         @click="viewAnnouncement(item)"
       >
         <!-- 置顶标记 -->
-        <div v-if="item.is_pinned" class="pinned-badge">
+        <div
+          v-if="item.is_pinned"
+          class="pinned-badge"
+        >
           <el-icon><Top /></el-icon>
           置顶
         </div>
 
         <!-- 未读标记 -->
-        <div v-if="!item.is_read" class="unread-dot"></div>
+        <div
+          v-if="!item.is_read"
+          class="unread-dot"
+        />
 
         <div class="card-content">
           <div class="card-header">
-            <el-tag :type="getCategoryType(item.category)" size="small">
+            <el-tag
+              :type="getCategoryType(item.category)"
+              size="small"
+            >
               {{ getCategoryLabel(item.category) }}
             </el-tag>
             <span class="publish-date">{{ formatDate(item.published_at) }}</span>
           </div>
 
-          <h3 class="announcement-title">{{ item.title }}</h3>
+          <h3 class="announcement-title">
+            {{ item.title }}
+          </h3>
           
-          <p class="announcement-summary">{{ getSummary(item.content) }}</p>
+          <p class="announcement-summary">
+            {{ getSummary(item.content) }}
+          </p>
         </div>
 
-        <el-icon class="arrow-icon"><ArrowRight /></el-icon>
+        <el-icon class="arrow-icon">
+          <ArrowRight />
+        </el-icon>
       </div>
     </div>
 
     <!-- 分页 -->
-    <div v-if="total > pageSize" class="pagination">
+    <div
+      v-if="total > pageSize"
+      class="pagination"
+    >
       <el-pagination
         v-model:current-page="currentPage"
         :page-size="pageSize"

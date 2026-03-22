@@ -2,7 +2,9 @@
   <div class="privacy-container">
     <div class="privacy-header">
       <h1>隐私政策</h1>
-      <p class="update-time">最后更新：{{ updateTime }}</p>
+      <p class="update-time">
+        最后更新：{{ updateTime }}
+      </p>
     </div>
 
     <div class="privacy-content">
@@ -168,8 +170,15 @@
     </div>
 
     <div class="privacy-footer">
-      <el-button @click="goBack">返回</el-button>
-      <el-button type="primary" @click="acceptAndClose">我已阅读并理解</el-button>
+      <el-button @click="goBack">
+        返回
+      </el-button>
+      <el-button
+        type="primary"
+        @click="acceptAndClose"
+      >
+        我已阅读并理解
+      </el-button>
     </div>
   </div>
 </template>

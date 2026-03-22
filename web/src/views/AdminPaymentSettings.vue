@@ -2,12 +2,27 @@
   <div class="admin-payment-settings-page">
     <div class="page-header">
       <div class="page-heading">
-        <h1 class="page-title">支付配置</h1>
-        <p class="page-subtitle">在商业化管理中统一维护支付宝和微信支付商户参数</p>
+        <h1 class="page-title">
+          支付配置
+        </h1>
+        <p class="page-subtitle">
+          在商业化管理中统一维护支付宝和微信支付商户参数
+        </p>
       </div>
       <div class="page-actions">
-        <el-button :loading="loading" @click="loadSettings">刷新</el-button>
-        <el-button type="primary" :loading="saving" @click="saveSettings">保存配置</el-button>
+        <el-button
+          :loading="loading"
+          @click="loadSettings"
+        >
+          刷新
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="saving"
+          @click="saveSettings"
+        >
+          保存配置
+        </el-button>
       </div>
     </div>
 
@@ -48,9 +63,17 @@
       class="page-alert"
     />
 
-    <el-form v-loading="loading" :model="form" label-position="top" class="payment-settings-form">
+    <el-form
+      v-loading="loading"
+      :model="form"
+      label-position="top"
+      class="payment-settings-form"
+    >
       <div class="detail-grid payment-config-grid">
-        <el-card shadow="never" class="gateway-card">
+        <el-card
+          shadow="never"
+          class="gateway-card"
+        >
           <template #header>
             <div class="card-header gateway-card__header">
               <div class="gateway-card__heading">
@@ -77,7 +100,10 @@
 
           <div class="gateway-form-grid">
             <el-form-item label="App ID">
-              <el-input v-model="form.alipayAppId" placeholder="请输入支付宝 App ID" />
+              <el-input
+                v-model="form.alipayAppId"
+                placeholder="请输入支付宝 App ID"
+              />
             </el-form-item>
             <el-form-item label="沙箱模式">
               <el-switch v-model="form.alipaySandbox" />
@@ -129,7 +155,10 @@
           </div>
         </el-card>
 
-        <el-card shadow="never" class="gateway-card">
+        <el-card
+          shadow="never"
+          class="gateway-card"
+        >
           <template #header>
             <div class="card-header gateway-card__header">
               <div class="gateway-card__heading">
@@ -156,10 +185,16 @@
 
           <div class="gateway-form-grid">
             <el-form-item label="App ID">
-              <el-input v-model="form.wechatAppId" placeholder="请输入微信支付 App ID" />
+              <el-input
+                v-model="form.wechatAppId"
+                placeholder="请输入微信支付 App ID"
+              />
             </el-form-item>
             <el-form-item label="商户号">
-              <el-input v-model="form.wechatMchId" placeholder="请输入微信支付商户号" />
+              <el-input
+                v-model="form.wechatMchId"
+                placeholder="请输入微信支付商户号"
+              />
             </el-form-item>
           </div>
 
@@ -197,7 +232,10 @@
         </el-card>
       </div>
 
-      <el-card shadow="never" class="box-card payment-guide-card">
+      <el-card
+        shadow="never"
+        class="box-card payment-guide-card"
+      >
         <template #header>
           <div class="card-header">
             <span>生效说明</span>
@@ -206,19 +244,25 @@
         </template>
         <div class="guide-grid">
           <div class="entity-cell">
-            <div class="entity-cell__title">网关展示逻辑</div>
+            <div class="entity-cell__title">
+              网关展示逻辑
+            </div>
             <div class="entity-cell__hint">
               前台可见方式：{{ availableMethodsLabel }}
             </div>
           </div>
           <div class="entity-cell">
-            <div class="entity-cell__title">推荐顺序</div>
+            <div class="entity-cell__title">
+              推荐顺序
+            </div>
             <div class="entity-cell__hint">
               先补齐 App ID / 商户号 / 密钥，再打开启用开关，最后用沙箱或小额实付验证回调链路。
             </div>
           </div>
           <div class="entity-cell">
-            <div class="entity-cell__title">默认回调</div>
+            <div class="entity-cell__title">
+              默认回调
+            </div>
             <div class="entity-cell__hint">
               通知地址留空时系统会按面板公网地址自动拼接默认路径，适合单站点部署；反向代理场景建议显式填写。
             </div>

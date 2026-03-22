@@ -1,10 +1,15 @@
 <template>
   <div class="test-page-container">
     <div class="page-header">
-      <div class="title">Shadowsocks 协议测试</div>
+      <div class="title">
+        Shadowsocks 协议测试
+      </div>
     </div>
     
-    <el-card shadow="hover" class="test-card">
+    <el-card
+      shadow="hover"
+      class="test-card"
+    >
       <template #header>
         <div class="card-header">
           <span>测试 Shadowsocks 配置</span>
@@ -18,19 +23,34 @@
           label-width="100px"
         >
           <el-row :gutter="20">
-            <el-col :xs="24" :md="12">
+            <el-col
+              :xs="24"
+              :md="12"
+            >
               <el-form-item label="连接名称">
-                <el-input v-model="configForm.name" placeholder="请输入连接名称" />
+                <el-input
+                  v-model="configForm.name"
+                  placeholder="请输入连接名称"
+                />
               </el-form-item>
             </el-col>
             
-            <el-col :xs="24" :md="12">
+            <el-col
+              :xs="24"
+              :md="12"
+            >
               <el-form-item label="服务器地址">
-                <el-input v-model="configForm.server" placeholder="请输入服务器地址" />
+                <el-input
+                  v-model="configForm.server"
+                  placeholder="请输入服务器地址"
+                />
               </el-form-item>
             </el-col>
             
-            <el-col :xs="24" :md="12">
+            <el-col
+              :xs="24"
+              :md="12"
+            >
               <el-form-item label="端口">
                 <el-input-number 
                   v-model="configForm.port" 
@@ -42,7 +62,10 @@
               </el-form-item>
             </el-col>
             
-            <el-col :xs="24" :md="12">
+            <el-col
+              :xs="24"
+              :md="12"
+            >
               <el-form-item label="密码">
                 <el-input 
                   v-model="configForm.password" 
@@ -50,66 +73,135 @@
                   show-password 
                 >
                   <template #append>
-                    <el-button @click="generateRandomPassword">随机</el-button>
+                    <el-button @click="generateRandomPassword">
+                      随机
+                    </el-button>
                   </template>
                 </el-input>
               </el-form-item>
             </el-col>
             
-            <el-col :xs="24" :md="12">
+            <el-col
+              :xs="24"
+              :md="12"
+            >
               <el-form-item label="加密方式">
-                <el-select v-model="configForm.method" style="width: 100%">
-                  <el-option label="aes-256-gcm" value="aes-256-gcm" />
-                  <el-option label="aes-128-gcm" value="aes-128-gcm" />
-                  <el-option label="chacha20-ietf-poly1305" value="chacha20-ietf-poly1305" />
-                  <el-option label="2022-blake3-aes-256-gcm" value="2022-blake3-aes-256-gcm" />
-                  <el-option label="2022-blake3-aes-128-gcm" value="2022-blake3-aes-128-gcm" />
-                  <el-option label="2022-blake3-chacha20-poly1305" value="2022-blake3-chacha20-poly1305" />
-                  <el-option label="none" value="none" />
+                <el-select
+                  v-model="configForm.method"
+                  style="width: 100%"
+                >
+                  <el-option
+                    label="aes-256-gcm"
+                    value="aes-256-gcm"
+                  />
+                  <el-option
+                    label="aes-128-gcm"
+                    value="aes-128-gcm"
+                  />
+                  <el-option
+                    label="chacha20-ietf-poly1305"
+                    value="chacha20-ietf-poly1305"
+                  />
+                  <el-option
+                    label="2022-blake3-aes-256-gcm"
+                    value="2022-blake3-aes-256-gcm"
+                  />
+                  <el-option
+                    label="2022-blake3-aes-128-gcm"
+                    value="2022-blake3-aes-128-gcm"
+                  />
+                  <el-option
+                    label="2022-blake3-chacha20-poly1305"
+                    value="2022-blake3-chacha20-poly1305"
+                  />
+                  <el-option
+                    label="none"
+                    value="none"
+                  />
                 </el-select>
               </el-form-item>
             </el-col>
             
-            <el-col :xs="24" :md="12">
+            <el-col
+              :xs="24"
+              :md="12"
+            >
               <el-form-item label="使用插件">
                 <el-switch v-model="configForm.usePlugin" />
               </el-form-item>
             </el-col>
             
             <template v-if="configForm.usePlugin">
-              <el-col :xs="24" :md="12">
+              <el-col
+                :xs="24"
+                :md="12"
+              >
                 <el-form-item label="插件名称">
-                  <el-select v-model="configForm.plugin" style="width: 100%">
-                    <el-option label="v2ray-plugin" value="v2ray-plugin" />
-                    <el-option label="obfs-local" value="obfs-local" />
-                    <el-option label="simple-obfs" value="simple-obfs" />
+                  <el-select
+                    v-model="configForm.plugin"
+                    style="width: 100%"
+                  >
+                    <el-option
+                      label="v2ray-plugin"
+                      value="v2ray-plugin"
+                    />
+                    <el-option
+                      label="obfs-local"
+                      value="obfs-local"
+                    />
+                    <el-option
+                      label="simple-obfs"
+                      value="simple-obfs"
+                    />
                   </el-select>
                 </el-form-item>
               </el-col>
               
-              <el-col :xs="24" :md="12">
+              <el-col
+                :xs="24"
+                :md="12"
+              >
                 <el-form-item label="插件选项">
-                  <el-input v-model="configForm.pluginOpts" placeholder="插件选项，如 obfs=tls;obfs-host=www.example.com" />
+                  <el-input
+                    v-model="configForm.pluginOpts"
+                    placeholder="插件选项，如 obfs=tls;obfs-host=www.example.com"
+                  />
                 </el-form-item>
               </el-col>
             </template>
             
-            <el-col :xs="24" :md="12">
+            <el-col
+              :xs="24"
+              :md="12"
+            >
               <el-form-item label="备注">
-                <el-input v-model="configForm.remark" placeholder="自定义备注" />
+                <el-input
+                  v-model="configForm.remark"
+                  placeholder="自定义备注"
+                />
               </el-form-item>
             </el-col>
           </el-row>
           
           <div class="actions">
-            <el-button type="primary" @click="applyConfig">应用配置</el-button>
-            <el-button @click="resetConfig">重置</el-button>
+            <el-button
+              type="primary"
+              @click="applyConfig"
+            >
+              应用配置
+            </el-button>
+            <el-button @click="resetConfig">
+              重置
+            </el-button>
           </div>
         </el-form>
       </div>
     </el-card>
     
-    <el-card shadow="hover" class="test-card">
+    <el-card
+      shadow="hover"
+      class="test-card"
+    >
       <template #header>
         <div class="card-header">
           <span>Shadowsocks 二维码</span>
@@ -130,7 +222,10 @@
       </div>
     </el-card>
     
-    <el-card shadow="hover" class="test-card">
+    <el-card
+      shadow="hover"
+      class="test-card"
+    >
       <template #header>
         <div class="card-header">
           <span>预设配置</span>
@@ -138,11 +233,33 @@
       </template>
       
       <div class="presets">
-        <el-button @click="loadPreset('basic')" type="primary">基础预设</el-button>
-        <el-button @click="loadPreset('2022')" type="success">2022 预设</el-button>
-        <el-button @click="loadPreset('obfs')" type="warning">OBFS 预设</el-button>
-        <el-button @click="loadPreset('v2ray')" type="info">V2Ray 插件预设</el-button>
-        <el-button @click="loadRealConfig">加载真实配置</el-button>
+        <el-button
+          type="primary"
+          @click="loadPreset('basic')"
+        >
+          基础预设
+        </el-button>
+        <el-button
+          type="success"
+          @click="loadPreset('2022')"
+        >
+          2022 预设
+        </el-button>
+        <el-button
+          type="warning"
+          @click="loadPreset('obfs')"
+        >
+          OBFS 预设
+        </el-button>
+        <el-button
+          type="info"
+          @click="loadPreset('v2ray')"
+        >
+          V2Ray 插件预设
+        </el-button>
+        <el-button @click="loadRealConfig">
+          加载真实配置
+        </el-button>
       </div>
     </el-card>
   </div>

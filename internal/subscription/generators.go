@@ -67,6 +67,21 @@ func settingAliases(key string) []string {
 	}
 }
 
+func splitCommaValues(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+
+	parts := strings.Split(raw, ",")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			values = append(values, trimmed)
+		}
+	}
+	return values
+}
+
 // extractProxyInfo extracts proxy information from a repository.Proxy.
 func extractProxyInfo(proxy *repository.Proxy) (name, server string, port int, settings map[string]interface{}) {
 	name = proxy.Name
@@ -141,7 +156,7 @@ func generateVMessLink(name, server string, port int, settings map[string]interf
 		Port: fmt.Sprintf("%d", port),
 		ID:   getSettingString(settings, "uuid", ""),
 		Aid:  fmt.Sprintf("%d", getSettingInt(settings, "alterId", 0)),
-		Scy:  getSettingString(settings, "security", "auto"),
+		Scy:  proxylib.ResolveVMessCipher(settings),
 		Net:  getSettingString(settings, "network", "tcp"),
 		Type: getSettingString(settings, "type", "none"),
 		Host: getSettingString(settings, "host", ""),
@@ -325,16 +340,16 @@ func generateClashVMess(name, server string, port int, settings map[string]inter
 		"port":    port,
 		"uuid":    getSettingString(settings, "uuid", ""),
 		"alterId": getSettingInt(settings, "alterId", 0),
-		"cipher":  getSettingString(settings, "security", "auto"),
+		"cipher":  proxylib.ResolveVMessCipher(settings),
 		"network": getSettingString(settings, "network", "tcp"),
 	}
 
-	if getSettingBool(settings, "tls", false) {
+	if proxylib.HasTLSSettings(settings) {
 		proxy["tls"] = true
-		if sni := getSettingString(settings, "sni", ""); sni != "" {
+		if sni := proxylib.ResolveSNI(settings); sni != "" {
 			proxy["servername"] = sni
 		}
-		if getSettingBool(settings, "allowInsecure", false) {
+		if proxylib.ResolveTLSSkipVerify(settings) {
 			proxy["skip-cert-verify"] = true
 		}
 	}
@@ -470,14 +485,33 @@ func generateSurge(proxies []*repository.Proxy, options *GeneratorOptions) ([]by
 		switch protocol {
 		case "vmess":
 			uuid := getSettingString(settings, "uuid", "")
+			cipher := proxylib.ResolveVMessCipher(settings)
 			parts := []string{
 				fmt.Sprintf("%s = vmess", name),
 				server,
 				fmt.Sprintf("%d", port),
 				fmt.Sprintf("username=%s", uuid),
+				fmt.Sprintf("encrypt-method=%s", cipher),
 			}
-			if getSettingBool(settings, "tls", false) {
+
+			if proxylib.HasTLSSettings(settings) {
 				parts = append(parts, "tls=true")
+				if sni := proxylib.ResolveSNI(settings); sni != "" {
+					parts = append(parts, fmt.Sprintf("sni=%s", sni))
+				}
+				if proxylib.ResolveTLSSkipVerify(settings) {
+					parts = append(parts, "skip-cert-verify=true")
+				}
+			}
+
+			if network := getSettingString(settings, "network", "tcp"); network == "ws" {
+				parts = append(parts, "ws=true")
+				if path := getSettingString(settings, "path", ""); path != "" {
+					parts = append(parts, fmt.Sprintf("ws-path=%s", path))
+				}
+				if host := getSettingString(settings, "host", ""); host != "" {
+					parts = append(parts, fmt.Sprintf("ws-headers=Host:%s", host))
+				}
 			}
 			line = strings.Join(parts, ", ")
 		case "trojan":
@@ -526,13 +560,38 @@ func generateQuantumultX(proxies []*repository.Proxy, options *GeneratorOptions)
 		switch protocol {
 		case "vmess":
 			uuid := getSettingString(settings, "uuid", "")
-			security := getSettingString(settings, "security", "auto")
+			cipher := proxylib.ResolveVMessCipher(settings)
 			parts := []string{
 				fmt.Sprintf("vmess=%s:%d", server, port),
-				fmt.Sprintf("method=%s", security),
+				fmt.Sprintf("method=%s", cipher),
 				fmt.Sprintf("password=%s", uuid),
-				fmt.Sprintf("tag=%s", name),
 			}
+
+			if proxylib.HasTLSSettings(settings) {
+				parts = append(parts, "obfs=over-tls")
+				if sni := proxylib.ResolveSNI(settings); sni != "" {
+					parts = append(parts, fmt.Sprintf("obfs-host=%s", sni))
+				}
+				if proxylib.ResolveTLSSkipVerify(settings) {
+					parts = append(parts, "tls-verification=false")
+				}
+			}
+
+			if network := getSettingString(settings, "network", "tcp"); network == "ws" {
+				if proxylib.HasTLSSettings(settings) {
+					parts = append(parts, "obfs=wss")
+				} else {
+					parts = append(parts, "obfs=ws")
+				}
+				if path := getSettingString(settings, "path", ""); path != "" {
+					parts = append(parts, fmt.Sprintf("obfs-uri=%s", path))
+				}
+				if host := getSettingString(settings, "host", ""); host != "" {
+					parts = append(parts, fmt.Sprintf("obfs-host=%s", host))
+				}
+			}
+
+			parts = append(parts, fmt.Sprintf("tag=%s", name))
 			line = strings.Join(parts, ", ")
 		case "trojan":
 			password := getSettingString(settings, "password", "")
@@ -588,8 +647,50 @@ func generateSingbox(proxies []*repository.Proxy, options *GeneratorOptions) ([]
 				"server":      server,
 				"server_port": port,
 				"uuid":        getSettingString(settings, "uuid", ""),
-				"security":    getSettingString(settings, "security", "auto"),
+				"security":    proxylib.ResolveVMessCipher(settings),
 				"alter_id":    getSettingInt(settings, "alterId", 0),
+			}
+
+			if proxylib.HasTLSSettings(settings) {
+				tls := map[string]interface{}{
+					"enabled": true,
+				}
+				if sni := proxylib.ResolveSNI(settings); sni != "" {
+					tls["server_name"] = sni
+				}
+				if proxylib.ResolveTLSSkipVerify(settings) {
+					tls["insecure"] = true
+				}
+				if alpn := splitCommaValues(getSettingString(settings, "alpn", "")); len(alpn) > 0 {
+					tls["alpn"] = alpn
+				}
+				if fp := getSettingString(settings, "fingerprint", ""); fp != "" {
+					tls["utls"] = map[string]interface{}{
+						"enabled":     true,
+						"fingerprint": fp,
+					}
+				}
+				outbound["tls"] = tls
+			}
+
+			if network := getSettingString(settings, "network", "tcp"); network != "tcp" {
+				transport := map[string]interface{}{
+					"type": network,
+				}
+				if network == "ws" {
+					if path := getSettingString(settings, "path", ""); path != "" {
+						transport["path"] = path
+					}
+					if host := getSettingString(settings, "host", ""); host != "" {
+						transport["headers"] = map[string]string{"Host": host}
+					}
+				}
+				if network == "grpc" {
+					if serviceName := getSettingString(settings, "serviceName", ""); serviceName != "" {
+						transport["service_name"] = serviceName
+					}
+				}
+				outbound["transport"] = transport
 			}
 		case "vless":
 			outbound = map[string]interface{}{

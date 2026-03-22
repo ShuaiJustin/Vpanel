@@ -1,7 +1,10 @@
 <template>
   <div class="enhanced-table">
     <!-- 工具栏 -->
-    <div class="table-toolbar" v-if="showToolbar">
+    <div
+      v-if="showToolbar"
+      class="table-toolbar"
+    >
       <div class="toolbar-left">
         <slot name="toolbar-left">
           <el-input
@@ -21,7 +24,11 @@
       <div class="toolbar-right">
         <slot name="toolbar-right">
           <el-button-group v-if="showColumnToggle">
-            <el-popover placement="bottom" :width="200" trigger="click">
+            <el-popover
+              placement="bottom"
+              :width="200"
+              trigger="click"
+            >
               <template #reference>
                 <el-button>
                   <el-icon><Setting /></el-icon>
@@ -40,11 +47,17 @@
               </div>
             </el-popover>
           </el-button-group>
-          <el-button v-if="exportable" @click="handleExport">
+          <el-button
+            v-if="exportable"
+            @click="handleExport"
+          >
             <el-icon><Download /></el-icon>
             导出
           </el-button>
-          <el-button v-if="refreshable" @click="$emit('refresh')">
+          <el-button
+            v-if="refreshable"
+            @click="$emit('refresh')"
+          >
             <el-icon><Refresh /></el-icon>
             刷新
           </el-button>
@@ -63,9 +76,9 @@
       :border="border"
       :row-key="rowKey"
       :default-sort="defaultSort"
+      v-bind="$attrs"
       @sort-change="handleSortChange"
       @selection-change="handleSelectionChange"
-      v-bind="$attrs"
     >
       <!-- 选择列 -->
       <el-table-column
@@ -97,8 +110,15 @@
         :fixed="col.fixed"
         :show-overflow-tooltip="col.showOverflowTooltip !== false"
       >
-        <template #default="scope" v-if="col.slot || col.formatter">
-          <slot :name="col.slot || col.prop" :row="scope.row" :index="scope.$index">
+        <template
+          v-if="col.slot || col.formatter"
+          #default="scope"
+        >
+          <slot
+            :name="col.slot || col.prop"
+            :row="scope.row"
+            :index="scope.$index"
+          >
             <span v-if="col.formatter">{{ col.formatter(scope.row, col) }}</span>
             <span v-else>{{ scope.row[col.prop] }}</span>
           </slot>
@@ -114,20 +134,30 @@
         align="center"
       >
         <template #default="scope">
-          <slot name="actions" :row="scope.row" :index="scope.$index" />
+          <slot
+            name="actions"
+            :row="scope.row"
+            :index="scope.$index"
+          />
         </template>
       </el-table-column>
 
       <!-- 空状态 -->
       <template #empty>
         <slot name="empty">
-          <EmptyState type="no-data" size="small" />
+          <EmptyState
+            type="no-data"
+            size="small"
+          />
         </slot>
       </template>
     </el-table>
 
     <!-- 分页 -->
-    <div class="table-pagination" v-if="pagination">
+    <div
+      v-if="pagination"
+      class="table-pagination"
+    >
       <el-pagination
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
@@ -146,7 +176,7 @@
  * 增强表格组件
  * 提供排序、筛选、分页、导出等功能
  */
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
 import { Search, Setting, Download, Refresh } from '@element-plus/icons-vue'
 import EmptyState from './EmptyState.vue'
 import { debounce } from '@/utils/debounce'

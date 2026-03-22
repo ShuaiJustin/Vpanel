@@ -2,18 +2,28 @@
   <div class="balance-page">
     <!-- 页面标题 -->
     <div class="page-header">
-      <h1 class="page-title">我的余额</h1>
-      <p class="page-subtitle">查看余额和交易记录</p>
+      <h1 class="page-title">
+        我的余额
+      </h1>
+      <p class="page-subtitle">
+        查看余额和交易记录
+      </p>
     </div>
 
     <!-- 余额卡片 -->
-    <el-card shadow="never" class="balance-card">
+    <el-card
+      shadow="never"
+      class="balance-card"
+    >
       <div class="balance-info">
         <div class="balance-amount">
           <span class="label">可用余额</span>
           <span class="amount">¥{{ formattedBalance }}</span>
         </div>
-        <el-button type="primary" @click="showRechargeDialog = true">
+        <el-button
+          type="primary"
+          @click="showRechargeDialog = true"
+        >
           <el-icon><Plus /></el-icon>
           充值
         </el-button>
@@ -21,51 +31,101 @@
     </el-card>
 
     <!-- 交易记录 -->
-    <el-card shadow="never" class="transactions-card">
+    <el-card
+      shadow="never"
+      class="transactions-card"
+    >
       <template #header>
         <div class="card-header">
           <span>交易记录</span>
-          <el-select v-model="typeFilter" placeholder="全部类型" clearable @change="handleFilterChange">
-            <el-option label="充值" value="recharge" />
-            <el-option label="消费" value="purchase" />
-            <el-option label="退款" value="refund" />
-            <el-option label="佣金" value="commission" />
-            <el-option label="调整" value="adjustment" />
+          <el-select
+            v-model="typeFilter"
+            placeholder="全部类型"
+            clearable
+            @change="handleFilterChange"
+          >
+            <el-option
+              label="充值"
+              value="recharge"
+            />
+            <el-option
+              label="消费"
+              value="purchase"
+            />
+            <el-option
+              label="退款"
+              value="refund"
+            />
+            <el-option
+              label="佣金"
+              value="commission"
+            />
+            <el-option
+              label="调整"
+              value="adjustment"
+            />
           </el-select>
         </div>
       </template>
 
       <!-- 加载状态 -->
-      <div v-if="loading" class="loading-container">
-        <el-skeleton :rows="5" animated />
+      <div
+        v-if="loading"
+        class="loading-container"
+      >
+        <el-skeleton
+          :rows="5"
+          animated
+        />
       </div>
 
       <!-- 交易列表 -->
-      <div v-else class="transactions-list">
+      <div
+        v-else
+        class="transactions-list"
+      >
         <div
           v-for="tx in transactions"
           :key="tx.id"
           class="transaction-item"
         >
-          <div class="tx-icon" :class="`tx-icon--${tx.type}`">
+          <div
+            class="tx-icon"
+            :class="`tx-icon--${tx.type}`"
+          >
             <el-icon><component :is="getTypeInfo(tx.type).icon" /></el-icon>
           </div>
           <div class="tx-info">
-            <div class="tx-title">{{ getTypeInfo(tx.type).label }}</div>
-            <div class="tx-desc">{{ tx.description || '-' }}</div>
-            <div class="tx-time">{{ tx.created_at }}</div>
+            <div class="tx-title">
+              {{ getTypeInfo(tx.type).label }}
+            </div>
+            <div class="tx-desc">
+              {{ tx.description || '-' }}
+            </div>
+            <div class="tx-time">
+              {{ tx.created_at }}
+            </div>
           </div>
-          <div class="tx-amount" :class="{ 'tx-amount--positive': tx.amount > 0 }">
+          <div
+            class="tx-amount"
+            :class="{ 'tx-amount--positive': tx.amount > 0 }"
+          >
             {{ formatAmount(tx.amount) }}
           </div>
         </div>
       </div>
 
       <!-- 空状态 -->
-      <el-empty v-if="!loading && transactions.length === 0" description="暂无交易记录" />
+      <el-empty
+        v-if="!loading && transactions.length === 0"
+        description="暂无交易记录"
+      />
 
       <!-- 分页 -->
-      <div v-if="pagination.total > 0" class="pagination-container">
+      <div
+        v-if="pagination.total > 0"
+        class="pagination-container"
+      >
         <el-pagination
           v-model:current-page="pagination.page"
           v-model:page-size="pagination.pageSize"
@@ -79,8 +139,15 @@
     </el-card>
 
     <!-- 充值对话框 -->
-    <el-dialog v-model="showRechargeDialog" title="余额充值" width="400px">
-      <el-form :model="rechargeForm" label-width="80px">
+    <el-dialog
+      v-model="showRechargeDialog"
+      title="余额充值"
+      width="400px"
+    >
+      <el-form
+        :model="rechargeForm"
+        label-width="80px"
+      >
         <el-form-item label="充值金额">
           <div class="amount-options">
             <div
@@ -104,14 +171,24 @@
         </el-form-item>
         <el-form-item label="支付方式">
           <el-radio-group v-model="rechargeForm.method">
-            <el-radio value="alipay">支付宝</el-radio>
-            <el-radio value="wechat">微信支付</el-radio>
+            <el-radio value="alipay">
+              支付宝
+            </el-radio>
+            <el-radio value="wechat">
+              微信支付
+            </el-radio>
           </el-radio-group>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showRechargeDialog = false">取消</el-button>
-        <el-button type="primary" :loading="recharging" @click="handleRecharge">
+        <el-button @click="showRechargeDialog = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="recharging"
+          @click="handleRecharge"
+        >
           充值 ¥{{ (rechargeForm.amount / 100).toFixed(2) }}
         </el-button>
       </template>

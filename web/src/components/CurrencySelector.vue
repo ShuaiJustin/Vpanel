@@ -1,5 +1,8 @@
 <template>
-  <el-dropdown trigger="click" @command="handleCurrencyChange">
+  <el-dropdown
+    trigger="click"
+    @command="handleCurrencyChange"
+  >
     <span class="currency-selector">
       <span class="currency-symbol">{{ currencySymbol }}</span>
       <span class="currency-code">{{ currentCurrency }}</span>

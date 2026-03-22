@@ -2,27 +2,48 @@
   <div class="reset-page">
     <div class="reset-card">
       <!-- 加载状态 -->
-      <div v-if="verifying" class="verifying-state">
-        <el-icon class="loading-icon"><Loading /></el-icon>
+      <div
+        v-if="verifying"
+        class="verifying-state"
+      >
+        <el-icon class="loading-icon">
+          <Loading />
+        </el-icon>
         <p>正在验证重置链接...</p>
       </div>
 
       <!-- 令牌无效 -->
-      <div v-else-if="tokenInvalid" class="invalid-state">
-        <el-icon class="error-icon"><CircleClose /></el-icon>
+      <div
+        v-else-if="tokenInvalid"
+        class="invalid-state"
+      >
+        <el-icon class="error-icon">
+          <CircleClose />
+        </el-icon>
         <h3>链接无效或已过期</h3>
         <p>该密码重置链接已失效，请重新申请。</p>
-        <el-button type="primary" @click="goToForgotPassword">
+        <el-button
+          type="primary"
+          @click="goToForgotPassword"
+        >
           重新申请
         </el-button>
       </div>
 
       <!-- 重置成功 -->
-      <div v-else-if="resetSuccess" class="success-state">
-        <el-icon class="success-icon"><CircleCheck /></el-icon>
+      <div
+        v-else-if="resetSuccess"
+        class="success-state"
+      >
+        <el-icon class="success-icon">
+          <CircleCheck />
+        </el-icon>
         <h3>密码重置成功</h3>
         <p>您的密码已成功重置，现在可以使用新密码登录了。</p>
-        <el-button type="primary" @click="goToLogin">
+        <el-button
+          type="primary"
+          @click="goToLogin"
+        >
           前往登录
         </el-button>
       </div>
@@ -30,9 +51,15 @@
       <!-- 重置表单 -->
       <template v-else>
         <div class="reset-header">
-          <el-icon class="reset-icon"><Key /></el-icon>
-          <h1 class="reset-title">重置密码</h1>
-          <p class="reset-subtitle">请输入您的新密码</p>
+          <el-icon class="reset-icon">
+            <Key />
+          </el-icon>
+          <h1 class="reset-title">
+            重置密码
+          </h1>
+          <p class="reset-subtitle">
+            请输入您的新密码
+          </p>
         </div>
 
         <el-form
@@ -68,15 +95,21 @@
           </el-form-item>
 
           <!-- 密码强度指示器 -->
-          <div v-if="resetForm.password" class="password-strength">
+          <div
+            v-if="resetForm.password"
+            class="password-strength"
+          >
             <div class="strength-bar">
               <div 
                 class="strength-fill" 
                 :class="passwordStrengthClass"
                 :style="{ width: passwordStrengthPercent + '%' }"
-              ></div>
+              />
             </div>
-            <span class="strength-text" :class="passwordStrengthClass">
+            <span
+              class="strength-text"
+              :class="passwordStrengthClass"
+            >
               {{ passwordStrengthText }}
             </span>
           </div>
@@ -95,8 +128,14 @@
         </el-form>
       </template>
 
-      <div v-if="!verifying && !tokenInvalid && !resetSuccess" class="reset-footer">
-        <router-link to="/user/login" class="back-link">
+      <div
+        v-if="!verifying && !tokenInvalid && !resetSuccess"
+        class="reset-footer"
+      >
+        <router-link
+          to="/user/login"
+          class="back-link"
+        >
           <el-icon><ArrowLeft /></el-icon>
           返回登录
         </router-link>

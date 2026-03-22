@@ -18,15 +18,13 @@ export function debounce(fn, delay = 300, options = {}) {
   let lastThis = null
   let result
   let lastCallTime = null
-  let lastInvokeTime = 0
-  
-  function invokeFunc(time) {
+
+  function invokeFunc() {
     const args = lastArgs
     const thisArg = lastThis
-    
+
     lastArgs = null
     lastThis = null
-    lastInvokeTime = time
     result = fn.apply(thisArg, args)
     return result
   }
@@ -42,11 +40,11 @@ export function debounce(fn, delay = 300, options = {}) {
     }
   }
   
-  function trailingEdge(time) {
+  function trailingEdge() {
     timeoutId = null
     
     if (trailing && lastArgs) {
-      return invokeFunc(time)
+      return invokeFunc()
     }
     
     lastArgs = null
@@ -54,11 +52,10 @@ export function debounce(fn, delay = 300, options = {}) {
     return result
   }
   
-  function leadingEdge(time) {
-    lastInvokeTime = time
-    timeoutId = startTimer(() => trailingEdge(Date.now()), delay)
-    
-    return leading ? invokeFunc(time) : result
+  function leadingEdge() {
+    timeoutId = startTimer(() => trailingEdge(), delay)
+
+    return leading ? invokeFunc() : result
   }
   
   function debounced(...args) {
@@ -70,19 +67,18 @@ export function debounce(fn, delay = 300, options = {}) {
     lastCallTime = time
     
     if (isInvoking) {
-      return leadingEdge(time)
+      return leadingEdge()
     }
     
     // 重置定时器
     cancelTimer()
-    timeoutId = startTimer(() => trailingEdge(Date.now()), delay)
+    timeoutId = startTimer(() => trailingEdge(), delay)
     
     return result
   }
   
   debounced.cancel = function() {
     cancelTimer()
-    lastInvokeTime = 0
     lastArgs = null
     lastThis = null
     lastCallTime = null
@@ -92,7 +88,7 @@ export function debounce(fn, delay = 300, options = {}) {
     if (timeoutId === null) {
       return result
     }
-    return trailingEdge(Date.now())
+    return trailingEdge()
   }
   
   debounced.pending = function() {

@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -130,6 +132,8 @@ func New(cfg *Config, log logger.Logger) (*Agent, error) {
 		BinaryPath: cfg.Xray.BinaryPath,
 		ConfigPath: cfg.Xray.ConfigPath,
 		BackupDir:  cfg.Xray.BackupDir,
+		Stdout:     &logWriter{logger: log, prefix: "[Xray-stdout]"},
+		Stderr:     &logWriter{logger: log, prefix: "[Xray-stderr]"},
 	}, log)
 
 	// Initialize health server
@@ -320,7 +324,8 @@ func (a *Agent) sendHeartbeat() {
 	a.mu.RUnlock()
 
 	if !registered {
-		// Try to register first with reconnection logic
+		// Keep retrying registration with backoff. Panel outages are transient and
+		// the agent must resume heartbeats automatically once the panel is back.
 		if a.panelClient.ShouldReconnect() {
 			if err := a.panelClient.WaitForReconnect(a.ctx); err != nil {
 				return // Context cancelled
@@ -334,9 +339,6 @@ func (a *Agent) sendHeartbeat() {
 				a.registered = false
 				a.mu.Unlock()
 			}
-		} else {
-			a.logger.Error("max reconnection attempts reached, giving up",
-				logger.F("consecutive_fails", a.panelClient.GetConsecutiveFails()))
 		}
 		return
 	}
@@ -582,7 +584,7 @@ func (a *Agent) currentXrayStatus() *XrayStatus {
 
 // ensureXrayRunning ensures Xray service is running.
 func (a *Agent) ensureXrayRunning(ctx context.Context) error {
-	if a.isXrayRunning() {
+	if a.currentXrayStatus().Running {
 		a.logger.Info("Xray 服务已在运行")
 		return nil
 	}
@@ -604,7 +606,7 @@ func (a *Agent) ensureXrayRunning(ctx context.Context) error {
 		return fmt.Errorf("xray config not found: %w", err)
 	}
 
-	if runtime.GOOS == "linux" {
+	if runtime.GOOS == "linux" && shouldUseSystemdXray(a.config.Xray.ConfigPath) {
 		a.logger.Info("尝试通过 systemctl 启动 Xray...")
 		cmd := exec.CommandContext(ctx, "systemctl", "start", "xray")
 		output, err := cmd.CombinedOutput()
@@ -614,7 +616,7 @@ func (a *Agent) ensureXrayRunning(ctx context.Context) error {
 				logger.F("output", string(output)))
 		} else {
 			time.Sleep(2 * time.Second)
-			if a.isXrayRunning() {
+			if a.currentXrayStatus().Running {
 				a.logger.Info("Xray 服务通过 systemctl 启动成功")
 				return nil
 			}
@@ -626,7 +628,7 @@ func (a *Agent) ensureXrayRunning(ctx context.Context) error {
 }
 
 func (a *Agent) restartXray(ctx context.Context) error {
-	if runtime.GOOS == "linux" {
+	if runtime.GOOS == "linux" && shouldUseSystemdXray(a.config.Xray.ConfigPath) {
 		a.logger.Info("尝试通过 systemctl 重启 Xray...")
 		cmd := exec.CommandContext(ctx, "systemctl", "restart", "xray")
 		output, err := cmd.CombinedOutput()
@@ -636,7 +638,7 @@ func (a *Agent) restartXray(ctx context.Context) error {
 				logger.F("output", string(output)))
 		} else {
 			time.Sleep(2 * time.Second)
-			if a.isXrayRunning() {
+			if a.currentXrayStatus().Running {
 				a.logger.Info("Xray 服务通过 systemctl 重启成功")
 				return nil
 			}
@@ -649,7 +651,7 @@ func (a *Agent) restartXray(ctx context.Context) error {
 			logger.F("error", err.Error()))
 	} else {
 		time.Sleep(2 * time.Second)
-		if a.isXrayRunning() {
+		if a.currentXrayStatus().Running {
 			a.logger.Info("Xray 直接重启成功")
 			return nil
 		}
@@ -668,34 +670,18 @@ func (a *Agent) resolveXrayBinaryPath() string {
 
 // isXrayRunning checks if Xray process is running.
 func (a *Agent) isXrayRunning() bool {
-	if runtime.GOOS == "linux" {
-		cmd := exec.Command("systemctl", "is-active", "xray")
-		if err := cmd.Run(); err == nil {
-			return true
-		}
-	}
-
-	cmd := exec.Command("pgrep", "-x", "xray")
-	if err := cmd.Run(); err == nil {
-		return true
-	}
-
-	return false
+	return a.lookupXrayPID() > 0
 }
 
 func (a *Agent) lookupXrayPID() int {
-	if runtime.GOOS == "linux" {
-		output, err := exec.Command("systemctl", "show", "-p", "MainPID", "--value", "xray").Output()
-		if err == nil {
-			if pid := parsePIDOutput(output); pid > 0 {
-				return pid
-			}
-		}
+	managedStatus := a.xrayManager.GetStatus()
+	if managedStatus != nil && managedStatus.Running && managedStatus.PID > 0 {
+		return managedStatus.PID
 	}
 
-	output, err := exec.Command("pgrep", "-o", "-x", "xray").Output()
+	output, err := exec.Command("ps", "-eo", "pid=,comm=,args=").Output()
 	if err == nil {
-		return parsePIDOutput(output)
+		return findConfiguredXrayPID(string(output), a.config.Xray.ConfigPath)
 	}
 	return 0
 }
@@ -715,56 +701,21 @@ func (a *Agent) startXrayDirect(ctx context.Context) error {
 		logger.F("binary_path", xrayBinaryPath),
 		logger.F("config_path", a.config.Xray.ConfigPath))
 
-	configData, err := os.ReadFile(a.config.Xray.ConfigPath)
-	if err != nil {
-		return fmt.Errorf("failed to read xray config: %w", err)
-	}
-	if err := a.xrayManager.ValidateConfig(ctx, configData); err != nil {
-		a.logger.Error("Xray 配置验证失败", logger.F("error", err.Error()))
-		return fmt.Errorf("xray config validation failed: %w", err)
-	}
-	a.logger.Info("Xray 配置验证通过")
-
-	cmd := exec.Command(xrayBinaryPath, "run", "-c", a.config.Xray.ConfigPath)
-	cmd.Stdout = &logWriter{logger: a.logger, prefix: "[Xray-stdout]"}
-	cmd.Stderr = &logWriter{logger: a.logger, prefix: "[Xray-stderr]"}
-
-	if err := cmd.Start(); err != nil {
+	if err := a.xrayManager.Start(ctx); err != nil {
 		a.logger.Error("启动 Xray 进程失败", logger.F("error", err.Error()))
 		return fmt.Errorf("failed to start xray: %w", err)
 	}
 
-	a.logger.Info("Xray 进程已启动", logger.F("pid", cmd.Process.Pid))
-
-	a.wg.Add(1)
-	go func() {
-		defer a.wg.Done()
-
-		done := make(chan error, 1)
-		go func() {
-			done <- cmd.Wait()
-		}()
-
-		select {
-		case <-a.ctx.Done():
-			if cmd.Process != nil {
-				a.logger.Info("Agent 停止，终止 Xray 进程")
-				_ = cmd.Process.Kill()
-			}
-			return
-		case err := <-done:
-			if err != nil {
-				a.logger.Error("Xray 进程异常退出", logger.F("error", err.Error()))
-			} else {
-				a.logger.Warn("Xray 进程正常退出")
-			}
-			a.triggerXraySelfHeal("xray process exited")
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if a.currentXrayStatus().Running {
+			a.logger.Info("Xray 启动成功")
+			return nil
 		}
-	}()
+		time.Sleep(200 * time.Millisecond)
+	}
 
-	time.Sleep(3 * time.Second)
-
-	if a.isXrayRunning() {
+	if a.currentXrayStatus().Running {
 		a.logger.Info("Xray 启动成功")
 		return nil
 	}
@@ -782,4 +733,57 @@ type logWriter struct {
 func (w *logWriter) Write(p []byte) (n int, err error) {
 	w.logger.Info(w.prefix, logger.F("output", string(p)))
 	return len(p), nil
+}
+
+func shouldUseSystemdXray(configPath string) bool {
+	clean := filepath.Clean(strings.TrimSpace(configPath))
+	switch clean {
+	case "/etc/xray/config.json", "/usr/local/etc/xray/config.json":
+		return true
+	default:
+		return false
+	}
+}
+
+func findConfiguredXrayPID(psOutput, configPath string) int {
+	cleanConfigPath := filepath.Clean(strings.TrimSpace(configPath))
+	if cleanConfigPath == "" {
+		return 0
+	}
+
+	var pids []int
+	for _, line := range strings.Split(psOutput, "\n") {
+		pid, args, ok := parseXrayProcessLine(line)
+		if !ok {
+			continue
+		}
+		if strings.Contains(args, cleanConfigPath) {
+			pids = append(pids, pid)
+		}
+	}
+
+	if len(pids) == 0 {
+		return 0
+	}
+	sort.Ints(pids)
+	return pids[0]
+}
+
+func parseXrayProcessLine(line string) (int, string, bool) {
+	fields := strings.Fields(strings.TrimSpace(line))
+	if len(fields) < 3 {
+		return 0, "", false
+	}
+
+	pid, err := strconv.Atoi(fields[0])
+	if err != nil || pid <= 0 {
+		return 0, "", false
+	}
+
+	comm := fields[1]
+	if comm != "xray" && !strings.HasSuffix(comm, "/xray") {
+		return 0, "", false
+	}
+
+	return pid, strings.Join(fields[2:], " "), true
 }

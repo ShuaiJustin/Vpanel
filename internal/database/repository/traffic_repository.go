@@ -3,6 +3,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -21,43 +22,7 @@ func NewTrafficRepository(db *gorm.DB) TrafficRepository {
 }
 
 func (r *trafficRepository) timelineGroupingClause(interval string) string {
-	dialect := r.db.Dialector.Name()
-
-	switch dialect {
-	case "sqlite":
-		switch interval {
-		case "hour":
-			return "strftime('%Y-%m-%d %H:00:00', recorded_at)"
-		case "day":
-			return "strftime('%Y-%m-%d', recorded_at)"
-		case "month":
-			return "strftime('%Y-%m', recorded_at)"
-		default:
-			return "strftime('%Y-%m-%d %H:00:00', recorded_at)"
-		}
-	case "mysql":
-		switch interval {
-		case "hour":
-			return "DATE_FORMAT(recorded_at, '%Y-%m-%d %H:00:00')"
-		case "day":
-			return "DATE_FORMAT(recorded_at, '%Y-%m-%d')"
-		case "month":
-			return "DATE_FORMAT(recorded_at, '%Y-%m')"
-		default:
-			return "DATE_FORMAT(recorded_at, '%Y-%m-%d %H:00:00')"
-		}
-	default:
-		switch interval {
-		case "hour":
-			return "TO_CHAR(recorded_at, 'YYYY-MM-DD HH24:00:00')"
-		case "day":
-			return "TO_CHAR(recorded_at, 'YYYY-MM-DD')"
-		case "month":
-			return "TO_CHAR(recorded_at, 'YYYY-MM')"
-		default:
-			return "TO_CHAR(recorded_at, 'YYYY-MM-DD HH24:00:00')"
-		}
-	}
+	return BuildTimeGroupingClause(r.db.Dialector.Name(), "recorded_at", interval)
 }
 
 // Create creates a new traffic record.
@@ -102,8 +67,9 @@ func (r *trafficRepository) GetByProxyID(ctx context.Context, proxyID int64, lim
 // GetByDateRange retrieves traffic records within a date range.
 func (r *trafficRepository) GetByDateRange(ctx context.Context, start, end time.Time) ([]*Traffic, error) {
 	var records []*Traffic
+	rangeArgs := BuildTimeRangeArgs(r.db.Dialector.Name(), start, end)
 	result := r.db.WithContext(ctx).
-		Where("recorded_at BETWEEN ? AND ?", start, end).
+		Where(BuildTimeRangeCondition(r.db.Dialector.Name(), "recorded_at"), rangeArgs...).
 		Order("recorded_at DESC").
 		Find(&records)
 	if result.Error != nil {
@@ -168,10 +134,11 @@ func (r *trafficRepository) GetTotalTrafficByPeriod(ctx context.Context, start, 
 		Upload   int64
 		Download int64
 	}
+	rangeArgs := BuildTimeRangeArgs(r.db.Dialector.Name(), start, end)
 	err = r.db.WithContext(ctx).
 		Model(&Traffic{}).
 		Select("COALESCE(SUM(upload), 0) as upload, COALESCE(SUM(download), 0) as download").
-		Where("recorded_at BETWEEN ? AND ?", start, end).
+		Where(BuildTimeRangeCondition(r.db.Dialector.Name(), "recorded_at"), rangeArgs...).
 		Scan(&result).Error
 	if err != nil {
 		return 0, 0, errors.NewDatabaseError("failed to get total traffic by period", err)
@@ -182,11 +149,12 @@ func (r *trafficRepository) GetTotalTrafficByPeriod(ctx context.Context, start, 
 // GetTrafficByProtocol retrieves traffic statistics grouped by protocol.
 func (r *trafficRepository) GetTrafficByProtocol(ctx context.Context, start, end time.Time) ([]*ProtocolTrafficStats, error) {
 	var results []*ProtocolTrafficStats
+	rangeArgs := BuildTimeRangeArgs(r.db.Dialector.Name(), start, end)
 	err := r.db.WithContext(ctx).
 		Table("traffic t").
 		Select("p.protocol, COUNT(DISTINCT p.id) as count, COALESCE(SUM(t.upload), 0) as upload, COALESCE(SUM(t.download), 0) as download").
 		Joins("JOIN proxies p ON t.proxy_id = p.id").
-		Where("t.recorded_at BETWEEN ? AND ?", start, end).
+		Where(BuildTimeRangeCondition(r.db.Dialector.Name(), "t.recorded_at"), rangeArgs...).
 		Group("p.protocol").
 		Scan(&results).Error
 	if err != nil {
@@ -197,12 +165,71 @@ func (r *trafficRepository) GetTrafficByProtocol(ctx context.Context, start, end
 
 // GetTrafficByUser retrieves traffic statistics grouped by user.
 func (r *trafficRepository) GetTrafficByUser(ctx context.Context, start, end time.Time, limit int) ([]*UserTrafficStats, error) {
+	dialect := r.db.Dialector.Name()
+	rangeCondition := BuildTimeRangeCondition(dialect, "t.recorded_at")
+	rangeArgs := BuildTimeRangeArgs(dialect, start, end)
+
+	if dialect == "sqlite" {
+		type sqliteUserTrafficStats struct {
+			UserID       int64
+			Username     string
+			Email        string
+			Upload       int64
+			Download     int64
+			ProxyCount   int64
+			TrafficLimit int64
+			LastActive   string `gorm:"column:last_active"`
+		}
+
+		var rows []*sqliteUserTrafficStats
+		selectClause := fmt.Sprintf(
+			"t.user_id, u.username, u.email, u.traffic_limit, COALESCE(SUM(t.upload), 0) as upload, COALESCE(SUM(t.download), 0) as download, COUNT(DISTINCT t.proxy_id) as proxy_count, %s as last_active",
+			BuildTimeMaxExpr(dialect, "t.recorded_at"),
+		)
+		query := r.db.WithContext(ctx).
+			Table("traffic t").
+			Select(selectClause).
+			Joins("JOIN users u ON t.user_id = u.id").
+			Where(rangeCondition, rangeArgs...).
+			Group("t.user_id, u.username, u.email, u.traffic_limit").
+			Order("(COALESCE(SUM(t.upload), 0) + COALESCE(SUM(t.download), 0)) DESC")
+
+		if limit > 0 {
+			query = query.Limit(limit)
+		}
+
+		if err := query.Scan(&rows).Error; err != nil {
+			return nil, errors.NewDatabaseError("failed to get traffic by user", err)
+		}
+
+		results := make([]*UserTrafficStats, 0, len(rows))
+		for _, row := range rows {
+			lastActive, err := ParseAggregatedTime(dialect, row.LastActive, time.Local)
+			if err != nil {
+				return nil, errors.NewDatabaseError("failed to parse last activity time", err)
+			}
+
+			results = append(results, &UserTrafficStats{
+				UserID:       row.UserID,
+				Username:     row.Username,
+				Email:        row.Email,
+				Upload:       row.Upload,
+				Download:     row.Download,
+				ProxyCount:   row.ProxyCount,
+				TrafficLimit: row.TrafficLimit,
+				LastActive:   lastActive,
+			})
+		}
+
+		return results, nil
+	}
+
 	var results []*UserTrafficStats
 	query := r.db.WithContext(ctx).
 		Table("traffic t").
 		Select("t.user_id, u.username, u.email, u.traffic_limit, COALESCE(SUM(t.upload), 0) as upload, COALESCE(SUM(t.download), 0) as download, COUNT(DISTINCT t.proxy_id) as proxy_count, MAX(t.recorded_at) as last_active").
 		Joins("JOIN users u ON t.user_id = u.id").
-		Where("t.recorded_at BETWEEN ? AND ?", start, end).
+		Where(rangeCondition, rangeArgs...).
 		Group("t.user_id, u.username, u.email, u.traffic_limit").
 		Order("(COALESCE(SUM(t.upload), 0) + COALESCE(SUM(t.download), 0)) DESC")
 
@@ -230,11 +257,12 @@ func (r *trafficRepository) GetTrafficTimeline(ctx context.Context, start, end t
 
 	groupClause := r.timelineGroupingClause(interval)
 	selectClause := groupClause + " as time, COALESCE(SUM(upload), 0) as upload, COALESCE(SUM(download), 0) as download"
+	rangeArgs := BuildTimeRangeArgs(r.db.Dialector.Name(), start, end)
 
 	err := r.db.WithContext(ctx).
 		Table("traffic").
 		Select(selectClause).
-		Where("recorded_at BETWEEN ? AND ?", start, end).
+		Where(BuildTimeRangeCondition(r.db.Dialector.Name(), "recorded_at"), rangeArgs...).
 		Group(groupClause).
 		Order("time ASC").
 		Scan(&tempResults).Error
@@ -245,25 +273,7 @@ func (r *trafficRepository) GetTrafficTimeline(ctx context.Context, start, end t
 	// Convert string times to time.Time
 	results := make([]*TrafficTimelinePoint, len(tempResults))
 	for i, temp := range tempResults {
-		// Parse the time string based on the format
-		var parsedTime time.Time
-		var parseErr error
-
-		switch interval {
-		case "hour":
-			parsedTime, parseErr = time.Parse("2006-01-02 15:00:00", temp.TimeStr)
-		case "day":
-			parsedTime, parseErr = time.Parse("2006-01-02", temp.TimeStr)
-		case "month":
-			parsedTime, parseErr = time.Parse("2006-01", temp.TimeStr+"-01")
-		default:
-			parsedTime, parseErr = time.Parse("2006-01-02 15:00:00", temp.TimeStr)
-		}
-
-		if parseErr != nil {
-			// If parsing fails, use a zero time
-			parsedTime = time.Time{}
-		}
+		parsedTime := parseTimelineBucket(temp.TimeStr, interval)
 
 		results[i] = &TrafficTimelinePoint{
 			Time:     parsedTime,
@@ -288,11 +298,12 @@ func (r *trafficRepository) GetTrafficTimelineByUser(ctx context.Context, userID
 
 	groupClause := r.timelineGroupingClause(interval)
 	selectClause := groupClause + " as time, COALESCE(SUM(upload), 0) as upload, COALESCE(SUM(download), 0) as download"
+	rangeArgs := BuildTimeRangeArgs(r.db.Dialector.Name(), start, end)
 
 	err := r.db.WithContext(ctx).
 		Table("traffic").
 		Select(selectClause).
-		Where("user_id = ? AND recorded_at BETWEEN ? AND ?", userID, start, end).
+		Where("user_id = ? AND "+BuildTimeRangeCondition(r.db.Dialector.Name(), "recorded_at"), append([]any{userID}, rangeArgs...)...).
 		Group(groupClause).
 		Order("time ASC").
 		Scan(&tempResults).Error
@@ -303,25 +314,7 @@ func (r *trafficRepository) GetTrafficTimelineByUser(ctx context.Context, userID
 	// Convert string times to time.Time
 	results := make([]*TrafficTimelinePoint, len(tempResults))
 	for i, temp := range tempResults {
-		// Parse the time string based on the format
-		var parsedTime time.Time
-		var parseErr error
-
-		switch interval {
-		case "hour":
-			parsedTime, parseErr = time.Parse("2006-01-02 15:00:00", temp.TimeStr)
-		case "day":
-			parsedTime, parseErr = time.Parse("2006-01-02", temp.TimeStr)
-		case "month":
-			parsedTime, parseErr = time.Parse("2006-01", temp.TimeStr+"-01")
-		default:
-			parsedTime, parseErr = time.Parse("2006-01-02 15:00:00", temp.TimeStr)
-		}
-
-		if parseErr != nil {
-			// If parsing fails, use a zero time
-			parsedTime = time.Time{}
-		}
+		parsedTime := parseTimelineBucket(temp.TimeStr, interval)
 
 		results[i] = &TrafficTimelinePoint{
 			Time:     parsedTime,
@@ -331,4 +324,27 @@ func (r *trafficRepository) GetTrafficTimelineByUser(ctx context.Context, userID
 	}
 
 	return results, nil
+}
+
+func parseTimelineBucket(raw, interval string) time.Time {
+	switch interval {
+	case "hour":
+		if parsed, err := time.ParseInLocation("2006-01-02 15:00:00", raw, time.Local); err == nil {
+			return parsed
+		}
+	case "day":
+		if parsed, err := time.ParseInLocation("2006-01-02", raw, time.Local); err == nil {
+			return parsed
+		}
+	case "month":
+		if parsed, err := time.ParseInLocation("2006-01", raw, time.Local); err == nil {
+			return parsed
+		}
+	default:
+		if parsed, err := time.ParseInLocation("2006-01-02 15:00:00", raw, time.Local); err == nil {
+			return parsed
+		}
+	}
+
+	return time.Time{}
 }

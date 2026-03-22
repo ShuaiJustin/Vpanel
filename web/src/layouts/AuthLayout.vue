@@ -1,27 +1,38 @@
 <template>
-  <div class="auth-layout" :class="{ 'dark-mode': isDarkMode }">
+  <div
+    class="auth-layout"
+    :class="{ 'dark-mode': isDarkMode }"
+  >
     <!-- 背景装饰 -->
     <div class="auth-background">
-      <div class="bg-shape bg-shape-1"></div>
-      <div class="bg-shape bg-shape-2"></div>
-      <div class="bg-shape bg-shape-3"></div>
+      <div class="bg-shape bg-shape-1" />
+      <div class="bg-shape bg-shape-2" />
+      <div class="bg-shape bg-shape-3" />
     </div>
     
     <!-- 主内容 -->
     <div class="auth-container">
       <!-- Logo 和标题 -->
       <div class="auth-header">
-        <router-link to="/user/login" class="logo">
+        <router-link
+          to="/user/login"
+          class="logo"
+        >
           <span class="logo-icon">V</span>
           <span class="logo-text">Panel</span>
         </router-link>
-        <p class="auth-subtitle">安全、高效的代理服务管理平台</p>
+        <p class="auth-subtitle">
+          安全、高效的代理服务管理平台
+        </p>
       </div>
       
       <!-- 表单区域 -->
       <div class="auth-card">
         <router-view v-slot="{ Component }">
-          <transition name="slide-fade" mode="out-in">
+          <transition
+            name="slide-fade"
+            mode="out-in"
+          >
             <component :is="Component" />
           </transition>
         </router-view>
@@ -30,11 +41,17 @@
       <!-- 底部链接 -->
       <div class="auth-footer">
         <div class="footer-links">
-          <router-link to="/user/help">帮助中心</router-link>
+          <router-link to="/user/help">
+            帮助中心
+          </router-link>
           <span class="divider">|</span>
-          <router-link to="/user/terms">服务条款</router-link>
+          <router-link to="/user/terms">
+            服务条款
+          </router-link>
           <span class="divider">|</span>
-          <router-link to="/user/privacy">隐私政策</router-link>
+          <router-link to="/user/privacy">
+            隐私政策
+          </router-link>
         </div>
         <div class="footer-copyright">
           © {{ currentYear }} V Panel. All rights reserved.

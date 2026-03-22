@@ -4,12 +4,25 @@
     <div class="panel-box">
       <div class="panel-header">
         <span class="panel-title">系统概览</span>
-        <el-button type="primary" size="small" @click="refreshStats">刷新</el-button>
+        <el-button
+          type="primary"
+          size="small"
+          @click="refreshStats"
+        >
+          刷新
+        </el-button>
       </div>
       <div class="stats-cards">
         <el-row :gutter="20">
-          <el-col :xs="24" :sm="12" :lg="8">
-            <el-card shadow="hover" class="stats-card cpu-card">
+          <el-col
+            :xs="24"
+            :sm="12"
+            :lg="8"
+          >
+            <el-card
+              shadow="hover"
+              class="stats-card cpu-card"
+            >
               <template #header>
                 <div class="card-header">
                   <span>CPU 使用率</span>
@@ -24,15 +37,25 @@
                   :color="getCpuColor"
                 />
               </div>
-              <div class="stats-details" v-if="cpuInfo.model">
+              <div
+                v-if="cpuInfo.model"
+                class="stats-details"
+              >
                 <p>核心数: {{ cpuInfo.cores }}</p>
                 <p>型号: {{ cpuInfo.model }}</p>
               </div>
             </el-card>
           </el-col>
           
-          <el-col :xs="24" :sm="12" :lg="8">
-            <el-card shadow="hover" class="stats-card memory-card">
+          <el-col
+            :xs="24"
+            :sm="12"
+            :lg="8"
+          >
+            <el-card
+              shadow="hover"
+              class="stats-card memory-card"
+            >
               <template #header>
                 <div class="card-header">
                   <span>内存使用率</span>
@@ -47,15 +70,25 @@
                   :color="getMemoryColor"
                 />
               </div>
-              <div class="stats-details" v-if="memoryInfo.total">
+              <div
+                v-if="memoryInfo.total"
+                class="stats-details"
+              >
                 <p>已用: {{ formatBytes(memoryInfo.used) }}</p>
                 <p>总计: {{ formatBytes(memoryInfo.total) }}</p>
               </div>
             </el-card>
           </el-col>
           
-          <el-col :xs="24" :sm="12" :lg="8">
-            <el-card shadow="hover" class="stats-card disk-card">
+          <el-col
+            :xs="24"
+            :sm="12"
+            :lg="8"
+          >
+            <el-card
+              shadow="hover"
+              class="stats-card disk-card"
+            >
               <template #header>
                 <div class="card-header">
                   <span>磁盘使用率</span>
@@ -70,7 +103,10 @@
                   :color="getDiskColor"
                 />
               </div>
-              <div class="stats-details" v-if="diskInfo.total">
+              <div
+                v-if="diskInfo.total"
+                class="stats-details"
+              >
                 <p>已用: {{ formatBytes(diskInfo.used) }}</p>
                 <p>总计: {{ formatBytes(diskInfo.total) }}</p>
               </div>
@@ -81,18 +117,36 @@
     </div>
     
     <!-- 系统信息 -->
-    <div class="panel-box" v-if="systemInfo.os">
+    <div
+      v-if="systemInfo.os"
+      class="panel-box"
+    >
       <div class="panel-header">
         <span class="panel-title">系统信息</span>
       </div>
       <div class="system-info-content">
-        <el-descriptions border :column="isMobile ? 1 : 3">
-          <el-descriptions-item label="操作系统">{{ systemInfo.os }}</el-descriptions-item>
-          <el-descriptions-item label="主机名">{{ systemInfo.hostname }}</el-descriptions-item>
-          <el-descriptions-item label="运行时间">{{ systemInfo.uptime }}</el-descriptions-item>
-          <el-descriptions-item label="内核版本">{{ systemInfo.kernel }}</el-descriptions-item>
-          <el-descriptions-item label="负载均衡">{{ systemInfo.load ? systemInfo.load.join(' / ') : '-' }}</el-descriptions-item>
-          <el-descriptions-item label="IP 地址">{{ systemInfo.ipAddress }}</el-descriptions-item>
+        <el-descriptions
+          border
+          :column="isMobile ? 1 : 3"
+        >
+          <el-descriptions-item label="操作系统">
+            {{ systemInfo.os }}
+          </el-descriptions-item>
+          <el-descriptions-item label="主机名">
+            {{ systemInfo.hostname }}
+          </el-descriptions-item>
+          <el-descriptions-item label="运行时间">
+            {{ systemInfo.uptime }}
+          </el-descriptions-item>
+          <el-descriptions-item label="内核版本">
+            {{ systemInfo.kernel }}
+          </el-descriptions-item>
+          <el-descriptions-item label="负载均衡">
+            {{ systemInfo.load ? systemInfo.load.join(' / ') : '-' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="IP 地址">
+            {{ systemInfo.ipAddress }}
+          </el-descriptions-item>
         </el-descriptions>
       </div>
     </div>
@@ -101,16 +155,33 @@
     <div class="panel-box">
       <div class="panel-header">
         <span class="panel-title">流量统计</span>
-        <el-radio-group v-model="trafficPeriod" class="period-switch" size="small" @change="changeTrafficPeriod">
-          <el-radio-button value="today">今日</el-radio-button>
-          <el-radio-button value="week">本周</el-radio-button>
-          <el-radio-button value="month">本月</el-radio-button>
+        <el-radio-group
+          v-model="trafficPeriod"
+          class="period-switch"
+          size="small"
+          @change="changeTrafficPeriod"
+        >
+          <el-radio-button value="today">
+            今日
+          </el-radio-button>
+          <el-radio-button value="week">
+            本周
+          </el-radio-button>
+          <el-radio-button value="month">
+            本月
+          </el-radio-button>
         </el-radio-group>
       </div>
       <div class="traffic-stats">
         <el-row :gutter="20">
-          <el-col :xs="24" :lg="12">
-            <el-card shadow="hover" class="traffic-card">
+          <el-col
+            :xs="24"
+            :lg="12"
+          >
+            <el-card
+              shadow="hover"
+              class="traffic-card"
+            >
               <template #header>
                 <div class="card-header">
                   <span>总流量</span>
@@ -118,18 +189,32 @@
               </template>
               <div class="traffic-info">
                 <div class="traffic-data">
-                  <div class="traffic-value">{{ formatTraffic(trafficStats.total) }}</div>
-                  <div class="traffic-label">总流量</div>
+                  <div class="traffic-value">
+                    {{ formatTraffic(trafficStats.total) }}
+                  </div>
+                  <div class="traffic-label">
+                    总流量
+                  </div>
                 </div>
                 <div class="traffic-chart">
-                  <el-progress type="circle" :percentage="Math.min(trafficStats.percentage, 100)" :width="isMobile ? 96 : 120"></el-progress>
+                  <el-progress
+                    type="circle"
+                    :percentage="Math.min(trafficStats.percentage, 100)"
+                    :width="isMobile ? 96 : 120"
+                  />
                 </div>
               </div>
             </el-card>
           </el-col>
           
-          <el-col :xs="24" :lg="12">
-            <el-card shadow="hover" class="traffic-card">
+          <el-col
+            :xs="24"
+            :lg="12"
+          >
+            <el-card
+              shadow="hover"
+              class="traffic-card"
+            >
               <template #header>
                 <div class="card-header">
                   <span>上/下行流量</span>
@@ -146,8 +231,14 @@
                 </div>
                 <div class="traffic-chart-small">
                   <div class="up-down-ratio">
-                    <div class="up-bar" :style="{ width: getUpPercentage + '%' }"></div>
-                    <div class="down-bar" :style="{ width: getDownPercentage + '%' }"></div>
+                    <div
+                      class="up-bar"
+                      :style="{ width: getUpPercentage + '%' }"
+                    />
+                    <div
+                      class="down-bar"
+                      :style="{ width: getDownPercentage + '%' }"
+                    />
                   </div>
                 </div>
               </div>
@@ -164,22 +255,45 @@
       </div>
       <div class="protocols-stats">
         <el-row :gutter="20">
-          <el-col :xs="24" :lg="12">
-            <el-card shadow="hover" class="protocol-card">
+          <el-col
+            :xs="24"
+            :lg="12"
+          >
+            <el-card
+              shadow="hover"
+              class="protocol-card"
+            >
               <template #header>
                 <div class="card-header">
                   <span>活跃协议</span>
                 </div>
               </template>
               <div class="protocol-list">
-                <el-table :data="protocolStats" border style="width: 100%">
-                  <el-table-column prop="protocol" label="协议类型">
+                <el-table
+                  :data="protocolStats"
+                  border
+                  style="width: 100%"
+                >
+                  <el-table-column
+                    prop="protocol"
+                    label="协议类型"
+                  >
                     <template #default="scope">
-                      <span class="protocol-tag" :class="scope.row.protocol">{{ scope.row.protocol }}</span>
+                      <span
+                        class="protocol-tag"
+                        :class="scope.row.protocol"
+                      >{{ scope.row.protocol }}</span>
                     </template>
                   </el-table-column>
-                  <el-table-column prop="count" label="数量" width="80"></el-table-column>
-                  <el-table-column label="状态" width="100">
+                  <el-table-column
+                    prop="count"
+                    label="数量"
+                    width="80"
+                  />
+                  <el-table-column
+                    label="状态"
+                    width="100"
+                  >
                     <template #default="scope">
                       <el-tag :type="scope.row.status === 'active' ? 'success' : 'danger'">
                         {{ scope.row.status === 'active' ? '运行中' : '已停止' }}
@@ -187,29 +301,55 @@
                     </template>
                   </el-table-column>
                 </el-table>
-                <el-empty v-if="protocolStats.length === 0" description="暂无协议数据" />
+                <el-empty
+                  v-if="protocolStats.length === 0"
+                  description="暂无协议数据"
+                />
               </div>
             </el-card>
           </el-col>
           
-          <el-col :xs="24" :lg="12">
-            <el-card shadow="hover" class="protocol-card">
+          <el-col
+            :xs="24"
+            :lg="12"
+          >
+            <el-card
+              shadow="hover"
+              class="protocol-card"
+            >
               <template #header>
                 <div class="card-header">
                   <span>流量分布</span>
                 </div>
               </template>
               <div class="protocol-chart">
-                <div class="traffic-distribution" v-if="protocolTraffic.length > 0">
-                  <div v-for="(item, index) in protocolTraffic" :key="index" class="traffic-bar">
-                    <div class="bar-label">{{ item.protocol }}</div>
-                    <div class="bar-container">
-                      <div class="bar-fill" :style="{ width: item.percentage + '%', backgroundColor: getProtocolColor(item.protocol) }"></div>
+                <div
+                  v-if="protocolTraffic.length > 0"
+                  class="traffic-distribution"
+                >
+                  <div
+                    v-for="(item, index) in protocolTraffic"
+                    :key="index"
+                    class="traffic-bar"
+                  >
+                    <div class="bar-label">
+                      {{ item.protocol }}
                     </div>
-                    <div class="bar-value">{{ formatTraffic(item.traffic) }}</div>
+                    <div class="bar-container">
+                      <div
+                        class="bar-fill"
+                        :style="{ width: item.percentage + '%', backgroundColor: getProtocolColor(item.protocol) }"
+                      />
+                    </div>
+                    <div class="bar-value">
+                      {{ formatTraffic(item.traffic) }}
+                    </div>
                   </div>
                 </div>
-                <el-empty v-else description="暂无流量数据" />
+                <el-empty
+                  v-else
+                  description="暂无流量数据"
+                />
               </div>
             </el-card>
           </el-col>
@@ -222,8 +362,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { systemApi } from '@/api'
-import api from '@/api'
+import { statsApi, systemApi } from '@/api'
 import { useViewport } from '@/composables/useViewport'
 
 const { isMobile } = useViewport()
@@ -269,6 +408,26 @@ const protocolStats = ref([])
 
 // 协议流量分布
 const protocolTraffic = ref([])
+
+const unwrapApiData = (response) => {
+  if (response && response.code === 200 && response.data !== undefined) {
+    return response.data
+  }
+  return response
+}
+
+const buildProtocolTraffic = (stats) => {
+  const items = Array.isArray(stats) ? stats : []
+  const totalTraffic = items.reduce((sum, item) => sum + (item?.traffic || 0), 0)
+
+  return items
+    .filter((item) => (item?.traffic || 0) > 0)
+    .map((item) => ({
+      protocol: item.protocol,
+      traffic: item.traffic || 0,
+      percentage: totalTraffic > 0 ? Math.round(((item.traffic || 0) / totalTraffic) * 1000) / 10 : 0
+    }))
+}
 
 // 计算上传流量百分比
 const getUpPercentage = computed(() => {
@@ -381,19 +540,25 @@ const loadSystemStatus = async () => {
 // 加载统计数据
 const loadStats = async () => {
   try {
-    const response = await api.get('/stats/dashboard')
-    console.log('Stats response:', response)
-    if (response) {
-      if (response.traffic) {
-        trafficStats.value = response.traffic
-      }
-      if (response.protocols) {
-        protocolStats.value = response.protocols
-      }
-      if (response.protocolTraffic) {
-        protocolTraffic.value = response.protocolTraffic
+    const [trafficResponse, protocolResponse] = await Promise.all([
+      statsApi.getTrafficStats({ period: trafficPeriod.value }),
+      statsApi.getProtocolStats({ period: trafficPeriod.value })
+    ])
+
+    const trafficData = unwrapApiData(trafficResponse)
+    if (trafficData) {
+      trafficStats.value = {
+        total: trafficData.total || 0,
+        up: trafficData.up || 0,
+        down: trafficData.down || 0,
+        limit: trafficData.limit || 0,
+        percentage: trafficData.percentage || 0
       }
     }
+
+    const protocolData = unwrapApiData(protocolResponse)
+    protocolStats.value = Array.isArray(protocolData) ? protocolData : []
+    protocolTraffic.value = buildProtocolTraffic(protocolStats.value)
   } catch (error) {
     console.error('Failed to load stats:', error)
   }
@@ -416,10 +581,25 @@ const refreshStats = () => {
 // 切换流量统计周期
 const changeTrafficPeriod = async (period) => {
   try {
-    const response = await api.get('/stats/traffic', { params: { period } })
-    if (response) {
-      trafficStats.value = response
+    const [trafficResponse, protocolResponse] = await Promise.all([
+      statsApi.getTrafficStats({ period }),
+      statsApi.getProtocolStats({ period })
+    ])
+
+    const trafficData = unwrapApiData(trafficResponse)
+    if (trafficData) {
+      trafficStats.value = {
+        total: trafficData.total || 0,
+        up: trafficData.up || 0,
+        down: trafficData.down || 0,
+        limit: trafficData.limit || 0,
+        percentage: trafficData.percentage || 0
+      }
     }
+
+    const protocolData = unwrapApiData(protocolResponse)
+    protocolStats.value = Array.isArray(protocolData) ? protocolData : []
+    protocolTraffic.value = buildProtocolTraffic(protocolStats.value)
   } catch (error) {
     console.error('Failed to load traffic data:', error)
   }

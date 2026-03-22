@@ -1,8 +1,15 @@
 <template>
-  <div class="skeleton-wrapper" :class="{ animated }">
+  <div
+    class="skeleton-wrapper"
+    :class="{ animated }"
+  >
     <!-- 卡片骨架 -->
     <template v-if="type === 'card'">
-      <div class="skeleton-card" v-for="i in count" :key="i">
+      <div
+        v-for="i in count"
+        :key="i"
+        class="skeleton-card"
+      >
         <div class="skeleton-card-header">
           <div class="skeleton-avatar" />
           <div class="skeleton-text-group">
@@ -11,7 +18,11 @@
           </div>
         </div>
         <div class="skeleton-card-body">
-          <div class="skeleton-text" v-for="j in 3" :key="j" />
+          <div
+            v-for="j in 3"
+            :key="j"
+            class="skeleton-text"
+          />
         </div>
       </div>
     </template>
@@ -20,18 +31,37 @@
     <template v-else-if="type === 'table'">
       <div class="skeleton-table">
         <div class="skeleton-table-header">
-          <div class="skeleton-cell" v-for="i in columns" :key="i" />
+          <div
+            v-for="i in columns"
+            :key="i"
+            class="skeleton-cell"
+          />
         </div>
-        <div class="skeleton-table-row" v-for="i in rows" :key="i">
-          <div class="skeleton-cell" v-for="j in columns" :key="j" />
+        <div
+          v-for="i in rows"
+          :key="i"
+          class="skeleton-table-row"
+        >
+          <div
+            v-for="j in columns"
+            :key="j"
+            class="skeleton-cell"
+          />
         </div>
       </div>
     </template>
 
     <!-- 列表骨架 -->
     <template v-else-if="type === 'list'">
-      <div class="skeleton-list-item" v-for="i in count" :key="i">
-        <div class="skeleton-avatar" v-if="showAvatar" />
+      <div
+        v-for="i in count"
+        :key="i"
+        class="skeleton-list-item"
+      >
+        <div
+          v-if="showAvatar"
+          class="skeleton-avatar"
+        />
         <div class="skeleton-text-group">
           <div class="skeleton-text skeleton-text-title" />
           <div class="skeleton-text skeleton-text-subtitle" />
@@ -41,7 +71,11 @@
 
     <!-- 统计卡片骨架 -->
     <template v-else-if="type === 'stats'">
-      <div class="skeleton-stats" v-for="i in count" :key="i">
+      <div
+        v-for="i in count"
+        :key="i"
+        class="skeleton-stats"
+      >
         <div class="skeleton-stats-icon" />
         <div class="skeleton-text-group">
           <div class="skeleton-text skeleton-text-number" />
@@ -60,7 +94,11 @@
 
     <!-- 表单骨架 -->
     <template v-else-if="type === 'form'">
-      <div class="skeleton-form-item" v-for="i in count" :key="i">
+      <div
+        v-for="i in count"
+        :key="i"
+        class="skeleton-form-item"
+      >
         <div class="skeleton-text skeleton-text-label" />
         <div class="skeleton-input" />
       </div>
@@ -68,7 +106,12 @@
 
     <!-- 默认文本骨架 -->
     <template v-else>
-      <div class="skeleton-text" v-for="i in count" :key="i" :style="{ width: getRandomWidth() }" />
+      <div
+        v-for="i in count"
+        :key="i"
+        class="skeleton-text"
+        :style="{ width: getRandomWidth() }"
+      />
     </template>
   </div>
 </template>
@@ -78,9 +121,7 @@
  * 骨架屏加载组件
  * 在数据加载时显示占位内容
  */
-import { computed } from 'vue'
-
-const props = defineProps({
+defineProps({
   // 骨架类型
   type: {
     type: String,

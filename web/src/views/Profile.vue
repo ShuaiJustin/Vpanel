@@ -8,8 +8,15 @@
     <div class="profile-content">
       <el-card class="profile-card">
         <div class="avatar-section">
-          <el-avatar :size="88" class="avatar">{{ avatarText }}</el-avatar>
-          <p class="avatar-hint">头像当前根据用户名首字母生成。</p>
+          <el-avatar
+            :size="88"
+            class="avatar"
+          >
+            {{ avatarText }}
+          </el-avatar>
+          <p class="avatar-hint">
+            头像当前根据用户名首字母生成。
+          </p>
         </div>
 
         <el-form
@@ -20,15 +27,28 @@
           class="profile-form"
         >
           <el-form-item label="用户名">
-            <el-input v-model="userForm.username" disabled />
+            <el-input
+              v-model="userForm.username"
+              disabled
+            />
           </el-form-item>
 
-          <el-form-item label="邮箱" prop="email">
-            <el-input v-model="userForm.email" placeholder="请输入邮箱" clearable />
+          <el-form-item
+            label="邮箱"
+            prop="email"
+          >
+            <el-input
+              v-model="userForm.email"
+              placeholder="请输入邮箱"
+              clearable
+            />
           </el-form-item>
 
           <el-form-item label="角色">
-            <el-input :value="roleLabel" disabled />
+            <el-input
+              :value="roleLabel"
+              disabled
+            />
           </el-form-item>
 
           <el-form-item label="上次登录">
@@ -40,8 +60,19 @@
           </el-form-item>
 
           <el-form-item>
-            <el-button type="primary" :loading="saving" @click="saveProfile">保存修改</el-button>
-            <el-button :disabled="saving" @click="resetForm">重置</el-button>
+            <el-button
+              type="primary"
+              :loading="saving"
+              @click="saveProfile"
+            >
+              保存修改
+            </el-button>
+            <el-button
+              :disabled="saving"
+              @click="resetForm"
+            >
+              重置
+            </el-button>
           </el-form-item>
         </el-form>
       </el-card>

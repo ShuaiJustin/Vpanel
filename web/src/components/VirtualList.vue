@@ -19,7 +19,10 @@
         class="virtual-list-item"
         :style="{ height: itemHeight + 'px' }"
       >
-        <slot :item="item.data" :index="item.index" />
+        <slot
+          :item="item.data"
+          :index="item.index"
+        />
       </div>
     </div>
   </div>
@@ -30,7 +33,7 @@
  * 虚拟滚动列表组件
  * 用于高效渲染大量数据列表
  */
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 const props = defineProps({
   // 数据列表

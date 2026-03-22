@@ -1,5 +1,9 @@
 <template>
-  <el-card class="trial-card" shadow="never" v-if="showCard">
+  <el-card
+    v-if="showCard"
+    class="trial-card"
+    shadow="never"
+  >
     <template #header>
       <div class="card-header">
         <span>
@@ -9,11 +13,16 @@
       </div>
     </template>
 
-    <div class="trial-content" v-loading="loading">
+    <div
+      v-loading="loading"
+      class="trial-content"
+    >
       <!-- 试用中状态 -->
       <template v-if="hasTrial && trialStatus === 'active'">
         <div class="trial-status active">
-          <el-icon class="status-icon"><Clock /></el-icon>
+          <el-icon class="status-icon">
+            <Clock />
+          </el-icon>
           <div class="status-info">
             <h4>试用中</h4>
             <p>剩余 {{ trial?.remaining_days || 0 }} 天</p>
@@ -44,7 +53,11 @@
           class="traffic-progress"
         />
 
-        <el-button type="primary" class="action-btn" @click="goToPlans">
+        <el-button
+          type="primary"
+          class="action-btn"
+          @click="goToPlans"
+        >
           <el-icon><ShoppingCart /></el-icon>
           升级为正式套餐
         </el-button>
@@ -53,14 +66,20 @@
       <!-- 试用已过期 -->
       <template v-else-if="hasTrial && trialStatus === 'expired'">
         <div class="trial-status expired">
-          <el-icon class="status-icon"><WarningFilled /></el-icon>
+          <el-icon class="status-icon">
+            <WarningFilled />
+          </el-icon>
           <div class="status-info">
             <h4>试用已过期</h4>
             <p>您的试用期已结束</p>
           </div>
         </div>
 
-        <el-button type="primary" class="action-btn" @click="goToPlans">
+        <el-button
+          type="primary"
+          class="action-btn"
+          @click="goToPlans"
+        >
           <el-icon><ShoppingCart /></el-icon>
           购买套餐
         </el-button>
@@ -69,7 +88,9 @@
       <!-- 试用已转化 -->
       <template v-else-if="hasTrial && trialStatus === 'converted'">
         <div class="trial-status converted">
-          <el-icon class="status-icon"><CircleCheck /></el-icon>
+          <el-icon class="status-icon">
+            <CircleCheck />
+          </el-icon>
           <div class="status-info">
             <h4>已升级为正式用户</h4>
             <p>感谢您的支持！</p>
@@ -80,7 +101,9 @@
       <!-- 可以激活试用 -->
       <template v-else-if="canActivate">
         <div class="trial-status available">
-          <el-icon class="status-icon"><Present /></el-icon>
+          <el-icon class="status-icon">
+            <Present />
+          </el-icon>
           <div class="status-info">
             <h4>免费试用</h4>
             <p>{{ trialConfig?.duration || 7 }} 天免费体验</p>
@@ -105,8 +128,8 @@
         <el-button 
           type="success" 
           class="action-btn"
-          @click="handleActivate"
           :loading="activating"
+          @click="handleActivate"
         >
           <el-icon><VideoPlay /></el-icon>
           立即开始试用
@@ -116,7 +139,9 @@
       <!-- 不能激活试用 -->
       <template v-else-if="!canActivate && message">
         <div class="trial-status unavailable">
-          <el-icon class="status-icon"><InfoFilled /></el-icon>
+          <el-icon class="status-icon">
+            <InfoFilled />
+          </el-icon>
           <div class="status-info">
             <h4>试用不可用</h4>
             <p>{{ message }}</p>

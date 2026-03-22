@@ -1,10 +1,16 @@
 <template>
-  <el-card class="quick-actions-card" shadow="never">
+  <el-card
+    class="quick-actions-card"
+    shadow="never"
+  >
     <template #header>
       <span>{{ title }}</span>
     </template>
 
-    <div class="actions-grid" :style="gridStyle">
+    <div
+      class="actions-grid"
+      :style="gridStyle"
+    >
       <div 
         v-for="action in actions" 
         :key="action.key"
@@ -12,7 +18,10 @@
         :class="{ disabled: action.disabled }"
         @click="handleClick(action)"
       >
-        <div class="action-icon" :style="{ color: action.color || '#409eff' }">
+        <div
+          class="action-icon"
+          :style="{ color: action.color || '#409eff' }"
+        >
           <el-icon><component :is="action.icon" /></el-icon>
         </div>
         <span class="action-label">{{ action.label }}</span>

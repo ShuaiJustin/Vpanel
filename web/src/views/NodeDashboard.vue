@@ -2,10 +2,18 @@
   <div class="node-dashboard-page">
     <div class="page-header">
       <div class="header-copy">
-        <p class="page-eyebrow">Node Cluster</p>
+        <p class="page-eyebrow">
+          Node Cluster
+        </p>
         <div class="title-row">
-          <h1 class="page-title">节点集群概览</h1>
-          <el-tag size="small" effect="plain" class="refresh-tag">
+          <h1 class="page-title">
+            节点集群概览
+          </h1>
+          <el-tag
+            size="small"
+            effect="plain"
+            class="refresh-tag"
+          >
             自动刷新 {{ autoRefreshSeconds }}s
           </el-tag>
         </div>
@@ -16,24 +24,36 @@
       </div>
 
       <div class="header-actions">
-        <el-button @click="refreshData" :loading="loading">
+        <el-button
+          :loading="loading"
+          @click="refreshData"
+        >
           <el-icon><Refresh /></el-icon>
           刷新
         </el-button>
         <el-button @click="router.push('/admin/node-groups')">
           节点分组
         </el-button>
-        <el-button type="primary" @click="router.push('/admin/nodes')">
+        <el-button
+          type="primary"
+          @click="router.push('/admin/nodes')"
+        >
           管理节点
         </el-button>
       </div>
     </div>
 
-    <el-card shadow="never" class="hero-card">
+    <el-card
+      shadow="never"
+      class="hero-card"
+    >
       <div class="hero-layout">
         <div class="hero-main">
           <div class="hero-status">
-            <div class="status-orb" :class="healthTone">
+            <div
+              class="status-orb"
+              :class="healthTone"
+            >
               <el-icon class="hero-status-icon">
                 <CircleCheck v-if="healthStatus === 'healthy'" />
                 <Warning v-else-if="healthStatus === 'warning'" />
@@ -41,9 +61,15 @@
               </el-icon>
             </div>
             <div class="hero-copy">
-              <div class="hero-kicker">集群状态</div>
-              <div class="hero-title">{{ healthStatusText }}</div>
-              <div class="hero-note">{{ healthSummaryText }}</div>
+              <div class="hero-kicker">
+                集群状态
+              </div>
+              <div class="hero-title">
+                {{ healthStatusText }}
+              </div>
+              <div class="hero-note">
+                {{ healthSummaryText }}
+              </div>
             </div>
           </div>
 
@@ -64,8 +90,12 @@
         </div>
 
         <div class="hero-side">
-          <div class="hero-percent">{{ healthPercentage }}%</div>
-          <div class="hero-percent-label">健康率</div>
+          <div class="hero-percent">
+            {{ healthPercentage }}%
+          </div>
+          <div class="hero-percent-label">
+            健康率
+          </div>
           <el-progress
             :percentage="healthPercentage"
             :show-text="false"
@@ -78,11 +108,18 @@
     </el-card>
 
     <div class="metrics-grid">
-      <el-card shadow="never" class="metric-card metric-card--good">
+      <el-card
+        shadow="never"
+        class="metric-card metric-card--good"
+      >
         <div class="metric-top">
           <div>
-            <div class="metric-label">健康节点</div>
-            <div class="metric-value">{{ onlineCount }}</div>
+            <div class="metric-label">
+              健康节点
+            </div>
+            <div class="metric-value">
+              {{ onlineCount }}
+            </div>
           </div>
           <div class="metric-icon-shell">
             <el-icon><CircleCheck /></el-icon>
@@ -93,11 +130,18 @@
         </div>
       </el-card>
 
-      <el-card shadow="never" class="metric-card">
+      <el-card
+        shadow="never"
+        class="metric-card"
+      >
         <div class="metric-top">
           <div>
-            <div class="metric-label">总节点数</div>
-            <div class="metric-value">{{ totalNodes }}</div>
+            <div class="metric-label">
+              总节点数
+            </div>
+            <div class="metric-value">
+              {{ totalNodes }}
+            </div>
           </div>
           <div class="metric-icon-shell">
             <el-icon><Monitor /></el-icon>
@@ -108,11 +152,18 @@
         </div>
       </el-card>
 
-      <el-card shadow="never" class="metric-card">
+      <el-card
+        shadow="never"
+        class="metric-card"
+      >
         <div class="metric-top">
           <div>
-            <div class="metric-label">活跃用户</div>
-            <div class="metric-value">{{ nodeStore.totalUsers }}</div>
+            <div class="metric-label">
+              活跃用户
+            </div>
+            <div class="metric-value">
+              {{ nodeStore.totalUsers }}
+            </div>
           </div>
           <div class="metric-icon-shell">
             <el-icon><User /></el-icon>
@@ -123,11 +174,18 @@
         </div>
       </el-card>
 
-      <el-card shadow="never" class="metric-card metric-card--latency">
+      <el-card
+        shadow="never"
+        class="metric-card metric-card--latency"
+      >
         <div class="metric-top">
           <div>
-            <div class="metric-label">平均延迟</div>
-            <div class="metric-value">{{ nodeStore.averageLatency }}ms</div>
+            <div class="metric-label">
+              平均延迟
+            </div>
+            <div class="metric-value">
+              {{ nodeStore.averageLatency }}ms
+            </div>
           </div>
           <div class="metric-icon-shell">
             <el-icon><Timer /></el-icon>
@@ -141,12 +199,19 @@
 
     <div class="dashboard-grid">
       <div class="dashboard-main">
-        <el-card shadow="never" class="panel-card">
+        <el-card
+          shadow="never"
+          class="panel-card"
+        >
           <template #header>
             <div class="card-header">
               <div>
-                <div class="card-title">运行分布</div>
-                <div class="card-subtitle">按节点运行状态快速判断集群稳定性</div>
+                <div class="card-title">
+                  运行分布
+                </div>
+                <div class="card-subtitle">
+                  按节点运行状态快速判断集群稳定性
+                </div>
               </div>
             </div>
           </template>
@@ -172,29 +237,52 @@
                 <span class="status-dot" />
                 <span>{{ segment.label }}</span>
               </div>
-              <div class="status-stat-value">{{ segment.count }}</div>
-              <div class="status-stat-meta">{{ segment.percentage }}%</div>
+              <div class="status-stat-value">
+                {{ segment.count }}
+              </div>
+              <div class="status-stat-meta">
+                {{ segment.percentage }}%
+              </div>
             </article>
           </div>
         </el-card>
 
-        <el-card shadow="never" class="panel-card">
+        <el-card
+          shadow="never"
+          class="panel-card"
+        >
           <template #header>
             <div class="card-header">
               <div>
-                <div class="card-title">重点节点</div>
-                <div class="card-subtitle">优先显示存在风险或当前负载更高的节点</div>
+                <div class="card-title">
+                  重点节点
+                </div>
+                <div class="card-subtitle">
+                  优先显示存在风险或当前负载更高的节点
+                </div>
               </div>
 
-              <el-radio-group v-model="nodeFilter" size="small">
-                <el-radio-button label="focus">重点</el-radio-button>
-                <el-radio-button label="online">在线</el-radio-button>
-                <el-radio-button label="all">全部</el-radio-button>
+              <el-radio-group
+                v-model="nodeFilter"
+                size="small"
+              >
+                <el-radio-button label="focus">
+                  重点
+                </el-radio-button>
+                <el-radio-button label="online">
+                  在线
+                </el-radio-button>
+                <el-radio-button label="all">
+                  全部
+                </el-radio-button>
               </el-radio-group>
             </div>
           </template>
 
-          <div v-if="focusNodes.length" class="focus-list">
+          <div
+            v-if="focusNodes.length"
+            class="focus-list"
+          >
             <article
               v-for="node in focusNodes"
               :key="node.id"
@@ -216,7 +304,10 @@
                 </div>
 
                 <div class="focus-node-badges">
-                  <el-tag :type="getStatusType(node.status)" size="small">
+                  <el-tag
+                    :type="getStatusType(node.status)"
+                    size="small"
+                  >
                     {{ getStatusText(node.status) }}
                   </el-tag>
                   <el-tag
@@ -229,7 +320,10 @@
                 </div>
               </div>
 
-              <div v-if="node.issues.length" class="issue-list">
+              <div
+                v-if="node.issues.length"
+                class="issue-list"
+              >
                 <span
                   v-for="issue in node.issues"
                   :key="`${node.id}-${issue.label}`"
@@ -256,7 +350,10 @@
               <div class="focus-node-stats">
                 <div class="focus-stat">
                   <span class="focus-stat-label">延迟</span>
-                  <span class="focus-stat-value" :class="getLatencyClass(node.latency)">
+                  <span
+                    class="focus-stat-value"
+                    :class="getLatencyClass(node.latency)"
+                  >
                     {{ node.latency ? `${node.latency}ms` : "未上报" }}
                   </span>
                 </div>
@@ -283,20 +380,33 @@
       </div>
 
       <div class="dashboard-side">
-        <el-card shadow="never" class="panel-card">
+        <el-card
+          shadow="never"
+          class="panel-card"
+        >
           <template #header>
             <div class="card-header">
               <div>
-                <div class="card-title">分组覆盖</div>
-                <div class="card-subtitle">查看核心分组承载的节点与用户规模</div>
+                <div class="card-title">
+                  分组覆盖
+                </div>
+                <div class="card-subtitle">
+                  查看核心分组承载的节点与用户规模
+                </div>
               </div>
-              <el-button link @click="router.push('/admin/node-groups')">
+              <el-button
+                link
+                @click="router.push('/admin/node-groups')"
+              >
                 查看全部
               </el-button>
             </div>
           </template>
 
-          <div v-if="groupHighlights.length" class="group-list">
+          <div
+            v-if="groupHighlights.length"
+            class="group-list"
+          >
             <article
               v-for="group in groupHighlights"
               :key="group.id"
@@ -305,12 +415,16 @@
             >
               <div class="group-card-head">
                 <div>
-                  <div class="group-name">{{ group.name }}</div>
+                  <div class="group-name">
+                    {{ group.name }}
+                  </div>
                   <div class="group-meta">
                     {{ group.region || "未标记地区" }} · {{ formatStrategy(group.strategy) }}
                   </div>
                 </div>
-                <div class="group-pill">{{ group.nodeCount }} 节点</div>
+                <div class="group-pill">
+                  {{ group.nodeCount }} 节点
+                </div>
               </div>
 
               <div class="group-metric">
@@ -340,17 +454,27 @@
           />
         </el-card>
 
-        <el-card shadow="never" class="panel-card">
+        <el-card
+          shadow="never"
+          class="panel-card"
+        >
           <template #header>
             <div class="card-header">
               <div>
-                <div class="card-title">运维提醒</div>
-                <div class="card-subtitle">按风险优先级整理当前需要处理的事项</div>
+                <div class="card-title">
+                  运维提醒
+                </div>
+                <div class="card-subtitle">
+                  按风险优先级整理当前需要处理的事项
+                </div>
               </div>
             </div>
           </template>
 
-          <div v-if="alertItems.length" class="alert-list">
+          <div
+            v-if="alertItems.length"
+            class="alert-list"
+          >
             <article
               v-for="alert in alertItems"
               :key="alert.id"
@@ -365,7 +489,9 @@
               </div>
 
               <div class="alert-copy">
-                <div class="alert-title">{{ alert.message }}</div>
+                <div class="alert-title">
+                  {{ alert.message }}
+                </div>
                 <div class="alert-meta">
                   {{ alert.nodeName }}
                   <span v-if="alert.time">· {{ formatRelativeTime(alert.time) }}</span>
@@ -381,12 +507,19 @@
           />
         </el-card>
 
-        <el-card shadow="never" class="panel-card">
+        <el-card
+          shadow="never"
+          class="panel-card"
+        >
           <template #header>
             <div class="card-header">
               <div>
-                <div class="card-title">今日流量</div>
-                <div class="card-subtitle">按自然日聚合当前全部节点上报流量</div>
+                <div class="card-title">
+                  今日流量
+                </div>
+                <div class="card-subtitle">
+                  按自然日聚合当前全部节点上报流量
+                </div>
               </div>
             </div>
           </template>
@@ -1493,7 +1626,7 @@ onUnmounted(() => {
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
   .node-dashboard-page {
     padding: 16px;
   }

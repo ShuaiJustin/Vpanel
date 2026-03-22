@@ -177,12 +177,12 @@ func (r *nodeTrafficRepository) GetByUserID(ctx context.Context, userID int64, l
 	return traffic, nil
 }
 
-
 // GetByDateRange retrieves traffic records within a date range.
 func (r *nodeTrafficRepository) GetByDateRange(ctx context.Context, start, end time.Time) ([]*NodeTraffic, error) {
 	var traffic []*NodeTraffic
+	rangeArgs := BuildTimeRangeArgs(r.db.Dialector.Name(), start, end)
 	result := r.db.WithContext(ctx).
-		Where("recorded_at >= ? AND recorded_at <= ?", start, end).
+		Where(BuildTimeRangeCondition(r.db.Dialector.Name(), "recorded_at"), rangeArgs...).
 		Order("recorded_at DESC").
 		Find(&traffic)
 	if result.Error != nil {
@@ -194,8 +194,9 @@ func (r *nodeTrafficRepository) GetByDateRange(ctx context.Context, start, end t
 // GetByNodeAndDateRange retrieves traffic records for a node within a date range.
 func (r *nodeTrafficRepository) GetByNodeAndDateRange(ctx context.Context, nodeID int64, start, end time.Time) ([]*NodeTraffic, error) {
 	var traffic []*NodeTraffic
+	rangeArgs := BuildTimeRangeArgs(r.db.Dialector.Name(), start, end)
 	result := r.db.WithContext(ctx).
-		Where("node_id = ? AND recorded_at >= ? AND recorded_at <= ?", nodeID, start, end).
+		Where("node_id = ? AND "+BuildTimeRangeCondition(r.db.Dialector.Name(), "recorded_at"), append([]any{nodeID}, rangeArgs...)...).
 		Order("recorded_at DESC").
 		Find(&traffic)
 	if result.Error != nil {
@@ -207,8 +208,9 @@ func (r *nodeTrafficRepository) GetByNodeAndDateRange(ctx context.Context, nodeI
 // GetByUserAndDateRange retrieves traffic records for a user within a date range.
 func (r *nodeTrafficRepository) GetByUserAndDateRange(ctx context.Context, userID int64, start, end time.Time) ([]*NodeTraffic, error) {
 	var traffic []*NodeTraffic
+	rangeArgs := BuildTimeRangeArgs(r.db.Dialector.Name(), start, end)
 	result := r.db.WithContext(ctx).
-		Where("user_id = ? AND recorded_at >= ? AND recorded_at <= ?", userID, start, end).
+		Where("user_id = ? AND "+BuildTimeRangeCondition(r.db.Dialector.Name(), "recorded_at"), append([]any{userID}, rangeArgs...)...).
 		Order("recorded_at DESC").
 		Find(&traffic)
 	if result.Error != nil {
@@ -278,10 +280,11 @@ func (r *nodeTrafficRepository) GetTotalByNodeInRange(ctx context.Context, nodeI
 		Download int64
 	}
 	var res result
+	rangeArgs := BuildTimeRangeArgs(r.db.Dialector.Name(), start, end)
 	err = r.db.WithContext(ctx).
 		Model(&NodeTraffic{}).
 		Select("COALESCE(SUM(upload), 0) as upload, COALESCE(SUM(download), 0) as download").
-		Where("node_id = ? AND recorded_at >= ? AND recorded_at <= ?", nodeID, start, end).
+		Where("node_id = ? AND "+BuildTimeRangeCondition(r.db.Dialector.Name(), "recorded_at"), append([]any{nodeID}, rangeArgs...)...).
 		Scan(&res).Error
 	if err != nil {
 		return 0, 0, errors.NewDatabaseError("failed to get total traffic by node in range", err)
@@ -296,10 +299,11 @@ func (r *nodeTrafficRepository) GetTotalByUserInRange(ctx context.Context, userI
 		Download int64
 	}
 	var res result
+	rangeArgs := BuildTimeRangeArgs(r.db.Dialector.Name(), start, end)
 	err = r.db.WithContext(ctx).
 		Model(&NodeTraffic{}).
 		Select("COALESCE(SUM(upload), 0) as upload, COALESCE(SUM(download), 0) as download").
-		Where("user_id = ? AND recorded_at >= ? AND recorded_at <= ?", userID, start, end).
+		Where("user_id = ? AND "+BuildTimeRangeCondition(r.db.Dialector.Name(), "recorded_at"), append([]any{userID}, rangeArgs...)...).
 		Scan(&res).Error
 	if err != nil {
 		return 0, 0, errors.NewDatabaseError("failed to get total traffic by user in range", err)
@@ -307,14 +311,14 @@ func (r *nodeTrafficRepository) GetTotalByUserInRange(ctx context.Context, userI
 	return res.Upload, res.Download, nil
 }
 
-
 // GetStatsByNode returns traffic statistics grouped by node.
 func (r *nodeTrafficRepository) GetStatsByNode(ctx context.Context, start, end time.Time) ([]*NodeTrafficStats, error) {
 	var stats []*NodeTrafficStats
+	rangeArgs := BuildTimeRangeArgs(r.db.Dialector.Name(), start, end)
 	err := r.db.WithContext(ctx).
 		Model(&NodeTraffic{}).
 		Select("node_id, COALESCE(SUM(upload), 0) as upload, COALESCE(SUM(download), 0) as download, COALESCE(SUM(upload + download), 0) as total").
-		Where("recorded_at >= ? AND recorded_at <= ?", start, end).
+		Where(BuildTimeRangeCondition(r.db.Dialector.Name(), "recorded_at"), rangeArgs...).
 		Group("node_id").
 		Scan(&stats).Error
 	if err != nil {
@@ -326,10 +330,11 @@ func (r *nodeTrafficRepository) GetStatsByNode(ctx context.Context, start, end t
 // GetStatsByUser returns traffic statistics for users on a specific node.
 func (r *nodeTrafficRepository) GetStatsByUser(ctx context.Context, nodeID int64, start, end time.Time, limit int) ([]*UserNodeTrafficStats, error) {
 	var stats []*UserNodeTrafficStats
+	rangeArgs := BuildTimeRangeArgs(r.db.Dialector.Name(), start, end)
 	query := r.db.WithContext(ctx).
 		Model(&NodeTraffic{}).
 		Select("user_id, node_id, COALESCE(SUM(upload), 0) as upload, COALESCE(SUM(download), 0) as download").
-		Where("node_id = ? AND recorded_at >= ? AND recorded_at <= ?", nodeID, start, end).
+		Where("node_id = ? AND "+BuildTimeRangeCondition(r.db.Dialector.Name(), "recorded_at"), append([]any{nodeID}, rangeArgs...)...).
 		Group("user_id, node_id").
 		Order("(upload + download) DESC")
 	if limit > 0 {
@@ -345,11 +350,12 @@ func (r *nodeTrafficRepository) GetStatsByUser(ctx context.Context, nodeID int64
 // GetStatsByGroup returns traffic statistics grouped by node group.
 func (r *nodeTrafficRepository) GetStatsByGroup(ctx context.Context, start, end time.Time) ([]*GroupTrafficStats, error) {
 	var stats []*GroupTrafficStats
+	rangeArgs := BuildTimeRangeArgs(r.db.Dialector.Name(), start, end)
 	err := r.db.WithContext(ctx).
 		Model(&NodeTraffic{}).
 		Select("node_group_members.group_id, COALESCE(SUM(node_traffic.upload), 0) as upload, COALESCE(SUM(node_traffic.download), 0) as download").
 		Joins("JOIN node_group_members ON node_group_members.node_id = node_traffic.node_id").
-		Where("node_traffic.recorded_at >= ? AND node_traffic.recorded_at <= ?", start, end).
+		Where(BuildTimeRangeCondition(r.db.Dialector.Name(), "node_traffic.recorded_at"), rangeArgs...).
 		Group("node_group_members.group_id").
 		Scan(&stats).Error
 	if err != nil {
@@ -365,10 +371,11 @@ func (r *nodeTrafficRepository) GetTotalTraffic(ctx context.Context, start, end 
 		Download int64
 	}
 	var res result
+	rangeArgs := BuildTimeRangeArgs(r.db.Dialector.Name(), start, end)
 	err = r.db.WithContext(ctx).
 		Model(&NodeTraffic{}).
 		Select("COALESCE(SUM(upload), 0) as upload, COALESCE(SUM(download), 0) as download").
-		Where("recorded_at >= ? AND recorded_at <= ?", start, end).
+		Where(BuildTimeRangeCondition(r.db.Dialector.Name(), "recorded_at"), rangeArgs...).
 		Scan(&res).Error
 	if err != nil {
 		return 0, 0, errors.NewDatabaseError("failed to get total traffic", err)

@@ -2,8 +2,12 @@
   <div class="admin-orders-page">
     <div class="page-header">
       <div class="page-heading">
-        <h1 class="page-title">订单管理</h1>
-        <p class="page-subtitle">查看订单、处理状态流转和执行人工退款</p>
+        <h1 class="page-title">
+          订单管理
+        </h1>
+        <p class="page-subtitle">
+          查看订单、处理状态流转和执行人工退款
+        </p>
       </div>
     </div>
 
@@ -28,14 +32,37 @@
 
     <div class="toolbar-card orders-toolbar-card">
       <div class="orders-toolbar">
-        <el-select v-model="filter.status" placeholder="订单状态" clearable>
-          <el-option label="待支付" value="pending" />
-          <el-option label="已支付" value="paid" />
-          <el-option label="已完成" value="completed" />
-          <el-option label="已取消" value="cancelled" />
-          <el-option label="已退款" value="refunded" />
+        <el-select
+          v-model="filter.status"
+          placeholder="订单状态"
+          clearable
+        >
+          <el-option
+            label="待支付"
+            value="pending"
+          />
+          <el-option
+            label="已支付"
+            value="paid"
+          />
+          <el-option
+            label="已完成"
+            value="completed"
+          />
+          <el-option
+            label="已取消"
+            value="cancelled"
+          />
+          <el-option
+            label="已退款"
+            value="refunded"
+          />
         </el-select>
-        <el-select v-model="filter.paymentMethod" placeholder="支付方式" clearable>
+        <el-select
+          v-model="filter.paymentMethod"
+          placeholder="支付方式"
+          clearable
+        >
           <el-option
             v-for="method in paymentMethods"
             :key="method"
@@ -75,8 +102,15 @@
           placeholder="最高实付"
         />
         <div class="filter-actions">
-          <el-button type="primary" @click="applyFilters">搜索</el-button>
-          <el-button @click="resetFilters">重置</el-button>
+          <el-button
+            type="primary"
+            @click="applyFilters"
+          >
+            搜索
+          </el-button>
+          <el-button @click="resetFilters">
+            重置
+          </el-button>
         </div>
       </div>
       <div class="toolbar-actions">
@@ -85,8 +119,18 @@
     </div>
 
     <div class="table-shell">
-      <el-table :data="orders" v-loading="loading" border stripe class="orders-table" row-key="id">
-        <el-table-column label="订单对象" min-width="300">
+      <el-table
+        v-loading="loading"
+        :data="orders"
+        border
+        stripe
+        class="orders-table"
+        row-key="id"
+      >
+        <el-table-column
+          label="订单对象"
+          min-width="300"
+        >
           <template #default="{ row }">
             <div class="entity-cell">
               <div class="entity-cell__header">
@@ -104,7 +148,10 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="金额明细" min-width="230">
+        <el-table-column
+          label="金额明细"
+          min-width="230"
+        >
           <template #default="{ row }">
             <div class="stack-cell">
               <div class="stack-item">
@@ -115,11 +162,17 @@
                 <span class="stack-label">原价</span>
                 <span class="stack-value">¥{{ formatPrice(row.original_amount) }}</span>
               </div>
-              <div v-if="row.discount_amount > 0" class="stack-item">
+              <div
+                v-if="row.discount_amount > 0"
+                class="stack-item"
+              >
                 <span class="stack-label">优惠抵扣</span>
                 <span class="stack-value is-success">-¥{{ formatPrice(row.discount_amount) }}</span>
               </div>
-              <div v-if="row.balance_used > 0" class="stack-item">
+              <div
+                v-if="row.balance_used > 0"
+                class="stack-item"
+              >
                 <span class="stack-label">余额抵扣</span>
                 <span class="stack-value is-success">-¥{{ formatPrice(row.balance_used) }}</span>
               </div>
@@ -127,7 +180,10 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="支付与状态" min-width="230">
+        <el-table-column
+          label="支付与状态"
+          min-width="230"
+        >
           <template #default="{ row }">
             <div class="stack-cell">
               <div class="stack-item">
@@ -146,10 +202,21 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" min-width="200" align="right" fixed="right">
+        <el-table-column
+          label="操作"
+          min-width="200"
+          align="right"
+          fixed="right"
+        >
           <template #default="{ row }">
             <div class="operation-btns">
-              <el-button size="small" class="row-action row-action--primary" @click="viewDetail(row)">详情</el-button>
+              <el-button
+                size="small"
+                class="row-action row-action--primary"
+                @click="viewDetail(row)"
+              >
+                详情
+              </el-button>
               <el-button
                 v-if="getStatusAction(row)"
                 size="small"
@@ -173,7 +240,10 @@
       </el-table>
     </div>
 
-    <div v-if="pagination.total > 0" class="pagination-container">
+    <div
+      v-if="pagination.total > 0"
+      class="pagination-container"
+    >
       <el-pagination
         v-model:current-page="pagination.page"
         v-model:page-size="pagination.pageSize"
@@ -185,32 +255,72 @@
       />
     </div>
 
-    <el-dialog v-model="detailVisible" title="订单详情" :width="detailDialogWidth">
-      <el-descriptions v-if="currentOrder" :column="detailColumns" border>
-        <el-descriptions-item label="订单号">{{ currentOrder.order_no }}</el-descriptions-item>
-        <el-descriptions-item label="用户 ID">{{ currentOrder.user_id }}</el-descriptions-item>
+    <el-dialog
+      v-model="detailVisible"
+      title="订单详情"
+      :width="detailDialogWidth"
+    >
+      <el-descriptions
+        v-if="currentOrder"
+        :column="detailColumns"
+        border
+      >
+        <el-descriptions-item label="订单号">
+          {{ currentOrder.order_no }}
+        </el-descriptions-item>
+        <el-descriptions-item label="用户 ID">
+          {{ currentOrder.user_id }}
+        </el-descriptions-item>
         <el-descriptions-item label="套餐">
           {{ currentOrder.plan_name || `套餐 #${currentOrder.plan_id}` }}
         </el-descriptions-item>
         <el-descriptions-item label="订单状态">
-          <el-tag :type="getStatusType(currentOrder.status)" size="small">
+          <el-tag
+            :type="getStatusType(currentOrder.status)"
+            size="small"
+          >
             {{ getStatusLabel(currentOrder.status) }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="原价">¥{{ formatPrice(currentOrder.original_amount) }}</el-descriptions-item>
-        <el-descriptions-item label="优惠">-¥{{ formatPrice(currentOrder.discount_amount) }}</el-descriptions-item>
-        <el-descriptions-item label="余额抵扣">-¥{{ formatPrice(currentOrder.balance_used) }}</el-descriptions-item>
-        <el-descriptions-item label="实付">¥{{ formatPrice(currentOrder.pay_amount) }}</el-descriptions-item>
-        <el-descriptions-item label="支付方式">{{ getMethodLabel(currentOrder.payment_method) || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="支付流水号">{{ currentOrder.payment_no || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="创建时间">{{ currentOrder.created_at }}</el-descriptions-item>
-        <el-descriptions-item label="支付时间">{{ currentOrder.paid_at || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="过期时间">{{ currentOrder.expired_at || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="原价">
+          ¥{{ formatPrice(currentOrder.original_amount) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="优惠">
+          -¥{{ formatPrice(currentOrder.discount_amount) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="余额抵扣">
+          -¥{{ formatPrice(currentOrder.balance_used) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="实付">
+          ¥{{ formatPrice(currentOrder.pay_amount) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="支付方式">
+          {{ getMethodLabel(currentOrder.payment_method) || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="支付流水号">
+          {{ currentOrder.payment_no || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="创建时间">
+          {{ currentOrder.created_at }}
+        </el-descriptions-item>
+        <el-descriptions-item label="支付时间">
+          {{ currentOrder.paid_at || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="过期时间">
+          {{ currentOrder.expired_at || '-' }}
+        </el-descriptions-item>
       </el-descriptions>
     </el-dialog>
 
-    <el-dialog v-model="refundVisible" title="订单退款" :width="refundDialogWidth">
-      <div v-if="currentOrder" class="refund-summary">
+    <el-dialog
+      v-model="refundVisible"
+      title="订单退款"
+      :width="refundDialogWidth"
+    >
+      <div
+        v-if="currentOrder"
+        class="refund-summary"
+      >
         <p>订单号：{{ currentOrder.order_no }}</p>
         <p>实付金额：¥{{ formatPrice(currentOrder.pay_amount + currentOrder.balance_used) }}</p>
         <p>当前状态：{{ getStatusLabel(currentOrder.status) }}</p>
@@ -226,7 +336,9 @@
             controls-position="right"
             style="width: 100%"
           />
-          <div class="form-tip">填 `0` 表示全额退款，最大可退 ¥{{ refundMaxAmount.toFixed(2) }}</div>
+          <div class="form-tip">
+            填 `0` 表示全额退款，最大可退 ¥{{ refundMaxAmount.toFixed(2) }}
+          </div>
         </el-form-item>
         <el-form-item label="退款原因">
           <el-input
@@ -240,8 +352,14 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="refundVisible = false">取消</el-button>
-        <el-button type="danger" :loading="submittingRefund" @click="submitRefund">
+        <el-button @click="refundVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="danger"
+          :loading="submittingRefund"
+          @click="submitRefund"
+        >
           确认退款
         </el-button>
       </template>
@@ -255,7 +373,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ordersApi, paymentsApi } from '@/api/index'
 import { useViewport } from '@/composables/useViewport'
 
-const { isMobile, viewportWidth } = useViewport({ mobileBreakpoint: 768, tabletBreakpoint: 1280 })
+const { isMobile } = useViewport()
 
 const loading = ref(false)
 const orders = ref([])

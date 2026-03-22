@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -14,6 +16,25 @@ import (
 
 // Protocol implements the VMess protocol.
 type Protocol struct{}
+
+type linkConfig struct {
+	V             string `json:"v"`
+	PS            string `json:"ps"`
+	Add           string `json:"add"`
+	Port          string `json:"port"`
+	ID            string `json:"id"`
+	Aid           string `json:"aid"`
+	Scy           string `json:"scy"`
+	Net           string `json:"net"`
+	Type          string `json:"type"`
+	Host          string `json:"host"`
+	Path          string `json:"path"`
+	TLS           string `json:"tls"`
+	SNI           string `json:"sni"`
+	ALPN          string `json:"alpn,omitempty"`
+	FP            string `json:"fp,omitempty"`
+	AllowInsecure bool   `json:"allowInsecure,omitempty"`
+}
 
 // New creates a new VMess protocol.
 func New() *Protocol {
@@ -77,22 +98,23 @@ func (p *Protocol) GenerateLink(settings *proxy.Settings) (string, error) {
 		tlsValue = "tls"
 	}
 
-	linkData := map[string]any{
-		"v":             "2",
-		"ps":            settings.Name,
-		"add":           server,
-		"port":          settings.Port,
-		"id":            userID,
-		"aid":           settings.GetInt("alterId"),
-		"net":           settings.GetString("network"),
-		"type":          settings.GetString("type"),
-		"host":          settings.GetString("host"),
-		"path":          settings.GetString("path"),
-		"tls":           tlsValue,
-		"sni":           proxy.ResolveSNI(settings.Settings),
-		"alpn":          settings.GetString("alpn"),
-		"fp":            settings.GetString("fingerprint"),
-		"allowInsecure": settings.GetBool("allowInsecure"),
+	linkData := linkConfig{
+		V:             "2",
+		PS:            settings.Name,
+		Add:           server,
+		Port:          strconv.Itoa(settings.Port),
+		ID:            userID,
+		Aid:           strconv.Itoa(settings.GetInt("alterId")),
+		Scy:           proxy.ResolveVMessCipher(settings.Settings),
+		Net:           firstNonEmpty(settings.GetString("network"), "tcp"),
+		Type:          firstNonEmpty(settings.GetString("type"), "none"),
+		Host:          settings.GetString("host"),
+		Path:          settings.GetString("path"),
+		TLS:           tlsValue,
+		SNI:           proxy.ResolveSNI(settings.Settings),
+		ALPN:          settings.GetString("alpn"),
+		FP:            firstNonEmpty(settings.GetString("fingerprint"), settings.GetString("fp")),
+		AllowInsecure: settings.GetBool("allowInsecure"),
 	}
 
 	jsonData, err := json.Marshal(linkData)
@@ -120,15 +142,7 @@ func (p *Protocol) ParseLink(link string) (*proxy.Settings, error) {
 		return nil, errors.NewValidationError("failed to parse vmess link", err)
 	}
 
-	port := 0
-	if v, ok := linkData["port"]; ok {
-		switch val := v.(type) {
-		case float64:
-			port = int(val)
-		case int:
-			port = val
-		}
-	}
+	port := getInt(linkData, "port")
 
 	settings := &proxy.Settings{
 		Name:     getString(linkData, "ps"),
@@ -136,16 +150,18 @@ func (p *Protocol) ParseLink(link string) (*proxy.Settings, error) {
 		Host:     getString(linkData, "add"),
 		Port:     port,
 		Settings: map[string]any{
-			"uuid":    getString(linkData, "id"),
-			"alterId": getInt(linkData, "aid"),
-			"network": getString(linkData, "net"),
-			"type":    getString(linkData, "type"),
-			"host":    getString(linkData, "host"),
-			"path":    getString(linkData, "path"),
-			"tls":     getString(linkData, "tls"),
-			"sni":     getString(linkData, "sni"),
-			"alpn":    getString(linkData, "alpn"),
-			"fp":      getString(linkData, "fp"),
+			"uuid":          getString(linkData, "id"),
+			"alterId":       getInt(linkData, "aid"),
+			"network":       getString(linkData, "net"),
+			"type":          getString(linkData, "type"),
+			"host":          getString(linkData, "host"),
+			"path":          getString(linkData, "path"),
+			"tls":           getString(linkData, "tls"),
+			"sni":           getString(linkData, "sni"),
+			"alpn":          getString(linkData, "alpn"),
+			"fp":            getString(linkData, "fp"),
+			"cipher":        getString(linkData, "scy"),
+			"scy":           getString(linkData, "scy"),
 			"allowInsecure": getBool(linkData, "allowInsecure"),
 		},
 		Enabled: true,
@@ -182,8 +198,13 @@ func (p *Protocol) DefaultSettings() map[string]any {
 
 func getString(m map[string]any, key string) string {
 	if v, ok := m[key]; ok {
-		if s, ok := v.(string); ok {
-			return s
+		switch typed := v.(type) {
+		case string:
+			return typed
+		case float64:
+			return strconv.Itoa(int(typed))
+		case int:
+			return strconv.Itoa(typed)
 		}
 	}
 	return ""
@@ -196,6 +217,11 @@ func getInt(m map[string]any, key string) int {
 			return int(val)
 		case int:
 			return val
+		case string:
+			parsed, err := strconv.Atoi(strings.TrimSpace(val))
+			if err == nil {
+				return parsed
+			}
 		}
 	}
 	return 0
@@ -211,4 +237,13 @@ func getBool(m map[string]any, key string) bool {
 		}
 	}
 	return false
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }

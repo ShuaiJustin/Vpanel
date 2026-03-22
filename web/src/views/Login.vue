@@ -1,15 +1,21 @@
 <template>
   <div class="login-container">
     <div class="login-box">
-      <div class="title">V 多协议代理面板</div>
-      <el-form :model="loginForm" :rules="rules" ref="loginFormRef">
+      <div class="title">
+        V 多协议代理面板
+      </div>
+      <el-form
+        ref="loginFormRef"
+        :model="loginForm"
+        :rules="rules"
+      >
         <el-form-item prop="username">
           <el-input 
             v-model="loginForm.username" 
             prefix-icon="User" 
             placeholder="用户名" 
             autocomplete="username"
-          ></el-input>
+          />
         </el-form-item>
         <el-form-item prop="password">
           <el-input 
@@ -19,18 +25,22 @@
             placeholder="密码" 
             autocomplete="current-password"
             @keyup.enter="handleLogin"
-          ></el-input>
+          />
         </el-form-item>
         <el-form-item>
           <el-button 
             type="primary" 
             :loading="userStore.loading" 
-            @click="handleLogin" 
-            style="width: 100%"
-          >登录</el-button>
+            style="width: 100%" 
+            @click="handleLogin"
+          >
+            登录
+          </el-button>
         </el-form-item>
       </el-form>
-      <div class="version">V 1.0.0</div>
+      <div class="version">
+        V 1.0.0
+      </div>
     </div>
   </div>
 </template>
@@ -40,7 +50,6 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
-import { User, Lock } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const userStore = useUserStore()

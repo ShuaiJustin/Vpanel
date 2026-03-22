@@ -112,9 +112,11 @@ func (m *IPRestrictionMiddleware) CheckIPRestriction(getUserMaxIPs func(userID i
 			return
 		}
 
-		// Record activity
+		// Record activity outside the request cancellation path so browser aborts do not create noisy errors.
 		userAgent := c.GetHeader("User-Agent")
-		if err := m.ipService.RecordActivity(ctx, uint(userID), clientIP, userAgent, ip.AccessTypeAPI); err != nil {
+		recordCtx, cancel := newBackgroundTaskContext(ctx)
+		defer cancel()
+		if err := m.ipService.RecordActivity(recordCtx, uint(userID), clientIP, userAgent, ip.AccessTypeAPI); err != nil {
 			m.logger.Error("Failed to record IP activity",
 				logger.F("error", err),
 				logger.F("user_id", userID),
@@ -188,9 +190,11 @@ func (m *IPRestrictionMiddleware) CheckSubscriptionIPRestriction(getSubscription
 			return
 		}
 
-		// Record access
+		// Record access outside the request cancellation path so browser aborts do not create noisy errors.
 		userAgent := c.GetHeader("User-Agent")
-		if err := subIPService.RecordAccess(ctx, subID, clientIP, userAgent); err != nil {
+		recordCtx, cancel := newBackgroundTaskContext(ctx)
+		defer cancel()
+		if err := subIPService.RecordAccess(recordCtx, subID, clientIP, userAgent); err != nil {
 			m.logger.Error("Failed to record subscription IP access",
 				logger.F("error", err),
 				logger.F("subscription_id", subID),
@@ -211,7 +215,9 @@ func (m *IPRestrictionMiddleware) RecordFailedAttempt(reason string) gin.Handler
 			ctx := c.Request.Context()
 			clientIP := c.ClientIP()
 
-			if err := m.ipService.RecordFailedAttempt(ctx, clientIP, reason); err != nil {
+			recordCtx, cancel := newBackgroundTaskContext(ctx)
+			defer cancel()
+			if err := m.ipService.RecordFailedAttempt(recordCtx, clientIP, reason); err != nil {
 				m.logger.Error("Failed to record failed attempt",
 					logger.F("error", err),
 					logger.F("ip", clientIP))

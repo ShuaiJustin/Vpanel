@@ -5,6 +5,7 @@ package agent
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -148,6 +149,11 @@ func applyEnvOverrides(cfg *Config) {
 	// Health config
 	if v := os.Getenv("AGENT_HEALTH_HOST"); v != "" {
 		cfg.Health.Host = v
+	}
+	if v := os.Getenv("AGENT_HEALTH_PORT"); v != "" {
+		if port, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			cfg.Health.Port = port
+		}
 	}
 
 	// Log config

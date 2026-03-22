@@ -81,7 +81,7 @@ export function handleVueError(error, vm, info) {
     errorId,
     type: 'vue',
     message: error.message,
-    stack: error.stack,
+    stack: formatStack(error.stack),
     component: vm?.$options?.name || vm?.$options?.__name,
     info
   })
@@ -122,7 +122,7 @@ export function handleGlobalError(event) {
     errorId,
     type: 'uncaught',
     message: message,
-    stack: error?.stack,
+    stack: formatStack(error?.stack),
     filename,
     lineno,
     colno
@@ -169,7 +169,7 @@ export function handleUnhandledRejection(event) {
     errorId,
     type: 'unhandledRejection',
     message: message,
-    stack: reason?.stack
+    stack: formatStack(reason?.stack)
   })
   
   // 显示用户友好的错误消息

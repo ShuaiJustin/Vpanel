@@ -71,6 +71,7 @@ data/*.sqlite3
 *.backup_before_fix
 *.old
 backups/
+.reports/
 
 # ==================== 证书和密钥 ====================
 *.pem
@@ -84,6 +85,11 @@ coverage/
 *.test
 *.cover
 .nyc_output/
+test-results/
+playwright-report/
+
+# ==================== 本地构建产物 ====================
+/vpanel.static
 
 # ==================== 临时文档（开发过程文档） ====================
 Docs/*-fix*.md

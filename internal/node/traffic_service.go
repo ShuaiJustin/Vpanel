@@ -205,6 +205,11 @@ func (s *TrafficService) RecordTrafficBatch(ctx context.Context, records []*Traf
 				Update("traffic_used", gorm.Expr("traffic_used + ?", total)).Error; err != nil {
 				return err
 			}
+			if err := tx.Model(&repository.Trial{}).
+				Where("user_id = ? AND status = ? AND expire_at > ?", userID, "active", now).
+				Update("traffic_used", gorm.Expr("traffic_used + ?", total)).Error; err != nil {
+				return err
+			}
 		}
 
 		for nodeID, upload := range nodeUploads {

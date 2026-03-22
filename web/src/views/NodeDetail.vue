@@ -2,12 +2,21 @@
   <div class="node-detail-page">
     <div class="page-header">
       <div class="header-left">
-        <el-button link @click="goBack">
+        <el-button
+          link
+          @click="goBack"
+        >
           <el-icon><ArrowLeft /></el-icon>
           返回
         </el-button>
-        <h1 class="page-title">{{ node?.name || '节点详情' }}</h1>
-        <el-tag v-if="node" :type="getStatusType(node.status)" size="large">
+        <h1 class="page-title">
+          {{ node?.name || '节点详情' }}
+        </h1>
+        <el-tag
+          v-if="node"
+          :type="getStatusType(node.status)"
+          size="large"
+        >
           {{ getStatusText(node.status) }}
         </el-tag>
       </div>
@@ -16,98 +25,202 @@
           <el-icon><Refresh /></el-icon>
           刷新
         </el-button>
-        <el-button type="primary" @click="editNode">编辑</el-button>
+        <el-button
+          type="primary"
+          @click="editNode"
+        >
+          编辑
+        </el-button>
       </div>
     </div>
 
-    <el-row :gutter="isMobile ? 12 : 20" v-loading="loading">
+    <el-row
+      v-loading="loading"
+      :gutter="isMobile ? 12 : 20"
+    >
       <!-- 基本信息 -->
       <el-col :span="mainColumnSpan">
-        <el-card shadow="never" class="info-card">
+        <el-card
+          shadow="never"
+          class="info-card"
+        >
           <template #header>
             <span>基本信息</span>
           </template>
-          <el-descriptions :column="detailColumns" border v-if="node">
-            <el-descriptions-item label="ID">{{ node.id }}</el-descriptions-item>
-            <el-descriptions-item label="名称">{{ node.name }}</el-descriptions-item>
-            <el-descriptions-item label="地址">{{ node.address }}</el-descriptions-item>
-            <el-descriptions-item label="端口">{{ node.port }}</el-descriptions-item>
-            <el-descriptions-item label="地区">{{ node.region || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="权重">{{ node.weight }}</el-descriptions-item>
-            <el-descriptions-item label="最大用户数">{{ node.max_users || '无限制' }}</el-descriptions-item>
-            <el-descriptions-item label="当前用户数">{{ node.current_users }}</el-descriptions-item>
+          <el-descriptions
+            v-if="node"
+            :column="detailColumns"
+            border
+          >
+            <el-descriptions-item label="ID">
+              {{ node.id }}
+            </el-descriptions-item>
+            <el-descriptions-item label="名称">
+              {{ node.name }}
+            </el-descriptions-item>
+            <el-descriptions-item label="地址">
+              {{ node.address }}
+            </el-descriptions-item>
+            <el-descriptions-item label="端口">
+              {{ node.port }}
+            </el-descriptions-item>
+            <el-descriptions-item label="地区">
+              {{ node.region || '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="权重">
+              {{ node.weight }}
+            </el-descriptions-item>
+            <el-descriptions-item label="最大用户数">
+              {{ node.max_users || '无限制' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="当前用户数">
+              {{ node.current_users }}
+            </el-descriptions-item>
             <el-descriptions-item label="延迟">
               <span :class="getLatencyClass(node.latency)">{{ node.latency }}ms</span>
             </el-descriptions-item>
             <el-descriptions-item label="同步状态">
-              <el-tag :type="getSyncStatusType(node.sync_status)" size="small">
+              <el-tag
+                :type="getSyncStatusType(node.sync_status)"
+                size="small"
+              >
                 {{ getSyncStatusText(node.sync_status) }}
               </el-tag>
             </el-descriptions-item>
-            <el-descriptions-item label="最后在线">{{ formatTime(node.last_seen_at) }}</el-descriptions-item>
-            <el-descriptions-item label="最后同步">{{ formatTime(node.synced_at) }}</el-descriptions-item>
-            <el-descriptions-item label="创建时间">{{ formatTime(node.created_at) }}</el-descriptions-item>
-            <el-descriptions-item label="更新时间">{{ formatTime(node.updated_at) }}</el-descriptions-item>
+            <el-descriptions-item label="最后在线">
+              {{ formatTime(node.last_seen_at) }}
+            </el-descriptions-item>
+            <el-descriptions-item label="最后同步">
+              {{ formatTime(node.synced_at) }}
+            </el-descriptions-item>
+            <el-descriptions-item label="创建时间">
+              {{ formatTime(node.created_at) }}
+            </el-descriptions-item>
+            <el-descriptions-item label="更新时间">
+              {{ formatTime(node.updated_at) }}
+            </el-descriptions-item>
           </el-descriptions>
-          <div v-if="node?.tags && parseTags(node.tags).length" class="tags-section">
+          <div
+            v-if="node?.tags && parseTags(node.tags).length"
+            class="tags-section"
+          >
             <span class="tags-label">标签：</span>
-            <el-tag v-for="tag in parseTags(node.tags)" :key="tag" size="small" style="margin-right: 8px;">
+            <el-tag
+              v-for="tag in parseTags(node.tags)"
+              :key="tag"
+              size="small"
+              style="margin-right: 8px;"
+            >
               {{ tag }}
             </el-tag>
           </div>
         </el-card>
 
         <!-- 流量统计 -->
-        <el-card shadow="never" class="info-card">
+        <el-card
+          shadow="never"
+          class="info-card"
+        >
           <template #header>
             <div class="card-header">
               <span>流量统计</span>
-              <el-radio-group v-model="trafficPeriod" size="small" @change="fetchTraffic">
-                <el-radio-button label="today">今日</el-radio-button>
-                <el-radio-button label="week">本周</el-radio-button>
-                <el-radio-button label="month">本月</el-radio-button>
+              <el-radio-group
+                v-model="trafficPeriod"
+                size="small"
+                @change="fetchTraffic"
+              >
+                <el-radio-button label="today">
+                  今日
+                </el-radio-button>
+                <el-radio-button label="week">
+                  本周
+                </el-radio-button>
+                <el-radio-button label="month">
+                  本月
+                </el-radio-button>
               </el-radio-group>
             </div>
           </template>
           <el-row :gutter="isMobile ? 12 : 20">
             <el-col :span="trafficStatSpan">
               <div class="traffic-stat">
-                <div class="traffic-value">{{ formatBytes(trafficStats.upload) }}</div>
-                <div class="traffic-label">上传流量</div>
+                <div class="traffic-value">
+                  {{ formatBytes(trafficStats.upload) }}
+                </div>
+                <div class="traffic-label">
+                  上传流量
+                </div>
               </div>
             </el-col>
             <el-col :span="trafficStatSpan">
               <div class="traffic-stat">
-                <div class="traffic-value">{{ formatBytes(trafficStats.download) }}</div>
-                <div class="traffic-label">下载流量</div>
+                <div class="traffic-value">
+                  {{ formatBytes(trafficStats.download) }}
+                </div>
+                <div class="traffic-label">
+                  下载流量
+                </div>
               </div>
             </el-col>
             <el-col :span="trafficStatSpan">
               <div class="traffic-stat">
-                <div class="traffic-value">{{ formatBytes(trafficStats.upload + trafficStats.download) }}</div>
-                <div class="traffic-label">总流量</div>
+                <div class="traffic-value">
+                  {{ formatBytes(trafficStats.upload + trafficStats.download) }}
+                </div>
+                <div class="traffic-label">
+                  总流量
+                </div>
               </div>
             </el-col>
           </el-row>
         </el-card>
 
         <!-- Top 用户 -->
-        <el-card shadow="never" class="info-card">
+        <el-card
+          shadow="never"
+          class="info-card"
+        >
           <template #header>
             <span>流量 Top 用户</span>
           </template>
           <div class="table-shell">
-            <el-table :data="topUsers" size="small" style="width: 100%">
-              <el-table-column prop="user_id" label="用户 ID" width="100" />
-              <el-table-column prop="username" label="用户名" />
-              <el-table-column label="上传" width="120">
-                <template #default="{ row }">{{ formatBytes(row.upload) }}</template>
+            <el-table
+              :data="topUsers"
+              size="small"
+              style="width: 100%"
+            >
+              <el-table-column
+                prop="user_id"
+                label="用户 ID"
+                width="100"
+              />
+              <el-table-column
+                prop="username"
+                label="用户名"
+              />
+              <el-table-column
+                label="上传"
+                width="120"
+              >
+                <template #default="{ row }">
+                  {{ formatBytes(row.upload) }}
+                </template>
               </el-table-column>
-              <el-table-column label="下载" width="120">
-                <template #default="{ row }">{{ formatBytes(row.download) }}</template>
+              <el-table-column
+                label="下载"
+                width="120"
+              >
+                <template #default="{ row }">
+                  {{ formatBytes(row.download) }}
+                </template>
               </el-table-column>
-              <el-table-column label="总流量" width="120">
-                <template #default="{ row }">{{ formatBytes(row.upload + row.download) }}</template>
+              <el-table-column
+                label="总流量"
+                width="120"
+              >
+                <template #default="{ row }">
+                  {{ formatBytes(row.upload + row.download) }}
+                </template>
               </el-table-column>
             </el-table>
           </div>
@@ -117,13 +230,19 @@
       <!-- 右侧面板 -->
       <el-col :span="sideColumnSpan">
         <!-- 实时状态 -->
-        <el-card shadow="never" class="info-card">
+        <el-card
+          shadow="never"
+          class="info-card"
+        >
           <template #header>
             <span>实时状态</span>
           </template>
           <div class="status-item">
             <span class="status-label">连接状态</span>
-            <el-tag :type="node?.status === 'online' ? 'success' : 'danger'" size="small">
+            <el-tag
+              :type="node?.status === 'online' ? 'success' : 'danger'"
+              size="small"
+            >
               {{ node?.status === 'online' ? '已连接' : '未连接' }}
             </el-tag>
           </div>
@@ -144,89 +263,131 @@
         </el-card>
 
         <!-- 内核管理 -->
-        <el-card shadow="never" class="info-card">
+        <el-card
+          shadow="never"
+          class="info-card"
+        >
           <template #header>
             <span>内核管理</span>
           </template>
           <div class="status-item">
             <span class="status-label">内核类型</span>
-            <el-tag size="small">Xray</el-tag>
+            <el-tag size="small">
+              Xray
+            </el-tag>
           </div>
           <div class="status-item">
             <span class="status-label">运行状态</span>
-            <el-tag :type="node?.xray_running ? 'success' : 'danger'" size="small">
+            <el-tag
+              :type="node?.xray_running ? 'success' : 'danger'"
+              size="small"
+            >
               {{ node?.xray_running ? '运行中' : '已停止' }}
             </el-tag>
           </div>
           <div class="status-item status-item-top">
             <span class="status-label">当前版本</span>
-            <div class="core-version">{{ formatCoreVersion(node?.xray_version) }}</div>
+            <div class="core-version">
+              {{ formatCoreVersion(node?.xray_version) }}
+            </div>
           </div>
           <div class="status-item">
             <span class="status-label">最后心跳</span>
             <span>{{ formatTime(node?.last_seen_at) }}</span>
           </div>
           <div class="core-actions">
-            <el-button plain @click="refreshData">
+            <el-button
+              plain
+              @click="refreshData"
+            >
               刷新状态
             </el-button>
             <el-button
               v-if="!node?.xray_running"
               type="success"
-              @click="startCore"
               :loading="coreActionLoading === 'start'"
+              @click="startCore"
             >
               启动内核
             </el-button>
             <el-button
               v-else
               type="warning"
-              @click="restartCore"
               :loading="coreActionLoading === 'restart'"
+              @click="restartCore"
             >
               重启内核
             </el-button>
-            <el-button type="primary" @click="syncConfig" :loading="syncing">
+            <el-button
+              type="primary"
+              :loading="syncing"
+              @click="syncConfig"
+            >
               同步配置
             </el-button>
           </div>
-          <div class="core-tip">节点命令会进入队列，并在节点下一次心跳时执行。</div>
+          <div class="core-tip">
+            节点命令会进入队列，并在节点下一次心跳时执行。
+          </div>
         </el-card>
 
         <!-- 内核操作记录 -->
-        <el-card shadow="never" class="info-card">
+        <el-card
+          shadow="never"
+          class="info-card"
+        >
           <template #header>
             <span>内核操作记录</span>
           </template>
-          <div v-if="recentRecoveryEvents.length" class="recovery-events">
+          <div
+            v-if="recentRecoveryEvents.length"
+            class="recovery-events"
+          >
             <div
               v-for="event in recentRecoveryEvents"
               :key="event.command_id"
               class="recovery-event"
             >
               <div class="recovery-event-header">
-                <el-tag :type="getRecoveryStatusType(event.status)" size="small">
+                <el-tag
+                  :type="getRecoveryStatusType(event.status)"
+                  size="small"
+                >
                   {{ getRecoveryStatusText(event.status) }}
                 </el-tag>
                 <span class="recovery-time">{{ formatTime(event.updated_at || event.created_at) }}</span>
               </div>
-              <div class="recovery-command">{{ getRecoveryCommandText(event.command_type) }}</div>
-              <div class="recovery-reason">{{ event.reason || '未提供原因' }}</div>
+              <div class="recovery-command">
+                {{ getRecoveryCommandText(event.command_type) }}
+              </div>
+              <div class="recovery-reason">
+                {{ event.reason || '未提供原因' }}
+              </div>
               <div class="recovery-meta">
                 来源：{{ getRecoverySourceText(event.source) }}
                 <span v-if="event.message"> · {{ event.message }}</span>
               </div>
             </div>
           </div>
-          <el-empty v-else description="暂无恢复记录" :image-size="60" />
+          <el-empty
+            v-else
+            description="暂无恢复记录"
+            :image-size="60"
+          />
         </el-card>
 
         <!-- 所属分组 -->
-        <el-card shadow="never" class="info-card">
+        <el-card
+          shadow="never"
+          class="info-card"
+        >
           <template #header>
             <span>所属分组</span>
           </template>
-          <div v-if="nodeGroups.length" class="groups-list">
+          <div
+            v-if="nodeGroups.length"
+            class="groups-list"
+          >
             <el-tag
               v-for="group in nodeGroups"
               :key="group.id"
@@ -235,19 +396,34 @@
               {{ group.name }}
             </el-tag>
           </div>
-          <el-empty v-else description="暂无分组" :image-size="60" />
+          <el-empty
+            v-else
+            description="暂无分组"
+            :image-size="60"
+          />
         </el-card>
 
         <!-- 快捷操作 -->
-        <el-card shadow="never" class="info-card">
+        <el-card
+          shadow="never"
+          class="info-card"
+        >
           <template #header>
             <span>快捷操作</span>
           </template>
           <div class="quick-actions">
-            <el-button type="warning" plain @click="showTokenDialog">
+            <el-button
+              type="warning"
+              plain
+              @click="showTokenDialog"
+            >
               管理 Token
             </el-button>
-            <el-button type="danger" plain @click="deleteNode">
+            <el-button
+              type="danger"
+              plain
+              @click="deleteNode"
+            >
               删除节点
             </el-button>
           </div>
@@ -256,29 +432,57 @@
     </el-row>
 
     <!-- Token 管理对话框 -->
-    <el-dialog v-model="tokenDialogVisible" title="Token 管理" :width="tokenDialogWidth">
+    <el-dialog
+      v-model="tokenDialogVisible"
+      title="Token 管理"
+      :width="tokenDialogWidth"
+    >
       <div class="token-dialog-content">
         <div class="token-info">
-          <div class="token-label">当前 Token</div>
+          <div class="token-label">
+            当前 Token
+          </div>
           <div class="token-value token-text">
             <span v-if="showToken">{{ currentToken || '未生成' }}</span>
             <span v-else>{{ currentToken ? '••••••••••••••••' : '未生成' }}</span>
-            <el-button v-if="currentToken" link @click="showToken = !showToken">
+            <el-button
+              v-if="currentToken"
+              link
+              @click="showToken = !showToken"
+            >
               <el-icon><View v-if="!showToken" /><Hide v-else /></el-icon>
             </el-button>
-            <el-button v-if="currentToken" link @click="copyToken">
+            <el-button
+              v-if="currentToken"
+              link
+              @click="copyToken"
+            >
               <el-icon><CopyDocument /></el-icon>
             </el-button>
           </div>
         </div>
         <div class="token-actions">
-          <el-button type="primary" @click="handleGenerateToken" :loading="tokenLoading">
+          <el-button
+            type="primary"
+            :loading="tokenLoading"
+            @click="handleGenerateToken"
+          >
             {{ currentToken ? '重新生成' : '生成 Token' }}
           </el-button>
-          <el-button v-if="currentToken" type="warning" @click="handleRotateToken" :loading="tokenLoading">
+          <el-button
+            v-if="currentToken"
+            type="warning"
+            :loading="tokenLoading"
+            @click="handleRotateToken"
+          >
             轮换 Token
           </el-button>
-          <el-button v-if="currentToken" type="danger" @click="handleRevokeToken" :loading="tokenLoading">
+          <el-button
+            v-if="currentToken"
+            type="danger"
+            :loading="tokenLoading"
+            @click="handleRevokeToken"
+          >
             撤销 Token
           </el-button>
         </div>
@@ -289,8 +493,12 @@
           show-icon
           class="new-token-alert"
         >
-          <template #title>新 Token 已生成，请妥善保存：</template>
-          <div class="new-token-text">{{ newToken }}</div>
+          <template #title>
+            新 Token 已生成，请妥善保存：
+          </template>
+          <div class="new-token-text">
+            {{ newToken }}
+          </div>
         </el-alert>
       </div>
     </el-dialog>

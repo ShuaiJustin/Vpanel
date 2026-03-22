@@ -146,6 +146,50 @@ func TestV2rayNGenerator_GenerateVMessLink(t *testing.T) {
 	}
 }
 
+func TestV2rayNGenerator_GenerateVMessLinkWithTLSSecurityKeepsAutoCipher(t *testing.T) {
+	generator := NewV2rayNGenerator()
+
+	proxy := &repository.Proxy{
+		Name:     "TLS VMess",
+		Protocol: "vmess",
+		Port:     443,
+		Settings: map[string]interface{}{
+			"uuid":        "12345678-1234-1234-1234-123456789012",
+			"alterId":     0,
+			"security":    "tls",
+			"server_name": "vpn.example.com",
+		},
+	}
+
+	result, err := generator.Generate([]*repository.Proxy{proxy}, nil)
+	if err != nil {
+		t.Fatalf("Failed to generate: %v", err)
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(string(result))
+	if err != nil {
+		t.Fatalf("Failed to decode base64: %v", err)
+	}
+
+	vmessContent := strings.TrimPrefix(string(decoded), "vmess://")
+	vmessJSON, err := base64.StdEncoding.DecodeString(vmessContent)
+	if err != nil {
+		t.Fatalf("Failed to decode vmess content: %v", err)
+	}
+
+	jsonStr := string(vmessJSON)
+	if !strings.Contains(jsonStr, `"scy":"auto"`) {
+		t.Fatalf("expected auto vmess cipher, got %s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, `"tls":"tls"`) {
+		t.Fatalf("expected tls enabled, got %s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, `"sni":"vpn.example.com"`) {
+		t.Fatalf("expected sni vpn.example.com, got %s", jsonStr)
+	}
+}
+
+
 func TestV2rayNGenerator_GenerateVLESSLink(t *testing.T) {
 	generator := NewV2rayNGenerator()
 

@@ -1,16 +1,25 @@
 <template>
   <div class="stats-page">
     <!-- 概览卡片 -->
-    <el-row :gutter="isMobile ? 12 : 20" class="overview-row">
+    <el-row
+      :gutter="isMobile ? 12 : 20"
+      class="overview-row"
+    >
       <el-col :span="statCardSpan">
         <el-card class="stat-card">
           <div class="stat-content">
             <div class="stat-icon users">
-              <el-icon size="32"><User /></el-icon>
+              <el-icon size="32">
+                <User />
+              </el-icon>
             </div>
             <div class="stat-info">
-              <div class="stat-value">{{ dashboardStats.total_users }}</div>
-              <div class="stat-label">总用户数</div>
+              <div class="stat-value">
+                {{ dashboardStats.total_users }}
+              </div>
+              <div class="stat-label">
+                总用户数
+              </div>
             </div>
           </div>
           <div class="stat-footer">
@@ -22,11 +31,17 @@
         <el-card class="stat-card">
           <div class="stat-content">
             <div class="stat-icon proxies">
-              <el-icon size="32"><Connection /></el-icon>
+              <el-icon size="32">
+                <Connection />
+              </el-icon>
             </div>
             <div class="stat-info">
-              <div class="stat-value">{{ dashboardStats.total_proxies }}</div>
-              <div class="stat-label">总代理数</div>
+              <div class="stat-value">
+                {{ dashboardStats.total_proxies }}
+              </div>
+              <div class="stat-label">
+                总代理数
+              </div>
             </div>
           </div>
           <div class="stat-footer">
@@ -38,11 +53,17 @@
         <el-card class="stat-card">
           <div class="stat-content">
             <div class="stat-icon traffic">
-              <el-icon size="32"><DataLine /></el-icon>
+              <el-icon size="32">
+                <DataLine />
+              </el-icon>
             </div>
             <div class="stat-info">
-              <div class="stat-value">{{ formatBytes(dashboardStats.total_traffic) }}</div>
-              <div class="stat-label">总流量</div>
+              <div class="stat-value">
+                {{ formatBytes(dashboardStats.total_traffic) }}
+              </div>
+              <div class="stat-label">
+                总流量
+              </div>
             </div>
           </div>
           <div class="stat-footer">
@@ -54,11 +75,17 @@
         <el-card class="stat-card">
           <div class="stat-content">
             <div class="stat-icon online">
-              <el-icon size="32"><Monitor /></el-icon>
+              <el-icon size="32">
+                <Monitor />
+              </el-icon>
             </div>
             <div class="stat-info">
-              <div class="stat-value">{{ dashboardStats.online_count }}</div>
-              <div class="stat-label">在线连接</div>
+              <div class="stat-value">
+                {{ dashboardStats.online_count }}
+              </div>
+              <div class="stat-label">
+                在线连接
+              </div>
             </div>
           </div>
           <div class="stat-footer">
@@ -69,7 +96,10 @@
     </el-row>
 
     <!-- 协议统计 -->
-    <el-row :gutter="isMobile ? 12 : 20" class="charts-row">
+    <el-row
+      :gutter="isMobile ? 12 : 20"
+      class="charts-row"
+    >
       <el-col :span="chartSpan">
         <el-card>
           <template #header>
@@ -77,7 +107,10 @@
               <span>协议分布</span>
             </div>
           </template>
-          <div class="chart-container" ref="protocolChartRef"></div>
+          <div
+            ref="protocolChartRef"
+            class="chart-container"
+          />
         </el-card>
       </el-col>
       <el-col :span="chartSpan">
@@ -85,14 +118,27 @@
           <template #header>
             <div class="card-header">
               <span>流量趋势</span>
-              <el-radio-group v-model="trafficPeriod" size="small" @change="loadTrafficStats">
-                <el-radio-button label="today">今日</el-radio-button>
-                <el-radio-button label="week">本周</el-radio-button>
-                <el-radio-button label="month">本月</el-radio-button>
+              <el-radio-group
+                v-model="trafficPeriod"
+                size="small"
+                @change="loadTrafficStats"
+              >
+                <el-radio-button label="today">
+                  今日
+                </el-radio-button>
+                <el-radio-button label="week">
+                  本周
+                </el-radio-button>
+                <el-radio-button label="month">
+                  本月
+                </el-radio-button>
               </el-radio-group>
             </div>
           </template>
-          <div class="chart-container" ref="trafficChartRef"></div>
+          <div
+            ref="trafficChartRef"
+            class="chart-container"
+          />
         </el-card>
       </el-col>
     </el-row>
@@ -102,28 +148,57 @@
       <template #header>
         <div class="card-header">
           <span>协议统计详情</span>
-          <el-button type="primary" size="small" @click="refreshData">
+          <el-button
+            type="primary"
+            size="small"
+            @click="refreshData"
+          >
             <el-icon><Refresh /></el-icon>
             刷新
           </el-button>
         </div>
       </template>
       <div class="table-shell">
-        <el-table :data="protocolStats" v-loading="loading" style="width: 100%">
-          <el-table-column prop="protocol" label="协议" width="150">
+        <el-table
+          v-loading="loading"
+          :data="protocolStats"
+          style="width: 100%"
+        >
+          <el-table-column
+            prop="protocol"
+            label="协议"
+            width="150"
+          >
             <template #default="{ row }">
-              <el-tag :type="getProtocolTagType(row.protocol)">{{ row.protocol.toUpperCase() }}</el-tag>
+              <el-tag :type="getProtocolTagType(row.protocol)">
+                {{ row.protocol.toUpperCase() }}
+              </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="count" label="代理数量" width="120" />
-          <el-table-column prop="traffic" label="流量使用" width="150">
+          <el-table-column
+            prop="count"
+            label="代理数量"
+            width="120"
+          />
+          <el-table-column
+            prop="traffic"
+            label="流量使用"
+            width="150"
+          >
             <template #default="{ row }">
               {{ formatBytes(row.traffic) }}
             </template>
           </el-table-column>
-          <el-table-column prop="status" label="状态" width="100">
+          <el-table-column
+            prop="status"
+            label="状态"
+            width="100"
+          >
             <template #default="{ row }">
-              <el-tag :type="row.status === 'active' ? 'success' : 'danger'" size="small">
+              <el-tag
+                :type="row.status === 'active' ? 'success' : 'danger'"
+                size="small"
+              >
                 {{ row.status === 'active' ? '正常' : '异常' }}
               </el-tag>
             </template>
@@ -148,28 +223,58 @@
         </div>
       </template>
       <div class="table-shell">
-        <el-table :data="userStats" v-loading="loading" style="width: 100%">
-          <el-table-column prop="username" label="用户名" width="150" />
-          <el-table-column prop="proxy_count" label="代理数" width="100" />
-          <el-table-column prop="upload" label="上传流量" width="120">
+        <el-table
+          v-loading="loading"
+          :data="userStats"
+          style="width: 100%"
+        >
+          <el-table-column
+            prop="username"
+            label="用户名"
+            width="150"
+          />
+          <el-table-column
+            prop="proxy_count"
+            label="代理数"
+            width="100"
+          />
+          <el-table-column
+            prop="upload"
+            label="上传流量"
+            width="120"
+          >
             <template #default="{ row }">
               {{ formatBytes(row.upload) }}
             </template>
           </el-table-column>
-          <el-table-column prop="download" label="下载流量" width="120">
+          <el-table-column
+            prop="download"
+            label="下载流量"
+            width="120"
+          >
             <template #default="{ row }">
               {{ formatBytes(row.download) }}
             </template>
           </el-table-column>
-          <el-table-column prop="total" label="总流量" width="120">
+          <el-table-column
+            prop="total"
+            label="总流量"
+            width="120"
+          >
             <template #default="{ row }">
               {{ formatBytes(row.total) }}
             </template>
           </el-table-column>
-          <el-table-column prop="last_active" label="最后活跃" />
+          <el-table-column
+            prop="last_active"
+            label="最后活跃"
+          />
         </el-table>
       </div>
-      <div v-if="userStats.length === 0" class="empty-data">
+      <div
+        v-if="userStats.length === 0"
+        class="empty-data"
+      >
         暂无用户统计数据
       </div>
     </el-card>
@@ -185,7 +290,7 @@ import { useViewport } from '@/composables/useViewport'
 
 const loading = ref(false)
 const trafficPeriod = ref('today')
-const { isMobile, isTablet } = useViewport({ mobileBreakpoint: 768, tabletBreakpoint: 1200 })
+const { isMobile, isTablet } = useViewport()
 const statCardSpan = computed(() => (isMobile.value ? 24 : isTablet.value ? 12 : 6))
 const chartSpan = computed(() => (isMobile.value ? 24 : 12))
 

@@ -2,12 +2,21 @@
   <div class="admin-giftcards-page">
     <div class="page-header">
       <div class="page-heading">
-        <h1 class="page-title">礼品卡管理</h1>
-        <p class="page-subtitle">统一维护礼品卡批次、状态切换和兑换记录</p>
+        <h1 class="page-title">
+          礼品卡管理
+        </h1>
+        <p class="page-subtitle">
+          统一维护礼品卡批次、状态切换和兑换记录
+        </p>
       </div>
       <div class="page-actions">
-        <el-button type="primary" @click="showCreateDialog">
-          <el-icon class="el-icon--left"><Plus /></el-icon>
+        <el-button
+          type="primary"
+          @click="showCreateDialog"
+        >
+          <el-icon class="el-icon--left">
+            <Plus />
+          </el-icon>
           批量创建
         </el-button>
       </div>
@@ -34,25 +43,65 @@
 
     <div class="toolbar-card">
       <div class="toolbar-filters">
-        <el-select v-model="filter.status" placeholder="状态" clearable>
-          <el-option label="可用" value="active" />
-          <el-option label="已兑换" value="redeemed" />
-          <el-option label="已过期" value="expired" />
-          <el-option label="已禁用" value="disabled" />
+        <el-select
+          v-model="filter.status"
+          placeholder="状态"
+          clearable
+        >
+          <el-option
+            label="可用"
+            value="active"
+          />
+          <el-option
+            label="已兑换"
+            value="redeemed"
+          />
+          <el-option
+            label="已过期"
+            value="expired"
+          />
+          <el-option
+            label="已禁用"
+            value="disabled"
+          />
         </el-select>
-        <el-input v-model="filter.batch_id" class="toolbar-search" placeholder="筛选批次 ID" clearable />
-        <el-button type="primary" @click="applyFilters">筛选</el-button>
-        <el-button @click="resetFilters">重置</el-button>
+        <el-input
+          v-model="filter.batch_id"
+          class="toolbar-search"
+          placeholder="筛选批次 ID"
+          clearable
+        />
+        <el-button
+          type="primary"
+          @click="applyFilters"
+        >
+          筛选
+        </el-button>
+        <el-button @click="resetFilters">
+          重置
+        </el-button>
       </div>
       <div class="toolbar-actions">
         <span class="toolbar-summary">当前页 {{ giftCards.length }} 张礼品卡，共 {{ pagination.total }} 张</span>
-        <el-button @click="handleRefresh">刷新</el-button>
+        <el-button @click="handleRefresh">
+          刷新
+        </el-button>
       </div>
     </div>
 
     <div class="table-shell">
-      <el-table :data="giftCards" v-loading="loading" border stripe class="giftcards-table" row-key="id">
-        <el-table-column label="礼品卡信息" min-width="320">
+      <el-table
+        v-loading="loading"
+        :data="giftCards"
+        border
+        stripe
+        class="giftcards-table"
+        row-key="id"
+      >
+        <el-table-column
+          label="礼品卡信息"
+          min-width="320"
+        >
           <template #default="{ row }">
             <div class="entity-cell">
               <div class="entity-cell__header">
@@ -64,7 +113,11 @@
               </div>
               <div class="mono-code">
                 <span class="mono-code__value">{{ row.code }}</span>
-                <el-button text class="inline-copy-btn" @click="copyCode(row.code)">
+                <el-button
+                  text
+                  class="inline-copy-btn"
+                  @click="copyCode(row.code)"
+                >
                   <el-icon><CopyDocument /></el-icon>
                 </el-button>
               </div>
@@ -72,7 +125,10 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="面值与状态" min-width="220">
+        <el-table-column
+          label="面值与状态"
+          min-width="220"
+        >
           <template #default="{ row }">
             <div class="stack-cell">
               <div class="stack-item">
@@ -90,7 +146,10 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="兑换记录" min-width="220">
+        <el-table-column
+          label="兑换记录"
+          min-width="220"
+        >
           <template #default="{ row }">
             <div class="stack-cell">
               <div class="stack-item">
@@ -105,7 +164,12 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" min-width="170" align="right" fixed="right">
+        <el-table-column
+          label="操作"
+          min-width="170"
+          align="right"
+          fixed="right"
+        >
           <template #default="{ row }">
             <div class="operation-btns">
               <el-button
@@ -138,7 +202,10 @@
       </el-table>
     </div>
 
-    <div v-if="pagination.total > 0" class="pagination-container">
+    <div
+      v-if="pagination.total > 0"
+      class="pagination-container"
+    >
       <el-pagination
         v-model:current-page="pagination.page"
         v-model:page-size="pagination.pageSize"
@@ -150,20 +217,53 @@
       />
     </div>
 
-    <el-dialog v-model="dialogVisible" title="批量创建礼品卡" :width="isMobile ? 'calc(100vw - 24px)' : '500px'">
-      <el-form :model="form" :rules="rules" ref="formRef" :label-width="isMobile ? '76px' : '100px'">
-        <el-form-item label="数量" prop="count">
-          <el-input-number v-model="form.count" :min="1" :max="1000" />
+    <el-dialog
+      v-model="dialogVisible"
+      title="批量创建礼品卡"
+      :width="isMobile ? 'calc(100vw - 24px)' : '500px'"
+    >
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        :label-width="isMobile ? '76px' : '100px'"
+      >
+        <el-form-item
+          label="数量"
+          prop="count"
+        >
+          <el-input-number
+            v-model="form.count"
+            :min="1"
+            :max="1000"
+          />
           <span class="form-unit">最多 1000 张</span>
         </el-form-item>
-        <el-form-item label="面值" prop="value">
-          <el-input-number v-model="form.value" :min="0.01" :precision="2" />
+        <el-form-item
+          label="面值"
+          prop="value"
+        >
+          <el-input-number
+            v-model="form.value"
+            :min="0.01"
+            :precision="2"
+          />
           <span class="form-unit">元</span>
         </el-form-item>
-        <el-form-item label="前缀" prop="prefix">
-          <el-input v-model="form.prefix" placeholder="可选，如 GIFT" maxlength="10" />
+        <el-form-item
+          label="前缀"
+          prop="prefix"
+        >
+          <el-input
+            v-model="form.prefix"
+            placeholder="可选，如 GIFT"
+            maxlength="10"
+          />
         </el-form-item>
-        <el-form-item label="过期时间" prop="expires_at">
+        <el-form-item
+          label="过期时间"
+          prop="expires_at"
+        >
           <el-date-picker
             v-model="form.expires_at"
             type="datetime"
@@ -173,28 +273,61 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="submitForm">创建</el-button>
+        <el-button @click="dialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="submitting"
+          @click="submitForm"
+        >
+          创建
+        </el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="successDialogVisible" title="创建成功" :width="isMobile ? 'calc(100vw - 24px)' : '600px'">
+    <el-dialog
+      v-model="successDialogVisible"
+      title="创建成功"
+      :width="isMobile ? 'calc(100vw - 24px)' : '600px'"
+    >
       <div class="success-info">
         <p>成功创建 <strong>{{ createdResult.count }}</strong> 张礼品卡</p>
         <p>批次ID: <code>{{ createdResult.batch_id }}</code></p>
       </div>
       <div class="codes-list">
-        <div v-for="gc in createdResult.gift_cards?.slice(0, 10)" :key="gc.id" class="code-item">
+        <div
+          v-for="gc in createdResult.gift_cards?.slice(0, 10)"
+          :key="gc.id"
+          class="code-item"
+        >
           <code>{{ gc.code }}</code>
-          <el-button type="primary" link size="small" @click="copyCode(gc.code)">复制</el-button>
+          <el-button
+            type="primary"
+            link
+            size="small"
+            @click="copyCode(gc.code)"
+          >
+            复制
+          </el-button>
         </div>
-        <div v-if="createdResult.gift_cards?.length > 10" class="more-hint">
+        <div
+          v-if="createdResult.gift_cards?.length > 10"
+          class="more-hint"
+        >
           ... 还有 {{ createdResult.gift_cards.length - 10 }} 张
         </div>
       </div>
       <template #footer>
-        <el-button @click="exportCodes">导出全部</el-button>
-        <el-button type="primary" @click="successDialogVisible = false">确定</el-button>
+        <el-button @click="exportCodes">
+          导出全部
+        </el-button>
+        <el-button
+          type="primary"
+          @click="successDialogVisible = false"
+        >
+          确定
+        </el-button>
       </template>
     </el-dialog>
   </div>

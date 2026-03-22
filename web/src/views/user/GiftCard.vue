@@ -2,18 +2,31 @@
   <div class="giftcard-page">
     <!-- 页面标题 -->
     <div class="page-header">
-      <h1 class="page-title">礼品卡</h1>
-      <p class="page-subtitle">兑换礼品卡充值余额</p>
+      <h1 class="page-title">
+        礼品卡
+      </h1>
+      <p class="page-subtitle">
+        兑换礼品卡充值余额
+      </p>
     </div>
 
     <!-- 兑换卡片 -->
-    <el-card shadow="never" class="redeem-card">
+    <el-card
+      shadow="never"
+      class="redeem-card"
+    >
       <div class="redeem-content">
         <div class="redeem-icon">
-          <el-icon :size="48"><Present /></el-icon>
+          <el-icon :size="48">
+            <Present />
+          </el-icon>
         </div>
-        <h2 class="redeem-title">兑换礼品卡</h2>
-        <p class="redeem-desc">输入礼品卡码，将面值充入您的账户余额</p>
+        <h2 class="redeem-title">
+          兑换礼品卡
+        </h2>
+        <p class="redeem-desc">
+          输入礼品卡码，将面值充入您的账户余额
+        </p>
         
         <div class="redeem-form">
           <el-input
@@ -40,9 +53,17 @@
         </div>
 
         <!-- 验证结果 -->
-        <div v-if="validationResult" class="validation-result" :class="{ 'validation-result--valid': validationResult.valid }">
-          <el-icon v-if="validationResult.valid"><CircleCheck /></el-icon>
-          <el-icon v-else><CircleClose /></el-icon>
+        <div
+          v-if="validationResult"
+          class="validation-result"
+          :class="{ 'validation-result--valid': validationResult.valid }"
+        >
+          <el-icon v-if="validationResult.valid">
+            <CircleCheck />
+          </el-icon>
+          <el-icon v-else>
+            <CircleClose />
+          </el-icon>
           <span v-if="validationResult.valid">
             礼品卡有效，面值 ¥{{ (validationResult.value / 100).toFixed(2) }}
           </span>
@@ -52,18 +73,30 @@
     </el-card>
 
     <!-- 兑换记录 -->
-    <el-card shadow="never" class="history-card">
+    <el-card
+      shadow="never"
+      class="history-card"
+    >
       <template #header>
         <span>兑换记录</span>
       </template>
 
       <!-- 加载状态 -->
-      <div v-if="loading" class="loading-container">
-        <el-skeleton :rows="3" animated />
+      <div
+        v-if="loading"
+        class="loading-container"
+      >
+        <el-skeleton
+          :rows="3"
+          animated
+        />
       </div>
 
       <!-- 记录列表 -->
-      <div v-else class="history-list">
+      <div
+        v-else
+        class="history-list"
+      >
         <div
           v-for="gc in giftCards"
           :key="gc.id"
@@ -73,18 +106,30 @@
             <el-icon><Present /></el-icon>
           </div>
           <div class="gc-info">
-            <div class="gc-code">{{ maskCode(gc.code) }}</div>
-            <div class="gc-time">{{ formatTime(gc.redeemed_at) }}</div>
+            <div class="gc-code">
+              {{ maskCode(gc.code) }}
+            </div>
+            <div class="gc-time">
+              {{ formatTime(gc.redeemed_at) }}
+            </div>
           </div>
-          <div class="gc-value">+¥{{ (gc.value / 100).toFixed(2) }}</div>
+          <div class="gc-value">
+            +¥{{ (gc.value / 100).toFixed(2) }}
+          </div>
         </div>
       </div>
 
       <!-- 空状态 -->
-      <el-empty v-if="!loading && giftCards.length === 0" description="暂无兑换记录" />
+      <el-empty
+        v-if="!loading && giftCards.length === 0"
+        description="暂无兑换记录"
+      />
 
       <!-- 分页 -->
-      <div v-if="pagination.total > pagination.pageSize" class="pagination-container">
+      <div
+        v-if="pagination.total > pagination.pageSize"
+        class="pagination-container"
+      >
         <el-pagination
           v-model:current-page="pagination.page"
           :total="pagination.total"
@@ -96,14 +141,33 @@
     </el-card>
 
     <!-- 兑换成功对话框 -->
-    <el-dialog v-model="showSuccessDialog" title="兑换成功" width="400px" center>
+    <el-dialog
+      v-model="showSuccessDialog"
+      title="兑换成功"
+      width="400px"
+      center
+    >
       <div class="success-content">
-        <el-icon class="success-icon" :size="64"><CircleCheck /></el-icon>
-        <p class="success-amount">+¥{{ (redeemResult?.credited / 100 || 0).toFixed(2) }}</p>
-        <p class="success-text">礼品卡已成功兑换，金额已充入您的账户余额</p>
+        <el-icon
+          class="success-icon"
+          :size="64"
+        >
+          <CircleCheck />
+        </el-icon>
+        <p class="success-amount">
+          +¥{{ (redeemResult?.credited / 100 || 0).toFixed(2) }}
+        </p>
+        <p class="success-text">
+          礼品卡已成功兑换，金额已充入您的账户余额
+        </p>
       </div>
       <template #footer>
-        <el-button type="primary" @click="showSuccessDialog = false">确定</el-button>
+        <el-button
+          type="primary"
+          @click="showSuccessDialog = false"
+        >
+          确定
+        </el-button>
       </template>
     </el-dialog>
   </div>

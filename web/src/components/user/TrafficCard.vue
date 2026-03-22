@@ -1,9 +1,12 @@
 <template>
-  <el-card class="traffic-card" shadow="never">
+  <el-card
+    class="traffic-card"
+    shadow="never"
+  >
     <template #header>
       <div class="card-header">
         <span>{{ title }}</span>
-        <slot name="extra"></slot>
+        <slot name="extra" />
       </div>
     </template>
 
@@ -19,15 +22,22 @@
         >
           <template #default>
             <div class="progress-inner">
-              <div class="progress-value">{{ percentage }}%</div>
-              <div class="progress-label">{{ progressLabel }}</div>
+              <div class="progress-value">
+                {{ percentage }}%
+              </div>
+              <div class="progress-label">
+                {{ progressLabel }}
+              </div>
             </div>
           </template>
         </el-progress>
       </div>
 
       <!-- 详情列表 -->
-      <div class="traffic-details" v-if="showDetails">
+      <div
+        v-if="showDetails"
+        class="traffic-details"
+      >
         <div class="detail-item">
           <span class="detail-label">已使用</span>
           <span class="detail-value">{{ formatTraffic(used) }}</span>
@@ -40,7 +50,10 @@
           <span class="detail-label">剩余</span>
           <span class="detail-value remaining">{{ formatTraffic(remaining) }}</span>
         </div>
-        <div class="detail-item" v-if="resetAt">
+        <div
+          v-if="resetAt"
+          class="detail-item"
+        >
           <span class="detail-label">重置时间</span>
           <span class="detail-value">{{ formatDate(resetAt) }}</span>
         </div>

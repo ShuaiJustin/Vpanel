@@ -2,86 +2,156 @@
   <div class="orders-page">
     <!-- 页面标题 -->
     <div class="page-header">
-      <h1 class="page-title">我的订单</h1>
-      <p class="page-subtitle">查看和管理您的订单</p>
+      <h1 class="page-title">
+        我的订单
+      </h1>
+      <p class="page-subtitle">
+        查看和管理您的订单
+      </p>
     </div>
 
     <!-- 订单列表 -->
-    <el-card shadow="never" class="orders-card">
+    <el-card
+      shadow="never"
+      class="orders-card"
+    >
       <!-- 筛选 -->
       <div class="orders-filter">
-        <el-radio-group v-model="statusFilter" @change="handleFilterChange">
-          <el-radio-button value="">全部</el-radio-button>
-          <el-radio-button value="pending">待支付</el-radio-button>
-          <el-radio-button value="paid">已支付</el-radio-button>
-          <el-radio-button value="completed">已完成</el-radio-button>
-        <el-radio-button value="cancelled">已取消</el-radio-button>
-        <el-radio-button value="refunded">已退款</el-radio-button>
+        <el-radio-group
+          v-model="statusFilter"
+          @change="handleFilterChange"
+        >
+          <el-radio-button value="">
+            全部
+          </el-radio-button>
+          <el-radio-button value="pending">
+            待支付
+          </el-radio-button>
+          <el-radio-button value="paid">
+            已支付
+          </el-radio-button>
+          <el-radio-button value="completed">
+            已完成
+          </el-radio-button>
+          <el-radio-button value="cancelled">
+            已取消
+          </el-radio-button>
+          <el-radio-button value="refunded">
+            已退款
+          </el-radio-button>
         </el-radio-group>
       </div>
 
       <!-- 加载状态 -->
-      <div v-if="loading" class="loading-container">
-        <el-skeleton :rows="5" animated />
+      <div
+        v-if="loading"
+        class="loading-container"
+      >
+        <el-skeleton
+          :rows="5"
+          animated
+        />
       </div>
 
-      <div v-else class="table-wrap">
-      <el-table :data="orders" style="width: 100%">
-        <el-table-column prop="order_no" label="订单号" width="180" />
-        <el-table-column label="套餐" min-width="160">
-          <template #default="{ row }">
-            {{ row.plan_name || `套餐 #${row.plan_id}` }}
-          </template>
-        </el-table-column>
-        <el-table-column label="金额" width="120">
-          <template #default="{ row }">
-            <span class="price">¥{{ formatPrice(row.pay_amount) }}</span>
-            <span v-if="row.discount_amount > 0" class="discount">
-              -¥{{ formatPrice(row.discount_amount) }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="getStatusInfo(row.status).type" size="small">
-              {{ getStatusInfo(row.status).label }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="created_at" label="创建时间" width="180" />
-        <el-table-column label="操作" min-width="160">
-          <template #default="{ row }">
-            <div class="row-actions">
-            <el-button
-              v-if="row.status === 'pending'"
-              type="primary"
-              link
-              @click="goToPay(row)"
-            >
-              去支付
-            </el-button>
-            <el-button
-              v-if="row.status === 'pending'"
-              type="danger"
-              link
-              @click="handleCancel(row)"
-            >
-              取消
-            </el-button>
-            <el-button type="primary" link @click="viewDetail(row)">
-              详情
-            </el-button>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
+      <div
+        v-else
+        class="table-wrap"
+      >
+        <el-table
+          :data="orders"
+          style="width: 100%"
+        >
+          <el-table-column
+            prop="order_no"
+            label="订单号"
+            width="180"
+          />
+          <el-table-column
+            label="套餐"
+            min-width="160"
+          >
+            <template #default="{ row }">
+              {{ row.plan_name || `套餐 #${row.plan_id}` }}
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="金额"
+            width="120"
+          >
+            <template #default="{ row }">
+              <span class="price">¥{{ formatPrice(row.pay_amount) }}</span>
+              <span
+                v-if="row.discount_amount > 0"
+                class="discount"
+              >
+                -¥{{ formatPrice(row.discount_amount) }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="状态"
+            width="100"
+          >
+            <template #default="{ row }">
+              <el-tag
+                :type="getStatusInfo(row.status).type"
+                size="small"
+              >
+                {{ getStatusInfo(row.status).label }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="created_at"
+            label="创建时间"
+            width="180"
+          />
+          <el-table-column
+            label="操作"
+            min-width="160"
+          >
+            <template #default="{ row }">
+              <div class="row-actions">
+                <el-button
+                  v-if="row.status === 'pending'"
+                  type="primary"
+                  link
+                  @click="goToPay(row)"
+                >
+                  去支付
+                </el-button>
+                <el-button
+                  v-if="row.status === 'pending'"
+                  type="danger"
+                  link
+                  @click="handleCancel(row)"
+                >
+                  取消
+                </el-button>
+                <el-button
+                  type="primary"
+                  link
+                  @click="viewDetail(row)"
+                >
+                  详情
+                </el-button>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
       </div>
 
       <!-- 空状态 -->
-      <el-empty v-if="!loading && orders.length === 0" description="暂无订单" />
+      <el-empty
+        v-if="!loading && orders.length === 0"
+        description="暂无订单"
+      />
 
       <!-- 分页 -->
-      <div v-if="pagination.total > 0" class="pagination-container">
+      <div
+        v-if="pagination.total > 0"
+        class="pagination-container"
+      >
         <el-pagination
           v-model:current-page="pagination.page"
           v-model:page-size="pagination.pageSize"
@@ -95,42 +165,82 @@
     </el-card>
 
     <!-- 订单详情对话框 -->
-    <el-dialog v-model="showDetailDialog" title="订单详情" :width="detailDialogWidth">
-      <el-descriptions v-if="currentOrder" :column="detailColumns" border>
-        <el-descriptions-item label="订单号">{{ currentOrder.order_no }}</el-descriptions-item>
+    <el-dialog
+      v-model="showDetailDialog"
+      title="订单详情"
+      :width="detailDialogWidth"
+    >
+      <el-descriptions
+        v-if="currentOrder"
+        :column="detailColumns"
+        border
+      >
+        <el-descriptions-item label="订单号">
+          {{ currentOrder.order_no }}
+        </el-descriptions-item>
         <el-descriptions-item label="套餐">
           {{ currentOrder.plan_name || `套餐 #${currentOrder.plan_id}` }}
         </el-descriptions-item>
-        <el-descriptions-item label="原价">¥{{ formatPrice(currentOrder.original_amount) }}</el-descriptions-item>
-        <el-descriptions-item v-if="currentOrder.discount_amount > 0" label="优惠">
+        <el-descriptions-item label="原价">
+          ¥{{ formatPrice(currentOrder.original_amount) }}
+        </el-descriptions-item>
+        <el-descriptions-item
+          v-if="currentOrder.discount_amount > 0"
+          label="优惠"
+        >
           -¥{{ formatPrice(currentOrder.discount_amount) }}
         </el-descriptions-item>
-        <el-descriptions-item v-if="currentOrder.balance_used > 0" label="余额抵扣">
+        <el-descriptions-item
+          v-if="currentOrder.balance_used > 0"
+          label="余额抵扣"
+        >
           -¥{{ formatPrice(currentOrder.balance_used) }}
         </el-descriptions-item>
         <el-descriptions-item label="实付金额">
           <span class="price-highlight">¥{{ formatPrice(currentOrder.pay_amount) }}</span>
         </el-descriptions-item>
         <el-descriptions-item label="状态">
-          <el-tag :type="getStatusInfo(currentOrder.status).type" size="small">
+          <el-tag
+            :type="getStatusInfo(currentOrder.status).type"
+            size="small"
+          >
             {{ getStatusInfo(currentOrder.status).label }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="支付方式">{{ getMethodLabel(currentOrder.payment_method) }}</el-descriptions-item>
-        <el-descriptions-item label="创建时间">{{ currentOrder.created_at }}</el-descriptions-item>
-        <el-descriptions-item v-if="currentOrder.paid_at" label="支付时间">
+        <el-descriptions-item label="支付方式">
+          {{ getMethodLabel(currentOrder.payment_method) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="创建时间">
+          {{ currentOrder.created_at }}
+        </el-descriptions-item>
+        <el-descriptions-item
+          v-if="currentOrder.paid_at"
+          label="支付时间"
+        >
           {{ currentOrder.paid_at }}
         </el-descriptions-item>
-        <el-descriptions-item label="过期时间">{{ currentOrder.expired_at || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="过期时间">
+          {{ currentOrder.expired_at || '-' }}
+        </el-descriptions-item>
       </el-descriptions>
     </el-dialog>
 
     <!-- 取消确认对话框 -->
-    <el-dialog v-model="showCancelDialog" title="取消订单" width="400px">
+    <el-dialog
+      v-model="showCancelDialog"
+      title="取消订单"
+      width="400px"
+    >
       <p>确定要取消此订单吗？取消后无法恢复。</p>
       <template #footer>
-        <el-button @click="showCancelDialog = false">取消</el-button>
-        <el-button type="danger" :loading="cancelling" @click="confirmCancel">
+        <el-button @click="showCancelDialog = false">
+          取消
+        </el-button>
+        <el-button
+          type="danger"
+          :loading="cancelling"
+          @click="confirmCancel"
+        >
           确认取消
         </el-button>
       </template>
@@ -148,7 +258,7 @@ import { useViewport } from '@/composables/useViewport'
 const route = useRoute()
 const router = useRouter()
 const orderStore = useOrderStore()
-const { isMobile } = useViewport({ mobileBreakpoint: 768, tabletBreakpoint: 1280 })
+const { isMobile } = useViewport()
 
 // 状态
 const statusFilter = ref('')

@@ -1,3 +1,24 @@
+:root {
+  --vp-scale: 1;
+  --vp-viewport-width: 1440px;
+  --vp-safe-gutter: clamp(12px, 2vw, 24px);
+  --vp-page-padding: clamp(12px, calc(18px * var(--vp-scale)), 24px);
+  --vp-section-gap: clamp(12px, calc(16px * var(--vp-scale)), 20px);
+  --vp-inline-gap: clamp(8px, calc(10px * var(--vp-scale)), 14px);
+  --vp-card-radius: clamp(12px, calc(16px * var(--vp-scale)), 20px);
+  --vp-title-size: clamp(1.4rem, 1.05rem + 1vw, 2rem);
+  --vp-subtitle-size: clamp(0.85rem, 0.8rem + 0.12vw, 0.95rem);
+  --vp-table-font-size: clamp(12px, calc(13px * var(--vp-scale)), 14px);
+  --vp-dialog-max-width: min(720px, calc(100vw - var(--vp-safe-gutter) * 2));
+  --vp-message-max-width: min(420px, calc(100vw - var(--vp-safe-gutter) * 2));
+}
+
+html {
+  font-size: clamp(13px, calc(12px + 0.2vw), 16px);
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
 html,
 body,
 #app {
@@ -5,76 +26,146 @@ body,
   max-width: 100%;
 }
 
+body {
+  min-width: 320px;
+  overflow-x: hidden;
+}
+
 .page-container,
 .content,
 .user-main,
 .mobile-main {
   max-width: 100%;
+  min-width: 0;
+}
+
+.page-container,
+.content,
+.user-main,
+.mobile-main,
+.table-shell {
+  min-width: 0;
+}
+
+.page-header,
+.card-header,
+.header-actions,
+.page-actions,
+.table-actions {
+  gap: var(--vp-inline-gap);
+}
+
+.page-header,
+.header-actions,
+.page-actions,
+.table-actions {
+  flex-wrap: wrap;
+}
+
+.page-title,
+.app-container .content .page-title {
+  font-size: var(--vp-title-size);
+}
+
+.page-subtitle,
+.app-container .content .page-subtitle {
+  font-size: var(--vp-subtitle-size);
+}
+
+.el-dialog {
+  max-width: calc(100vw - var(--vp-safe-gutter) * 2) !important;
+}
+
+.el-message-box,
+.el-notification,
+.el-message {
+  max-width: calc(100vw - var(--vp-safe-gutter) * 2) !important;
+}
+
+.el-card {
+  border-radius: var(--vp-card-radius);
+}
+
+.el-card__header,
+.el-card__body,
+.el-dialog__header,
+.el-dialog__body,
+.el-dialog__footer,
+.el-drawer__body {
+  padding-left: clamp(14px, calc(16px * var(--vp-scale)), 22px);
+  padding-right: clamp(14px, calc(16px * var(--vp-scale)), 22px);
+}
+
+.el-form--inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-inline-gap);
+}
+
+.el-form--inline .el-form-item {
+  margin-right: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.el-form-item__content {
+  min-width: 0;
+}
+
+.el-input,
+.el-select,
+.el-cascader,
+.el-input-number,
+.el-date-editor,
+.el-autocomplete {
+  max-width: 100%;
+}
+
+.el-table {
+  font-size: var(--vp-table-font-size);
+}
+
+.table-shell,
+.el-table__body-wrapper,
+.el-table__header-wrapper,
+.el-table__footer-wrapper,
+.el-tabs__nav-wrap,
+.el-tabs__nav-scroll {
+  overflow-x: auto;
+}
+
+.el-pagination {
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--vp-inline-gap);
+}
+
+@media (max-width: 1280px) {
+  .page-container,
+  .content,
+  .user-main,
+  .mobile-main {
+    padding: var(--vp-page-padding);
+  }
 }
 
 @media (max-width: 1024px) {
-  .el-dialog {
-    width: min(720px, calc(100vw - 24px)) !important;
-    max-width: calc(100vw - 24px);
-  }
-
-  .el-message-box,
-  .el-notification {
-    width: min(420px, calc(100vw - 24px)) !important;
-  }
-
-  .el-pagination {
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .el-tabs__nav-wrap,
-  .el-tabs__nav-scroll {
-    overflow-x: auto;
-  }
-
-  .el-form--inline {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-
-  .el-form--inline .el-form-item {
-    margin-right: 0 !important;
-    margin-bottom: 0 !important;
+  .page-header,
+  .header-actions,
+  .page-actions,
+  .table-actions {
+    align-items: stretch;
   }
 }
 
 @media (max-width: 768px) {
-  body {
-    overflow-x: hidden;
-  }
-
   .page-container {
-    padding: 12px;
     min-height: auto;
   }
 
   .content,
   .user-main,
   .mobile-main {
-    overflow-x: auto;
     -webkit-overflow-scrolling: touch;
-  }
-
-  .el-card {
-    margin-bottom: 12px;
-    border-radius: 12px;
-  }
-
-  .el-card__header,
-  .el-card__body,
-  .el-dialog__header,
-  .el-dialog__body,
-  .el-drawer__body {
-    padding-left: 14px;
-    padding-right: 14px;
   }
 
   .el-form--inline {
@@ -88,29 +179,41 @@ body,
     margin-right: 0 !important;
   }
 
-  .el-form-item__content {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .el-input,
-  .el-select,
-  .el-cascader,
-  .el-input-number,
-  .el-date-editor {
-    max-width: 100%;
-  }
-
   .el-form--inline .el-input,
   .el-form--inline .el-select,
   .el-form--inline .el-cascader,
   .el-form--inline .el-input-number,
-  .el-form--inline .el-date-editor {
+  .el-form--inline .el-date-editor,
+  .el-form--inline .el-autocomplete {
     width: 100% !important;
   }
 
+  .el-form:not(.el-form--label-top) .el-form-item {
+    flex-wrap: wrap;
+  }
+
+  .el-form:not(.el-form--label-top) .el-form-item__label {
+    width: 100% !important;
+    max-width: none !important;
+    text-align: left;
+    line-height: 1.4;
+    padding: 0 0 6px !important;
+  }
+
+  .el-form:not(.el-form--label-top) .el-form-item__content {
+    width: 100%;
+    margin-left: 0 !important;
+  }
+
   .el-dialog {
+    width: var(--vp-dialog-max-width) !important;
     margin: 12px auto !important;
+  }
+
+  .el-message-box,
+  .el-notification,
+  .el-message {
+    width: var(--vp-message-max-width) !important;
   }
 
   .el-dialog__body {
@@ -118,22 +221,7 @@ body,
     overflow: auto;
   }
 
-  .el-table {
-    font-size: 12px;
-  }
-
-  .el-table__body-wrapper,
-  .el-table__header-wrapper,
-  .el-table__footer-wrapper {
-    overflow-x: auto;
-  }
-
   .el-button + .el-button {
     margin-left: 8px;
-  }
-
-  .el-message {
-    min-width: auto;
-    width: calc(100vw - 24px);
   }
 }

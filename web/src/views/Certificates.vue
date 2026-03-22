@@ -2,13 +2,29 @@
   <div class="certificates-container">
     <div class="page-header">
       <div class="page-heading">
-        <h1 class="page-title">证书管理</h1>
-        <p class="page-subtitle">集中处理证书申请、上传、续期和可用性检查</p>
+        <h1 class="page-title">
+          证书管理
+        </h1>
+        <p class="page-subtitle">
+          集中处理证书申请、上传、续期和可用性检查
+        </p>
       </div>
       <div class="page-actions">
-        <el-button type="primary" @click="handleApply">申请证书</el-button>
-        <el-button type="success" @click="handleUpload">上传证书</el-button>
-        <el-button @click="handleRefresh">刷新</el-button>
+        <el-button
+          type="primary"
+          @click="handleApply"
+        >
+          申请证书
+        </el-button>
+        <el-button
+          type="success"
+          @click="handleUpload"
+        >
+          上传证书
+        </el-button>
+        <el-button @click="handleRefresh">
+          刷新
+        </el-button>
       </div>
     </div>
 
@@ -70,7 +86,9 @@
             :value="option.value"
           />
         </el-select>
-        <el-button @click="resetFilters">重置</el-button>
+        <el-button @click="resetFilters">
+          重置
+        </el-button>
       </div>
       <div class="toolbar-actions">
         <span class="toolbar-summary">当前筛选 {{ displayCertificateTotal }} 张证书，当前页 {{ paginatedCertificates.length }} 张</span>
@@ -95,27 +113,40 @@
         @close="clearApplyProgress"
       />
 
-      <div v-if="canQuickCreateInbound" class="apply-progress-actions">
-        <el-button type="primary" size="small" @click="openInboundWithCertificateDomain">
+      <div
+        v-if="canQuickCreateInbound"
+        class="apply-progress-actions"
+      >
+        <el-button
+          type="primary"
+          size="small"
+          @click="openInboundWithCertificateDomain"
+        >
           用此域名新增 TLS 入站
         </el-button>
       </div>
 
       <div class="table-shell">
         <el-table
+          v-loading="loading"
           :data="paginatedCertificates"
           border
           stripe
-          v-loading="loading"
           class="certificates-table"
           row-key="id"
           :empty-text="displayCertificateTotal ? '当前页暂无数据' : (hasCertificateFilters ? '暂无匹配的证书' : '暂无证书记录')"
         >
-          <el-table-column label="证书对象" min-width="280">
+          <el-table-column
+            label="证书对象"
+            min-width="280"
+          >
             <template #default="{ row }">
               <div class="entity-cell">
                 <div class="entity-cell__header">
-                  <span class="entity-cell__title" :title="row.domain">{{ row.domain }}</span>
+                  <span
+                    class="entity-cell__title"
+                    :title="row.domain"
+                  >{{ row.domain }}</span>
                   <span :class="['metric-pill', getProviderPillClass(row.provider)]">
                     {{ formatProviderLabel(row.provider) }}
                   </span>
@@ -131,7 +162,10 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="生命周期" min-width="220">
+          <el-table-column
+            label="生命周期"
+            min-width="220"
+          >
             <template #default="{ row }">
               <div class="stack-cell">
                 <div class="stack-item">
@@ -149,7 +183,10 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="续期与状态" min-width="250">
+          <el-table-column
+            label="续期与状态"
+            min-width="250"
+          >
             <template #default="{ row }">
               <div class="stack-cell">
                 <div class="stack-item stack-item--inline">
@@ -172,7 +209,12 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="操作" width="190" align="right" fixed="right">
+          <el-table-column
+            label="操作"
+            width="190"
+            align="right"
+            fixed="right"
+          >
             <template #default="{ row }">
               <div class="operation-btns">
                 <el-button
@@ -189,14 +231,29 @@
                 >
                   验证
                 </el-button>
-                <el-dropdown trigger="click" @command="(command) => handleRowCommand(command, row)">
-                  <el-button size="small" class="row-action row-action--more" circle title="更多操作">
+                <el-dropdown
+                  trigger="click"
+                  @command="(command) => handleRowCommand(command, row)"
+                >
+                  <el-button
+                    size="small"
+                    class="row-action row-action--more"
+                    circle
+                    title="更多操作"
+                  >
                     <el-icon><MoreFilled /></el-icon>
                   </el-button>
                   <template #dropdown>
                     <el-dropdown-menu>
-                      <el-dropdown-item command="backup">备份证书</el-dropdown-item>
-                      <el-dropdown-item command="delete" divided>删除证书</el-dropdown-item>
+                      <el-dropdown-item command="backup">
+                        备份证书
+                      </el-dropdown-item>
+                      <el-dropdown-item
+                        command="delete"
+                        divided
+                      >
+                        删除证书
+                      </el-dropdown-item>
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>
@@ -236,7 +293,12 @@
           <div class="config-guide">
             <p><strong>HTTP 验证：</strong>适用于可直接访问的域名，需要开放 80 端口</p>
             <p><strong>DNS 验证：</strong>适用于申请通配符证书或无法开放 80 端口的情况</p>
-            <el-link type="primary" href="/docs/certificate-guide.md" target="_blank" style="margin-top: 10px">
+            <el-link
+              type="primary"
+              href="/docs/certificate-guide.md"
+              target="_blank"
+              style="margin-top: 10px"
+            >
               查看详细配置教程 →
             </el-link>
           </div>
@@ -249,17 +311,29 @@
         :rules="applyRules"
         label-width="120px"
       >
-        <el-form-item label="域名" prop="domain">
-          <el-input v-model="applyForm.domain" placeholder="example.com 或 *.example.com">
+        <el-form-item
+          label="域名"
+          prop="domain"
+        >
+          <el-input
+            v-model="applyForm.domain"
+            placeholder="example.com 或 *.example.com"
+          >
             <template #append>
-              <el-tooltip content="通配符证书只能使用 DNS 验证" placement="top">
+              <el-tooltip
+                content="通配符证书只能使用 DNS 验证"
+                placement="top"
+              >
                 <el-icon><QuestionFilled /></el-icon>
               </el-tooltip>
             </template>
           </el-input>
         </el-form-item>
 
-        <el-form-item label="泛域名证书" prop="wildcard">
+        <el-form-item
+          label="泛域名证书"
+          prop="wildcard"
+        >
           <el-switch 
             v-model="applyForm.wildcard"
             active-text="申请泛域名证书（*.domain.com）"
@@ -271,18 +345,39 @@
           </div>
         </el-form-item>
 
-        <el-form-item label="Email" prop="email">
-          <el-input v-model="applyForm.email" placeholder="用于接收证书过期通知" />
+        <el-form-item
+          label="Email"
+          prop="email"
+        >
+          <el-input
+            v-model="applyForm.email"
+            placeholder="用于接收证书过期通知"
+          />
         </el-form-item>
 
-        <el-form-item label="提供商" prop="provider">
-          <el-select v-model="applyForm.provider" placeholder="请选择提供商">
-            <el-option label="Let's Encrypt（推荐）" value="letsencrypt" />
-            <el-option label="ZeroSSL" value="zerossl" />
+        <el-form-item
+          label="提供商"
+          prop="provider"
+        >
+          <el-select
+            v-model="applyForm.provider"
+            placeholder="请选择提供商"
+          >
+            <el-option
+              label="Let's Encrypt（推荐）"
+              value="letsencrypt"
+            />
+            <el-option
+              label="ZeroSSL"
+              value="zerossl"
+            />
           </el-select>
         </el-form-item>
 
-        <el-form-item label="自动续期" prop="autoRenew">
+        <el-form-item
+          label="自动续期"
+          prop="autoRenew"
+        >
           <el-switch
             v-model="applyForm.autoRenew"
             active-text="开启"
@@ -290,10 +385,20 @@
           />
         </el-form-item>
 
-        <el-form-item label="验证方式" prop="validationMethod">
-          <el-radio-group v-model="applyForm.validationMethod" @change="handleMethodChange">
-            <el-radio value="http">HTTP 验证</el-radio>
-            <el-radio value="dns">DNS 验证</el-radio>
+        <el-form-item
+          label="验证方式"
+          prop="validationMethod"
+        >
+          <el-radio-group
+            v-model="applyForm.validationMethod"
+            @change="handleMethodChange"
+          >
+            <el-radio value="http">
+              HTTP 验证
+            </el-radio>
+            <el-radio value="dns">
+              DNS 验证
+            </el-radio>
           </el-radio-group>
         </el-form-item>
 
@@ -312,10 +417,19 @@
             </ul>
           </el-alert>
 
-          <el-form-item label="Webroot 路径" prop="webroot">
-            <el-input v-model="applyForm.webroot" placeholder="/app/data/webroot">
+          <el-form-item
+            label="Webroot 路径"
+            prop="webroot"
+          >
+            <el-input
+              v-model="applyForm.webroot"
+              placeholder="/app/data/webroot"
+            >
               <template #append>
-                <el-tooltip content="网站根目录，用于存放验证文件" placement="top">
+                <el-tooltip
+                  content="网站根目录，用于存放验证文件"
+                  placement="top"
+                >
                   <el-icon><QuestionFilled /></el-icon>
                 </el-tooltip>
               </template>
@@ -334,17 +448,35 @@
             <p>需要提供 DNS 提供商的 API 凭证，系统将自动添加 TXT 记录进行验证</p>
           </el-alert>
 
-          <el-form-item label="DNS 提供商" prop="dnsProvider">
+          <el-form-item
+            label="DNS 提供商"
+            prop="dnsProvider"
+          >
             <el-select 
               v-model="applyForm.dnsProvider" 
               placeholder="请选择 DNS 提供商"
               @change="handleDnsProviderChange"
             >
-              <el-option label="Cloudflare" value="dns_cf" />
-              <el-option label="阿里云" value="dns_ali" />
-              <el-option label="腾讯云" value="dns_tencent" />
-              <el-option label="DNSPod" value="dns_dp" />
-              <el-option label="AWS Route53" value="dns_aws" />
+              <el-option
+                label="Cloudflare"
+                value="dns_cf"
+              />
+              <el-option
+                label="阿里云"
+                value="dns_ali"
+              />
+              <el-option
+                label="腾讯云"
+                value="dns_tencent"
+              />
+              <el-option
+                label="DNSPod"
+                value="dns_dp"
+              />
+              <el-option
+                label="AWS Route53"
+                value="dns_aws"
+              />
             </el-select>
           </el-form-item>
 
@@ -365,19 +497,28 @@
                   <li>Zone Resources: 选择你的域名</li>
                   <li>创建并复制 Token、Account ID（可选）和 Zone ID（推荐）</li>
                 </ol>
-                <p style="margin-top: 8px"><strong>兼容模式：</strong>也可切换为 x-ui 同款的 “邮箱 + Global API Key” 认证。</p>
+                <p style="margin-top: 8px">
+                  <strong>兼容模式：</strong>也可切换为 x-ui 同款的 “邮箱 + Global API Key” 认证。
+                </p>
               </div>
             </el-alert>
 
             <el-form-item label="认证方式">
               <el-radio-group v-model="applyForm.cfAuthMode">
-                <el-radio value="token">API Token（推荐）</el-radio>
-                <el-radio value="global">Global API Key（x-ui）</el-radio>
+                <el-radio value="token">
+                  API Token（推荐）
+                </el-radio>
+                <el-radio value="global">
+                  Global API Key（x-ui）
+                </el-radio>
               </el-radio-group>
             </el-form-item>
 
             <template v-if="applyForm.cfAuthMode === 'token'">
-              <el-form-item label="API Token" prop="cfToken">
+              <el-form-item
+                label="API Token"
+                prop="cfToken"
+              >
                 <el-input 
                   v-model="applyForm.cfToken" 
                   type="password" 
@@ -386,14 +527,20 @@
                 />
               </el-form-item>
 
-              <el-form-item label="Account ID" prop="cfAccountId">
+              <el-form-item
+                label="Account ID"
+                prop="cfAccountId"
+              >
                 <el-input 
                   v-model="applyForm.cfAccountId" 
                   placeholder="可选：Cloudflare 账户 ID（非区域 ID）"
                 />
               </el-form-item>
 
-              <el-form-item label="Zone ID" prop="cfZoneId">
+              <el-form-item
+                label="Zone ID"
+                prop="cfZoneId"
+              >
                 <el-input 
                   v-model="applyForm.cfZoneId" 
                   placeholder="推荐：Cloudflare 区域 ID（Overview 页面右侧）"
@@ -402,14 +549,20 @@
             </template>
 
             <template v-else>
-              <el-form-item label="Cloudflare Email" prop="cfEmail">
+              <el-form-item
+                label="Cloudflare Email"
+                prop="cfEmail"
+              >
                 <el-input 
                   v-model="applyForm.cfEmail"
                   placeholder="Cloudflare 注册邮箱"
                 />
               </el-form-item>
 
-              <el-form-item label="Global API Key" prop="cfGlobalKey">
+              <el-form-item
+                label="Global API Key"
+                prop="cfGlobalKey"
+              >
                 <el-input 
                   v-model="applyForm.cfGlobalKey"
                   type="password"
@@ -418,7 +571,10 @@
                 />
               </el-form-item>
 
-              <el-form-item label="Zone ID" prop="cfZoneId">
+              <el-form-item
+                label="Zone ID"
+                prop="cfZoneId"
+              >
                 <el-input 
                   v-model="applyForm.cfZoneId" 
                   placeholder="可选：Cloudflare 区域 ID（可加速定位 Zone）"
@@ -440,11 +596,20 @@
               </div>
             </el-alert>
 
-            <el-form-item label="AccessKey ID" prop="aliKey">
-              <el-input v-model="applyForm.aliKey" placeholder="阿里云 AccessKey ID" />
+            <el-form-item
+              label="AccessKey ID"
+              prop="aliKey"
+            >
+              <el-input
+                v-model="applyForm.aliKey"
+                placeholder="阿里云 AccessKey ID"
+              />
             </el-form-item>
 
-            <el-form-item label="AccessKey Secret" prop="aliSecret">
+            <el-form-item
+              label="AccessKey Secret"
+              prop="aliSecret"
+            >
               <el-input 
                 v-model="applyForm.aliSecret" 
                 type="password" 
@@ -467,11 +632,20 @@
               </div>
             </el-alert>
 
-            <el-form-item label="SecretId" prop="tencentSecretId">
-              <el-input v-model="applyForm.tencentSecretId" placeholder="腾讯云 SecretId" />
+            <el-form-item
+              label="SecretId"
+              prop="tencentSecretId"
+            >
+              <el-input
+                v-model="applyForm.tencentSecretId"
+                placeholder="腾讯云 SecretId"
+              />
             </el-form-item>
 
-            <el-form-item label="SecretKey" prop="tencentSecretKey">
+            <el-form-item
+              label="SecretKey"
+              prop="tencentSecretKey"
+            >
               <el-input 
                 v-model="applyForm.tencentSecretKey" 
                 type="password" 
@@ -494,11 +668,20 @@
               </div>
             </el-alert>
 
-            <el-form-item label="Token ID" prop="dpId">
-              <el-input v-model="applyForm.dpId" placeholder="DNSPod Token ID" />
+            <el-form-item
+              label="Token ID"
+              prop="dpId"
+            >
+              <el-input
+                v-model="applyForm.dpId"
+                placeholder="DNSPod Token ID"
+              />
             </el-form-item>
 
-            <el-form-item label="Token Key" prop="dpKey">
+            <el-form-item
+              label="Token Key"
+              prop="dpKey"
+            >
               <el-input 
                 v-model="applyForm.dpKey" 
                 type="password" 
@@ -521,11 +704,20 @@
               </div>
             </el-alert>
 
-            <el-form-item label="Access Key ID" prop="awsAccessKeyId">
-              <el-input v-model="applyForm.awsAccessKeyId" placeholder="AWS Access Key ID" />
+            <el-form-item
+              label="Access Key ID"
+              prop="awsAccessKeyId"
+            >
+              <el-input
+                v-model="applyForm.awsAccessKeyId"
+                placeholder="AWS Access Key ID"
+              />
             </el-form-item>
 
-            <el-form-item label="Secret Access Key" prop="awsSecretAccessKey">
+            <el-form-item
+              label="Secret Access Key"
+              prop="awsSecretAccessKey"
+            >
               <el-input 
                 v-model="applyForm.awsSecretAccessKey" 
                 type="password" 
@@ -539,19 +731,45 @@
           v-if="applyForm.validationMethod === 'dns'"
           label="DNS 记录"
         >
-          <div v-for="(record, index) in applyForm.dnsRecords" :key="index" class="dns-record">
-            <el-input v-model="record.name" placeholder="记录名" />
-            <el-input v-model="record.type" placeholder="类型" />
-            <el-input v-model="record.value" placeholder="值" />
-            <el-button type="danger" @click="removeDnsRecord(index)">删除</el-button>
+          <div
+            v-for="(record, index) in applyForm.dnsRecords"
+            :key="index"
+            class="dns-record"
+          >
+            <el-input
+              v-model="record.name"
+              placeholder="记录名"
+            />
+            <el-input
+              v-model="record.type"
+              placeholder="类型"
+            />
+            <el-input
+              v-model="record.value"
+              placeholder="值"
+            />
+            <el-button
+              type="danger"
+              @click="removeDnsRecord(index)"
+            >
+              删除
+            </el-button>
           </div>
-          <el-button type="primary" @click="addDnsRecord">添加记录</el-button>
+          <el-button
+            type="primary"
+            @click="addDnsRecord"
+          >
+            添加记录
+          </el-button>
         </el-form-item>
         <el-form-item
           v-if="applyForm.validationMethod === 'http'"
           label="验证路径"
         >
-          <el-input v-model="applyForm.validationPath" placeholder="验证路径" />
+          <el-input
+            v-model="applyForm.validationPath"
+            placeholder="验证路径"
+          />
         </el-form-item>
 
         <el-form-item label="自动关联节点">
@@ -581,7 +799,12 @@
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="applyDialogVisible = false">取消</el-button>
-          <el-button type="primary" :loading="applying" :disabled="applying" @click="confirmApply">确认申请</el-button>
+          <el-button
+            type="primary"
+            :loading="applying"
+            :disabled="applying"
+            @click="confirmApply"
+          >确认申请</el-button>
         </span>
       </template>
     </el-dialog>
@@ -598,17 +821,28 @@
         :rules="uploadRules"
         label-width="100px"
       >
-        <el-form-item label="域名" prop="domain">
-          <el-input v-model="uploadForm.domain" placeholder="请输入域名" />
+        <el-form-item
+          label="域名"
+          prop="domain"
+        >
+          <el-input
+            v-model="uploadForm.domain"
+            placeholder="请输入域名"
+          />
         </el-form-item>
-        <el-form-item label="证书文件" prop="certFile">
+        <el-form-item
+          label="证书文件"
+          prop="certFile"
+        >
           <el-upload
             class="upload-demo"
             action="#"
             :auto-upload="false"
             :on-change="handleCertFileChange"
           >
-            <el-button type="primary">选择文件</el-button>
+            <el-button type="primary">
+              选择文件
+            </el-button>
             <template #tip>
               <div class="el-upload__tip">
                 支持 .pem, .crt 格式的证书文件
@@ -616,14 +850,19 @@
             </template>
           </el-upload>
         </el-form-item>
-        <el-form-item label="私钥文件" prop="keyFile">
+        <el-form-item
+          label="私钥文件"
+          prop="keyFile"
+        >
           <el-upload
             class="upload-demo"
             action="#"
             :auto-upload="false"
             :on-change="handleKeyFileChange"
           >
-            <el-button type="primary">选择文件</el-button>
+            <el-button type="primary">
+              选择文件
+            </el-button>
             <template #tip>
               <div class="el-upload__tip">
                 支持 .key 格式的私钥文件
@@ -658,7 +897,10 @@
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="uploadDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="confirmUpload">确认上传</el-button>
+          <el-button
+            type="primary"
+            @click="confirmUpload"
+          >确认上传</el-button>
         </span>
       </template>
     </el-dialog>
@@ -669,18 +911,27 @@
       title="证书验证"
       width="50%"
     >
-      <div v-if="validateResult" class="validate-result">
+      <div
+        v-if="validateResult"
+        class="validate-result"
+      >
         <div class="result-status">
           <el-tag :type="validateResult.success ? 'success' : 'danger'">
             {{ validateResult.success ? '验证成功' : '验证失败' }}
           </el-tag>
         </div>
         <div class="result-details">
-          <div v-if="validateResult.message" class="detail-item">
+          <div
+            v-if="validateResult.message"
+            class="detail-item"
+          >
             <span class="label">消息：</span>
             <span>{{ validateResult.message }}</span>
           </div>
-          <div v-if="validateResult.details" class="detail-item">
+          <div
+            v-if="validateResult.details"
+            class="detail-item"
+          >
             <span class="label">详情：</span>
             <pre class="details-content">{{ validateResult.details }}</pre>
           </div>
@@ -837,7 +1088,6 @@ const paginatedCertificates = computed(() => {
   return filteredCertificates.value.slice(start, end)
 })
 
-const totalCertificateCount = computed(() => filteredCertificates.value.length)
 const validCertificateCount = computed(() =>
   filteredCertificates.value.filter((item) => ['valid', 'active'].includes(item.status)).length
 )
@@ -869,7 +1119,7 @@ const getApplyErrorMessage = (error) => {
 
   if (!rawMessage) return '申请证书失败，请稍后重试。'
 
-  if (rawMessage.includes('forbidden domain "example.com"') || rawMessage.includes('forbidden domain \\\"example.com\\\"')) {
+  if (rawMessage.includes('forbidden domain "example.com"') || rawMessage.includes('forbidden domain \\"example.com\\"')) {
     return '申请失败：邮箱域名 example.com 不允许用于 ACME 注册，请填写可用邮箱后重试。'
   }
 
@@ -1150,7 +1400,7 @@ const handleWildcardChange = (value) => {
 }
 
 // 处理 DNS 提供商变更
-const handleDnsProviderChange = (provider) => {
+const handleDnsProviderChange = () => {
   // 清空所有 DNS API 凭证
   applyForm.value.cfToken = ''
   applyForm.value.cfAccountId = ''
@@ -1554,30 +1804,6 @@ const getRenewHint = (row) => {
   }
 
   return '已开启自动续期，系统会在到期前自动尝试更新。'
-}
-
-// 获取提供商类型
-const getProviderType = (provider) => {
-  const types = {
-    'letsencrypt': 'success',
-    'zerossl': 'primary',
-    'manual': 'warning',
-    'self-signed': 'info'
-  }
-  return types[provider] || 'info'
-}
-
-// 获取状态标签类型
-const getStatusType = (status) => {
-  const types = {
-    pending: 'info',
-    failed: 'danger',
-    expired: 'danger',
-    expiring: 'warning',
-    valid: 'success',
-    active: 'success'
-  }
-  return types[status] || 'info'
 }
 
 const getStatusText = (status) => {

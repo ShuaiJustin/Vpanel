@@ -3,13 +3,21 @@
     <div class="page-header">
       <div class="page-heading">
         <h1>IP 限制管理</h1>
-        <p class="page-subtitle">查看在线设备、封禁策略和地域访问分布</p>
+        <p class="page-subtitle">
+          查看在线设备、封禁策略和地域访问分布
+        </p>
       </div>
     </div>
     
-    <el-tabs type="border-card" v-model="activeTab">
+    <el-tabs
+      v-model="activeTab"
+      type="border-card"
+    >
       <!-- 统计仪表板 -->
-      <el-tab-pane label="统计概览" name="stats">
+      <el-tab-pane
+        label="统计概览"
+        name="stats"
+      >
         <div class="stats-grid">
           <el-card class="stat-card">
             <template #header>
@@ -18,8 +26,12 @@
                 <el-icon><Monitor /></el-icon>
               </div>
             </template>
-            <div class="stat-value">{{ stats.activeDevices }}</div>
-            <div class="stat-label">当前活跃连接</div>
+            <div class="stat-value">
+              {{ stats.activeDevices }}
+            </div>
+            <div class="stat-label">
+              当前活跃连接
+            </div>
           </el-card>
           
           <el-card class="stat-card">
@@ -29,8 +41,12 @@
                 <el-icon><User /></el-icon>
               </div>
             </template>
-            <div class="stat-value">{{ stats.activeUsers }}</div>
-            <div class="stat-label">有活跃连接的用户</div>
+            <div class="stat-value">
+              {{ stats.activeUsers }}
+            </div>
+            <div class="stat-label">
+              有活跃连接的用户
+            </div>
           </el-card>
           
           <el-card class="stat-card">
@@ -40,8 +56,12 @@
                 <el-icon><CircleCheck /></el-icon>
               </div>
             </template>
-            <div class="stat-value">{{ stats.whitelistCount }}</div>
-            <div class="stat-label">IP/CIDR 条目</div>
+            <div class="stat-value">
+              {{ stats.whitelistCount }}
+            </div>
+            <div class="stat-label">
+              IP/CIDR 条目
+            </div>
           </el-card>
           
           <el-card class="stat-card">
@@ -51,8 +71,12 @@
                 <el-icon><CircleClose /></el-icon>
               </div>
             </template>
-            <div class="stat-value">{{ stats.blacklistCount }}</div>
-            <div class="stat-label">IP/CIDR 条目</div>
+            <div class="stat-value">
+              {{ stats.blacklistCount }}
+            </div>
+            <div class="stat-label">
+              IP/CIDR 条目
+            </div>
           </el-card>
           
           <el-card class="stat-card">
@@ -62,8 +86,12 @@
                 <el-icon><Warning /></el-icon>
               </div>
             </template>
-            <div class="stat-value">{{ stats.blockedToday }}</div>
-            <div class="stat-label">被拦截的请求</div>
+            <div class="stat-value">
+              {{ stats.blockedToday }}
+            </div>
+            <div class="stat-label">
+              被拦截的请求
+            </div>
           </el-card>
           
           <el-card class="stat-card">
@@ -73,31 +101,68 @@
                 <el-icon><QuestionFilled /></el-icon>
               </div>
             </template>
-            <div class="stat-value">{{ stats.suspiciousCount }}</div>
-            <div class="stat-label">检测到的可疑模式</div>
+            <div class="stat-value">
+              {{ stats.suspiciousCount }}
+            </div>
+            <div class="stat-label">
+              检测到的可疑模式
+            </div>
           </el-card>
         </div>
         
         <!-- 国家访问统计 -->
-        <el-card class="country-stats" style="margin-top: 20px;">
+        <el-card
+          class="country-stats"
+          style="margin-top: 20px;"
+        >
           <template #header>
             <div class="card-header">
               <span>按国家/地区统计</span>
-              <el-button size="small" @click="refreshStats" :loading="statsLoading">
+              <el-button
+                size="small"
+                :loading="statsLoading"
+                @click="refreshStats"
+              >
                 <el-icon><Refresh /></el-icon>
                 刷新
               </el-button>
             </div>
           </template>
           <div class="table-shell">
-            <el-table :data="stats.countryStats" border v-loading="statsLoading">
-              <el-table-column prop="country" label="国家/地区" width="150"></el-table-column>
-              <el-table-column prop="countryCode" label="代码" width="80"></el-table-column>
-              <el-table-column prop="activeCount" label="活跃连接" width="100"></el-table-column>
-              <el-table-column prop="totalCount" label="总访问次数" width="120"></el-table-column>
-              <el-table-column prop="percentage" label="占比">
+            <el-table
+              v-loading="statsLoading"
+              :data="stats.countryStats"
+              border
+            >
+              <el-table-column
+                prop="country"
+                label="国家/地区"
+                width="150"
+              />
+              <el-table-column
+                prop="countryCode"
+                label="代码"
+                width="80"
+              />
+              <el-table-column
+                prop="activeCount"
+                label="活跃连接"
+                width="100"
+              />
+              <el-table-column
+                prop="totalCount"
+                label="总访问次数"
+                width="120"
+              />
+              <el-table-column
+                prop="percentage"
+                label="占比"
+              >
                 <template #default="scope">
-                  <el-progress :percentage="scope.row.percentage" :stroke-width="10" />
+                  <el-progress
+                    :percentage="scope.row.percentage"
+                    :stroke-width="10"
+                  />
                 </template>
               </el-table-column>
             </el-table>
@@ -106,62 +171,131 @@
       </el-tab-pane>
       
       <!-- 全局设置 -->
-      <el-tab-pane label="全局设置" name="settings">
-        <el-form :model="settingsForm" :label-width="settingsLabelWidth" class="settings-form">
-          <el-divider content-position="left">并发 IP 限制</el-divider>
+      <el-tab-pane
+        label="全局设置"
+        name="settings"
+      >
+        <el-form
+          :model="settingsForm"
+          :label-width="settingsLabelWidth"
+          class="settings-form"
+        >
+          <el-divider content-position="left">
+            并发 IP 限制
+          </el-divider>
           
           <el-form-item label="启用 IP 限制">
-            <el-switch v-model="settingsForm.enabled"></el-switch>
-            <div class="form-tips">启用后将限制用户同时在线的设备数量</div>
+            <el-switch v-model="settingsForm.enabled" />
+            <div class="form-tips">
+              启用后将限制用户同时在线的设备数量
+            </div>
           </el-form-item>
           
           <el-form-item label="默认最大并发 IP">
-            <el-input-number v-model="settingsForm.defaultMaxConcurrentIPs" :min="0" :max="100"></el-input-number>
-            <div class="form-tips">0 表示无限制，新用户将使用此默认值</div>
+            <el-input-number
+              v-model="settingsForm.defaultMaxConcurrentIPs"
+              :min="0"
+              :max="100"
+            />
+            <div class="form-tips">
+              0 表示无限制，新用户将使用此默认值
+            </div>
           </el-form-item>
           
           <el-form-item label="IP 不活跃超时(分钟)">
-            <el-input-number v-model="settingsForm.inactiveTimeout" :min="1" :max="1440"></el-input-number>
-            <div class="form-tips">超过此时间未活动的 IP 将被自动清理</div>
+            <el-input-number
+              v-model="settingsForm.inactiveTimeout"
+              :min="1"
+              :max="1440"
+            />
+            <div class="form-tips">
+              超过此时间未活动的 IP 将被自动清理
+            </div>
           </el-form-item>
           
-          <el-divider content-position="left">自动黑名单</el-divider>
+          <el-divider content-position="left">
+            自动黑名单
+          </el-divider>
           
           <el-form-item label="启用自动黑名单">
-            <el-switch v-model="settingsForm.autoBlacklistEnabled"></el-switch>
-            <div class="form-tips">自动将多次失败尝试的 IP 加入黑名单</div>
+            <el-switch v-model="settingsForm.autoBlacklistEnabled" />
+            <div class="form-tips">
+              自动将多次失败尝试的 IP 加入黑名单
+            </div>
           </el-form-item>
           
-          <el-form-item label="失败尝试阈值" v-if="settingsForm.autoBlacklistEnabled">
-            <el-input-number v-model="settingsForm.failedAttemptThreshold" :min="3" :max="100"></el-input-number>
-            <div class="form-tips">达到此次数后自动加入黑名单</div>
+          <el-form-item
+            v-if="settingsForm.autoBlacklistEnabled"
+            label="失败尝试阈值"
+          >
+            <el-input-number
+              v-model="settingsForm.failedAttemptThreshold"
+              :min="3"
+              :max="100"
+            />
+            <div class="form-tips">
+              达到此次数后自动加入黑名单
+            </div>
           </el-form-item>
           
-          <el-form-item label="自动黑名单时长(小时)" v-if="settingsForm.autoBlacklistEnabled">
-            <el-input-number v-model="settingsForm.autoBlacklistDuration" :min="1" :max="8760"></el-input-number>
-            <div class="form-tips">自动黑名单的持续时间，0 表示永久</div>
+          <el-form-item
+            v-if="settingsForm.autoBlacklistEnabled"
+            label="自动黑名单时长(小时)"
+          >
+            <el-input-number
+              v-model="settingsForm.autoBlacklistDuration"
+              :min="1"
+              :max="8760"
+            />
+            <div class="form-tips">
+              自动黑名单的持续时间，0 表示永久
+            </div>
           </el-form-item>
           
-          <el-divider content-position="left">地理位置限制</el-divider>
+          <el-divider content-position="left">
+            地理位置限制
+          </el-divider>
           
           <el-form-item label="启用地理位置限制">
-            <el-switch v-model="settingsForm.geoRestrictionEnabled"></el-switch>
+            <el-switch v-model="settingsForm.geoRestrictionEnabled" />
           </el-form-item>
           
-          <el-form-item label="限制模式" v-if="settingsForm.geoRestrictionEnabled">
+          <el-form-item
+            v-if="settingsForm.geoRestrictionEnabled"
+            label="限制模式"
+          >
             <el-radio-group v-model="settingsForm.geoRestrictionMode">
-              <el-radio value="whitelist">仅允许指定国家</el-radio>
-              <el-radio value="blacklist">禁止指定国家</el-radio>
+              <el-radio value="whitelist">
+                仅允许指定国家
+              </el-radio>
+              <el-radio value="blacklist">
+                禁止指定国家
+              </el-radio>
             </el-radio-group>
           </el-form-item>
           
-          <el-form-item label="国家列表" v-if="settingsForm.geoRestrictionEnabled">
-            <el-select v-model="settingsForm.geoCountries" multiple placeholder="选择国家" style="width: 100%">
-              <el-option v-for="country in countryOptions" :key="country.code" :label="country.name" :value="country.code"></el-option>
+          <el-form-item
+            v-if="settingsForm.geoRestrictionEnabled"
+            label="国家列表"
+          >
+            <el-select
+              v-model="settingsForm.geoCountries"
+              multiple
+              placeholder="选择国家"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="country in countryOptions"
+                :key="country.code"
+                :label="country.name"
+                :value="country.code"
+              />
             </el-select>
           </el-form-item>
           
-          <el-divider content-position="left">可疑活动检测（暂未接线）</el-divider>
+          <el-divider content-position="left">
+            可疑活动检测（暂未接线）
+          </el-divider>
 
           <el-alert
             title="后端暂未提供可疑活动检测配置接口，以下选项仅保留展示。"
@@ -171,35 +305,75 @@
           />
           
           <el-form-item label="启用可疑活动检测">
-            <el-switch v-model="settingsForm.suspiciousDetectionEnabled" disabled></el-switch>
+            <el-switch
+              v-model="settingsForm.suspiciousDetectionEnabled"
+              disabled
+            />
           </el-form-item>
           
-          <el-form-item label="多国家检测时间窗口(分钟)" v-if="settingsForm.suspiciousDetectionEnabled">
-            <el-input-number v-model="settingsForm.suspiciousTimeWindow" :min="1" :max="60" disabled></el-input-number>
-            <div class="form-tips">在此时间内从多个国家访问将被标记为可疑</div>
+          <el-form-item
+            v-if="settingsForm.suspiciousDetectionEnabled"
+            label="多国家检测时间窗口(分钟)"
+          >
+            <el-input-number
+              v-model="settingsForm.suspiciousTimeWindow"
+              :min="1"
+              :max="60"
+              disabled
+            />
+            <div class="form-tips">
+              在此时间内从多个国家访问将被标记为可疑
+            </div>
           </el-form-item>
           
-          <el-form-item label="多国家阈值" v-if="settingsForm.suspiciousDetectionEnabled">
-            <el-input-number v-model="settingsForm.suspiciousCountryThreshold" :min="2" :max="10" disabled></el-input-number>
-            <div class="form-tips">触发可疑标记的国家数量</div>
+          <el-form-item
+            v-if="settingsForm.suspiciousDetectionEnabled"
+            label="多国家阈值"
+          >
+            <el-input-number
+              v-model="settingsForm.suspiciousCountryThreshold"
+              :min="2"
+              :max="10"
+              disabled
+            />
+            <div class="form-tips">
+              触发可疑标记的国家数量
+            </div>
           </el-form-item>
           
-          <el-divider></el-divider>
+          <el-divider />
           <el-form-item>
-            <el-button type="primary" @click="saveSettings" :loading="settingsSaving">保存设置</el-button>
-            <el-button @click="resetSettings">重置</el-button>
+            <el-button
+              type="primary"
+              :loading="settingsSaving"
+              @click="saveSettings"
+            >
+              保存设置
+            </el-button>
+            <el-button @click="resetSettings">
+              重置
+            </el-button>
           </el-form-item>
         </el-form>
       </el-tab-pane>
 
       <!-- 白名单管理 -->
-      <el-tab-pane label="白名单" name="whitelist">
+      <el-tab-pane
+        label="白名单"
+        name="whitelist"
+      >
         <div class="actions">
-          <el-button type="primary" @click="showAddWhitelistDialog">
+          <el-button
+            type="primary"
+            @click="showAddWhitelistDialog"
+          >
             <el-icon><Plus /></el-icon>
             添加白名单
           </el-button>
-          <el-button type="success" @click="showImportWhitelistDialog">
+          <el-button
+            type="success"
+            @click="showImportWhitelistDialog"
+          >
             <el-icon><Upload /></el-icon>
             批量导入
           </el-button>
@@ -216,25 +390,58 @@
         </div>
         
         <div class="table-shell">
-          <el-table :data="paginatedWhitelist" border v-loading="whitelistLoading" style="width: 100%">
-            <el-table-column prop="displayIp" label="IP/CIDR" width="180"></el-table-column>
-            <el-table-column prop="type" label="类型" width="100">
+          <el-table
+            v-loading="whitelistLoading"
+            :data="paginatedWhitelist"
+            border
+            style="width: 100%"
+          >
+            <el-table-column
+              prop="displayIp"
+              label="IP/CIDR"
+              width="180"
+            />
+            <el-table-column
+              prop="type"
+              label="类型"
+              width="100"
+            >
               <template #default="scope">
                 <el-tag :type="scope.row.type === 'global' ? 'primary' : 'success'">
                   {{ scope.row.type === 'global' ? '全局' : '用户级' }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="username" label="关联用户" width="120">
+            <el-table-column
+              prop="username"
+              label="关联用户"
+              width="120"
+            >
               <template #default="scope">
                 {{ scope.row.username || '-' }}
               </template>
             </el-table-column>
-            <el-table-column prop="description" label="备注"></el-table-column>
-            <el-table-column prop="createdAt" label="创建时间" width="180"></el-table-column>
-            <el-table-column label="操作" width="100">
+            <el-table-column
+              prop="description"
+              label="备注"
+            />
+            <el-table-column
+              prop="createdAt"
+              label="创建时间"
+              width="180"
+            />
+            <el-table-column
+              label="操作"
+              width="100"
+            >
               <template #default="scope">
-                <el-button size="small" type="danger" @click="deleteWhitelist(scope.row)">删除</el-button>
+                <el-button
+                  size="small"
+                  type="danger"
+                  @click="deleteWhitelist(scope.row)"
+                >
+                  删除
+                </el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -252,9 +459,15 @@
       </el-tab-pane>
       
       <!-- 黑名单管理 -->
-      <el-tab-pane label="黑名单" name="blacklist">
+      <el-tab-pane
+        label="黑名单"
+        name="blacklist"
+      >
         <div class="actions">
-          <el-button type="primary" @click="showAddBlacklistDialog">
+          <el-button
+            type="primary"
+            @click="showAddBlacklistDialog"
+          >
             <el-icon><Plus /></el-icon>
             添加黑名单
           </el-button>
@@ -271,27 +484,60 @@
         </div>
         
         <div class="table-shell">
-          <el-table :data="paginatedBlacklist" border v-loading="blacklistLoading" style="width: 100%">
-            <el-table-column prop="displayIp" label="IP/CIDR" width="180"></el-table-column>
-            <el-table-column prop="reason" label="原因"></el-table-column>
-            <el-table-column prop="source" label="来源" width="100">
+          <el-table
+            v-loading="blacklistLoading"
+            :data="paginatedBlacklist"
+            border
+            style="width: 100%"
+          >
+            <el-table-column
+              prop="displayIp"
+              label="IP/CIDR"
+              width="180"
+            />
+            <el-table-column
+              prop="reason"
+              label="原因"
+            />
+            <el-table-column
+              prop="source"
+              label="来源"
+              width="100"
+            >
               <template #default="scope">
                 <el-tag :type="scope.row.source === 'auto' ? 'warning' : 'info'">
                   {{ scope.row.source === 'auto' ? '自动' : '手动' }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="expiresAt" label="过期时间" width="180">
+            <el-table-column
+              prop="expiresAt"
+              label="过期时间"
+              width="180"
+            >
               <template #default="scope">
                 <span :class="{ 'text-warning': isExpiringSoon(scope.row.expiresAtRaw) }">
                   {{ scope.row.expiresAt || '永久' }}
                 </span>
               </template>
             </el-table-column>
-            <el-table-column prop="createdAt" label="创建时间" width="180"></el-table-column>
-            <el-table-column label="操作" width="100">
+            <el-table-column
+              prop="createdAt"
+              label="创建时间"
+              width="180"
+            />
+            <el-table-column
+              label="操作"
+              width="100"
+            >
               <template #default="scope">
-                <el-button size="small" type="danger" @click="deleteBlacklist(scope.row)">删除</el-button>
+                <el-button
+                  size="small"
+                  type="danger"
+                  @click="deleteBlacklist(scope.row)"
+                >
+                  删除
+                </el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -309,7 +555,10 @@
       </el-tab-pane>
       
       <!-- 用户在线 IP -->
-      <el-tab-pane label="用户在线 IP" name="online">
+      <el-tab-pane
+        label="用户在线 IP"
+        name="online"
+      >
         <div class="actions">
           <el-input 
             v-model="onlineSearch" 
@@ -321,27 +570,66 @@
               <el-icon><Search /></el-icon>
             </template>
           </el-input>
-          <el-button @click="fetchOnlineIPs" :loading="onlineLoading" style="margin-left: 10px;">
+          <el-button
+            :loading="onlineLoading"
+            style="margin-left: 10px;"
+            @click="fetchOnlineIPs"
+          >
             <el-icon><Refresh /></el-icon>
             刷新
           </el-button>
         </div>
         
         <div class="table-shell">
-          <el-table :data="filteredOnlineIPs" border v-loading="onlineLoading" style="width: 100%">
-            <el-table-column prop="username" label="用户名" width="150"></el-table-column>
-            <el-table-column prop="ip" label="IP 地址" width="150"></el-table-column>
-            <el-table-column prop="country" label="国家/地区" width="120">
+          <el-table
+            v-loading="onlineLoading"
+            :data="filteredOnlineIPs"
+            border
+            style="width: 100%"
+          >
+            <el-table-column
+              prop="username"
+              label="用户名"
+              width="150"
+            />
+            <el-table-column
+              prop="ip"
+              label="IP 地址"
+              width="150"
+            />
+            <el-table-column
+              prop="country"
+              label="国家/地区"
+              width="120"
+            >
               <template #default="scope">
                 <span>{{ scope.row.countryFlag }} {{ scope.row.country }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="city" label="城市" width="120"></el-table-column>
-            <el-table-column prop="lastActivity" label="最后活动" width="180"></el-table-column>
-            <el-table-column prop="deviceInfo" label="设备信息"></el-table-column>
-            <el-table-column label="操作" width="120">
+            <el-table-column
+              prop="city"
+              label="城市"
+              width="120"
+            />
+            <el-table-column
+              prop="lastActivity"
+              label="最后活动"
+              width="180"
+            />
+            <el-table-column
+              prop="deviceInfo"
+              label="设备信息"
+            />
+            <el-table-column
+              label="操作"
+              width="120"
+            >
               <template #default="scope">
-                <el-button size="small" type="danger" @click="kickUserIP(scope.row)">
+                <el-button
+                  size="small"
+                  type="danger"
+                  @click="kickUserIP(scope.row)"
+                >
                   <el-icon><Close /></el-icon>
                   踢出
                 </el-button>
@@ -352,10 +640,23 @@
       </el-tab-pane>
       
       <!-- IP 历史记录 -->
-      <el-tab-pane label="IP 历史" name="history">
+      <el-tab-pane
+        label="IP 历史"
+        name="history"
+      >
         <div class="actions">
-          <el-select v-model="historyUserId" placeholder="选择用户" clearable style="width: 200px;">
-            <el-option v-for="user in userOptions" :key="user.id" :label="user.username" :value="user.id"></el-option>
+          <el-select
+            v-model="historyUserId"
+            placeholder="选择用户"
+            clearable
+            style="width: 200px;"
+          >
+            <el-option
+              v-for="user in userOptions"
+              :key="user.id"
+              :label="user.username"
+              :value="user.id"
+            />
           </el-select>
           <el-date-picker
             v-model="historyDateRange"
@@ -365,27 +666,63 @@
             end-placeholder="结束日期"
             style="margin-left: 10px;"
           />
-          <el-button @click="fetchIPHistory" :loading="historyLoading" style="margin-left: 10px;">
+          <el-button
+            :loading="historyLoading"
+            style="margin-left: 10px;"
+            @click="fetchIPHistory"
+          >
             <el-icon><Search /></el-icon>
             查询
           </el-button>
         </div>
         
         <div class="table-shell">
-          <el-table :data="ipHistory" border v-loading="historyLoading" style="width: 100%">
-            <el-table-column prop="username" label="用户名" width="150"></el-table-column>
-            <el-table-column prop="ip" label="IP 地址" width="150"></el-table-column>
-            <el-table-column prop="country" label="国家/地区" width="120"></el-table-column>
-            <el-table-column prop="city" label="城市" width="120"></el-table-column>
-            <el-table-column prop="action" label="操作类型" width="100">
+          <el-table
+            v-loading="historyLoading"
+            :data="ipHistory"
+            border
+            style="width: 100%"
+          >
+            <el-table-column
+              prop="username"
+              label="用户名"
+              width="150"
+            />
+            <el-table-column
+              prop="ip"
+              label="IP 地址"
+              width="150"
+            />
+            <el-table-column
+              prop="country"
+              label="国家/地区"
+              width="120"
+            />
+            <el-table-column
+              prop="city"
+              label="城市"
+              width="120"
+            />
+            <el-table-column
+              prop="action"
+              label="操作类型"
+              width="100"
+            >
               <template #default="scope">
                 <el-tag :type="getActionTagType(scope.row.action)">
                   {{ getActionLabel(scope.row.action) }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="createdAt" label="时间" width="180"></el-table-column>
-            <el-table-column prop="details" label="详情"></el-table-column>
+            <el-table-column
+              prop="createdAt"
+              label="时间"
+              width="180"
+            />
+            <el-table-column
+              prop="details"
+              label="详情"
+            />
           </el-table>
         </div>
         
@@ -405,37 +742,88 @@
 
     <!-- 添加/编辑白名单对话框 -->
     <el-dialog 
-      title="添加白名单"
       v-model="whitelistDialogVisible"
+      title="添加白名单"
       :width="dialogWidth"
     >
-      <el-form :model="whitelistForm" :rules="whitelistRules" ref="whitelistFormRef" :label-width="dialogFormLabelWidth">
-        <el-form-item label="IP/CIDR" prop="ip">
-          <el-input v-model="whitelistForm.ip" placeholder="例如: 192.168.1.1 或 10.0.0.0/8"></el-input>
+      <el-form
+        ref="whitelistFormRef"
+        :model="whitelistForm"
+        :rules="whitelistRules"
+        :label-width="dialogFormLabelWidth"
+      >
+        <el-form-item
+          label="IP/CIDR"
+          prop="ip"
+        >
+          <el-input
+            v-model="whitelistForm.ip"
+            placeholder="例如: 192.168.1.1 或 10.0.0.0/8"
+          />
         </el-form-item>
-        <el-form-item label="类型" prop="type">
+        <el-form-item
+          label="类型"
+          prop="type"
+        >
           <el-radio-group v-model="whitelistForm.type">
-            <el-radio value="global">全局白名单</el-radio>
-            <el-radio value="user">用户级白名单</el-radio>
+            <el-radio value="global">
+              全局白名单
+            </el-radio>
+            <el-radio value="user">
+              用户级白名单
+            </el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="关联用户" prop="userId" v-if="whitelistForm.type === 'user'">
-          <el-select v-model="whitelistForm.userId" placeholder="选择用户" style="width: 100%">
-            <el-option v-for="user in userOptions" :key="user.id" :label="user.username" :value="user.id"></el-option>
+        <el-form-item
+          v-if="whitelistForm.type === 'user'"
+          label="关联用户"
+          prop="userId"
+        >
+          <el-select
+            v-model="whitelistForm.userId"
+            placeholder="选择用户"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="user in userOptions"
+              :key="user.id"
+              :label="user.username"
+              :value="user.id"
+            />
           </el-select>
         </el-form-item>
-        <el-form-item label="备注" prop="description">
-          <el-input v-model="whitelistForm.description" type="textarea" :rows="2" placeholder="可选备注"></el-input>
+        <el-form-item
+          label="备注"
+          prop="description"
+        >
+          <el-input
+            v-model="whitelistForm.description"
+            type="textarea"
+            :rows="2"
+            placeholder="可选备注"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="whitelistDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveWhitelist" :loading="whitelistSaving">保存</el-button>
+        <el-button @click="whitelistDialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="whitelistSaving"
+          @click="saveWhitelist"
+        >
+          保存
+        </el-button>
       </template>
     </el-dialog>
     
     <!-- 批量导入白名单对话框 -->
-    <el-dialog title="批量导入白名单" v-model="importWhitelistDialogVisible" :width="dialogWidth">
+    <el-dialog
+      v-model="importWhitelistDialogVisible"
+      title="批量导入白名单"
+      :width="dialogWidth"
+    >
       <el-form :label-width="dialogFormLabelWidth">
         <el-form-item label="IP 列表">
           <el-input 
@@ -446,34 +834,64 @@
 192.168.1.1
 10.0.0.0/8
 172.16.0.0/12"
-          ></el-input>
+          />
         </el-form-item>
         <el-form-item label="类型">
           <el-radio-group v-model="importWhitelistType">
-            <el-radio value="global">全局白名单</el-radio>
+            <el-radio value="global">
+              全局白名单
+            </el-radio>
           </el-radio-group>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="importWhitelistDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="importWhitelist" :loading="importingWhitelist">导入</el-button>
+        <el-button @click="importWhitelistDialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="importingWhitelist"
+          @click="importWhitelist"
+        >
+          导入
+        </el-button>
       </template>
     </el-dialog>
     
     <!-- 添加/编辑黑名单对话框 -->
     <el-dialog 
-      title="添加黑名单"
       v-model="blacklistDialogVisible"
+      title="添加黑名单"
       :width="dialogWidth"
     >
-      <el-form :model="blacklistForm" :rules="blacklistRules" ref="blacklistFormRef" :label-width="dialogFormLabelWidth">
-        <el-form-item label="IP/CIDR" prop="ip">
-          <el-input v-model="blacklistForm.ip" placeholder="例如: 192.168.1.1 或 10.0.0.0/8"></el-input>
+      <el-form
+        ref="blacklistFormRef"
+        :model="blacklistForm"
+        :rules="blacklistRules"
+        :label-width="dialogFormLabelWidth"
+      >
+        <el-form-item
+          label="IP/CIDR"
+          prop="ip"
+        >
+          <el-input
+            v-model="blacklistForm.ip"
+            placeholder="例如: 192.168.1.1 或 10.0.0.0/8"
+          />
         </el-form-item>
-        <el-form-item label="原因" prop="reason">
-          <el-input v-model="blacklistForm.reason" placeholder="封禁原因"></el-input>
+        <el-form-item
+          label="原因"
+          prop="reason"
+        >
+          <el-input
+            v-model="blacklistForm.reason"
+            placeholder="封禁原因"
+          />
         </el-form-item>
-        <el-form-item label="过期时间" prop="expiresAt">
+        <el-form-item
+          label="过期时间"
+          prop="expiresAt"
+        >
           <el-date-picker
             v-model="blacklistForm.expiresAt"
             type="datetime"
@@ -483,8 +901,16 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="blacklistDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveBlacklist" :loading="blacklistSaving">保存</el-button>
+        <el-button @click="blacklistDialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="blacklistSaving"
+          @click="saveBlacklist"
+        >
+          保存
+        </el-button>
       </template>
     </el-dialog>
   </div>

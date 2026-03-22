@@ -2,15 +2,23 @@
   <div class="ticket-create-page">
     <!-- 返回按钮 -->
     <div class="back-bar">
-      <el-button link @click="goBack">
+      <el-button
+        link
+        @click="goBack"
+      >
         <el-icon><ArrowLeft /></el-icon>
         返回工单列表
       </el-button>
     </div>
 
-    <el-card class="create-card" shadow="never">
+    <el-card
+      class="create-card"
+      shadow="never"
+    >
       <template #header>
-        <h2 class="card-title">创建工单</h2>
+        <h2 class="card-title">
+          创建工单
+        </h2>
       </template>
 
       <el-form
@@ -20,7 +28,10 @@
         label-width="80px"
         label-position="top"
       >
-        <el-form-item label="工单主题" prop="subject">
+        <el-form-item
+          label="工单主题"
+          prop="subject"
+        >
           <el-input
             v-model="form.subject"
             placeholder="请简要描述您的问题"
@@ -29,30 +40,69 @@
           />
         </el-form-item>
 
-        <el-form-item label="问题类型" prop="category">
-          <el-select v-model="form.category" placeholder="请选择问题类型" style="width: 100%">
-            <el-option label="账户问题" value="account" />
-            <el-option label="连接问题" value="connection" />
-            <el-option label="订阅问题" value="subscription" />
-            <el-option label="支付问题" value="payment" />
-            <el-option label="功能建议" value="suggestion" />
-            <el-option label="其他问题" value="other" />
+        <el-form-item
+          label="问题类型"
+          prop="category"
+        >
+          <el-select
+            v-model="form.category"
+            placeholder="请选择问题类型"
+            style="width: 100%"
+          >
+            <el-option
+              label="账户问题"
+              value="account"
+            />
+            <el-option
+              label="连接问题"
+              value="connection"
+            />
+            <el-option
+              label="订阅问题"
+              value="subscription"
+            />
+            <el-option
+              label="支付问题"
+              value="payment"
+            />
+            <el-option
+              label="功能建议"
+              value="suggestion"
+            />
+            <el-option
+              label="其他问题"
+              value="other"
+            />
           </el-select>
         </el-form-item>
 
-        <el-form-item label="优先级" prop="priority">
+        <el-form-item
+          label="优先级"
+          prop="priority"
+        >
           <el-radio-group v-model="form.priority">
-            <el-radio value="low">低</el-radio>
-            <el-radio value="normal">普通</el-radio>
-            <el-radio value="high">高</el-radio>
-            <el-radio value="urgent">紧急</el-radio>
+            <el-radio value="low">
+              低
+            </el-radio>
+            <el-radio value="normal">
+              普通
+            </el-radio>
+            <el-radio value="high">
+              高
+            </el-radio>
+            <el-radio value="urgent">
+              紧急
+            </el-radio>
           </el-radio-group>
           <div class="form-tip">
             请根据问题的紧急程度选择优先级，紧急问题将优先处理
           </div>
         </el-form-item>
 
-        <el-form-item label="问题描述" prop="content">
+        <el-form-item
+          label="问题描述"
+          prop="content"
+        >
           <el-input
             v-model="form.content"
             type="textarea"
@@ -81,16 +131,25 @@
         </el-form-item>
 
         <el-form-item>
-          <el-button type="primary" @click="submitTicket" :loading="submitting">
+          <el-button
+            type="primary"
+            :loading="submitting"
+            @click="submitTicket"
+          >
             提交工单
           </el-button>
-          <el-button @click="goBack">取消</el-button>
+          <el-button @click="goBack">
+            取消
+          </el-button>
         </el-form-item>
       </el-form>
     </el-card>
 
     <!-- 常见问题提示 -->
-    <el-card class="tips-card" shadow="never">
+    <el-card
+      class="tips-card"
+      shadow="never"
+    >
       <template #header>
         <span>
           <el-icon><InfoFilled /></el-icon>
@@ -102,11 +161,15 @@
         <p>在提交工单前，建议您先查看以下内容：</p>
         <ul>
           <li>
-            <router-link to="/user/help">帮助中心</router-link>
+            <router-link to="/user/help">
+              帮助中心
+            </router-link>
             - 查看常见问题解答
           </li>
           <li>
-            <router-link to="/user/announcements">公告中心</router-link>
+            <router-link to="/user/announcements">
+              公告中心
+            </router-link>
             - 查看是否有相关维护通知
           </li>
         </ul>

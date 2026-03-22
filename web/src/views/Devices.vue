@@ -9,10 +9,15 @@
           <span class="quota-label">在线设备</span>
           <span class="quota-value">{{ devices.length }}</span>
         </div>
-        <div class="quota-divider">/</div>
+        <div class="quota-divider">
+          /
+        </div>
         <div class="quota-item">
           <span class="quota-label">最大设备数</span>
-          <span class="quota-value" :class="{ 'text-warning': isNearLimit }">
+          <span
+            class="quota-value"
+            :class="{ 'text-warning': isNearLimit }"
+          >
             {{ maxDevices === 0 ? '无限制' : maxDevices }}
           </span>
         </div>
@@ -24,7 +29,10 @@
         :stroke-width="10"
         style="margin-top: 15px;"
       />
-      <div class="quota-tips" v-if="isNearLimit">
+      <div
+        v-if="isNearLimit"
+        class="quota-tips"
+      >
         <el-icon><Warning /></el-icon>
         您的设备数量即将达到上限，如需更多设备请联系管理员
       </div>
@@ -35,16 +43,26 @@
       <template #header>
         <div class="card-header">
           <span>在线设备列表</span>
-          <el-button size="small" @click="fetchDevices" :loading="loading">
+          <el-button
+            size="small"
+            :loading="loading"
+            @click="fetchDevices"
+          >
             <el-icon><Refresh /></el-icon>
             刷新
           </el-button>
         </div>
       </template>
       
-      <el-empty v-if="devices.length === 0 && !loading" description="暂无在线设备" />
+      <el-empty
+        v-if="devices.length === 0 && !loading"
+        description="暂无在线设备"
+      />
       
-      <div class="device-list" v-else>
+      <div
+        v-else
+        class="device-list"
+      >
         <el-card 
           v-for="device in devices" 
           :key="device.ip" 
@@ -54,12 +72,20 @@
         >
           <div class="device-info">
             <div class="device-icon">
-              <el-icon :size="32"><Monitor /></el-icon>
+              <el-icon :size="32">
+                <Monitor />
+              </el-icon>
             </div>
             <div class="device-details">
               <div class="device-ip">
                 {{ device.ip }}
-                <el-tag v-if="device.isCurrent" size="small" type="success">当前设备</el-tag>
+                <el-tag
+                  v-if="device.isCurrent"
+                  size="small"
+                  type="success"
+                >
+                  当前设备
+                </el-tag>
               </div>
               <div class="device-location">
                 <el-icon><Location /></el-icon>
@@ -69,7 +95,10 @@
                 <el-icon><Clock /></el-icon>
                 最后活动: {{ device.lastActivity }}
               </div>
-              <div class="device-agent" v-if="device.userAgent">
+              <div
+                v-if="device.userAgent"
+                class="device-agent"
+              >
                 <el-icon><Platform /></el-icon>
                 {{ device.userAgent }}
               </div>
@@ -78,9 +107,9 @@
               <el-button 
                 type="danger" 
                 size="small" 
-                @click="kickDevice(device)"
                 :disabled="device.isCurrent"
                 :loading="device.kicking"
+                @click="kickDevice(device)"
               >
                 <el-icon><Close /></el-icon>
                 踢出
@@ -99,17 +128,45 @@
         </div>
       </template>
       
-      <el-table :data="ipHistory" border v-loading="historyLoading">
-        <el-table-column prop="ip" label="IP 地址" width="150"></el-table-column>
-        <el-table-column prop="country" label="国家/地区" width="120">
+      <el-table
+        v-loading="historyLoading"
+        :data="ipHistory"
+        border
+      >
+        <el-table-column
+          prop="ip"
+          label="IP 地址"
+          width="150"
+        />
+        <el-table-column
+          prop="country"
+          label="国家/地区"
+          width="120"
+        >
           <template #default="scope">
             {{ scope.row.countryFlag }} {{ scope.row.country }}
           </template>
         </el-table-column>
-        <el-table-column prop="city" label="城市" width="120"></el-table-column>
-        <el-table-column prop="firstSeen" label="首次访问" width="180"></el-table-column>
-        <el-table-column prop="lastSeen" label="最后访问" width="180"></el-table-column>
-        <el-table-column prop="accessCount" label="访问次数" width="100"></el-table-column>
+        <el-table-column
+          prop="city"
+          label="城市"
+          width="120"
+        />
+        <el-table-column
+          prop="firstSeen"
+          label="首次访问"
+          width="180"
+        />
+        <el-table-column
+          prop="lastSeen"
+          label="最后访问"
+          width="180"
+        />
+        <el-table-column
+          prop="accessCount"
+          label="访问次数"
+          width="100"
+        />
       </el-table>
       
       <div class="pagination-container">
@@ -126,7 +183,10 @@
     </el-card>
     
     <!-- 订阅链接访问 IP -->
-    <el-card style="margin-top: 20px;" v-if="false">
+    <el-card
+      v-if="false"
+      style="margin-top: 20px;"
+    >
       <template #header>
         <div class="card-header">
           <span>订阅链接访问 IP</span>
@@ -136,12 +196,34 @@
         </div>
       </template>
       
-      <el-table :data="[]" border>
-        <el-table-column prop="ip" label="IP 地址" width="150"></el-table-column>
-        <el-table-column prop="country" label="国家/地区" width="120"></el-table-column>
-        <el-table-column prop="lastAccess" label="最后访问" width="180"></el-table-column>
-        <el-table-column prop="accessCount" label="访问次数" width="100"></el-table-column>
-        <el-table-column prop="userAgent" label="客户端"></el-table-column>
+      <el-table
+        :data="[]"
+        border
+      >
+        <el-table-column
+          prop="ip"
+          label="IP 地址"
+          width="150"
+        />
+        <el-table-column
+          prop="country"
+          label="国家/地区"
+          width="120"
+        />
+        <el-table-column
+          prop="lastAccess"
+          label="最后访问"
+          width="180"
+        />
+        <el-table-column
+          prop="accessCount"
+          label="访问次数"
+          width="100"
+        />
+        <el-table-column
+          prop="userAgent"
+          label="客户端"
+        />
       </el-table>
     </el-card>
   </div>

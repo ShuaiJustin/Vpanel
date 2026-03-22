@@ -1,22 +1,41 @@
 <template>
   <div class="dokodemo-qrcode-container">
-    <div v-if="loading" class="qrcode-loading">
-      <el-icon class="is-loading"><Loading /></el-icon>
+    <div
+      v-if="loading"
+      class="qrcode-loading"
+    >
+      <el-icon class="is-loading">
+        <Loading />
+      </el-icon>
       <span>生成二维码中...</span>
     </div>
-    <div v-else-if="error" class="qrcode-error">
+    <div
+      v-else-if="error"
+      class="qrcode-error"
+    >
       <el-icon><Warning /></el-icon>
       <span>{{ error }}</span>
     </div>
-    <div v-else class="qrcode-content">
+    <div
+      v-else
+      class="qrcode-content"
+    >
       <div class="protocol-header">
         <span class="protocol-badge">Dokodemo-Door</span>
         <span class="protocol-name">{{ connectionName }}</span>
       </div>
       
       <div class="qrcode-display">
-        <img v-if="qrCodeImage" :src="qrCodeImage" alt="Dokodemo QR Code" />
-        <div v-else ref="qrcodeTarget" class="qrcode-element"></div>
+        <img
+          v-if="qrCodeImage"
+          :src="qrCodeImage"
+          alt="Dokodemo QR Code"
+        >
+        <div
+          v-else
+          ref="qrcodeTarget"
+          class="qrcode-element"
+        />
       </div>
       
       <div class="connection-details">
@@ -46,7 +65,10 @@
           class="share-link-input"
         >
           <template #append>
-            <el-button type="primary" @click="copyLink">
+            <el-button
+              type="primary"
+              @click="copyLink"
+            >
               <el-icon><DocumentCopy /></el-icon>
             </el-button>
           </template>
@@ -54,12 +76,19 @@
       </div>
       
       <div class="actions">
-        <el-button type="primary" @click="downloadQRCode">
-          <el-icon class="el-icon--left"><Download /></el-icon>
+        <el-button
+          type="primary"
+          @click="downloadQRCode"
+        >
+          <el-icon class="el-icon--left">
+            <Download />
+          </el-icon>
           下载二维码
         </el-button>
         <el-button @click="regenerateQRCode">
-          <el-icon class="el-icon--left"><Refresh /></el-icon>
+          <el-icon class="el-icon--left">
+            <Refresh />
+          </el-icon>
           刷新
         </el-button>
       </div>

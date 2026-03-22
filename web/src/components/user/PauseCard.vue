@@ -1,5 +1,8 @@
 <template>
-  <el-card class="pause-card" shadow="never">
+  <el-card
+    class="pause-card"
+    shadow="never"
+  >
     <template #header>
       <div class="card-header">
         <span>
@@ -9,11 +12,16 @@
       </div>
     </template>
 
-    <div class="pause-content" v-loading="pauseStore.loading">
+    <div
+      v-loading="pauseStore.loading"
+      class="pause-content"
+    >
       <!-- 已暂停状态 -->
       <template v-if="pauseStore.isPaused">
         <div class="pause-status paused">
-          <el-icon class="status-icon"><Clock /></el-icon>
+          <el-icon class="status-icon">
+            <Clock />
+          </el-icon>
           <div class="status-info">
             <h4>订阅已暂停</h4>
             <p>暂停于 {{ formatDate(pauseStore.activePause?.paused_at) }}</p>
@@ -37,8 +45,8 @@
         <el-button 
           type="primary" 
           class="action-btn"
-          @click="handleResume"
           :loading="resuming"
+          @click="handleResume"
         >
           <el-icon><VideoPlay /></el-icon>
           恢复订阅
@@ -47,7 +55,10 @@
 
       <!-- 未暂停状态 -->
       <template v-else>
-        <div class="pause-status" :class="noSubscription ? 'inactive' : 'active'">
+        <div
+          class="pause-status"
+          :class="noSubscription ? 'inactive' : 'active'"
+        >
           <el-icon class="status-icon">
             <CircleCloseFilled v-if="noSubscription" />
             <CircleCheck v-else />
@@ -57,7 +68,10 @@
             <p v-if="pauseStore.canPause">
               本周期剩余 {{ pauseStore.remainingPauses }} 次暂停机会
             </p>
-            <p v-else class="cannot-pause">
+            <p
+              v-else
+              class="cannot-pause"
+            >
               {{ pauseStore.cannotPauseReason }}
             </p>
           </div>
@@ -79,8 +93,8 @@
         <el-button 
           type="warning" 
           class="action-btn"
-          @click="showPauseDialog = true"
           :disabled="!pauseStore.canPause"
+          @click="showPauseDialog = true"
         >
           <el-icon><VideoPause /></el-icon>
           暂停订阅
@@ -112,8 +126,14 @@
         </template>
       </el-alert>
       <template #footer>
-        <el-button @click="showPauseDialog = false">取消</el-button>
-        <el-button type="warning" @click="handlePause" :loading="pausing">
+        <el-button @click="showPauseDialog = false">
+          取消
+        </el-button>
+        <el-button
+          type="warning"
+          :loading="pausing"
+          @click="handlePause"
+        >
           确认暂停
         </el-button>
       </template>

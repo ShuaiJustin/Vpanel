@@ -4,7 +4,10 @@
     <header class="user-header">
       <div class="header-container">
         <div class="header-left">
-          <router-link to="/user/dashboard" class="logo">
+          <router-link
+            to="/user/dashboard"
+            class="logo"
+          >
             <span class="logo-text">V Panel</span>
           </router-link>
           
@@ -25,21 +28,37 @@
         
         <div class="header-right">
           <!-- 公告通知 -->
-          <el-badge :value="unreadCount" :hidden="unreadCount === 0" class="notification-badge">
-            <el-button circle @click="goToAnnouncements">
+          <el-badge
+            :value="unreadCount"
+            :hidden="unreadCount === 0"
+            class="notification-badge"
+          >
+            <el-button
+              circle
+              @click="goToAnnouncements"
+            >
               <el-icon><Bell /></el-icon>
             </el-button>
           </el-badge>
           
           <!-- 主题切换 -->
-          <el-button circle @click="toggleTheme">
+          <el-button
+            circle
+            @click="toggleTheme"
+          >
             <el-icon><Sunny v-if="isDarkMode" /><Moon v-else /></el-icon>
           </el-button>
           
           <!-- 用户菜单 -->
-          <el-dropdown trigger="click" @command="handleCommand">
+          <el-dropdown
+            trigger="click"
+            @command="handleCommand"
+          >
             <div class="user-dropdown-trigger">
-              <el-avatar :size="32" class="user-avatar">
+              <el-avatar
+                :size="32"
+                class="user-avatar"
+              >
                 {{ userInitial }}
               </el-avatar>
               <span class="username">{{ username }}</span>
@@ -63,7 +82,10 @@
                   <el-icon><QuestionFilled /></el-icon>
                   帮助中心
                 </el-dropdown-item>
-                <el-dropdown-item divided command="logout">
+                <el-dropdown-item
+                  divided
+                  command="logout"
+                >
                   <el-icon><SwitchButton /></el-icon>
                   退出登录
                 </el-dropdown-item>
@@ -72,7 +94,10 @@
           </el-dropdown>
           
           <!-- 移动端菜单按钮 -->
-          <el-button class="mobile-menu-btn" @click="showMobileMenu = true">
+          <el-button
+            class="mobile-menu-btn"
+            @click="showMobileMenu = true"
+          >
             <el-icon><Menu /></el-icon>
           </el-button>
         </div>
@@ -82,7 +107,10 @@
     <!-- 主内容区 -->
     <main class="user-main">
       <router-view v-slot="{ Component }">
-        <transition name="fade" mode="out-in">
+        <transition
+          name="fade"
+          mode="out-in"
+        >
           <component :is="Component" />
         </transition>
       </router-view>
@@ -92,10 +120,22 @@
     <footer class="user-footer">
       <div class="footer-container">
         <div class="footer-links">
-          <router-link to="/user/help">帮助中心</router-link>
-          <router-link to="/user/terms">服务条款</router-link>
-          <router-link to="/user/privacy">隐私政策</router-link>
-          <button type="button" class="footer-link-button" @click="showContact">联系我们</button>
+          <router-link to="/user/help">
+            帮助中心
+          </router-link>
+          <router-link to="/user/terms">
+            服务条款
+          </router-link>
+          <router-link to="/user/privacy">
+            隐私政策
+          </router-link>
+          <button
+            type="button"
+            class="footer-link-button"
+            @click="showContact"
+          >
+            联系我们
+          </button>
         </div>
         <div class="footer-copyright">
           © {{ currentYear }} V Panel. All rights reserved.
@@ -112,10 +152,22 @@
     >
       <template #header>
         <div class="mobile-menu-header">
-          <el-avatar :size="48" class="user-avatar">{{ userInitial }}</el-avatar>
+          <el-avatar
+            :size="48"
+            class="user-avatar"
+          >
+            {{ userInitial }}
+          </el-avatar>
           <div class="user-info">
-            <div class="username">{{ username }}</div>
-            <div class="user-status" :class="accountStatus">{{ statusText }}</div>
+            <div class="username">
+              {{ username }}
+            </div>
+            <div
+              class="user-status"
+              :class="accountStatus"
+            >
+              {{ statusText }}
+            </div>
           </div>
         </div>
       </template>
@@ -137,15 +189,27 @@
         <el-divider />
         
         <div class="mobile-nav">
-          <router-link to="/user/settings" class="mobile-nav-item" @click="showMobileMenu = false">
+          <router-link
+            to="/user/settings"
+            class="mobile-nav-item"
+            @click="showMobileMenu = false"
+          >
             <el-icon><Setting /></el-icon>
             <span>个人设置</span>
           </router-link>
-          <router-link to="/user/tickets" class="mobile-nav-item" @click="showMobileMenu = false">
+          <router-link
+            to="/user/tickets"
+            class="mobile-nav-item"
+            @click="showMobileMenu = false"
+          >
             <el-icon><ChatDotRound /></el-icon>
             <span>我的工单</span>
           </router-link>
-          <router-link to="/user/help" class="mobile-nav-item" @click="showMobileMenu = false">
+          <router-link
+            to="/user/help"
+            class="mobile-nav-item"
+            @click="showMobileMenu = false"
+          >
             <el-icon><QuestionFilled /></el-icon>
             <span>帮助中心</span>
           </router-link>
@@ -153,7 +217,12 @@
         
         <el-divider />
         
-        <el-button type="danger" plain class="logout-btn" @click="handleLogout">
+        <el-button
+          type="danger"
+          plain
+          class="logout-btn"
+          @click="handleLogout"
+        >
           <el-icon><SwitchButton /></el-icon>
           退出登录
         </el-button>
@@ -313,18 +382,18 @@ onMounted(() => {
 .header-container {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 0 20px;
+  padding: 0 var(--vp-page-padding);
   height: 60px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--vp-inline-gap);
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 40px;
+  gap: clamp(16px, 3vw, 40px);
   min-width: 0;
 }
 
@@ -370,7 +439,7 @@ onMounted(() => {
 .header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--vp-inline-gap);
   min-width: 0;
 }
 
@@ -417,7 +486,7 @@ onMounted(() => {
   max-width: 1400px;
   width: 100%;
   margin: 0 auto;
-  padding: clamp(16px, 2vw, 24px) clamp(12px, 2vw, 20px);
+  padding: var(--vp-page-padding);
 }
 
 /* 页脚 */
@@ -430,7 +499,7 @@ onMounted(() => {
 .footer-container {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 0 20px;
+  padding: 0 var(--vp-page-padding);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -539,7 +608,7 @@ onMounted(() => {
 }
 
 /* 响应式 */
-@media (max-width: 1200px) {
+@media (max-width: 1280px) {
   .header-container {
     height: auto;
     min-height: 60px;

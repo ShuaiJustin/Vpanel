@@ -1,7 +1,9 @@
 <template>
   <div class="admin-reports-page">
     <div class="page-header">
-      <h1 class="page-title">财务报表</h1>
+      <h1 class="page-title">
+        财务报表
+      </h1>
       <el-date-picker
         v-model="dateRange"
         type="daterange"
@@ -14,30 +16,65 @@
 
     <!-- 统计卡片 -->
     <div class="stats-grid">
-      <el-card shadow="never" class="stat-card">
-        <div class="stat-value">¥{{ formatPrice(stats.total_revenue) }}</div>
-        <div class="stat-label">总收入</div>
+      <el-card
+        shadow="never"
+        class="stat-card"
+      >
+        <div class="stat-value">
+          ¥{{ formatPrice(stats.total_revenue) }}
+        </div>
+        <div class="stat-label">
+          总收入
+        </div>
       </el-card>
-      <el-card shadow="never" class="stat-card">
-        <div class="stat-value">{{ stats.total_orders }}</div>
-        <div class="stat-label">总订单数</div>
+      <el-card
+        shadow="never"
+        class="stat-card"
+      >
+        <div class="stat-value">
+          {{ stats.total_orders }}
+        </div>
+        <div class="stat-label">
+          总订单数
+        </div>
       </el-card>
-      <el-card shadow="never" class="stat-card">
-        <div class="stat-value">{{ stats.paid_orders }}</div>
-        <div class="stat-label">已支付订单</div>
+      <el-card
+        shadow="never"
+        class="stat-card"
+      >
+        <div class="stat-value">
+          {{ stats.paid_orders }}
+        </div>
+        <div class="stat-label">
+          已支付订单
+        </div>
       </el-card>
-      <el-card shadow="never" class="stat-card">
-        <div class="stat-value">{{ stats.refunded_orders }}</div>
-        <div class="stat-label">退款订单数</div>
+      <el-card
+        shadow="never"
+        class="stat-card"
+      >
+        <div class="stat-value">
+          {{ stats.refunded_orders }}
+        </div>
+        <div class="stat-label">
+          退款订单数
+        </div>
       </el-card>
     </div>
 
     <!-- 支付失败统计 -->
-    <el-card shadow="never" class="failed-payments-card">
+    <el-card
+      shadow="never"
+      class="failed-payments-card"
+    >
       <template #header>
         <div class="card-header">
           <span>支付失败统计</span>
-          <el-button type="primary" size="small" @click="fetchFailedPaymentStats">
+          <el-button
+            type="primary"
+            size="small"
+            @click="fetchFailedPaymentStats"
+          >
             <el-icon><Refresh /></el-icon>
             刷新
           </el-button>
@@ -45,61 +82,113 @@
       </template>
       <div class="failed-stats-grid">
         <div class="failed-stat-item">
-          <div class="failed-stat-value error">{{ failedPaymentStats.total_failed }}</div>
-          <div class="failed-stat-label">失败总数</div>
+          <div class="failed-stat-value error">
+            {{ failedPaymentStats.total_failed }}
+          </div>
+          <div class="failed-stat-label">
+            失败总数
+          </div>
         </div>
         <div class="failed-stat-item">
-          <div class="failed-stat-value warning">{{ failedPaymentStats.pending_retry }}</div>
-          <div class="failed-stat-label">待重试</div>
+          <div class="failed-stat-value warning">
+            {{ failedPaymentStats.pending_retry }}
+          </div>
+          <div class="failed-stat-label">
+            待重试
+          </div>
         </div>
         <div class="failed-stat-item">
-          <div class="failed-stat-value danger">{{ failedPaymentStats.retry_exhausted }}</div>
-          <div class="failed-stat-label">重试耗尽</div>
+          <div class="failed-stat-value danger">
+            {{ failedPaymentStats.retry_exhausted }}
+          </div>
+          <div class="failed-stat-label">
+            重试耗尽
+          </div>
         </div>
         <div class="failed-stat-item">
-          <div class="failed-stat-value success">{{ failedPaymentStats.recovered_by_retry }}</div>
-          <div class="failed-stat-label">重试成功</div>
+          <div class="failed-stat-value success">
+            {{ failedPaymentStats.recovered_by_retry }}
+          </div>
+          <div class="failed-stat-label">
+            重试成功
+          </div>
         </div>
         <div class="failed-stat-item">
-          <div class="failed-stat-value">{{ failedPaymentStats.failure_rate?.toFixed(2) || 0 }}%</div>
-          <div class="failed-stat-label">失败率</div>
+          <div class="failed-stat-value">
+            {{ failedPaymentStats.failure_rate?.toFixed(2) || 0 }}%
+          </div>
+          <div class="failed-stat-label">
+            失败率
+          </div>
         </div>
         <div class="failed-stat-item">
-          <div class="failed-stat-value success">{{ failedPaymentStats.recovery_rate?.toFixed(2) || 0 }}%</div>
-          <div class="failed-stat-label">恢复率</div>
+          <div class="failed-stat-value success">
+            {{ failedPaymentStats.recovery_rate?.toFixed(2) || 0 }}%
+          </div>
+          <div class="failed-stat-label">
+            恢复率
+          </div>
         </div>
         <div class="failed-stat-item">
-          <div class="failed-stat-value">{{ failedPaymentStats.avg_retry_attempts?.toFixed(1) || 0 }}</div>
-          <div class="failed-stat-label">平均重试次数</div>
+          <div class="failed-stat-value">
+            {{ failedPaymentStats.avg_retry_attempts?.toFixed(1) || 0 }}
+          </div>
+          <div class="failed-stat-label">
+            平均重试次数
+          </div>
         </div>
       </div>
       
       <!-- 失败原因分布 -->
-      <div v-if="Object.keys(failedPaymentStats.failures_by_reason || {}).length > 0" class="failure-reasons">
+      <div
+        v-if="Object.keys(failedPaymentStats.failures_by_reason || {}).length > 0"
+        class="failure-reasons"
+      >
         <h4>失败原因分布</h4>
         <div class="table-wrap">
-        <el-table :data="failureReasonsList" size="small" style="width: 100%">
-          <el-table-column prop="reason" label="失败原因" />
-          <el-table-column prop="count" label="次数" width="100" />
-          <el-table-column label="占比" width="150">
-            <template #default="{ row }">
-              <el-progress 
-                :percentage="Math.round(row.count / failedPaymentStats.total_failed * 100)" 
-                :stroke-width="6" 
-              />
-            </template>
-          </el-table-column>
-        </el-table>
+          <el-table
+            :data="failureReasonsList"
+            size="small"
+            style="width: 100%"
+          >
+            <el-table-column
+              prop="reason"
+              label="失败原因"
+            />
+            <el-table-column
+              prop="count"
+              label="次数"
+              width="100"
+            />
+            <el-table-column
+              label="占比"
+              width="150"
+            >
+              <template #default="{ row }">
+                <el-progress 
+                  :percentage="Math.round(row.count / failedPaymentStats.total_failed * 100)" 
+                  :stroke-width="6" 
+                />
+              </template>
+            </el-table-column>
+          </el-table>
         </div>
       </div>
     </el-card>
 
     <!-- 订阅暂停统计 -->
-    <el-card shadow="never" class="pause-stats-card">
+    <el-card
+      shadow="never"
+      class="pause-stats-card"
+    >
       <template #header>
         <div class="card-header">
           <span>订阅暂停统计</span>
-          <el-button type="primary" size="small" @click="fetchPauseStats">
+          <el-button
+            type="primary"
+            size="small"
+            @click="fetchPauseStats"
+          >
             <el-icon><Refresh /></el-icon>
             刷新
           </el-button>
@@ -107,52 +196,106 @@
       </template>
       <div class="pause-stats-grid">
         <div class="pause-stat-item">
-          <div class="pause-stat-value">{{ pauseStats.total_pauses }}</div>
-          <div class="pause-stat-label">总暂停次数</div>
+          <div class="pause-stat-value">
+            {{ pauseStats.total_pauses }}
+          </div>
+          <div class="pause-stat-label">
+            总暂停次数
+          </div>
         </div>
         <div class="pause-stat-item">
-          <div class="pause-stat-value warning">{{ pauseStats.active_pauses }}</div>
-          <div class="pause-stat-label">当前暂停中</div>
+          <div class="pause-stat-value warning">
+            {{ pauseStats.active_pauses }}
+          </div>
+          <div class="pause-stat-label">
+            当前暂停中
+          </div>
         </div>
         <div class="pause-stat-item">
-          <div class="pause-stat-value success">{{ pauseStats.resumed_pauses }}</div>
-          <div class="pause-stat-label">已恢复</div>
+          <div class="pause-stat-value success">
+            {{ pauseStats.resumed_pauses }}
+          </div>
+          <div class="pause-stat-label">
+            已恢复
+          </div>
         </div>
         <div class="pause-stat-item">
-          <div class="pause-stat-value">{{ pauseStats.auto_resumed }}</div>
-          <div class="pause-stat-label">自动恢复</div>
+          <div class="pause-stat-value">
+            {{ pauseStats.auto_resumed }}
+          </div>
+          <div class="pause-stat-label">
+            自动恢复
+          </div>
         </div>
         <div class="pause-stat-item">
-          <div class="pause-stat-value">{{ pauseStats.avg_pause_days?.toFixed(1) || 0 }}</div>
-          <div class="pause-stat-label">平均暂停天数</div>
+          <div class="pause-stat-value">
+            {{ pauseStats.avg_pause_days?.toFixed(1) || 0 }}
+          </div>
+          <div class="pause-stat-label">
+            平均暂停天数
+          </div>
         </div>
         <div class="pause-stat-item">
-          <div class="pause-stat-value">{{ pauseStats.pause_rate?.toFixed(1) || 0 }}%</div>
-          <div class="pause-stat-label">暂停率</div>
+          <div class="pause-stat-value">
+            {{ pauseStats.pause_rate?.toFixed(1) || 0 }}%
+          </div>
+          <div class="pause-stat-label">
+            暂停率
+          </div>
         </div>
       </div>
       
       <!-- 暂停滥用检测 -->
-      <div v-if="pauseStats.abuse_patterns?.length > 0" class="abuse-patterns">
+      <div
+        v-if="pauseStats.abuse_patterns?.length > 0"
+        class="abuse-patterns"
+      >
         <h4>潜在滥用用户</h4>
         <div class="table-wrap">
-        <el-table :data="pauseStats.abuse_patterns" size="small" style="width: 100%">
-          <el-table-column prop="user_id" label="用户ID" width="100" />
-          <el-table-column prop="pause_count" label="暂停次数" width="100" />
-          <el-table-column prop="total_pause_days" label="总暂停天数" width="120" />
-          <el-table-column label="操作" width="100">
-            <template #default="{ row }">
-              <el-button type="primary" link size="small" @click="viewUser(row.user_id)">
-                查看
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+          <el-table
+            :data="pauseStats.abuse_patterns"
+            size="small"
+            style="width: 100%"
+          >
+            <el-table-column
+              prop="user_id"
+              label="用户ID"
+              width="100"
+            />
+            <el-table-column
+              prop="pause_count"
+              label="暂停次数"
+              width="100"
+            />
+            <el-table-column
+              prop="total_pause_days"
+              label="总暂停天数"
+              width="120"
+            />
+            <el-table-column
+              label="操作"
+              width="100"
+            >
+              <template #default="{ row }">
+                <el-button
+                  type="primary"
+                  link
+                  size="small"
+                  @click="viewUser(row.user_id)"
+                >
+                  查看
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
         </div>
       </div>
     </el-card>
 
-    <el-card shadow="never" class="chart-card">
+    <el-card
+      shadow="never"
+      class="chart-card"
+    >
       <template #header>
         <span>趋势与排行</span>
       </template>
@@ -182,7 +325,7 @@ import { Refresh } from '@element-plus/icons-vue'
 import api from '@/api'
 import { useViewport } from '@/composables/useViewport'
 
-const { isMobile, isTablet } = useViewport({ mobileBreakpoint: 768, tabletBreakpoint: 1280 })
+const { isMobile, isTablet } = useViewport()
 
 const dateRange = ref(null)
 
@@ -406,7 +549,7 @@ onMounted(() => {
   color: #303133;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1280px) {
   .admin-reports-page { padding: 16px; }
 }
 @media (max-width: 768px) {
@@ -417,7 +560,7 @@ onMounted(() => {
   .pause-stats-grid { grid-template-columns: 1fr 1fr; }
 }
 
-@media (max-width: 520px) {
+@media (max-width: 640px) {
   .stats-grid,
   .failed-stats-grid,
   .pause-stats-grid {

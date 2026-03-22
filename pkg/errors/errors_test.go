@@ -47,14 +47,24 @@ func TestErrorResponseConsistency(t *testing.T) {
 			appErr := New(code, message)
 			response := appErr.ToResponse(requestID)
 
+			if response.Success {
+				t.Log("Response success should be false for errors")
+				return false
+			}
+
+			if response.Error == nil {
+				t.Log("Response error payload is nil")
+				return false
+			}
+
 			// Check code is non-empty
-			if response.Code == "" {
+			if response.Error.Code == "" {
 				t.Log("Response code is empty")
 				return false
 			}
 
 			// Check message is non-empty
-			if response.Message == "" {
+			if response.Error.Message == "" {
 				t.Log("Response message is empty")
 				return false
 			}
@@ -99,15 +109,20 @@ func TestErrorResponseWithValidationDetails(t *testing.T) {
 			appErr := NewValidationErrorWithFields("Validation failed", fields)
 			response := appErr.ToResponse(requestID)
 
+			if response.Error == nil {
+				t.Log("Response error payload is nil for validation error")
+				return false
+			}
+
 			// Check that details contains the validation errors
-			if response.Details == nil {
+			if response.Error.Details == nil {
 				t.Log("Response details is nil for validation error")
 				return false
 			}
 
-			validationErrs, ok := response.Details.(*ValidationErrors)
+			validationErrs, ok := response.Error.Details.(*ValidationErrors)
 			if !ok {
-				t.Logf("Response details is not ValidationErrors: %T", response.Details)
+				t.Logf("Response details is not ValidationErrors: %T", response.Error.Details)
 				return false
 			}
 
@@ -180,16 +195,26 @@ func TestToErrorResponseForNonAppError(t *testing.T) {
 			regularErr := fmt.Errorf("%s", errorMsg)
 			response := ToErrorResponse(regularErr, requestID)
 
+			if response.Success {
+				t.Log("Response success should be false for non-AppError")
+				return false
+			}
+
+			if response.Error == nil {
+				t.Log("Response error payload is nil")
+				return false
+			}
+
 			// Should return internal error code
-			if response.Code != string(ErrCodeInternal) {
-				t.Logf("Expected code %s, got %s", ErrCodeInternal, response.Code)
+			if response.Error.Code != string(ErrCodeInternal) {
+				t.Logf("Expected code %s, got %s", ErrCodeInternal, response.Error.Code)
 				return false
 			}
 
 			// Message should be a generic sanitized message
-			expectedMsg := "An internal error occurred"
-			if response.Message != expectedMsg {
-				t.Logf("Expected message %q, got %q", expectedMsg, response.Message)
+			expectedMsg := "服务器内部错误"
+			if response.Error.Message != expectedMsg {
+				t.Logf("Expected message %q, got %q", expectedMsg, response.Error.Message)
 				return false
 			}
 

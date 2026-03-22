@@ -3,12 +3,31 @@
     <div class="header">
       <div class="page-heading">
         <h1>系统监控</h1>
-        <p class="page-subtitle">实时查看 CPU、内存、网络和磁盘运行状态</p>
+        <p class="page-subtitle">
+          实时查看 CPU、内存、网络和磁盘运行状态
+        </p>
       </div>
       <div class="actions">
-        <el-button type="primary" @click="refreshStats">刷新</el-button>
-        <el-button type="success" @click="startAutoRefresh" v-if="!autoRefresh">自动刷新</el-button>
-        <el-button type="danger" @click="stopAutoRefresh" v-else>停止刷新</el-button>
+        <el-button
+          type="primary"
+          @click="refreshStats"
+        >
+          刷新
+        </el-button>
+        <el-button
+          v-if="!autoRefresh"
+          type="success"
+          @click="startAutoRefresh"
+        >
+          自动刷新
+        </el-button>
+        <el-button
+          v-else
+          type="danger"
+          @click="stopAutoRefresh"
+        >
+          停止刷新
+        </el-button>
       </div>
     </div>
 
@@ -18,13 +37,21 @@
           <template #header>
             <div class="card-header">
               <span>CPU 使用率</span>
-              <el-tag :type="getCpuStatusType">{{ getCpuStatus }}</el-tag>
+              <el-tag :type="getCpuStatusType">
+                {{ getCpuStatus }}
+              </el-tag>
             </div>
           </template>
           <div class="chart-container">
             <div class="gauge-chart">
-              <el-progress type="dashboard" :percentage="Math.round(stats.cpu)" :color="cpuColors" />
-              <div class="chart-value">{{ stats.cpu.toFixed(2) }}%</div>
+              <el-progress
+                type="dashboard"
+                :percentage="Math.round(stats.cpu)"
+                :color="cpuColors"
+              />
+              <div class="chart-value">
+                {{ stats.cpu.toFixed(2) }}%
+              </div>
             </div>
             <div class="chart-info">
               <p><strong>核心数:</strong> {{ systemInfo.cpuCores }}</p>
@@ -39,13 +66,21 @@
           <template #header>
             <div class="card-header">
               <span>内存使用率</span>
-              <el-tag :type="getMemoryStatusType">{{ getMemoryStatus }}</el-tag>
+              <el-tag :type="getMemoryStatusType">
+                {{ getMemoryStatus }}
+              </el-tag>
             </div>
           </template>
           <div class="chart-container">
             <div class="gauge-chart">
-              <el-progress type="dashboard" :percentage="Math.round(stats.memory)" :color="memoryColors" />
-              <div class="chart-value">{{ stats.memory.toFixed(2) }}%</div>
+              <el-progress
+                type="dashboard"
+                :percentage="Math.round(stats.memory)"
+                :color="memoryColors"
+              />
+              <div class="chart-value">
+                {{ stats.memory.toFixed(2) }}%
+              </div>
             </div>
             <div class="chart-info">
               <p><strong>总内存:</strong> {{ formatBytes(systemInfo.memoryTotal) }}</p>
@@ -57,7 +92,10 @@
       </el-col>
     </el-row>
 
-    <el-row :gutter="isMobile ? 12 : 20" style="margin-top: 20px;">
+    <el-row
+      :gutter="isMobile ? 12 : 20"
+      style="margin-top: 20px;"
+    >
       <el-col :span="panelSpan">
         <el-card class="box-card">
           <template #header>
@@ -69,7 +107,7 @@
             <div class="network-stats">
               <div class="network-item">
                 <div class="network-title">
-                  <i class="el-icon-upload"></i> 上传
+                  <i class="el-icon-upload" /> 上传
                 </div>
                 <div class="network-value">
                   {{ formatBytes(stats.network.upload) }}/s
@@ -77,7 +115,7 @@
               </div>
               <div class="network-item">
                 <div class="network-title">
-                  <i class="el-icon-download"></i> 下载
+                  <i class="el-icon-download" /> 下载
                 </div>
                 <div class="network-value">
                   {{ formatBytes(stats.network.download) }}/s
@@ -97,13 +135,21 @@
           <template #header>
             <div class="card-header">
               <span>磁盘使用率</span>
-              <el-tag :type="getDiskStatusType">{{ getDiskStatus }}</el-tag>
+              <el-tag :type="getDiskStatusType">
+                {{ getDiskStatus }}
+              </el-tag>
             </div>
           </template>
           <div class="chart-container">
             <div class="gauge-chart">
-              <el-progress type="dashboard" :percentage="diskUsagePercentage" :color="diskColors" />
-              <div class="chart-value">{{ diskUsagePercentage.toFixed(2) }}%</div>
+              <el-progress
+                type="dashboard"
+                :percentage="diskUsagePercentage"
+                :color="diskColors"
+              />
+              <div class="chart-value">
+                {{ diskUsagePercentage.toFixed(2) }}%
+              </div>
             </div>
             <div class="chart-info">
               <p><strong>总容量:</strong> {{ formatBytes(stats.disk.total) }}</p>
@@ -115,7 +161,10 @@
       </el-col>
     </el-row>
 
-    <el-row :gutter="isMobile ? 12 : 20" style="margin-top: 20px;">
+    <el-row
+      :gutter="isMobile ? 12 : 20"
+      style="margin-top: 20px;"
+    >
       <el-col :span="24">
         <el-card class="box-card">
           <template #header>
@@ -124,16 +173,37 @@
             </div>
           </template>
           <div class="system-info">
-            <el-descriptions :column="infoColumns" border>
-              <el-descriptions-item label="主机名">{{ systemInfo.hostname }}</el-descriptions-item>
-              <el-descriptions-item label="操作系统">{{ systemInfo.os }}</el-descriptions-item>
-              <el-descriptions-item label="系统版本">{{ systemInfo.platform }} {{ systemInfo.release }}</el-descriptions-item>
-              <el-descriptions-item label="架构">{{ systemInfo.arch }}</el-descriptions-item>
-              <el-descriptions-item label="运行时间">{{ formatUptime(stats.uptime) }}</el-descriptions-item>
-              <el-descriptions-item label="系统时间">{{ currentTime }}</el-descriptions-item>
-              <el-descriptions-item label="Goroutines">{{ systemInfo.goroutines }}</el-descriptions-item>
-              <el-descriptions-item label="进程内存">{{ formatBytes(systemInfo.processMemory) }}</el-descriptions-item>
-              <el-descriptions-item label="IP地址">{{ systemInfo.ip }}</el-descriptions-item>
+            <el-descriptions
+              :column="infoColumns"
+              border
+            >
+              <el-descriptions-item label="主机名">
+                {{ systemInfo.hostname }}
+              </el-descriptions-item>
+              <el-descriptions-item label="操作系统">
+                {{ systemInfo.os }}
+              </el-descriptions-item>
+              <el-descriptions-item label="系统版本">
+                {{ systemInfo.platform }} {{ systemInfo.release }}
+              </el-descriptions-item>
+              <el-descriptions-item label="架构">
+                {{ systemInfo.arch }}
+              </el-descriptions-item>
+              <el-descriptions-item label="运行时间">
+                {{ formatUptime(stats.uptime) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="系统时间">
+                {{ currentTime }}
+              </el-descriptions-item>
+              <el-descriptions-item label="Goroutines">
+                {{ systemInfo.goroutines }}
+              </el-descriptions-item>
+              <el-descriptions-item label="进程内存">
+                {{ formatBytes(systemInfo.processMemory) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="IP地址">
+                {{ systemInfo.ip }}
+              </el-descriptions-item>
             </el-descriptions>
           </div>
         </el-card>
@@ -144,14 +214,13 @@
 
 <script>
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
-import { ElMessage } from 'element-plus'
 import api from '@/api/index'
 import { useViewport } from '@/composables/useViewport'
 
 export default {
   name: 'Monitor',
   setup() {
-    const { isMobile, isTablet } = useViewport({ mobileBreakpoint: 768, tabletBreakpoint: 1200 })
+    const { isMobile, isTablet } = useViewport()
 
     // 状态
     const stats = reactive({

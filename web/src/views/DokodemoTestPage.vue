@@ -1,59 +1,126 @@
 <template>
   <div class="dokodemo-test-page">
-    <h1 class="page-title">Dokodemo-Door 协议测试</h1>
+    <h1 class="page-title">
+      Dokodemo-Door 协议测试
+    </h1>
     
     <el-row :gutter="20">
-      <el-col :xs="24" :sm="24" :md="12" :lg="12" :xl="12">
-        <el-card class="config-card" shadow="hover">
+      <el-col
+        :xs="24"
+        :sm="24"
+        :md="12"
+        :lg="12"
+        :xl="12"
+      >
+        <el-card
+          class="config-card"
+          shadow="hover"
+        >
           <template #header>
             <div class="card-header">
               <span>Dokodemo 配置</span>
             </div>
           </template>
           
-          <el-form :model="configForm" label-position="top">
+          <el-form
+            :model="configForm"
+            label-position="top"
+          >
             <el-form-item label="连接名称">
-              <el-input v-model="configForm.connectionName" placeholder="输入连接名称"></el-input>
+              <el-input
+                v-model="configForm.connectionName"
+                placeholder="输入连接名称"
+              />
             </el-form-item>
             
-            <el-form-item label="目标地址" required>
-              <el-input v-model="configForm.address" placeholder="目标服务器地址"></el-input>
+            <el-form-item
+              label="目标地址"
+              required
+            >
+              <el-input
+                v-model="configForm.address"
+                placeholder="目标服务器地址"
+              />
             </el-form-item>
             
-            <el-form-item label="目标端口" required>
-              <el-input-number v-model="configForm.port" :min="1" :max="65535" class="full-width"></el-input-number>
+            <el-form-item
+              label="目标端口"
+              required
+            >
+              <el-input-number
+                v-model="configForm.port"
+                :min="1"
+                :max="65535"
+                class="full-width"
+              />
             </el-form-item>
             
             <el-form-item label="网络类型">
-              <el-select v-model="configForm.network" class="full-width">
-                <el-option label="TCP" value="tcp"></el-option>
-                <el-option label="UDP" value="udp"></el-option>
-                <el-option label="TCP+UDP" value="tcp,udp"></el-option>
+              <el-select
+                v-model="configForm.network"
+                class="full-width"
+              >
+                <el-option
+                  label="TCP"
+                  value="tcp"
+                />
+                <el-option
+                  label="UDP"
+                  value="udp"
+                />
+                <el-option
+                  label="TCP+UDP"
+                  value="tcp,udp"
+                />
               </el-select>
             </el-form-item>
             
             <el-form-item label="跟随重定向">
-              <el-switch v-model="configForm.followRedirect"></el-switch>
+              <el-switch v-model="configForm.followRedirect" />
             </el-form-item>
             
             <el-form-item label="超时时间(秒)">
-              <el-input-number v-model="configForm.timeout" :min="1" :max="3600" class="full-width"></el-input-number>
+              <el-input-number
+                v-model="configForm.timeout"
+                :min="1"
+                :max="3600"
+                class="full-width"
+              />
             </el-form-item>
             
             <el-form-item label="备注">
-              <el-input v-model="configForm.remark" placeholder="可选备注"></el-input>
+              <el-input
+                v-model="configForm.remark"
+                placeholder="可选备注"
+              />
             </el-form-item>
             
             <div class="form-actions">
-              <el-button type="primary" @click="applyConfig">应用配置</el-button>
-              <el-button @click="resetForm">重置</el-button>
+              <el-button
+                type="primary"
+                @click="applyConfig"
+              >
+                应用配置
+              </el-button>
+              <el-button @click="resetForm">
+                重置
+              </el-button>
             </div>
           </el-form>
         </el-card>
       </el-col>
       
-      <el-col :xs="24" :sm="24" :md="12" :lg="12" :xl="12">
-        <el-card class="qrcode-card" shadow="hover">
+      <el-col
+        :xs="24"
+        :sm="24"
+        :md="12"
+        :lg="12"
+        :xl="12"
+      >
+        <el-card
+          class="qrcode-card"
+          shadow="hover"
+        >
           <template #header>
             <div class="card-header">
               <span>Dokodemo 二维码</span>
@@ -71,7 +138,10 @@
           />
         </el-card>
         
-        <el-card class="presets-card" shadow="hover">
+        <el-card
+          class="presets-card"
+          shadow="hover"
+        >
           <template #header>
             <div class="card-header">
               <span>预设配置</span>
@@ -83,25 +153,33 @@
               type="primary" 
               plain 
               @click="loadPreset('tcp')"
-            >TCP 预设</el-button>
+            >
+              TCP 预设
+            </el-button>
             
             <el-button 
               type="success" 
               plain 
               @click="loadPreset('udp')"
-            >UDP 预设</el-button>
+            >
+              UDP 预设
+            </el-button>
             
             <el-button 
               type="warning" 
               plain 
               @click="loadPreset('mixed')"
-            >TCP+UDP 预设</el-button>
+            >
+              TCP+UDP 预设
+            </el-button>
             
             <el-button 
               type="info" 
               plain 
               @click="loadRealConfig"
-            >实际配置</el-button>
+            >
+              实际配置
+            </el-button>
           </div>
         </el-card>
       </el-col>
@@ -110,7 +188,7 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import DokodemoQRCode from '../components/DokodemoQRCode.vue'
 

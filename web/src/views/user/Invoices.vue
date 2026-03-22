@@ -2,35 +2,76 @@
   <div class="invoices-page">
     <!-- 页面标题 -->
     <div class="page-header">
-      <h1 class="page-title">我的发票</h1>
-      <p class="page-subtitle">查看和下载您的发票</p>
+      <h1 class="page-title">
+        我的发票
+      </h1>
+      <p class="page-subtitle">
+        查看和下载您的发票
+      </p>
     </div>
 
     <!-- 发票列表 -->
-    <el-card shadow="never" class="invoices-card">
+    <el-card
+      shadow="never"
+      class="invoices-card"
+    >
       <!-- 加载状态 -->
-      <div v-if="loading" class="loading-container">
-        <el-skeleton :rows="5" animated />
+      <div
+        v-if="loading"
+        class="loading-container"
+      >
+        <el-skeleton
+          :rows="5"
+          animated
+        />
       </div>
 
       <!-- 发票表格 -->
-      <el-table v-else :data="invoices" style="width: 100%">
-        <el-table-column prop="invoice_no" label="发票号" width="180" />
-        <el-table-column prop="order_no" label="订单号" width="180" />
-        <el-table-column label="金额" width="120">
+      <el-table
+        v-else
+        :data="invoices"
+        style="width: 100%"
+      >
+        <el-table-column
+          prop="invoice_no"
+          label="发票号"
+          width="180"
+        />
+        <el-table-column
+          prop="order_no"
+          label="订单号"
+          width="180"
+        />
+        <el-table-column
+          label="金额"
+          width="120"
+        >
           <template #default="{ row }">
             <span class="amount">¥{{ formatPrice(row.amount) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="100">
+        <el-table-column
+          label="状态"
+          width="100"
+        >
           <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)" size="small">
+            <el-tag
+              :type="getStatusType(row.status)"
+              size="small"
+            >
               {{ getStatusLabel(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="created_at" label="开票时间" />
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column
+          prop="created_at"
+          label="开票时间"
+        />
+        <el-table-column
+          label="操作"
+          width="120"
+          fixed="right"
+        >
           <template #default="{ row }">
             <el-button
               type="primary"
@@ -46,10 +87,16 @@
       </el-table>
 
       <!-- 空状态 -->
-      <el-empty v-if="!loading && invoices.length === 0" description="暂无发票" />
+      <el-empty
+        v-if="!loading && invoices.length === 0"
+        description="暂无发票"
+      />
 
       <!-- 分页 -->
-      <div v-if="pagination.total > 0" class="pagination-container">
+      <div
+        v-if="pagination.total > 0"
+        class="pagination-container"
+      >
         <el-pagination
           v-model:current-page="pagination.page"
           v-model:page-size="pagination.pageSize"

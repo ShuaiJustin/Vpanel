@@ -211,6 +211,9 @@ func (e *CommandExecutor) executeConfigSync(ctx context.Context, cmd *Command) *
 		config = fetchedConfig
 	}
 
+	managedRunningBefore := e.agent.xrayManager.GetStatus().Running
+	observedRunningBefore := e.agent.currentXrayStatus().Running
+
 	// Update Xray configuration
 	err := e.agent.xrayManager.UpdateConfig(ctx, config)
 	if err != nil {
@@ -219,16 +222,33 @@ func (e *CommandExecutor) executeConfigSync(ctx context.Context, cmd *Command) *
 		return result
 	}
 
+	// When Xray is managed outside the agent (for example by systemd), writing the
+	// new config file is not enough. Restart the live process so the updated stats
+	// and inbound definitions actually take effect.
+	if shouldRestartExternalXrayAfterConfigSync(managedRunningBefore, observedRunningBefore) {
+		if err := e.agent.restartXray(ctx); err != nil {
+			result.Success = false
+			result.Message = fmt.Sprintf("config updated but failed to restart external xray: %v", err)
+			return result
+		}
+	}
+
 	// Ensure Xray is running after applying config so new inbounds are actually listening.
-	if err := e.agent.ensureXrayRunning(ctx); err != nil {
-		result.Success = false
-		result.Message = fmt.Sprintf("config updated but failed to start xray: %v", err)
-		return result
+	if !e.agent.currentXrayStatus().Running {
+		if err := e.agent.ensureXrayRunning(ctx); err != nil {
+			result.Success = false
+			result.Message = fmt.Sprintf("config updated but failed to start xray: %v", err)
+			return result
+		}
 	}
 
 	result.Success = true
 	result.Message = "Configuration synced successfully"
 	return result
+}
+
+func shouldRestartExternalXrayAfterConfigSync(managedRunningBefore, observedRunningBefore bool) bool {
+	return observedRunningBefore && !managedRunningBefore
 }
 
 func isLikelyXrayConfig(config json.RawMessage) bool {

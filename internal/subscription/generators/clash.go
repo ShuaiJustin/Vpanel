@@ -7,6 +7,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"v/internal/database/repository"
+	proxylib "v/internal/proxy"
 )
 
 // ClashGenerator generates subscription content in Clash YAML format.
@@ -122,7 +123,7 @@ func (g *ClashGenerator) generateVMessProxy(info *ProxyInfo) (map[string]interfa
 		"port":     info.Port,
 		"uuid":     GetSettingString(info.Settings, "uuid", ""),
 		"alterId":  GetSettingInt(info.Settings, "alterId", 0),
-		"cipher":   GetSettingString(info.Settings, "security", "auto"),
+		"cipher":   proxylib.ResolveVMessCipher(info.Settings),
 	}
 
 	// Network settings
@@ -130,12 +131,12 @@ func (g *ClashGenerator) generateVMessProxy(info *ProxyInfo) (map[string]interfa
 	proxy["network"] = network
 
 	// TLS settings
-	if GetSettingBool(info.Settings, "tls", false) {
+	if proxylib.HasTLSSettings(info.Settings) {
 		proxy["tls"] = true
-		if sni := GetSettingString(info.Settings, "sni", ""); sni != "" {
+		if sni := proxylib.ResolveSNI(info.Settings); sni != "" {
 			proxy["servername"] = sni
 		}
-		if skipVerify := GetSettingBool(info.Settings, "skipCertVerify", false); skipVerify {
+		if proxylib.ResolveTLSSkipVerify(info.Settings) {
 			proxy["skip-cert-verify"] = true
 		}
 	}

@@ -24,7 +24,9 @@ func (r *proxyRepository) validProxyQuery(ctx context.Context) *gorm.DB {
 	if !r.db.Migrator().HasTable((&User{}).TableName()) {
 		return query
 	}
-	return query.Joins("JOIN users ON users.id = proxies.user_id")
+	return query.
+		Joins("LEFT JOIN users ON users.id = proxies.user_id").
+		Where("proxies.user_id = 0 OR users.id IS NOT NULL")
 }
 
 // Create creates a new proxy.

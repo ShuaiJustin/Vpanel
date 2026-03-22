@@ -1,36 +1,70 @@
 <template>
   <div class="http-test-page">
-    <h1 class="page-title">HTTP 协议测试</h1>
+    <h1 class="page-title">
+      HTTP 协议测试
+    </h1>
     
     <el-row :gutter="20">
-      <el-col :xs="24" :sm="24" :md="12" :lg="12" :xl="12">
-        <el-card class="config-card" shadow="hover">
+      <el-col
+        :xs="24"
+        :sm="24"
+        :md="12"
+        :lg="12"
+        :xl="12"
+      >
+        <el-card
+          class="config-card"
+          shadow="hover"
+        >
           <template #header>
             <div class="card-header">
               <span>HTTP 配置</span>
             </div>
           </template>
           
-          <el-form :model="configForm" label-position="top">
+          <el-form
+            :model="configForm"
+            label-position="top"
+          >
             <el-form-item label="连接名称">
-              <el-input v-model="configForm.connectionName" placeholder="输入连接名称"></el-input>
+              <el-input
+                v-model="configForm.connectionName"
+                placeholder="输入连接名称"
+              />
             </el-form-item>
             
-            <el-form-item label="服务器地址" required>
-              <el-input v-model="configForm.server" placeholder="服务器地址"></el-input>
+            <el-form-item
+              label="服务器地址"
+              required
+            >
+              <el-input
+                v-model="configForm.server"
+                placeholder="服务器地址"
+              />
             </el-form-item>
             
-            <el-form-item label="端口" required>
-              <el-input-number v-model="configForm.port" :min="1" :max="65535" class="full-width"></el-input-number>
+            <el-form-item
+              label="端口"
+              required
+            >
+              <el-input-number
+                v-model="configForm.port"
+                :min="1"
+                :max="65535"
+                class="full-width"
+              />
             </el-form-item>
             
             <el-form-item label="使用认证">
-              <el-switch v-model="configForm.useAuth"></el-switch>
+              <el-switch v-model="configForm.useAuth" />
             </el-form-item>
             
             <template v-if="configForm.useAuth">
               <el-form-item label="用户名">
-                <el-input v-model="configForm.username" placeholder="用户名"></el-input>
+                <el-input
+                  v-model="configForm.username"
+                  placeholder="用户名"
+                />
               </el-form-item>
               
               <el-form-item label="密码">
@@ -41,8 +75,12 @@
                 >
                   <template #append>
                     <el-button @click="showPassword = !showPassword">
-                      <el-icon v-if="showPassword"><View /></el-icon>
-                      <el-icon v-else><Hide /></el-icon>
+                      <el-icon v-if="showPassword">
+                        <View />
+                      </el-icon>
+                      <el-icon v-else>
+                        <Hide />
+                      </el-icon>
                     </el-button>
                   </template>
                 </el-input>
@@ -50,33 +88,55 @@
             </template>
             
             <el-form-item label="使用 TLS">
-              <el-switch v-model="configForm.useTLS"></el-switch>
+              <el-switch v-model="configForm.useTLS" />
             </el-form-item>
             
             <template v-if="configForm.useTLS">
               <el-form-item label="SNI (服务器名称指示)">
-                <el-input v-model="configForm.sni" placeholder="域名"></el-input>
+                <el-input
+                  v-model="configForm.sni"
+                  placeholder="域名"
+                />
               </el-form-item>
               
               <el-form-item label="跳过证书验证">
-                <el-switch v-model="configForm.allowInsecure"></el-switch>
+                <el-switch v-model="configForm.allowInsecure" />
               </el-form-item>
             </template>
             
             <el-form-item label="备注">
-              <el-input v-model="configForm.remark" placeholder="可选备注"></el-input>
+              <el-input
+                v-model="configForm.remark"
+                placeholder="可选备注"
+              />
             </el-form-item>
             
             <div class="form-actions">
-              <el-button type="primary" @click="applyConfig">应用配置</el-button>
-              <el-button @click="resetForm">重置</el-button>
+              <el-button
+                type="primary"
+                @click="applyConfig"
+              >
+                应用配置
+              </el-button>
+              <el-button @click="resetForm">
+                重置
+              </el-button>
             </div>
           </el-form>
         </el-card>
       </el-col>
       
-      <el-col :xs="24" :sm="24" :md="12" :lg="12" :xl="12">
-        <el-card class="qrcode-card" shadow="hover">
+      <el-col
+        :xs="24"
+        :sm="24"
+        :md="12"
+        :lg="12"
+        :xl="12"
+      >
+        <el-card
+          class="qrcode-card"
+          shadow="hover"
+        >
           <template #header>
             <div class="card-header">
               <span>HTTP 二维码</span>
@@ -96,7 +156,10 @@
           />
         </el-card>
         
-        <el-card class="presets-card" shadow="hover">
+        <el-card
+          class="presets-card"
+          shadow="hover"
+        >
           <template #header>
             <div class="card-header">
               <span>预设配置</span>
@@ -108,25 +171,33 @@
               type="primary" 
               plain 
               @click="loadPreset('plainhttp')"
-            >普通 HTTP</el-button>
+            >
+              普通 HTTP
+            </el-button>
             
             <el-button 
               type="success" 
               plain 
               @click="loadPreset('httpwithauth')"
-            >HTTP 认证</el-button>
+            >
+              HTTP 认证
+            </el-button>
             
             <el-button 
               type="warning" 
               plain 
               @click="loadPreset('https')"
-            >HTTPS</el-button>
+            >
+              HTTPS
+            </el-button>
             
             <el-button 
               type="info" 
               plain 
               @click="loadRealConfig"
-            >实际配置</el-button>
+            >
+              实际配置
+            </el-button>
           </div>
         </el-card>
       </el-col>

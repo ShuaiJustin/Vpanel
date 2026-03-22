@@ -2,14 +2,27 @@
   <div class="settings-page">
     <!-- 页面标题 -->
     <div class="page-header">
-      <h1 class="page-title">个人设置</h1>
-      <p class="page-subtitle">管理您的账户信息和安全设置</p>
+      <h1 class="page-title">
+        个人设置
+      </h1>
+      <p class="page-subtitle">
+        管理您的账户信息和安全设置
+      </p>
     </div>
 
-    <el-tabs v-model="activeTab" class="settings-tabs">
+    <el-tabs
+      v-model="activeTab"
+      class="settings-tabs"
+    >
       <!-- 个人资料 -->
-      <el-tab-pane label="个人资料" name="profile">
-        <el-card shadow="never" class="settings-card">
+      <el-tab-pane
+        label="个人资料"
+        name="profile"
+      >
+        <el-card
+          shadow="never"
+          class="settings-card"
+        >
           <el-form
             ref="profileFormRef"
             :model="profileForm"
@@ -17,36 +30,73 @@
             label-width="100px"
           >
             <el-form-item label="用户名">
-              <el-input v-model="userStore.username" disabled />
-              <div class="form-tip">用户名不可修改</div>
+              <el-input
+                v-model="userStore.username"
+                disabled
+              />
+              <div class="form-tip">
+                用户名不可修改
+              </div>
             </el-form-item>
 
             <el-form-item label="邮箱">
-              <el-input v-model="userStore.email" disabled>
+              <el-input
+                v-model="userStore.email"
+                disabled
+              >
                 <template #append>
-                  <el-tag v-if="emailVerified" type="success" size="small">已验证</el-tag>
-                  <el-button v-else link type="primary" @click="resendVerification">
+                  <el-tag
+                    v-if="emailVerified"
+                    type="success"
+                    size="small"
+                  >
+                    已验证
+                  </el-tag>
+                  <el-button
+                    v-else
+                    link
+                    type="primary"
+                    @click="resendVerification"
+                  >
                     发送验证
                   </el-button>
                 </template>
               </el-input>
             </el-form-item>
 
-            <el-form-item label="显示名称" prop="displayName">
-              <el-input v-model="profileForm.displayName" placeholder="设置显示名称" />
+            <el-form-item
+              label="显示名称"
+              prop="displayName"
+            >
+              <el-input
+                v-model="profileForm.displayName"
+                placeholder="设置显示名称"
+              />
             </el-form-item>
 
             <el-form-item label="头像">
               <div class="avatar-upload">
-                <el-avatar :size="80" :src="profileForm.avatarUrl">
+                <el-avatar
+                  :size="80"
+                  :src="profileForm.avatarUrl"
+                >
                   <el-icon><User /></el-icon>
                 </el-avatar>
-                <el-button size="small" @click="changeAvatar">更换头像</el-button>
+                <el-button
+                  size="small"
+                  @click="changeAvatar"
+                >
+                  更换头像
+                </el-button>
               </div>
             </el-form-item>
 
             <el-form-item>
-              <el-button type="primary" @click="saveProfile" :loading="saving">
+              <el-button
+                type="primary"
+                :loading="saving"
+                @click="saveProfile"
+              >
                 保存修改
               </el-button>
             </el-form-item>
@@ -55,16 +105,27 @@
       </el-tab-pane>
 
       <!-- 安全设置 -->
-      <el-tab-pane label="安全设置" name="security">
-        <el-card shadow="never" class="settings-card">
-          <h3 class="section-title">修改密码</h3>
+      <el-tab-pane
+        label="安全设置"
+        name="security"
+      >
+        <el-card
+          shadow="never"
+          class="settings-card"
+        >
+          <h3 class="section-title">
+            修改密码
+          </h3>
           <el-form
             ref="passwordFormRef"
             :model="passwordForm"
             :rules="passwordRules"
             label-width="100px"
           >
-            <el-form-item label="当前密码" prop="currentPassword">
+            <el-form-item
+              label="当前密码"
+              prop="currentPassword"
+            >
               <el-input
                 v-model="passwordForm.currentPassword"
                 type="password"
@@ -73,7 +134,10 @@
               />
             </el-form-item>
 
-            <el-form-item label="新密码" prop="newPassword">
+            <el-form-item
+              label="新密码"
+              prop="newPassword"
+            >
               <el-input
                 v-model="passwordForm.newPassword"
                 type="password"
@@ -82,7 +146,10 @@
               />
             </el-form-item>
 
-            <el-form-item label="确认密码" prop="confirmPassword">
+            <el-form-item
+              label="确认密码"
+              prop="confirmPassword"
+            >
               <el-input
                 v-model="passwordForm.confirmPassword"
                 type="password"
@@ -92,7 +159,11 @@
             </el-form-item>
 
             <el-form-item>
-              <el-button type="primary" @click="changePassword" :loading="changingPassword">
+              <el-button
+                type="primary"
+                :loading="changingPassword"
+                @click="changePassword"
+              >
                 修改密码
               </el-button>
             </el-form-item>
@@ -100,11 +171,16 @@
 
           <el-divider />
 
-          <h3 class="section-title">两步验证</h3>
+          <h3 class="section-title">
+            两步验证
+          </h3>
           <div class="two-factor-section">
             <div class="two-factor-info">
               <p>两步验证可以为您的账户提供额外的安全保护。启用后，登录时需要输入验证器应用生成的验证码。</p>
-              <el-tag :type="twoFactorEnabled ? 'success' : 'info'" size="small">
+              <el-tag
+                :type="twoFactorEnabled ? 'success' : 'info'"
+                size="small"
+              >
                 {{ twoFactorEnabled ? '已启用' : '未启用' }}
               </el-tag>
             </div>
@@ -118,52 +194,85 @@
 
           <el-divider />
 
-          <h3 class="section-title">登录会话</h3>
+          <h3 class="section-title">
+            登录会话
+          </h3>
           <div class="sessions-section">
-            <p class="section-desc">管理您的登录会话，可以注销其他设备上的登录。</p>
-            <el-button @click="showSessions">查看活跃会话</el-button>
+            <p class="section-desc">
+              管理您的登录会话，可以注销其他设备上的登录。
+            </p>
+            <el-button @click="showSessions">
+              查看活跃会话
+            </el-button>
           </div>
         </el-card>
       </el-tab-pane>
 
       <!-- 通知设置 -->
-      <el-tab-pane label="通知设置" name="notifications">
-        <el-card shadow="never" class="settings-card">
+      <el-tab-pane
+        label="通知设置"
+        name="notifications"
+      >
+        <el-card
+          shadow="never"
+          class="settings-card"
+        >
           <el-form label-width="140px">
             <el-form-item label="邮件通知">
               <el-switch v-model="notificationSettings.email" />
-              <div class="form-tip">接收账户相关的邮件通知</div>
+              <div class="form-tip">
+                接收账户相关的邮件通知
+              </div>
             </el-form-item>
 
             <el-form-item label="Telegram 通知">
-              <el-switch v-model="notificationSettings.telegram" :disabled="!telegramBound" />
+              <el-switch
+                v-model="notificationSettings.telegram"
+                :disabled="!telegramBound"
+              />
               <div class="form-tip">
                 <template v-if="telegramBound">
                   已绑定 Telegram
                 </template>
                 <template v-else>
-                  <el-button link type="primary" @click="bindTelegram">绑定 Telegram</el-button>
+                  <el-button
+                    link
+                    type="primary"
+                    @click="bindTelegram"
+                  >
+                    绑定 Telegram
+                  </el-button>
                 </template>
               </div>
             </el-form-item>
 
             <el-form-item label="流量预警">
               <el-switch v-model="notificationSettings.trafficWarning" />
-              <div class="form-tip">当流量使用超过 80% 时发送提醒</div>
+              <div class="form-tip">
+                当流量使用超过 80% 时发送提醒
+              </div>
             </el-form-item>
 
             <el-form-item label="到期提醒">
               <el-switch v-model="notificationSettings.expiryReminder" />
-              <div class="form-tip">在账户到期前 7 天发送提醒</div>
+              <div class="form-tip">
+                在账户到期前 7 天发送提醒
+              </div>
             </el-form-item>
 
             <el-form-item label="公告通知">
               <el-switch v-model="notificationSettings.announcements" />
-              <div class="form-tip">接收系统公告和维护通知</div>
+              <div class="form-tip">
+                接收系统公告和维护通知
+              </div>
             </el-form-item>
 
             <el-form-item>
-              <el-button type="primary" @click="saveNotifications" :loading="savingNotifications">
+              <el-button
+                type="primary"
+                :loading="savingNotifications"
+                @click="saveNotifications"
+              >
                 保存设置
               </el-button>
             </el-form-item>
@@ -172,26 +281,51 @@
       </el-tab-pane>
 
       <!-- 偏好设置 -->
-      <el-tab-pane label="偏好设置" name="preferences">
-        <el-card shadow="never" class="settings-card">
+      <el-tab-pane
+        label="偏好设置"
+        name="preferences"
+      >
+        <el-card
+          shadow="never"
+          class="settings-card"
+        >
           <el-form label-width="100px">
             <el-form-item label="界面主题">
               <el-radio-group v-model="preferences.theme">
-                <el-radio value="auto">跟随系统</el-radio>
-                <el-radio value="light">浅色</el-radio>
-                <el-radio value="dark">深色</el-radio>
+                <el-radio value="auto">
+                  跟随系统
+                </el-radio>
+                <el-radio value="light">
+                  浅色
+                </el-radio>
+                <el-radio value="dark">
+                  深色
+                </el-radio>
               </el-radio-group>
             </el-form-item>
 
             <el-form-item label="语言">
-              <el-select v-model="preferences.language" style="width: 200px">
-                <el-option label="简体中文" value="zh-CN" />
-                <el-option label="English" value="en-US" />
+              <el-select
+                v-model="preferences.language"
+                style="width: 200px"
+              >
+                <el-option
+                  label="简体中文"
+                  value="zh-CN"
+                />
+                <el-option
+                  label="English"
+                  value="en-US"
+                />
               </el-select>
             </el-form-item>
 
             <el-form-item>
-              <el-button type="primary" @click="savePreferences" :loading="savingPreferences">
+              <el-button
+                type="primary"
+                :loading="savingPreferences"
+                @click="savePreferences"
+              >
                 保存设置
               </el-button>
             </el-form-item>
@@ -200,9 +334,18 @@
           <el-divider />
 
           <div class="account-actions">
-            <h3 class="section-title">账户操作</h3>
-            <p class="section-desc">在当前设备安全退出用户门户。</p>
-            <el-button type="danger" plain @click="logout" :loading="loggingOut">
+            <h3 class="section-title">
+              账户操作
+            </h3>
+            <p class="section-desc">
+              在当前设备安全退出用户门户。
+            </p>
+            <el-button
+              type="danger"
+              plain
+              :loading="loggingOut"
+              @click="logout"
+            >
               退出登录
             </el-button>
           </div>
@@ -224,9 +367,11 @@
             <h4>1. 扫描二维码</h4>
             <p>使用验证器应用（如 Google Authenticator、Microsoft Authenticator）扫描下方二维码</p>
             <div class="qrcode-wrapper">
-              <canvas ref="twoFactorQRCode"></canvas>
+              <canvas ref="twoFactorQRCode" />
             </div>
-            <p class="secret-key">或手动输入密钥：<code>{{ twoFactorSecret }}</code></p>
+            <p class="secret-key">
+              或手动输入密钥：<code>{{ twoFactorSecret }}</code>
+            </p>
           </div>
 
           <div class="setup-step">
@@ -244,16 +389,28 @@
             <h4>3. 保存备份码</h4>
             <p>请妥善保存以下备份码，当您无法使用验证器时可以使用备份码登录</p>
             <div class="backup-codes">
-              <code v-for="code in backupCodes" :key="code">{{ code }}</code>
+              <code
+                v-for="code in backupCodes"
+                :key="code"
+              >{{ code }}</code>
             </div>
-            <el-button size="small" @click="copyBackupCodes">复制备份码</el-button>
+            <el-button
+              size="small"
+              @click="copyBackupCodes"
+            >
+              复制备份码
+            </el-button>
           </div>
         </div>
       </template>
 
       <!-- 禁用流程 -->
       <template v-else>
-        <el-alert type="warning" :closable="false" show-icon>
+        <el-alert
+          type="warning"
+          :closable="false"
+          show-icon
+        >
           禁用两步验证会降低账户安全性，请确认您要继续。
         </el-alert>
         <el-form style="margin-top: 20px">
@@ -269,11 +426,13 @@
       </template>
 
       <template #footer>
-        <el-button @click="showTwoFactorDialog = false">取消</el-button>
+        <el-button @click="showTwoFactorDialog = false">
+          取消
+        </el-button>
         <el-button 
           :type="twoFactorEnabled ? 'danger' : 'primary'" 
-          @click="confirmTwoFactor"
           :loading="processingTwoFactor"
+          @click="confirmTwoFactor"
         >
           {{ twoFactorEnabled ? '确认禁用' : '确认启用' }}
         </el-button>
@@ -293,7 +452,7 @@ import { copyText } from '@/utils/clipboard'
 
 const router = useRouter()
 const userStore = useUserPortalStore()
-const { themeMode, setTheme, THEME_MODES } = useTheme()
+const { themeMode, setTheme } = useTheme()
 
 // 表单引用
 const profileFormRef = ref(null)

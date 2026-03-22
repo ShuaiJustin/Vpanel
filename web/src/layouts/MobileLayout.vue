@@ -13,14 +13,33 @@
         </el-button>
         <span class="header-title">{{ pageTitle }}</span>
       </div>
-      <div v-if="showPortalActions" class="header-right">
-        <el-badge :value="unreadCount" :hidden="unreadCount === 0" :max="99">
-          <el-button link class="header-btn" @click="goToAnnouncements">
+      <div
+        v-if="showPortalActions"
+        class="header-right"
+      >
+        <el-badge
+          :value="unreadCount"
+          :hidden="unreadCount === 0"
+          :max="99"
+        >
+          <el-button
+            link
+            class="header-btn"
+            @click="goToAnnouncements"
+          >
             <el-icon><Bell /></el-icon>
           </el-button>
         </el-badge>
-        <el-dropdown trigger="click" placement="bottom-end" @command="handleAction">
-          <el-button link class="header-btn" aria-label="更多操作">
+        <el-dropdown
+          trigger="click"
+          placement="bottom-end"
+          @command="handleAction"
+        >
+          <el-button
+            link
+            class="header-btn"
+            aria-label="更多操作"
+          >
             <el-icon><MoreFilled /></el-icon>
           </el-button>
           <template #dropdown>
@@ -33,7 +52,10 @@
                 <el-icon><QuestionFilled /></el-icon>
                 帮助中心
               </el-dropdown-item>
-              <el-dropdown-item divided command="logout">
+              <el-dropdown-item
+                divided
+                command="logout"
+              >
                 <el-icon><SwitchButton /></el-icon>
                 退出登录
               </el-dropdown-item>
@@ -44,16 +66,25 @@
     </header>
 
     <!-- 主内容区 -->
-    <main class="mobile-main" :class="{ 'with-tabbar': showTabbar }">
+    <main
+      class="mobile-main"
+      :class="{ 'with-tabbar': showTabbar }"
+    >
       <router-view v-slot="{ Component }">
-        <transition name="slide" mode="out-in">
+        <transition
+          name="slide"
+          mode="out-in"
+        >
           <component :is="Component" />
         </transition>
       </router-view>
     </main>
 
     <!-- 底部导航栏 -->
-    <nav v-if="showTabbar" class="mobile-tabbar">
+    <nav
+      v-if="showTabbar"
+      class="mobile-tabbar"
+    >
       <div 
         v-for="item in tabItems" 
         :key="item.path"

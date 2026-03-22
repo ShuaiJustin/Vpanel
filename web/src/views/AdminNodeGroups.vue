@@ -2,16 +2,27 @@
   <div class="admin-node-groups-page">
     <div class="page-header">
       <div class="page-heading">
-        <h1 class="page-title">节点分组管理</h1>
-        <p class="page-subtitle">统一查看地区分组、调度策略、节点健康度和用户规模</p>
+        <h1 class="page-title">
+          节点分组管理
+        </h1>
+        <p class="page-subtitle">
+          统一查看地区分组、调度策略、节点健康度和用户规模
+        </p>
       </div>
       <div class="page-actions">
         <el-button @click="fetchGroups">
-          <el-icon class="el-icon--left"><Refresh /></el-icon>
+          <el-icon class="el-icon--left">
+            <Refresh />
+          </el-icon>
           刷新
         </el-button>
-        <el-button type="primary" @click="showCreateDialog">
-          <el-icon class="el-icon--left"><Plus /></el-icon>
+        <el-button
+          type="primary"
+          @click="showCreateDialog"
+        >
+          <el-icon class="el-icon--left">
+            <Plus />
+          </el-icon>
           创建分组
         </el-button>
       </div>
@@ -52,7 +63,11 @@
             <el-icon><Search /></el-icon>
           </template>
         </el-input>
-        <el-select v-model="groupStore.filters.region" placeholder="地区" clearable>
+        <el-select
+          v-model="groupStore.filters.region"
+          placeholder="地区"
+          clearable
+        >
           <el-option
             v-for="region in groupStore.regions"
             :key="region"
@@ -60,7 +75,11 @@
             :value="region"
           />
         </el-select>
-        <el-select v-model="strategyFilter" placeholder="调度策略" clearable>
+        <el-select
+          v-model="strategyFilter"
+          placeholder="调度策略"
+          clearable
+        >
           <el-option
             v-for="strategy in strategyOptions"
             :key="strategy.value"
@@ -68,7 +87,9 @@
             :value="strategy.value"
           />
         </el-select>
-        <el-button @click="resetFilters">重置</el-button>
+        <el-button @click="resetFilters">
+          重置
+        </el-button>
       </div>
       <div class="toolbar-actions">
         <span class="toolbar-summary">
@@ -77,8 +98,14 @@
       </div>
     </div>
 
-    <div class="groups-shell" v-loading="groupStore.loading">
-      <div v-if="paginatedGroups.length" class="groups-grid">
+    <div
+      v-loading="groupStore.loading"
+      class="groups-shell"
+    >
+      <div
+        v-if="paginatedGroups.length"
+        class="groups-grid"
+      >
         <article
           v-for="group in paginatedGroups"
           :key="group.id"
@@ -88,7 +115,9 @@
           <div class="group-panel__header">
             <div class="group-panel__heading">
               <div class="group-panel__title-row">
-                <h3 class="group-panel__title">{{ group.name }}</h3>
+                <h3 class="group-panel__title">
+                  {{ group.name }}
+                </h3>
                 <span :class="['metric-pill', getStrategyClass(group.strategy)]">
                   {{ getStrategyText(group.strategy) }}
                 </span>
@@ -99,16 +128,36 @@
               </div>
             </div>
 
-            <div class="group-panel__menu" @click.stop>
-              <el-dropdown trigger="click" @command="(command) => handleGroupCommand(command, group)">
-                <el-button size="small" class="row-action row-action--more" circle title="更多操作">
+            <div
+              class="group-panel__menu"
+              @click.stop
+            >
+              <el-dropdown
+                trigger="click"
+                @command="(command) => handleGroupCommand(command, group)"
+              >
+                <el-button
+                  size="small"
+                  class="row-action row-action--more"
+                  circle
+                  title="更多操作"
+                >
                   <el-icon><MoreFilled /></el-icon>
                 </el-button>
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item command="edit">编辑分组</el-dropdown-item>
-                    <el-dropdown-item command="nodes">管理节点</el-dropdown-item>
-                    <el-dropdown-item command="delete" divided>删除分组</el-dropdown-item>
+                    <el-dropdown-item command="edit">
+                      编辑分组
+                    </el-dropdown-item>
+                    <el-dropdown-item command="nodes">
+                      管理节点
+                    </el-dropdown-item>
+                    <el-dropdown-item
+                      command="delete"
+                      divided
+                    >
+                      删除分组
+                    </el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -147,7 +196,10 @@
             />
           </div>
 
-          <div class="group-panel__actions" @click.stop>
+          <div
+            class="group-panel__actions"
+            @click.stop
+          >
             <el-button
               size="small"
               class="row-action row-action--primary"
@@ -172,7 +224,10 @@
       />
     </div>
 
-    <div v-if="displayGroupTotal > 0" class="pagination-container">
+    <div
+      v-if="displayGroupTotal > 0"
+      class="pagination-container"
+    >
       <el-pagination
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
@@ -188,37 +243,116 @@
       :title="isEdit ? '编辑分组' : '创建分组'"
       :width="isMobile ? 'calc(100vw - 24px)' : '520px'"
     >
-      <el-form :model="form" :rules="rules" ref="formRef" :label-width="isMobile ? '84px' : '100px'">
-        <el-form-item label="分组名称" prop="name">
-          <el-input v-model="form.name" placeholder="请输入分组名称" />
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        :label-width="isMobile ? '84px' : '100px'"
+      >
+        <el-form-item
+          label="分组名称"
+          prop="name"
+        >
+          <el-input
+            v-model="form.name"
+            placeholder="请输入分组名称"
+          />
         </el-form-item>
-        <el-form-item label="描述" prop="description">
-          <el-input v-model="form.description" type="textarea" :rows="2" placeholder="请输入分组描述" />
+        <el-form-item
+          label="描述"
+          prop="description"
+        >
+          <el-input
+            v-model="form.description"
+            type="textarea"
+            :rows="2"
+            placeholder="请输入分组描述"
+          />
         </el-form-item>
-        <el-form-item label="地区" prop="region">
-          <el-select v-model="form.region" filterable allow-create placeholder="选择或输入地区" style="width: 100%">
-            <el-option label="香港" value="香港" />
-            <el-option label="日本" value="日本" />
-            <el-option label="新加坡" value="新加坡" />
-            <el-option label="美国" value="美国" />
-            <el-option label="韩国" value="韩国" />
-            <el-option label="台湾" value="台湾" />
-            <el-option label="德国" value="德国" />
-            <el-option label="英国" value="英国" />
+        <el-form-item
+          label="地区"
+          prop="region"
+        >
+          <el-select
+            v-model="form.region"
+            filterable
+            allow-create
+            placeholder="选择或输入地区"
+            style="width: 100%"
+          >
+            <el-option
+              label="香港"
+              value="香港"
+            />
+            <el-option
+              label="日本"
+              value="日本"
+            />
+            <el-option
+              label="新加坡"
+              value="新加坡"
+            />
+            <el-option
+              label="美国"
+              value="美国"
+            />
+            <el-option
+              label="韩国"
+              value="韩国"
+            />
+            <el-option
+              label="台湾"
+              value="台湾"
+            />
+            <el-option
+              label="德国"
+              value="德国"
+            />
+            <el-option
+              label="英国"
+              value="英国"
+            />
           </el-select>
         </el-form-item>
-        <el-form-item label="调度策略" prop="strategy">
-          <el-select v-model="form.strategy" placeholder="选择策略" style="width: 100%">
-            <el-option label="轮询" value="round-robin" />
-            <el-option label="最少连接" value="least-connections" />
-            <el-option label="加权" value="weighted" />
-            <el-option label="地理位置" value="geographic" />
+        <el-form-item
+          label="调度策略"
+          prop="strategy"
+        >
+          <el-select
+            v-model="form.strategy"
+            placeholder="选择策略"
+            style="width: 100%"
+          >
+            <el-option
+              label="轮询"
+              value="round-robin"
+            />
+            <el-option
+              label="最少连接"
+              value="least-connections"
+            />
+            <el-option
+              label="加权"
+              value="weighted"
+            />
+            <el-option
+              label="地理位置"
+              value="geographic"
+            />
           </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="submitForm">确定</el-button>
+        <el-button @click="dialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="submitting"
+          @click="submitForm"
+        >
+          确定
+        </el-button>
       </template>
     </el-dialog>
 
@@ -227,7 +361,10 @@
       title="管理分组节点"
       :width="isMobile ? 'calc(100vw - 24px)' : '760px'"
     >
-      <div v-if="currentGroup" class="nodes-dialog-content">
+      <div
+        v-if="currentGroup"
+        class="nodes-dialog-content"
+      >
         <div class="surface-inline nodes-dialog-summary">
           <div class="stack-item">
             <span class="stack-label">当前分组</span>
@@ -249,8 +386,16 @@
         />
       </div>
       <template #footer>
-        <el-button @click="nodesDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="savingNodes" @click="saveGroupNodes">保存</el-button>
+        <el-button @click="nodesDialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="savingNodes"
+          @click="saveGroupNodes"
+        >
+          保存
+        </el-button>
       </template>
     </el-dialog>
 
@@ -259,17 +404,42 @@
       title="分组详情"
       :width="isMobile ? 'calc(100vw - 24px)' : '680px'"
     >
-      <div v-if="currentGroup" class="group-detail">
-        <el-descriptions :column="isMobile ? 1 : 2" border>
-          <el-descriptions-item label="ID">{{ currentGroup.id }}</el-descriptions-item>
-          <el-descriptions-item label="名称">{{ currentGroup.name }}</el-descriptions-item>
-          <el-descriptions-item label="地区">{{ currentGroup.region || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="策略">{{ getStrategyText(currentGroup.strategy) }}</el-descriptions-item>
-          <el-descriptions-item label="节点数">{{ getNodeCount(currentGroup) }}</el-descriptions-item>
-          <el-descriptions-item label="健康节点">{{ getHealthyCount(currentGroup) }}</el-descriptions-item>
-          <el-descriptions-item label="用户数">{{ getUserCount(currentGroup) }}</el-descriptions-item>
-          <el-descriptions-item label="创建时间">{{ formatTime(currentGroup.created_at) }}</el-descriptions-item>
-          <el-descriptions-item label="描述" :span="isMobile ? 1 : 2">
+      <div
+        v-if="currentGroup"
+        class="group-detail"
+      >
+        <el-descriptions
+          :column="isMobile ? 1 : 2"
+          border
+        >
+          <el-descriptions-item label="ID">
+            {{ currentGroup.id }}
+          </el-descriptions-item>
+          <el-descriptions-item label="名称">
+            {{ currentGroup.name }}
+          </el-descriptions-item>
+          <el-descriptions-item label="地区">
+            {{ currentGroup.region || '-' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="策略">
+            {{ getStrategyText(currentGroup.strategy) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="节点数">
+            {{ getNodeCount(currentGroup) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="健康节点">
+            {{ getHealthyCount(currentGroup) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="用户数">
+            {{ getUserCount(currentGroup) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="创建时间">
+            {{ formatTime(currentGroup.created_at) }}
+          </el-descriptions-item>
+          <el-descriptions-item
+            label="描述"
+            :span="isMobile ? 1 : 2"
+          >
             {{ currentGroup.description || '-' }}
           </el-descriptions-item>
         </el-descriptions>
@@ -280,21 +450,48 @@
             <span class="toolbar-summary">当前共 {{ groupNodes.length }} 个节点</span>
           </div>
 
-          <div v-if="groupNodes.length" class="table-shell">
-            <el-table :data="groupNodes" size="small" border stripe class="group-nodes-table">
-              <el-table-column prop="name" label="名称" min-width="140" />
-              <el-table-column prop="address" label="地址" min-width="160" />
-              <el-table-column label="状态" width="90">
+          <div
+            v-if="groupNodes.length"
+            class="table-shell"
+          >
+            <el-table
+              :data="groupNodes"
+              size="small"
+              border
+              stripe
+              class="group-nodes-table"
+            >
+              <el-table-column
+                prop="name"
+                label="名称"
+                min-width="140"
+              />
+              <el-table-column
+                prop="address"
+                label="地址"
+                min-width="160"
+              />
+              <el-table-column
+                label="状态"
+                width="90"
+              >
                 <template #default="{ row }">
                   <span :class="['metric-pill', getNodeStatusClass(row.status)]">
                     {{ getStatusText(row.status) }}
                   </span>
                 </template>
               </el-table-column>
-              <el-table-column prop="current_users" label="用户数" width="90" />
+              <el-table-column
+                prop="current_users"
+                label="用户数"
+                width="90"
+              />
             </el-table>
           </div>
-          <el-empty v-else description="该分组暂未分配节点" />
+          <el-empty
+            v-else
+            description="该分组暂未分配节点"
+          />
         </div>
       </div>
     </el-dialog>

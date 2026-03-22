@@ -3,10 +3,18 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-content">
-        <h1 class="page-title">使用统计</h1>
-        <p class="page-subtitle">查看您的流量使用情况和历史记录</p>
+        <h1 class="page-title">
+          使用统计
+        </h1>
+        <p class="page-subtitle">
+          查看您的流量使用情况和历史记录
+        </p>
       </div>
-      <el-button @click="exportData" :loading="exporting" :class="{ 'full-width-btn': isMobile }">
+      <el-button
+        :loading="exporting"
+        :class="{ 'full-width-btn': isMobile }"
+        @click="exportData"
+      >
         <el-icon><Download /></el-icon>
         导出数据
       </el-button>
@@ -14,11 +22,22 @@
 
     <!-- 时间范围选择 -->
     <div class="time-selector">
-      <el-radio-group v-model="timeRange" @change="loadStats">
-        <el-radio-button value="day">今日</el-radio-button>
-        <el-radio-button value="week">本周</el-radio-button>
-        <el-radio-button value="month">本月</el-radio-button>
-        <el-radio-button value="year">本年</el-radio-button>
+      <el-radio-group
+        v-model="timeRange"
+        @change="loadStats"
+      >
+        <el-radio-button value="day">
+          今日
+        </el-radio-button>
+        <el-radio-button value="week">
+          本周
+        </el-radio-button>
+        <el-radio-button value="month">
+          本月
+        </el-radio-button>
+        <el-radio-button value="year">
+          本年
+        </el-radio-button>
       </el-radio-group>
 
       <el-date-picker
@@ -34,153 +53,255 @@
     </div>
 
     <!-- 统计概览 -->
-    <el-row :gutter="20" class="stats-overview">
-      <el-col :xs="24" :sm="12" :lg="6">
+    <el-row
+      :gutter="20"
+      class="stats-overview"
+    >
+      <el-col
+        :xs="24"
+        :sm="12"
+        :lg="6"
+      >
         <div class="stat-card">
           <div class="stat-icon upload">
             <el-icon><Upload /></el-icon>
           </div>
           <div class="stat-content">
-            <div class="stat-label">上传流量</div>
-            <div class="stat-value">{{ formatTraffic(stats.upload) }}</div>
+            <div class="stat-label">
+              上传流量
+            </div>
+            <div class="stat-value">
+              {{ formatTraffic(stats.upload) }}
+            </div>
           </div>
         </div>
       </el-col>
 
-      <el-col :xs="24" :sm="12" :lg="6">
+      <el-col
+        :xs="24"
+        :sm="12"
+        :lg="6"
+      >
         <div class="stat-card">
           <div class="stat-icon download">
             <el-icon><Download /></el-icon>
           </div>
           <div class="stat-content">
-            <div class="stat-label">下载流量</div>
-            <div class="stat-value">{{ formatTraffic(stats.download) }}</div>
+            <div class="stat-label">
+              下载流量
+            </div>
+            <div class="stat-value">
+              {{ formatTraffic(stats.download) }}
+            </div>
           </div>
         </div>
       </el-col>
 
-      <el-col :xs="24" :sm="12" :lg="6">
+      <el-col
+        :xs="24"
+        :sm="12"
+        :lg="6"
+      >
         <div class="stat-card">
           <div class="stat-icon total">
             <el-icon><DataLine /></el-icon>
           </div>
           <div class="stat-content">
-            <div class="stat-label">总流量</div>
-            <div class="stat-value">{{ formatTraffic(stats.total) }}</div>
+            <div class="stat-label">
+              总流量
+            </div>
+            <div class="stat-value">
+              {{ formatTraffic(stats.total) }}
+            </div>
           </div>
         </div>
       </el-col>
 
-      <el-col :xs="24" :sm="12" :lg="6">
+      <el-col
+        :xs="24"
+        :sm="12"
+        :lg="6"
+      >
         <div class="stat-card">
           <div class="stat-icon connections">
             <el-icon><Connection /></el-icon>
           </div>
           <div class="stat-content">
-            <div class="stat-label">使用节点</div>
-            <div class="stat-value">{{ stats.nodes }}</div>
+            <div class="stat-label">
+              使用节点
+            </div>
+            <div class="stat-value">
+              {{ stats.nodes }}
+            </div>
           </div>
         </div>
       </el-col>
     </el-row>
 
     <!-- 流量图表 -->
-    <el-card class="chart-card" shadow="never">
+    <el-card
+      class="chart-card"
+      shadow="never"
+    >
       <template #header>
         <div class="card-header">
           <span>流量趋势</span>
-          <el-radio-group v-model="chartType" size="small">
-            <el-radio-button value="line">折线图</el-radio-button>
-            <el-radio-button value="bar">柱状图</el-radio-button>
+          <el-radio-group
+            v-model="chartType"
+            size="small"
+          >
+            <el-radio-button value="line">
+              折线图
+            </el-radio-button>
+            <el-radio-button value="bar">
+              柱状图
+            </el-radio-button>
           </el-radio-group>
         </div>
       </template>
 
-      <div v-if="loading" class="chart-loading">
-        <el-icon class="loading-icon"><Loading /></el-icon>
+      <div
+        v-if="loading"
+        class="chart-loading"
+      >
+        <el-icon class="loading-icon">
+          <Loading />
+        </el-icon>
         <p>加载数据中...</p>
       </div>
 
-      <div v-else class="chart-container">
-        <canvas ref="trafficChart"></canvas>
+      <div
+        v-else
+        class="chart-container"
+      >
+        <canvas ref="trafficChart" />
       </div>
     </el-card>
 
     <!-- 节点使用统计 -->
     <el-row :gutter="20">
-      <el-col :xs="24" :lg="12">
-        <el-card class="usage-card" shadow="never">
+      <el-col
+        :xs="24"
+        :lg="12"
+      >
+        <el-card
+          class="usage-card"
+          shadow="never"
+        >
           <template #header>
             <span>节点使用排行</span>
           </template>
 
-          <div v-if="nodeUsage.length === 0" class="empty-state">
+          <div
+            v-if="nodeUsage.length === 0"
+            class="empty-state"
+          >
             暂无数据
           </div>
 
-          <div v-else class="usage-list">
+          <div
+            v-else
+            class="usage-list"
+          >
             <div 
               v-for="(item, index) in nodeUsage" 
               :key="item.node_id"
               class="usage-item"
             >
-              <div class="usage-rank">{{ index + 1 }}</div>
+              <div class="usage-rank">
+                {{ index + 1 }}
+              </div>
               <div class="usage-info">
-                <div class="usage-name">{{ item.node_name }}</div>
+                <div class="usage-name">
+                  {{ item.node_name }}
+                </div>
                 <el-progress 
                   :percentage="item.percentage" 
                   :stroke-width="8"
                   :show-text="false"
                 />
               </div>
-              <div class="usage-value">{{ formatTraffic(item.traffic) }}</div>
+              <div class="usage-value">
+                {{ formatTraffic(item.traffic) }}
+              </div>
             </div>
           </div>
         </el-card>
       </el-col>
 
-      <el-col :xs="24" :lg="12">
-        <el-card class="usage-card" shadow="never">
+      <el-col
+        :xs="24"
+        :lg="12"
+      >
+        <el-card
+          class="usage-card"
+          shadow="never"
+        >
           <template #header>
             <span>协议使用分布</span>
           </template>
 
-          <div v-if="protocolUsage.length === 0" class="empty-state">
+          <div
+            v-if="protocolUsage.length === 0"
+            class="empty-state"
+          >
             暂无数据
           </div>
 
-          <div v-else class="protocol-chart">
-            <canvas ref="protocolChart"></canvas>
+          <div
+            v-else
+            class="protocol-chart"
+          >
+            <canvas ref="protocolChart" />
           </div>
         </el-card>
       </el-col>
     </el-row>
 
     <!-- 详细记录 -->
-    <el-card class="records-card" shadow="never">
+    <el-card
+      class="records-card"
+      shadow="never"
+    >
       <template #header>
         <span>详细记录</span>
       </template>
 
       <div class="table-wrap">
-      <el-table :data="records" stripe>
-        <el-table-column label="日期" prop="date" width="120" />
-        <el-table-column label="上传" width="120">
-          <template #default="{ row }">
-            {{ formatTraffic(row.upload) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="下载" width="120">
-          <template #default="{ row }">
-            {{ formatTraffic(row.download) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="总计" width="120">
-          <template #default="{ row }">
-            {{ formatTraffic(row.total) }}
-          </template>
-        </el-table-column>
-      </el-table>
+        <el-table
+          :data="records"
+          stripe
+        >
+          <el-table-column
+            label="日期"
+            prop="date"
+            width="120"
+          />
+          <el-table-column
+            label="上传"
+            width="120"
+          >
+            <template #default="{ row }">
+              {{ formatTraffic(row.upload) }}
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="下载"
+            width="120"
+          >
+            <template #default="{ row }">
+              {{ formatTraffic(row.download) }}
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="总计"
+            width="120"
+          >
+            <template #default="{ row }">
+              {{ formatTraffic(row.total) }}
+            </template>
+          </el-table-column>
+        </el-table>
       </div>
     </el-card>
   </div>

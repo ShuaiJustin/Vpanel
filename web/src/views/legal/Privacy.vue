@@ -1,7 +1,9 @@
 <template>
   <div class="legal-page">
     <div class="legal-container">
-      <h1 class="legal-title">隐私政策</h1>
+      <h1 class="legal-title">
+        隐私政策
+      </h1>
       <div class="legal-meta">
         <span>生效日期：{{ effectiveDate }}</span>
         <span>最后更新：{{ lastUpdated }}</span>
@@ -168,15 +170,29 @@
           <p>如对本隐私政策有任何疑问或要行使您的权利，请通过以下方式联系我们：</p>
           <ul>
             <li>邮箱：privacy@example.com</li>
-            <li>工单系统：<router-link to="/user/tickets" class="link">提交工单</router-link></li>
+            <li>
+              工单系统：<router-link
+                to="/user/tickets"
+                class="link"
+              >
+                提交工单
+              </router-link>
+            </li>
           </ul>
           <p>我们将在 30 天内回复您的请求。</p>
         </section>
       </div>
 
       <div class="legal-footer">
-        <el-button @click="goBack">返回</el-button>
-        <el-button type="primary" @click="acceptPrivacy">我已阅读并理解</el-button>
+        <el-button @click="goBack">
+          返回
+        </el-button>
+        <el-button
+          type="primary"
+          @click="acceptPrivacy"
+        >
+          我已阅读并理解
+        </el-button>
       </div>
     </div>
   </div>

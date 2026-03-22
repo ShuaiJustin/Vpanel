@@ -2,11 +2,18 @@
   <div class="node-comparison-page">
     <div class="page-header">
       <div class="page-heading">
-        <h1 class="page-title">节点性能对比</h1>
-        <p class="page-subtitle">对比节点延迟、负载、同步状态和基础运行指标</p>
+        <h1 class="page-title">
+          节点性能对比
+        </h1>
+        <p class="page-subtitle">
+          对比节点延迟、负载、同步状态和基础运行指标
+        </p>
       </div>
       <div class="header-actions">
-        <el-button @click="fetchNodes" :loading="loading">
+        <el-button
+          :loading="loading"
+          @click="fetchNodes"
+        >
           <el-icon><Refresh /></el-icon>
           刷新
         </el-button>
@@ -14,14 +21,24 @@
     </div>
 
     <!-- 节点选择 -->
-    <el-card shadow="never" class="selection-card">
+    <el-card
+      shadow="never"
+      class="selection-card"
+    >
       <div class="selection-header">
         <span>选择要对比的节点（最多选择 5 个）</span>
-        <el-button link @click="clearSelection" v-if="selectedNodes.length > 0">
+        <el-button
+          v-if="selectedNodes.length > 0"
+          link
+          @click="clearSelection"
+        >
           清除选择
         </el-button>
       </div>
-      <el-checkbox-group v-model="selectedNodeIds" :max="5">
+      <el-checkbox-group
+        v-model="selectedNodeIds"
+        :max="5"
+      >
         <el-checkbox
           v-for="node in nodeStore.nodes"
           :key="node.id"
@@ -29,7 +46,10 @@
           :disabled="selectedNodeIds.length >= 5 && !selectedNodeIds.includes(node.id)"
         >
           <span class="node-checkbox-label">
-            <el-tag :type="getStatusType(node.status)" size="small">
+            <el-tag
+              :type="getStatusType(node.status)"
+              size="small"
+            >
               {{ getStatusText(node.status) }}
             </el-tag>
             {{ node.name }}
@@ -40,13 +60,26 @@
     </el-card>
 
     <!-- 对比表格 -->
-    <el-card shadow="never" class="comparison-card" v-if="selectedNodes.length > 0">
+    <el-card
+      v-if="selectedNodes.length > 0"
+      shadow="never"
+      class="comparison-card"
+    >
       <template #header>
         <span>性能对比</span>
       </template>
       <div class="table-shell">
-        <el-table :data="comparisonData" border style="width: 100%">
-          <el-table-column prop="metric" label="指标" width="150" fixed />
+        <el-table
+          :data="comparisonData"
+          border
+          style="width: 100%"
+        >
+          <el-table-column
+            prop="metric"
+            label="指标"
+            width="150"
+            fixed
+          />
           <el-table-column
             v-for="node in selectedNodes"
             :key="node.id"
@@ -54,9 +87,15 @@
             min-width="150"
           >
             <template #default="{ row }">
-              <div class="metric-cell" :class="getCellClass(row, node)">
+              <div
+                class="metric-cell"
+                :class="getCellClass(row, node)"
+              >
                 <span class="metric-value">{{ getMetricValue(row, node) }}</span>
-                <el-icon v-if="row.key !== 'name' && row.key !== 'region'" class="rank-icon">
+                <el-icon
+                  v-if="row.key !== 'name' && row.key !== 'region'"
+                  class="rank-icon"
+                >
                   <Trophy v-if="isTopPerformer(row, node)" />
                 </el-icon>
               </div>
@@ -67,9 +106,15 @@
     </el-card>
 
     <!-- 可视化对比 -->
-    <el-row :gutter="isMobile ? 12 : 20" v-if="selectedNodes.length > 0">
+    <el-row
+      v-if="selectedNodes.length > 0"
+      :gutter="isMobile ? 12 : 20"
+    >
       <el-col :span="chartSpan">
-        <el-card shadow="never" class="chart-card">
+        <el-card
+          shadow="never"
+          class="chart-card"
+        >
           <template #header>
             <span>延迟对比</span>
           </template>
@@ -85,7 +130,7 @@
                   class="bar-fill"
                   :class="getLatencyClass(node.latency)"
                   :style="{ width: getLatencyBarWidth(node.latency) + '%' }"
-                ></div>
+                />
               </div>
               <span class="bar-value">{{ node.latency }}ms</span>
             </div>
@@ -94,7 +139,10 @@
       </el-col>
 
       <el-col :span="chartSpan">
-        <el-card shadow="never" class="chart-card">
+        <el-card
+          shadow="never"
+          class="chart-card"
+        >
           <template #header>
             <span>负载对比</span>
           </template>
@@ -110,7 +158,7 @@
                   class="bar-fill"
                   :class="getLoadClass(node)"
                   :style="{ width: getLoadPercentage(node) + '%' }"
-                ></div>
+                />
               </div>
               <span class="bar-value">{{ node.current_users }}/{{ node.max_users || '∞' }}</span>
             </div>
@@ -120,41 +168,91 @@
     </el-row>
 
     <!-- 详细数据表 -->
-    <el-card shadow="never" class="detail-card" v-if="selectedNodes.length > 0">
+    <el-card
+      v-if="selectedNodes.length > 0"
+      shadow="never"
+      class="detail-card"
+    >
       <template #header>
         <span>详细数据</span>
       </template>
       <div class="table-shell">
-        <el-table :data="selectedNodes" border style="width: 100%">
-          <el-table-column prop="name" label="名称" width="150" />
-          <el-table-column label="状态" width="100">
+        <el-table
+          :data="selectedNodes"
+          border
+          style="width: 100%"
+        >
+          <el-table-column
+            prop="name"
+            label="名称"
+            width="150"
+          />
+          <el-table-column
+            label="状态"
+            width="100"
+          >
             <template #default="{ row }">
-              <el-tag :type="getStatusType(row.status)" size="small">
+              <el-tag
+                :type="getStatusType(row.status)"
+                size="small"
+              >
                 {{ getStatusText(row.status) }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="region" label="地区" width="100" />
-          <el-table-column prop="address" label="地址" min-width="150" />
-          <el-table-column label="延迟" width="100" sortable :sort-method="sortByLatency">
+          <el-table-column
+            prop="region"
+            label="地区"
+            width="100"
+          />
+          <el-table-column
+            prop="address"
+            label="地址"
+            min-width="150"
+          />
+          <el-table-column
+            label="延迟"
+            width="100"
+            sortable
+            :sort-method="sortByLatency"
+          >
             <template #default="{ row }">
               <span :class="getLatencyClass(row.latency)">{{ row.latency }}ms</span>
             </template>
           </el-table-column>
-          <el-table-column label="负载" width="120" sortable :sort-method="sortByLoad">
+          <el-table-column
+            label="负载"
+            width="120"
+            sortable
+            :sort-method="sortByLoad"
+          >
             <template #default="{ row }">
               {{ row.current_users }}/{{ row.max_users || '∞' }}
             </template>
           </el-table-column>
-          <el-table-column prop="weight" label="权重" width="80" sortable />
-          <el-table-column label="同步状态" width="100">
+          <el-table-column
+            prop="weight"
+            label="权重"
+            width="80"
+            sortable
+          />
+          <el-table-column
+            label="同步状态"
+            width="100"
+          >
             <template #default="{ row }">
-              <el-tag :type="getSyncStatusType(row.sync_status)" size="small">
+              <el-tag
+                :type="getSyncStatusType(row.sync_status)"
+                size="small"
+              >
                 {{ getSyncStatusText(row.sync_status) }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="最后在线" width="180">
+          <el-table-column
+            label="最后在线"
+            width="180"
+          >
             <template #default="{ row }">
               {{ formatTime(row.last_seen_at) }}
             </template>
@@ -163,7 +261,10 @@
       </div>
     </el-card>
 
-    <el-empty v-if="selectedNodes.length === 0" description="请选择要对比的节点" />
+    <el-empty
+      v-if="selectedNodes.length === 0"
+      description="请选择要对比的节点"
+    />
   </div>
 </template>
 

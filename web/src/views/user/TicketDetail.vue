@@ -2,29 +2,46 @@
   <div class="ticket-detail-page">
     <!-- 返回按钮 -->
     <div class="back-bar">
-      <el-button link @click="goBack">
+      <el-button
+        link
+        @click="goBack"
+      >
         <el-icon><ArrowLeft /></el-icon>
         返回工单列表
       </el-button>
     </div>
 
     <!-- 加载状态 -->
-    <div v-if="loading" class="loading-state">
-      <el-icon class="loading-icon"><Loading /></el-icon>
+    <div
+      v-if="loading"
+      class="loading-state"
+    >
+      <el-icon class="loading-icon">
+        <Loading />
+      </el-icon>
       <p>加载工单详情...</p>
     </div>
 
     <!-- 工单不存在 -->
-    <el-empty v-else-if="!ticket" description="工单不存在或已删除" />
+    <el-empty
+      v-else-if="!ticket"
+      description="工单不存在或已删除"
+    />
 
     <!-- 工单内容 -->
     <template v-else>
       <!-- 工单信息 -->
-      <el-card class="ticket-info-card" shadow="never">
+      <el-card
+        class="ticket-info-card"
+        shadow="never"
+      >
         <div class="ticket-header">
           <div class="header-left">
             <span class="ticket-id">#{{ ticket.id }}</span>
-            <el-tag :type="getStatusType(ticket.status)" size="default">
+            <el-tag
+              :type="getStatusType(ticket.status)"
+              size="default"
+            >
               {{ getStatusLabel(ticket.status) }}
             </el-tag>
             <el-tag 
@@ -48,7 +65,9 @@
           </div>
         </div>
 
-        <h1 class="ticket-subject">{{ ticket.subject }}</h1>
+        <h1 class="ticket-subject">
+          {{ ticket.subject }}
+        </h1>
 
         <div class="ticket-meta">
           <span class="meta-item">
@@ -82,8 +101,15 @@
               </span>
               <span class="message-time">{{ formatDate(message.created_at) }}</span>
             </div>
-            <div class="message-body" v-html="formatContent(message.content)"></div>
-            <div v-if="message.attachments && message.attachments.length" class="message-attachments">
+            <div
+              class="message-body"
+            >
+              {{ message.content }}
+            </div>
+            <div
+              v-if="message.attachments && message.attachments.length"
+              class="message-attachments"
+            >
               <a 
                 v-for="(attachment, index) in message.attachments" 
                 :key="index"
@@ -100,9 +126,19 @@
       </div>
 
       <!-- 回复表单 -->
-      <el-card v-if="canReply" class="reply-card" shadow="never">
-        <h3 class="reply-title">回复工单</h3>
-        <el-form ref="replyFormRef" :model="replyForm" :rules="replyRules">
+      <el-card
+        v-if="canReply"
+        class="reply-card"
+        shadow="never"
+      >
+        <h3 class="reply-title">
+          回复工单
+        </h3>
+        <el-form
+          ref="replyFormRef"
+          :model="replyForm"
+          :rules="replyRules"
+        >
           <el-form-item prop="content">
             <el-input
               v-model="replyForm.content"
@@ -126,13 +162,19 @@
                 添加附件
               </el-button>
               <template #tip>
-                <div class="upload-tip">支持 jpg/png/gif/pdf/doc 格式，最多 3 个文件</div>
+                <div class="upload-tip">
+                  支持 jpg/png/gif/pdf/doc 格式，最多 3 个文件
+                </div>
               </template>
             </el-upload>
           </el-form-item>
 
           <el-form-item>
-            <el-button type="primary" @click="submitReply" :loading="submitting">
+            <el-button
+              type="primary"
+              :loading="submitting"
+              @click="submitReply"
+            >
               提交回复
             </el-button>
           </el-form-item>
@@ -247,12 +289,6 @@ function formatDate(dateStr) {
     hour: '2-digit',
     minute: '2-digit'
   })
-}
-
-function formatContent(content) {
-  if (!content) return ''
-  // 简单的换行处理
-  return content.replace(/\n/g, '<br>')
 }
 
 function goBack() {
@@ -459,6 +495,8 @@ onMounted(() => {
   font-size: 14px;
   color: #606266;
   line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .message-attachments {

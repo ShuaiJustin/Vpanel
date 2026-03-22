@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"v/internal/database/repository"
+	proxylib "v/internal/proxy"
 )
 
 // V2rayNGenerator generates subscription content in V2rayN/V2rayNG format.
@@ -110,18 +111,18 @@ func (g *V2rayNGenerator) generateVMessLink(info *ProxyInfo) (string, error) {
 		Port: fmt.Sprintf("%d", info.Port),
 		ID:   GetSettingString(info.Settings, "uuid", ""),
 		Aid:  fmt.Sprintf("%d", GetSettingInt(info.Settings, "alterId", 0)),
-		Scy:  GetSettingString(info.Settings, "security", "auto"),
+		Scy:  proxylib.ResolveVMessCipher(info.Settings),
 		Net:  GetSettingString(info.Settings, "network", "tcp"),
 		Type: GetSettingString(info.Settings, "type", "none"),
 		Host: GetSettingString(info.Settings, "host", ""),
 		Path: GetSettingString(info.Settings, "path", ""),
 		TLS:  "",
-		SNI:  GetSettingString(info.Settings, "sni", ""),
+		SNI:  proxylib.ResolveSNI(info.Settings),
 		ALPN: GetSettingString(info.Settings, "alpn", ""),
 		FP:   GetSettingString(info.Settings, "fingerprint", ""),
 	}
 
-	if GetSettingBool(info.Settings, "tls", false) {
+	if proxylib.HasTLSSettings(info.Settings) {
 		config.TLS = "tls"
 	}
 

@@ -2,8 +2,12 @@
   <div class="protocol-settings-container">
     <div class="page-header">
       <div class="page-heading">
-        <h1 class="page-title">协议设置</h1>
-        <p class="page-subtitle">统一管理基础协议、传输层能力和 Trojan 默认参数</p>
+        <h1 class="page-title">
+          协议设置
+        </h1>
+        <p class="page-subtitle">
+          统一管理基础协议、传输层能力和 Trojan 默认参数
+        </p>
       </div>
     </div>
 
@@ -22,78 +26,185 @@
       </div>
     </div>
 
-    <el-card shadow="hover" class="settings-card">
+    <el-card
+      shadow="hover"
+      class="settings-card"
+    >
       <template #header>
         <div class="card-header">
           <span>基础协议设置</span>
-          <el-button type="primary" @click="saveSettings">保存设置</el-button>
+          <el-button
+            type="primary"
+            @click="saveSettings"
+          >
+            保存设置
+          </el-button>
         </div>
       </template>
       
       <div class="protocol-grid">
         <div class="protocol-item">
-          <div class="protocol-label">启用 Trojan 协议</div>
+          <div class="protocol-label">
+            启用 Trojan 协议
+          </div>
           <el-switch v-model="enableTrojan" />
           <div class="protocol-description">
             Trojan 协议: 基于 TLS 的轻量级协议，伪装成 HTTPS 流量。
-            <el-tag v-if="enableTrojan" type="success" size="small" style="margin-left: 10px">已启用</el-tag>
-            <el-tag v-else type="info" size="small" style="margin-left: 10px">已禁用</el-tag>
+            <el-tag
+              v-if="enableTrojan"
+              type="success"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已启用
+            </el-tag>
+            <el-tag
+              v-else
+              type="info"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已禁用
+            </el-tag>
           </div>
         </div>
         
         <div class="protocol-item">
-          <div class="protocol-label">启用 VMess 协议</div>
+          <div class="protocol-label">
+            启用 VMess 协议
+          </div>
           <el-switch v-model="enableVMess" />
           <div class="protocol-description">
             VMess 协议: V2Ray 的核心传输协议，支持多种传输层。
-            <el-tag v-if="enableVMess" type="success" size="small" style="margin-left: 10px">已启用</el-tag>
-            <el-tag v-else type="info" size="small" style="margin-left: 10px">已禁用</el-tag>
+            <el-tag
+              v-if="enableVMess"
+              type="success"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已启用
+            </el-tag>
+            <el-tag
+              v-else
+              type="info"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已禁用
+            </el-tag>
           </div>
         </div>
         
         <div class="protocol-item">
-          <div class="protocol-label">启用 VLESS 协议</div>
+          <div class="protocol-label">
+            启用 VLESS 协议
+          </div>
           <el-switch v-model="enableVLESS" />
           <div class="protocol-description">
             VLESS 协议: 轻量化的 VMess 协议，去除不必要的加密。
-            <el-tag v-if="enableVLESS" type="success" size="small" style="margin-left: 10px">已启用</el-tag>
-            <el-tag v-else type="info" size="small" style="margin-left: 10px">已禁用</el-tag>
+            <el-tag
+              v-if="enableVLESS"
+              type="success"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已启用
+            </el-tag>
+            <el-tag
+              v-else
+              type="info"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已禁用
+            </el-tag>
           </div>
         </div>
         
         <div class="protocol-item">
-          <div class="protocol-label">启用 Shadowsocks 协议</div>
+          <div class="protocol-label">
+            启用 Shadowsocks 协议
+          </div>
           <el-switch v-model="enableShadowsocks" />
           <div class="protocol-description">
             Shadowsocks 协议: 经典的加密代理协议。
-            <el-tag v-if="enableShadowsocks" type="success" size="small" style="margin-left: 10px">已启用</el-tag>
-            <el-tag v-else type="info" size="small" style="margin-left: 10px">已禁用</el-tag>
+            <el-tag
+              v-if="enableShadowsocks"
+              type="success"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已启用
+            </el-tag>
+            <el-tag
+              v-else
+              type="info"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已禁用
+            </el-tag>
           </div>
         </div>
         
         <div class="protocol-item">
-          <div class="protocol-label">启用 SOCKS 协议</div>
+          <div class="protocol-label">
+            启用 SOCKS 协议
+          </div>
           <el-switch v-model="enableSocks" />
           <div class="protocol-description">
             SOCKS 协议: 标准代理协议，支持 TCP/UDP。
-            <el-tag v-if="enableSocks" type="success" size="small" style="margin-left: 10px">已启用</el-tag>
-            <el-tag v-else type="info" size="small" style="margin-left: 10px">已禁用</el-tag>
+            <el-tag
+              v-if="enableSocks"
+              type="success"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已启用
+            </el-tag>
+            <el-tag
+              v-else
+              type="info"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已禁用
+            </el-tag>
           </div>
         </div>
         
         <div class="protocol-item">
-          <div class="protocol-label">启用 HTTP 协议</div>
+          <div class="protocol-label">
+            启用 HTTP 协议
+          </div>
           <el-switch v-model="enableHTTP" />
           <div class="protocol-description">
             HTTP 协议: 基础代理协议，明文传输。
-            <el-tag v-if="enableHTTP" type="success" size="small" style="margin-left: 10px">已启用</el-tag>
-            <el-tag v-else type="info" size="small" style="margin-left: 10px">已禁用</el-tag>
+            <el-tag
+              v-if="enableHTTP"
+              type="success"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已启用
+            </el-tag>
+            <el-tag
+              v-else
+              type="info"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已禁用
+            </el-tag>
           </div>
         </div>
       </div>
     </el-card>
     
-    <el-card shadow="hover" class="settings-card">
+    <el-card
+      shadow="hover"
+      class="settings-card"
+    >
       <template #header>
         <div class="card-header">
           <span>传输层设置</span>
@@ -102,58 +213,141 @@
       
       <div class="protocol-grid">
         <div class="protocol-item">
-          <div class="protocol-label">启用 TCP 传输</div>
+          <div class="protocol-label">
+            启用 TCP 传输
+          </div>
           <el-switch v-model="enableTCP" />
           <div class="protocol-description">
             TCP 传输: 最基础的传输方式。
-            <el-tag v-if="enableTCP" type="success" size="small" style="margin-left: 10px">已启用</el-tag>
-            <el-tag v-else type="info" size="small" style="margin-left: 10px">已禁用</el-tag>
+            <el-tag
+              v-if="enableTCP"
+              type="success"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已启用
+            </el-tag>
+            <el-tag
+              v-else
+              type="info"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已禁用
+            </el-tag>
           </div>
         </div>
         
         <div class="protocol-item">
-          <div class="protocol-label">启用 WebSocket 传输</div>
+          <div class="protocol-label">
+            启用 WebSocket 传输
+          </div>
           <el-switch v-model="enableWebSocket" />
           <div class="protocol-description">
             WebSocket 传输: 基于HTTP协议的持久化连接，兼容性好。
-            <el-tag v-if="enableWebSocket" type="success" size="small" style="margin-left: 10px">已启用</el-tag>
-            <el-tag v-else type="info" size="small" style="margin-left: 10px">已禁用</el-tag>
+            <el-tag
+              v-if="enableWebSocket"
+              type="success"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已启用
+            </el-tag>
+            <el-tag
+              v-else
+              type="info"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已禁用
+            </el-tag>
           </div>
         </div>
         
         <div class="protocol-item">
-          <div class="protocol-label">启用 HTTP/2 传输</div>
+          <div class="protocol-label">
+            启用 HTTP/2 传输
+          </div>
           <el-switch v-model="enableHTTP2" />
           <div class="protocol-description">
             HTTP/2 传输: 新一代HTTP协议，多路复用，需启用TLS。
-            <el-tag v-if="enableHTTP2" type="success" size="small" style="margin-left: 10px">已启用</el-tag>
-            <el-tag v-else type="info" size="small" style="margin-left: 10px">已禁用</el-tag>
+            <el-tag
+              v-if="enableHTTP2"
+              type="success"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已启用
+            </el-tag>
+            <el-tag
+              v-else
+              type="info"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已禁用
+            </el-tag>
           </div>
         </div>
         
         <div class="protocol-item">
-          <div class="protocol-label">启用 gRPC 传输</div>
+          <div class="protocol-label">
+            启用 gRPC 传输
+          </div>
           <el-switch v-model="enableGRPC" />
           <div class="protocol-description">
             gRPC 传输: 基于HTTP/2的高性能RPC框架，抗干扰力强。
-            <el-tag v-if="enableGRPC" type="success" size="small" style="margin-left: 10px">已启用</el-tag>
-            <el-tag v-else type="info" size="small" style="margin-left: 10px">已禁用</el-tag>
+            <el-tag
+              v-if="enableGRPC"
+              type="success"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已启用
+            </el-tag>
+            <el-tag
+              v-else
+              type="info"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已禁用
+            </el-tag>
           </div>
         </div>
         
         <div class="protocol-item">
-          <div class="protocol-label">启用 QUIC 传输</div>
+          <div class="protocol-label">
+            启用 QUIC 传输
+          </div>
           <el-switch v-model="enableQUIC" />
           <div class="protocol-description">
             QUIC 传输: 基于UDP的传输层协议，低延迟。
-            <el-tag v-if="enableQUIC" type="success" size="small" style="margin-left: 10px">已启用</el-tag>
-            <el-tag v-else type="info" size="small" style="margin-left: 10px">已禁用</el-tag>
+            <el-tag
+              v-if="enableQUIC"
+              type="success"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已启用
+            </el-tag>
+            <el-tag
+              v-else
+              type="info"
+              size="small"
+              style="margin-left: 10px"
+            >
+              已禁用
+            </el-tag>
           </div>
         </div>
       </div>
     </el-card>
     
-    <el-card shadow="hover" class="settings-card">
+    <el-card
+      shadow="hover"
+      class="settings-card"
+    >
       <template #header>
         <div class="card-header">
           <span>Trojan 协议高级设置</span>
@@ -186,7 +380,9 @@
                 style="width: 100%"
                 controls-position="right" 
               />
-              <div class="setting-description">发送窗口大小</div>
+              <div class="setting-description">
+                发送窗口大小
+              </div>
             </el-col>
             <el-col :span="isMobile ? 24 : 12">
               <el-input-number 
@@ -197,7 +393,9 @@
                 style="width: 100%"
                 controls-position="right" 
               />
-              <div class="setting-description">接收窗口大小</div>
+              <div class="setting-description">
+                接收窗口大小
+              </div>
             </el-col>
           </el-row>
         </el-form-item>
@@ -210,12 +408,30 @@
         </el-form-item>
         
         <el-form-item label="默认流控模式">
-          <el-select v-model="trojanDefaultFlow" style="width: 100%">
-            <el-option label="无流控" value="none" />
-            <el-option label="xtls-rprx-direct" value="xtls-rprx-direct" />
-            <el-option label="xtls-rprx-direct-udp443" value="xtls-rprx-direct-udp443" />
-            <el-option label="xtls-rprx-splice" value="xtls-rprx-splice" />
-            <el-option label="xtls-rprx-splice-udp443" value="xtls-rprx-splice-udp443" />
+          <el-select
+            v-model="trojanDefaultFlow"
+            style="width: 100%"
+          >
+            <el-option
+              label="无流控"
+              value="none"
+            />
+            <el-option
+              label="xtls-rprx-direct"
+              value="xtls-rprx-direct"
+            />
+            <el-option
+              label="xtls-rprx-direct-udp443"
+              value="xtls-rprx-direct-udp443"
+            />
+            <el-option
+              label="xtls-rprx-splice"
+              value="xtls-rprx-splice"
+            />
+            <el-option
+              label="xtls-rprx-splice-udp443"
+              value="xtls-rprx-splice-udp443"
+            />
           </el-select>
           <div class="setting-description">
             设置 Trojan 默认流控模式，影响数据传输方式
@@ -223,10 +439,22 @@
         </el-form-item>
         
         <el-form-item label="密码策略">
-          <el-select v-model="trojanPasswordPolicy" style="width: 100%">
-            <el-option label="任意字符" value="any" />
-            <el-option label="仅允许字母和数字" value="alphanumeric" />
-            <el-option label="强密码要求" value="strong" />
+          <el-select
+            v-model="trojanPasswordPolicy"
+            style="width: 100%"
+          >
+            <el-option
+              label="任意字符"
+              value="any"
+            />
+            <el-option
+              label="仅允许字母和数字"
+              value="alphanumeric"
+            />
+            <el-option
+              label="强密码要求"
+              value="strong"
+            />
           </el-select>
           <div class="setting-description">
             设置 Trojan 密码生成和验证策略
@@ -235,12 +463,25 @@
       </el-form>
       
       <div class="form-actions">
-        <el-button type="primary" @click="saveTrojanSettings">保存 Trojan 设置</el-button>
-        <el-button type="danger" @click="resetTrojanSettings">重置为默认</el-button>
+        <el-button
+          type="primary"
+          @click="saveTrojanSettings"
+        >
+          保存 Trojan 设置
+        </el-button>
+        <el-button
+          type="danger"
+          @click="resetTrojanSettings"
+        >
+          重置为默认
+        </el-button>
       </div>
     </el-card>
     
-    <el-card shadow="hover" class="settings-card">
+    <el-card
+      shadow="hover"
+      class="settings-card"
+    >
       <template #header>
         <div class="card-header">
           <span>全局操作</span>
@@ -248,9 +489,24 @@
       </template>
       
       <div class="global-actions">
-        <el-button type="primary" @click="saveAllSettings">保存所有设置</el-button>
-        <el-button type="success" @click="saveAndRestart">保存并重启服务</el-button>
-        <el-button type="warning" @click="resetAllSettings">重置所有设置</el-button>
+        <el-button
+          type="primary"
+          @click="saveAllSettings"
+        >
+          保存所有设置
+        </el-button>
+        <el-button
+          type="success"
+          @click="saveAndRestart"
+        >
+          保存并重启服务
+        </el-button>
+        <el-button
+          type="warning"
+          @click="resetAllSettings"
+        >
+          重置所有设置
+        </el-button>
       </div>
     </el-card>
   </div>

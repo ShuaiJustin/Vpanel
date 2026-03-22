@@ -2,15 +2,22 @@
   <div class="change-password-container">
     <div class="page-header">
       <div class="page-heading">
-        <h1 class="page-title">修改密码</h1>
-        <p class="page-subtitle">更新登录凭据并完成基础安全校验</p>
+        <h1 class="page-title">
+          修改密码
+        </h1>
+        <p class="page-subtitle">
+          更新登录凭据并完成基础安全校验
+        </p>
       </div>
     </div>
 
     <div class="overview-strip">
       <div class="overview-card">
         <span class="overview-label">当前状态</span>
-        <strong class="overview-value" :class="passwordForm.newPassword ? 'is-primary' : ''">
+        <strong
+          class="overview-value"
+          :class="passwordForm.newPassword ? 'is-primary' : ''"
+        >
           {{ passwordForm.newPassword ? passwordStrengthText : '待输入' }}
         </strong>
       </div>
@@ -25,7 +32,10 @@
     </div>
 
     <div class="change-password-layout">
-      <el-card class="change-password-card" shadow="never">
+      <el-card
+        class="change-password-card"
+        shadow="never"
+      >
         <template #header>
           <div class="card-header">
             <span>更新登录密码</span>
@@ -41,7 +51,10 @@
           class="password-form"
           :rules="rules"
         >
-          <el-form-item label="当前密码" prop="currentPassword">
+          <el-form-item
+            label="当前密码"
+            prop="currentPassword"
+          >
             <el-input
               v-model="passwordForm.currentPassword"
               type="password"
@@ -50,27 +63,39 @@
             />
           </el-form-item>
 
-          <el-form-item label="新密码" prop="newPassword">
+          <el-form-item
+            label="新密码"
+            prop="newPassword"
+          >
             <el-input
               v-model="passwordForm.newPassword"
               type="password"
               placeholder="请输入新密码"
               show-password
             />
-            <div v-if="passwordForm.newPassword" class="password-strength">
+            <div
+              v-if="passwordForm.newPassword"
+              class="password-strength"
+            >
               <span class="strength-label">密码强度</span>
               <div class="strength-indicator">
                 <div
                   class="strength-bar"
                   :class="passwordStrengthClass"
                   :style="{ width: passwordStrength + '%' }"
-                ></div>
+                />
               </div>
-              <span class="strength-text" :class="passwordStrengthClass">{{ passwordStrengthText }}</span>
+              <span
+                class="strength-text"
+                :class="passwordStrengthClass"
+              >{{ passwordStrengthText }}</span>
             </div>
           </el-form-item>
 
-          <el-form-item label="确认新密码" prop="confirmPassword">
+          <el-form-item
+            label="确认新密码"
+            prop="confirmPassword"
+          >
             <el-input
               v-model="passwordForm.confirmPassword"
               type="password"
@@ -81,14 +106,28 @@
 
           <el-form-item>
             <div class="form-actions">
-              <el-button type="primary" :loading="saving" @click="changePassword">确认修改</el-button>
-              <el-button :disabled="saving" @click="resetForm">重置</el-button>
+              <el-button
+                type="primary"
+                :loading="saving"
+                @click="changePassword"
+              >
+                确认修改
+              </el-button>
+              <el-button
+                :disabled="saving"
+                @click="resetForm"
+              >
+                重置
+              </el-button>
             </div>
           </el-form-item>
         </el-form>
       </el-card>
 
-      <el-card class="password-tips-card" shadow="never">
+      <el-card
+        class="password-tips-card"
+        shadow="never"
+      >
         <template #header>
           <div class="card-header">
             <span>密码要求</span>
@@ -423,7 +462,7 @@ const resetForm = () => {
   line-height: 1.8;
 }
 
-@media (max-width: 960px) {
+@media (max-width: 1024px) {
   .change-password-layout {
     grid-template-columns: 1fr;
   }

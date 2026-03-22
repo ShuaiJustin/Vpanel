@@ -2,11 +2,39 @@
   <div class="traffic-monitor">
     <div class="page-header">
       <div class="page-heading">
-        <h1 class="page-title">流量监控</h1>
-        <p class="page-subtitle">查看实时流量曲线、历史流量统计和连接明细</p>
+        <h1 class="page-title">
+          流量监控
+        </h1>
+        <p class="page-subtitle">
+          查看最近 5 分钟节点流量和历史流量趋势
+        </p>
       </div>
       <div class="page-actions">
-        <el-button type="primary" @click="refreshData">刷新数据</el-button>
+        <el-select
+          v-model="historyPeriod"
+          size="small"
+          style="width: 120px"
+          @change="refreshData"
+        >
+          <el-option
+            label="今日"
+            value="today"
+          />
+          <el-option
+            label="本周"
+            value="week"
+          />
+          <el-option
+            label="本月"
+            value="month"
+          />
+        </el-select>
+        <el-button
+          type="primary"
+          @click="refreshData"
+        >
+          刷新数据
+        </el-button>
       </div>
     </div>
 
@@ -14,50 +42,94 @@
       <template #header>
         <div class="card-header">
           <span>流量概览</span>
-          <span class="toolbar-summary">共 {{ trafficData.length }} 条记录</span>
+          <span class="toolbar-summary">历史时间点 {{ trafficData.length }} 条</span>
         </div>
       </template>
       
       <div class="charts-container">
         <el-card class="chart-card">
           <template #header>
-            <div class="chart-header">实时流量</div>
+            <div class="chart-header">
+              最近 {{ realtimeWindowLabel }}
+            </div>
           </template>
-          <div class="chart" ref="realtimeChartRef"></div>
+          <div
+            ref="realtimeChartRef"
+            class="chart"
+          />
         </el-card>
         
         <el-card class="chart-card">
           <template #header>
-            <div class="chart-header">历史流量统计</div>
+            <div class="chart-header">
+              历史流量统计
+            </div>
           </template>
-          <div class="chart" ref="historyChartRef"></div>
+          <div
+            ref="historyChartRef"
+            class="chart"
+          />
         </el-card>
       </div>
       
       <div class="table-shell">
-        <el-table :data="trafficData" style="width: 100%" v-loading="loading">
-          <el-table-column prop="timestamp" label="时间" width="180">
+        <el-table
+          v-loading="loading"
+          :data="trafficData"
+          style="width: 100%"
+        >
+          <el-table-column
+            prop="timestamp"
+            label="时间"
+            width="180"
+          >
             <template #default="{ row }">
               {{ formatDate(row.timestamp) }}
             </template>
           </el-table-column>
-          <el-table-column prop="inbound" label="入站流量" width="150">
+          <el-table-column
+            prop="inbound"
+            label="入站流量"
+            width="150"
+          >
             <template #default="{ row }">
               {{ formatTraffic(row.inbound) }}
             </template>
           </el-table-column>
-          <el-table-column prop="outbound" label="出站流量" width="150">
+          <el-table-column
+            prop="outbound"
+            label="出站流量"
+            width="150"
+          >
             <template #default="{ row }">
               {{ formatTraffic(row.outbound) }}
             </template>
           </el-table-column>
-          <el-table-column prop="total" label="总流量" width="150">
+          <el-table-column
+            prop="total"
+            label="总流量"
+            width="150"
+          >
             <template #default="{ row }">
               {{ formatTraffic(row.total) }}
             </template>
           </el-table-column>
-          <el-table-column prop="protocol" label="协议" width="120" />
-          <el-table-column prop="client" label="客户端" />
+          <el-table-column
+            label="上行占比"
+            width="120"
+          >
+            <template #default="{ row }">
+              {{ formatPercentage(row.upPercentage) }}
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="下行占比"
+            width="120"
+          >
+            <template #default="{ row }">
+              {{ formatPercentage(row.downPercentage) }}
+            </template>
+          </el-table-column>
         </el-table>
       </div>
     </el-card>
@@ -65,11 +137,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import * as echarts from 'echarts'
 
 import { ElMessage } from 'element-plus'
-import api from '@/api/index'
+import { nodesApi, statsApi } from '@/api'
 
 // 图表引用
 const realtimeChartRef = ref(null)
@@ -80,6 +152,54 @@ let historyChart = null
 // 数据
 const loading = ref(false)
 const trafficData = ref([])
+const realtimeNodeTraffic = ref([])
+const realtimeWindow = ref('5m')
+const realtimeTimestamp = ref('')
+const historyPeriod = ref('week')
+
+const realtimeWindowLabel = computed(() => {
+  if (!realtimeTimestamp.value) {
+    return '最近 5 分钟节点流量'
+  }
+  return `最近 ${realtimeWindow.value} 节点流量`
+})
+
+const unwrapApiData = (response) => {
+  if (response && response.code === 200 && response.data !== undefined) {
+    return response.data
+  }
+  return response
+}
+
+const mapRealtimeRows = (response) => {
+  const rows = Array.isArray(response?.traffic_by_node) ? response.traffic_by_node : []
+  return rows.map((item) => ({
+    nodeId: item.node_id,
+    label: `节点 ${item.node_id}`,
+    inbound: item.upload || 0,
+    outbound: item.download || 0,
+    total: item.total || 0
+  }))
+}
+
+const mapHistoryRows = (response) => {
+  const timeline = Array.isArray(response?.timeline) ? response.timeline : []
+  return [...timeline]
+    .map((item) => {
+      const inbound = item.upload || 0
+      const outbound = item.download || 0
+      const total = inbound + outbound
+      return {
+        timestamp: item.time,
+        inbound,
+        outbound,
+        total,
+        upPercentage: total > 0 ? inbound / total : 0,
+        downPercentage: total > 0 ? outbound / total : 0
+      }
+    })
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+}
 
 
 // 初始化图表
@@ -88,13 +208,13 @@ const initCharts = () => {
   realtimeChart = echarts.init(realtimeChartRef.value)
   realtimeChart.setOption({
     title: {
-      text: '实时流量监控'
+      text: '最近 5 分钟节点流量'
     },
     tooltip: {
       trigger: 'axis'
     },
     legend: {
-      data: ['入站流量', '出站流量']
+      data: ['上行流量', '下行流量']
     },
     xAxis: {
       type: 'category',
@@ -102,17 +222,17 @@ const initCharts = () => {
     },
     yAxis: {
       type: 'value',
-      name: '流量 (MB/s)'
+      name: '流量 (MB)'
     },
     series: [
       {
-        name: '入站流量',
-        type: 'line',
+        name: '上行流量',
+        type: 'bar',
         data: []
       },
       {
-        name: '出站流量',
-        type: 'line',
+        name: '下行流量',
+        type: 'bar',
         data: []
       }
     ]
@@ -160,19 +280,23 @@ const initCharts = () => {
 
 // 更新图表数据
 const updateCharts = () => {
-  const data = trafficData.value
+  const realtimeData = realtimeNodeTraffic.value
+  const historyData = [...trafficData.value].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
   
   // 更新实时流量图表
   realtimeChart.setOption({
+    title: {
+      text: realtimeTimestamp.value ? `最近 ${realtimeWindow.value} 节点流量` : '最近 5 分钟节点流量'
+    },
     xAxis: {
-      data: data.map(item => formatTime(item.timestamp))
+      data: realtimeData.map(item => item.label)
     },
     series: [
       {
-        data: data.map(item => (item.inbound / 1024 / 1024).toFixed(2))
+        data: realtimeData.map(item => Number((item.inbound / 1024 / 1024).toFixed(2)))
       },
       {
-        data: data.map(item => (item.outbound / 1024 / 1024).toFixed(2))
+        data: realtimeData.map(item => Number((item.outbound / 1024 / 1024).toFixed(2)))
       }
     ]
   })
@@ -180,17 +304,17 @@ const updateCharts = () => {
   // 更新历史流量图表
   historyChart.setOption({
     xAxis: {
-      data: data.map(item => formatDate(item.timestamp, 'MM-DD'))
+      data: historyData.map(item => formatDate(item.timestamp, historyPeriod.value === 'today' ? 'HH:mm' : 'MM-DD'))
     },
     series: [
       {
-        data: data.map(item => (item.inbound / 1024 / 1024 / 1024).toFixed(2))
+        data: historyData.map(item => Number((item.inbound / 1024 / 1024 / 1024).toFixed(2)))
       },
       {
-        data: data.map(item => (item.outbound / 1024 / 1024 / 1024).toFixed(2))
+        data: historyData.map(item => Number((item.outbound / 1024 / 1024 / 1024).toFixed(2)))
       },
       {
-        data: data.map(item => ((item.inbound + item.outbound) / 1024 / 1024 / 1024).toFixed(2))
+        data: historyData.map(item => Number((item.total / 1024 / 1024 / 1024).toFixed(2)))
       }
     ]
   })
@@ -200,9 +324,18 @@ const updateCharts = () => {
 const refreshData = async () => {
   loading.value = true
   try {
-    const response = await api.get('/stats/traffic')
-    const data = response.data || response
-    trafficData.value = data.list || []
+    const [realtimeResponse, historyResponse] = await Promise.all([
+      nodesApi.getRealTimeStats(),
+      statsApi.getDetailedStats({ period: historyPeriod.value })
+    ])
+
+    const realtimeData = unwrapApiData(realtimeResponse)
+    realtimeWindow.value = realtimeData?.window || '5m'
+    realtimeTimestamp.value = realtimeData?.timestamp || ''
+    realtimeNodeTraffic.value = mapRealtimeRows(realtimeData)
+
+    const historyData = unwrapApiData(historyResponse)
+    trafficData.value = mapHistoryRows(historyData)
     
     // 更新图表
     updateCharts()
@@ -210,6 +343,8 @@ const refreshData = async () => {
     console.error('获取流量数据失败:', error)
     ElMessage.error('获取流量数据失败')
     trafficData.value = []
+    realtimeNodeTraffic.value = []
+    updateCharts()
   } finally {
     loading.value = false
   }
@@ -217,11 +352,14 @@ const refreshData = async () => {
 
 // 格式化流量数据
 const formatTraffic = (bytes) => {
+  if (!bytes) return '0 B'
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB'
   if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(2) + ' MB'
   return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB'
 }
+
+const formatPercentage = (value) => `${Math.round((value || 0) * 100)}%`
 
 // 格式化日期
 const formatDate = (date, format = 'YYYY-MM-DD HH:mm:ss') => {
@@ -240,14 +378,6 @@ const formatDate = (date, format = 'YYYY-MM-DD HH:mm:ss') => {
     .replace('HH', hours)
     .replace('mm', minutes)
     .replace('ss', seconds)
-}
-
-// 格式化时间
-const formatTime = (date) => {
-  const d = new Date(date)
-  const hours = String(d.getHours()).padStart(2, '0')
-  const minutes = String(d.getMinutes()).padStart(2, '0')
-  return `${hours}:${minutes}`
 }
 
 // 窗口大小变化时重新调整图表大小

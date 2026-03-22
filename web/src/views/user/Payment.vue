@@ -1,43 +1,80 @@
 <template>
   <div class="payment-page">
     <div class="page-header">
-      <h1 class="page-title">订单支付</h1>
-      <p class="page-subtitle">订单金额以已创建订单为准，在这里选择支付方式完成付款。</p>
+      <h1 class="page-title">
+        订单支付
+      </h1>
+      <p class="page-subtitle">
+        订单金额以已创建订单为准，在这里选择支付方式完成付款。
+      </p>
     </div>
 
-    <div v-if="loading" class="loading-container">
-      <el-skeleton :rows="5" animated />
+    <div
+      v-if="loading"
+      class="loading-container"
+    >
+      <el-skeleton
+        :rows="5"
+        animated
+      />
     </div>
 
     <template v-else-if="order">
-      <el-card shadow="never" class="order-card">
+      <el-card
+        shadow="never"
+        class="order-card"
+      >
         <template #header>
           <span>订单信息</span>
         </template>
-        <el-descriptions :column="descriptionColumns" border>
-          <el-descriptions-item label="订单号">{{ order.order_no }}</el-descriptions-item>
+        <el-descriptions
+          :column="descriptionColumns"
+          border
+        >
+          <el-descriptions-item label="订单号">
+            {{ order.order_no }}
+          </el-descriptions-item>
           <el-descriptions-item label="订单状态">
-            <el-tag :type="getStatusInfo(order.status).type" size="small">
+            <el-tag
+              :type="getStatusInfo(order.status).type"
+              size="small"
+            >
               {{ getStatusInfo(order.status).label }}
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="套餐">
             {{ order.plan_name || `套餐 #${order.plan_id}` }}
           </el-descriptions-item>
-          <el-descriptions-item label="原价">¥{{ formatPrice(order.original_amount) }}</el-descriptions-item>
-          <el-descriptions-item v-if="order.discount_amount > 0" label="优惠">
+          <el-descriptions-item label="原价">
+            ¥{{ formatPrice(order.original_amount) }}
+          </el-descriptions-item>
+          <el-descriptions-item
+            v-if="order.discount_amount > 0"
+            label="优惠"
+          >
             -¥{{ formatPrice(order.discount_amount) }}
           </el-descriptions-item>
-          <el-descriptions-item v-if="order.balance_used > 0" label="余额抵扣">
+          <el-descriptions-item
+            v-if="order.balance_used > 0"
+            label="余额抵扣"
+          >
             -¥{{ formatPrice(order.balance_used) }}
           </el-descriptions-item>
           <el-descriptions-item label="应付金额">
             <span class="price-highlight">¥{{ formatPrice(order.pay_amount) }}</span>
           </el-descriptions-item>
-          <el-descriptions-item label="创建时间">{{ order.created_at }}</el-descriptions-item>
-          <el-descriptions-item label="过期时间">{{ order.expired_at || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="支付方式">{{ getMethodLabel(order.payment_method) || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="支付流水号">{{ order.payment_no || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="创建时间">
+            {{ order.created_at }}
+          </el-descriptions-item>
+          <el-descriptions-item label="过期时间">
+            {{ order.expired_at || '-' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="支付方式">
+            {{ getMethodLabel(order.payment_method) || '-' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="支付流水号">
+            {{ order.payment_no || '-' }}
+          </el-descriptions-item>
         </el-descriptions>
       </el-card>
 
@@ -51,11 +88,17 @@
       />
 
       <template v-else>
-        <el-card shadow="never" class="payment-card">
+        <el-card
+          shadow="never"
+          class="payment-card"
+        >
           <template #header>
             <span>支付方式</span>
           </template>
-          <div v-if="paymentMethods.length > 0" class="payment-methods">
+          <div
+            v-if="paymentMethods.length > 0"
+            class="payment-methods"
+          >
             <button
               v-for="method in paymentMethods"
               :key="method.value"
@@ -70,10 +113,16 @@
               <span>{{ method.label }}</span>
             </button>
           </div>
-          <el-empty v-else description="当前没有可用的支付方式" />
+          <el-empty
+            v-else
+            description="当前没有可用的支付方式"
+          />
         </el-card>
 
-        <el-card shadow="never" class="summary-card">
+        <el-card
+          shadow="never"
+          class="summary-card"
+        >
           <div class="summary-row">
             <span>订单实付</span>
             <span class="summary-value">¥{{ formatPrice(order.pay_amount) }}</span>
@@ -96,7 +145,10 @@
       </template>
     </template>
 
-    <el-empty v-else description="订单不存在或已失效" />
+    <el-empty
+      v-else
+      description="订单不存在或已失效"
+    />
 
     <el-dialog
       v-model="showQRDialog"
@@ -106,10 +158,14 @@
     >
       <div class="qr-container">
         <div class="qr-code">
-          <canvas ref="qrcodeCanvas"></canvas>
+          <canvas ref="qrcodeCanvas" />
         </div>
-        <p class="qr-tip">请使用 {{ selectedMethodLabel }} 扫描二维码完成支付</p>
-        <p class="qr-amount">支付金额：<span>¥{{ formatPrice(order?.pay_amount || 0) }}</span></p>
+        <p class="qr-tip">
+          请使用 {{ selectedMethodLabel }} 扫描二维码完成支付
+        </p>
+        <p class="qr-amount">
+          支付金额：<span>¥{{ formatPrice(order?.pay_amount || 0) }}</span>
+        </p>
         <el-button
           v-if="paymentLink"
           type="primary"
@@ -125,7 +181,12 @@
           :stroke-width="4"
           :show-text="false"
         />
-        <p v-if="polling" class="poll-tip">正在等待支付结果...</p>
+        <p
+          v-if="polling"
+          class="poll-tip"
+        >
+          正在等待支付结果...
+        </p>
       </div>
     </el-dialog>
   </div>
@@ -144,7 +205,7 @@ import { useViewport } from '@/composables/useViewport'
 const route = useRoute()
 const router = useRouter()
 const orderStore = useOrderStore()
-const { isMobile } = useViewport({ mobileBreakpoint: 768, tabletBreakpoint: 1280 })
+const { isMobile } = useViewport()
 
 const qrcodeCanvas = ref(null)
 

@@ -6,11 +6,21 @@
     :size="size"
     :effect="effect"
   >
-    <span v-if="variant === 'dot'" class="status-dot" :style="dotStyle" />
-    <span v-if="showIcon && icon" class="status-icon">
+    <span
+      v-if="variant === 'dot'"
+      class="status-dot"
+      :style="dotStyle"
+    />
+    <span
+      v-if="showIcon && icon"
+      class="status-icon"
+    >
       <el-icon><component :is="icon" /></el-icon>
     </span>
-    <span v-if="showLabel" class="status-label">{{ displayLabel }}</span>
+    <span
+      v-if="showLabel"
+      class="status-label"
+    >{{ displayLabel }}</span>
   </component>
 </template>
 

@@ -2,26 +2,43 @@
   <div class="plan-upgrade-page">
     <!-- 页面标题 -->
     <div class="page-header">
-      <h1 class="page-title">套餐升降级</h1>
-      <p class="page-subtitle">调整您的套餐以满足不同需求</p>
+      <h1 class="page-title">
+        套餐升降级
+      </h1>
+      <p class="page-subtitle">
+        调整您的套餐以满足不同需求
+      </p>
     </div>
 
     <!-- 加载状态 -->
-    <div v-if="loading" class="loading-container">
-      <el-skeleton :rows="5" animated />
+    <div
+      v-if="loading"
+      class="loading-container"
+    >
+      <el-skeleton
+        :rows="5"
+        animated
+      />
     </div>
 
     <template v-else>
       <!-- 当前套餐信息 -->
-      <el-card class="current-plan-card" v-if="currentPlan">
+      <el-card
+        v-if="currentPlan"
+        class="current-plan-card"
+      >
         <template #header>
           <div class="card-header">
             <span>当前套餐</span>
-            <el-tag type="success">使用中</el-tag>
+            <el-tag type="success">
+              使用中
+            </el-tag>
           </div>
         </template>
         <div class="current-plan-info">
-          <div class="plan-name">{{ currentPlan.name }}</div>
+          <div class="plan-name">
+            {{ currentPlan.name }}
+          </div>
           <div class="plan-details">
             <span>价格: ¥{{ formatPrice(currentPlan.price) }} / {{ currentPlan.duration }}天</span>
             <span>流量: {{ formatTraffic(currentPlan.traffic_limit) }}</span>
@@ -41,7 +58,13 @@
         <template #title>
           <div class="pending-info">
             <span>您有一个待执行的降级计划</span>
-            <el-button type="text" size="small" @click="cancelDowngrade">取消降级</el-button>
+            <el-button
+              type="text"
+              size="small"
+              @click="cancelDowngrade"
+            >
+              取消降级
+            </el-button>
           </div>
         </template>
         <template #default>
@@ -51,7 +74,9 @@
 
       <!-- 可选套餐列表 -->
       <div class="plans-section">
-        <h2 class="section-title">选择新套餐</h2>
+        <h2 class="section-title">
+          选择新套餐
+        </h2>
         <div class="plans-grid">
           <div
             v-for="plan in availablePlans"
@@ -66,16 +91,41 @@
             @click="selectPlan(plan)"
           >
             <!-- 标签 -->
-            <div class="plan-badge" v-if="plan.id !== currentPlan?.id">
-              <el-tag v-if="plan.price > (currentPlan?.price || 0)" type="success" size="small">升级</el-tag>
-              <el-tag v-else type="warning" size="small">降级</el-tag>
+            <div
+              v-if="plan.id !== currentPlan?.id"
+              class="plan-badge"
+            >
+              <el-tag
+                v-if="plan.price > (currentPlan?.price || 0)"
+                type="success"
+                size="small"
+              >
+                升级
+              </el-tag>
+              <el-tag
+                v-else
+                type="warning"
+                size="small"
+              >
+                降级
+              </el-tag>
             </div>
-            <div class="plan-badge" v-else>
-              <el-tag type="info" size="small">当前</el-tag>
+            <div
+              v-else
+              class="plan-badge"
+            >
+              <el-tag
+                type="info"
+                size="small"
+              >
+                当前
+              </el-tag>
             </div>
 
             <div class="plan-header">
-              <h3 class="plan-name">{{ plan.name }}</h3>
+              <h3 class="plan-name">
+                {{ plan.name }}
+              </h3>
             </div>
 
             <div class="plan-price">
@@ -95,7 +145,10 @@
       </div>
 
       <!-- 价格计算结果 -->
-      <el-card v-if="changeResult" class="result-card">
+      <el-card
+        v-if="changeResult"
+        class="result-card"
+      >
         <template #header>
           <div class="card-header">
             <span>{{ changeResult.is_upgrade ? '升级' : '降级' }}详情</span>
@@ -114,11 +167,17 @@
             <span>剩余天数</span>
             <span>{{ changeResult.remaining_days }} 天</span>
           </div>
-          <div class="result-row highlight" v-if="changeResult.is_upgrade">
+          <div
+            v-if="changeResult.is_upgrade"
+            class="result-row highlight"
+          >
             <span>需补差价</span>
             <span class="price">¥{{ formatPrice(changeResult.price_difference) }}</span>
           </div>
-          <div class="result-row" v-else>
+          <div
+            v-else
+            class="result-row"
+          >
             <span>生效时间</span>
             <span>下个计费周期</span>
           </div>
@@ -143,7 +202,12 @@
           >
             确认降级
           </el-button>
-          <el-button size="large" @click="cancelSelection">取消</el-button>
+          <el-button
+            size="large"
+            @click="cancelSelection"
+          >
+            取消
+          </el-button>
         </div>
       </el-card>
     </template>

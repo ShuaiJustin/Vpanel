@@ -36,7 +36,6 @@ type PanelClient struct {
 	reconnectDelay   time.Duration
 	lastConnected    time.Time
 	consecutiveFails int
-	maxConsecutiveFails int
 }
 
 // NewPanelClient creates a new Panel client.
@@ -53,11 +52,10 @@ func NewPanelClient(cfg PanelClientConfig, log logger.Logger) *PanelClient {
 	}
 
 	return &PanelClient{
-		config:              cfg,
-		logger:              log,
-		httpClient:          httpClient,
-		reconnectDelay:      cfg.ReconnectInterval,
-		maxConsecutiveFails: 10,
+		config:         cfg,
+		logger:         log,
+		httpClient:     httpClient,
+		reconnectDelay: cfg.ReconnectInterval,
 	}
 }
 
@@ -291,9 +289,9 @@ func (c *PanelClient) GetLastConnectedTime() time.Time {
 
 // ShouldReconnect returns whether the client should attempt to reconnect.
 func (c *PanelClient) ShouldReconnect() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.consecutiveFails < c.maxConsecutiveFails
+	// Agent-side reconnects must be persistent. A temporary panel outage should
+	// not permanently stop heartbeats or traffic reporting.
+	return true
 }
 
 // WaitForReconnect waits for the reconnect delay before returning.

@@ -199,6 +199,9 @@ func (h *StatsHandler) GetProtocolStats(c *gin.Context) {
 	// Get proxy counts by protocol
 	protocolCounts, err := h.repos.Proxy.CountByProtocol(ctx)
 	if err != nil {
+		if handleRequestContextError(c, err) {
+			return
+		}
 		h.logger.Error("failed to get protocol counts", logger.F("error", err))
 		c.JSON(http.StatusInternalServerError, errors.NewInternalError("failed to get protocol stats", err).ToResponse(getRequestID(c)))
 		return
@@ -207,6 +210,9 @@ func (h *StatsHandler) GetProtocolStats(c *gin.Context) {
 	// Get traffic by protocol
 	trafficStats, err := h.repos.Traffic.GetTrafficByProtocol(ctx, start, end)
 	if err != nil {
+		if handleRequestContextError(c, err) {
+			return
+		}
 		h.logger.Error("failed to get traffic by protocol", logger.F("error", err))
 	}
 
@@ -302,6 +308,9 @@ func (h *StatsHandler) GetTrafficStats(c *gin.Context) {
 
 	upload, download, err := h.repos.Traffic.GetTotalTrafficByPeriod(ctx, start, end)
 	if err != nil {
+		if handleRequestContextError(c, err) {
+			return
+		}
 		h.logger.Error("failed to get traffic stats", logger.F("error", err))
 		c.JSON(http.StatusInternalServerError, errors.NewInternalError("failed to get traffic stats", err).ToResponse(getRequestID(c)))
 		return
@@ -382,6 +391,9 @@ func (h *StatsHandler) GetUserStats(c *gin.Context) {
 
 	trafficStats, err := h.repos.Traffic.GetTrafficByUser(ctx, start, end, limit)
 	if err != nil {
+		if handleRequestContextError(c, err) {
+			return
+		}
 		h.logger.Error("failed to get user stats", logger.F("error", err))
 		c.JSON(http.StatusInternalServerError, errors.NewInternalError("failed to get user stats", err).ToResponse(getRequestID(c)))
 		return
@@ -452,6 +464,9 @@ func (h *StatsHandler) GetDetailedStats(c *gin.Context) {
 	// Get total traffic
 	upload, download, err := h.repos.Traffic.GetTotalTrafficByPeriod(ctx, start, end)
 	if err != nil {
+		if handleRequestContextError(c, err) {
+			return
+		}
 		h.logger.Error("failed to get total traffic", logger.F("error", err))
 	}
 
@@ -466,55 +481,82 @@ func (h *StatsHandler) GetDetailedStats(c *gin.Context) {
 	}
 
 	// Get protocol stats
-	protocolCounts, _ := h.repos.Proxy.CountByProtocol(ctx)
-	trafficByProtocol, _ := h.repos.Traffic.GetTrafficByProtocol(ctx, start, end)
-
-	trafficMap := make(map[string]*repository.ProtocolTrafficStats)
-	for _, ts := range trafficByProtocol {
-		trafficMap[ts.Protocol] = ts
-	}
-
-	for _, pc := range protocolCounts {
-		ps := ProtocolStats{
-			Protocol: pc.Protocol,
-			Count:    pc.Count,
-			Status:   "active",
+	protocolCounts, err := h.repos.Proxy.CountByProtocol(ctx)
+	if err != nil {
+		if handleRequestContextError(c, err) {
+			return
 		}
-		if ts, ok := trafficMap[pc.Protocol]; ok {
-			ps.Traffic = ts.Upload + ts.Download
+		h.logger.Error("failed to get protocol counts", logger.F("error", err))
+	} else {
+		trafficByProtocol, trafficErr := h.repos.Traffic.GetTrafficByProtocol(ctx, start, end)
+		if trafficErr != nil {
+			if handleRequestContextError(c, trafficErr) {
+				return
+			}
+			h.logger.Error("failed to get traffic by protocol", logger.F("error", trafficErr))
+		} else {
+			trafficMap := make(map[string]*repository.ProtocolTrafficStats)
+			for _, ts := range trafficByProtocol {
+				trafficMap[ts.Protocol] = ts
+			}
+
+			for _, pc := range protocolCounts {
+				ps := ProtocolStats{
+					Protocol: pc.Protocol,
+					Count:    pc.Count,
+					Status:   "active",
+				}
+				if ts, ok := trafficMap[pc.Protocol]; ok {
+					ps.Traffic = ts.Upload + ts.Download
+				}
+				stats.ByProtocol = append(stats.ByProtocol, ps)
+			}
 		}
-		stats.ByProtocol = append(stats.ByProtocol, ps)
 	}
 
 	// Get user stats
-	userTraffic, _ := h.repos.Traffic.GetTrafficByUser(ctx, start, end, 10)
-	for _, ut := range userTraffic {
-		lastActive := ""
-		if ut.LastActive != nil {
-			lastActive = ut.LastActive.Format(time.RFC3339)
+	userTraffic, err := h.repos.Traffic.GetTrafficByUser(ctx, start, end, 10)
+	if err != nil {
+		if handleRequestContextError(c, err) {
+			return
 		}
-		stats.ByUser = append(stats.ByUser, UserStats{
-			UserID:       ut.UserID,
-			Username:     ut.Username,
-			Email:        ut.Email,
-			Upload:       ut.Upload,
-			Download:     ut.Download,
-			Total:        ut.Upload + ut.Download,
-			ProxyCount:   ut.ProxyCount,
-			TrafficLimit: ut.TrafficLimit,
-			LastActive:   lastActive,
-		})
+		h.logger.Error("failed to get user stats", logger.F("error", err))
+	} else {
+		for _, ut := range userTraffic {
+			lastActive := ""
+			if ut.LastActive != nil {
+				lastActive = ut.LastActive.Format(time.RFC3339)
+			}
+			stats.ByUser = append(stats.ByUser, UserStats{
+				UserID:       ut.UserID,
+				Username:     ut.Username,
+				Email:        ut.Email,
+				Upload:       ut.Upload,
+				Download:     ut.Download,
+				Total:        ut.Upload + ut.Download,
+				ProxyCount:   ut.ProxyCount,
+				TrafficLimit: ut.TrafficLimit,
+				LastActive:   lastActive,
+			})
+		}
 	}
 
 	// Get timeline data
 	interval := getIntervalForPeriod(period)
-	timeline, _ := h.repos.Traffic.GetTrafficTimeline(ctx, start, end, interval)
-	for _, tp := range timeline {
-		stats.Timeline = append(stats.Timeline, TimelinePoint{
-			Time:     tp.Time.Format(time.RFC3339),
-			Upload:   tp.Upload,
-			Download: tp.Download,
-		})
+	timeline, err := h.repos.Traffic.GetTrafficTimeline(ctx, start, end, interval)
+	if err != nil {
+		if handleRequestContextError(c, err) {
+			return
+		}
+		h.logger.Error("failed to get traffic timeline", logger.F("error", err))
+	} else {
+		for _, tp := range timeline {
+			stats.Timeline = append(stats.Timeline, TimelinePoint{
+				Time:     tp.Time.Format(time.RFC3339),
+				Upload:   tp.Upload,
+				Download: tp.Download,
+			})
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{

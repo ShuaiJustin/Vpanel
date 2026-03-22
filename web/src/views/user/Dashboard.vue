@@ -11,7 +11,10 @@
         </p>
       </div>
       <div class="welcome-actions">
-        <el-button type="primary" @click="goToSubscription">
+        <el-button
+          type="primary"
+          @click="goToSubscription"
+        >
           <el-icon><Link /></el-icon>
           获取订阅
         </el-button>
@@ -19,17 +22,32 @@
     </div>
 
     <!-- 状态卡片 -->
-    <el-row :gutter="20" class="status-cards">
+    <el-row
+      :gutter="20"
+      class="status-cards"
+    >
       <!-- 账户状态 -->
-      <el-col :xs="24" :sm="12" :lg="6">
+      <el-col
+        :xs="24"
+        :sm="12"
+        :lg="6"
+      >
         <div class="status-card">
-          <div class="card-icon" :class="accountStatusClass">
+          <div
+            class="card-icon"
+            :class="accountStatusClass"
+          >
             <el-icon><User /></el-icon>
           </div>
           <div class="card-content">
-            <div class="card-label">账户状态</div>
+            <div class="card-label">
+              账户状态
+            </div>
             <div class="card-value">
-              <el-tag :type="accountStatusType" size="small">
+              <el-tag
+                :type="accountStatusType"
+                size="small"
+              >
                 {{ accountStatusText }}
               </el-tag>
             </div>
@@ -38,34 +56,51 @@
       </el-col>
 
       <!-- 到期时间 -->
-      <el-col :xs="24" :sm="12" :lg="6">
+      <el-col
+        :xs="24"
+        :sm="12"
+        :lg="6"
+      >
         <div class="status-card">
           <div class="card-icon expiry">
             <el-icon><Calendar /></el-icon>
           </div>
           <div class="card-content">
-            <div class="card-label">到期时间</div>
+            <div class="card-label">
+              到期时间
+            </div>
             <div class="card-value">
               <template v-if="userStore.expiresAt">
                 {{ formatDate(userStore.expiresAt) }}
-                <span v-if="userStore.daysUntilExpiry !== null" class="days-hint">
+                <span
+                  v-if="userStore.daysUntilExpiry !== null"
+                  class="days-hint"
+                >
                   ({{ userStore.daysUntilExpiry > 0 ? `剩余 ${userStore.daysUntilExpiry} 天` : '已过期' }})
                 </span>
               </template>
-              <template v-else>永久有效</template>
+              <template v-else>
+                永久有效
+              </template>
             </div>
           </div>
         </div>
       </el-col>
 
       <!-- 在线设备 -->
-      <el-col :xs="24" :sm="12" :lg="6">
+      <el-col
+        :xs="24"
+        :sm="12"
+        :lg="6"
+      >
         <div class="status-card">
           <div class="card-icon devices">
             <el-icon><Monitor /></el-icon>
           </div>
           <div class="card-content">
-            <div class="card-label">在线设备</div>
+            <div class="card-label">
+              在线设备
+            </div>
             <div class="card-value">
               {{ onlineDevices }} / {{ maxDevicesDisplay }}
             </div>
@@ -74,27 +109,48 @@
       </el-col>
 
       <!-- 可用节点 -->
-      <el-col :xs="24" :sm="12" :lg="6">
+      <el-col
+        :xs="24"
+        :sm="12"
+        :lg="6"
+      >
         <div class="status-card">
           <div class="card-icon nodes">
             <el-icon><Connection /></el-icon>
           </div>
           <div class="card-content">
-            <div class="card-label">可用节点</div>
-            <div class="card-value">{{ availableNodes }} 个</div>
+            <div class="card-label">
+              可用节点
+            </div>
+            <div class="card-value">
+              {{ availableNodes }} 个
+            </div>
           </div>
         </div>
       </el-col>
     </el-row>
 
     <!-- 流量使用 -->
-    <el-row :gutter="20" class="main-content">
-      <el-col :xs="24" :lg="16">
-        <el-card class="traffic-card" shadow="never">
+    <el-row
+      :gutter="20"
+      class="main-content"
+    >
+      <el-col
+        :xs="24"
+        :lg="16"
+      >
+        <el-card
+          class="traffic-card"
+          shadow="never"
+        >
           <template #header>
             <div class="card-header">
               <span>流量使用</span>
-              <el-button link type="primary" @click="goToStats">
+              <el-button
+                link
+                type="primary"
+                @click="goToStats"
+              >
                 查看详情
                 <el-icon><ArrowRight /></el-icon>
               </el-button>
@@ -112,8 +168,12 @@
               >
                 <template #default>
                   <div class="progress-content">
-                    <div class="progress-value">{{ userStore.trafficPercent }}%</div>
-                    <div class="progress-label">已使用</div>
+                    <div class="progress-value">
+                      {{ userStore.trafficPercent }}%
+                    </div>
+                    <div class="progress-label">
+                      已使用
+                    </div>
                   </div>
                 </template>
               </el-progress>
@@ -132,7 +192,10 @@
                 <span class="item-label">剩余流量</span>
                 <span class="item-value">{{ formatTraffic(remainingTraffic) }}</span>
               </div>
-              <div class="traffic-item" v-if="trafficResetAt">
+              <div
+                v-if="trafficResetAt"
+                class="traffic-item"
+              >
                 <span class="item-label">重置时间</span>
                 <span class="item-value">{{ formatDate(trafficResetAt) }}</span>
               </div>
@@ -142,39 +205,80 @@
       </el-col>
 
       <!-- 快捷操作 -->
-      <el-col :xs="24" :lg="8">
-        <el-card class="quick-actions-card" shadow="never">
+      <el-col
+        :xs="24"
+        :lg="8"
+      >
+        <el-card
+          class="quick-actions-card"
+          shadow="never"
+        >
           <template #header>
             <span>快捷操作</span>
           </template>
 
           <div class="quick-actions">
-            <div class="action-item" @click="goToNodes">
-              <el-icon class="action-icon"><Connection /></el-icon>
+            <div
+              class="action-item"
+              @click="goToNodes"
+            >
+              <el-icon class="action-icon">
+                <Connection />
+              </el-icon>
               <span class="action-label">节点列表</span>
             </div>
-            <div class="action-item" @click="goToSubscription">
-              <el-icon class="action-icon"><Link /></el-icon>
+            <div
+              class="action-item"
+              @click="goToSubscription"
+            >
+              <el-icon class="action-icon">
+                <Link />
+              </el-icon>
               <span class="action-label">订阅管理</span>
             </div>
-            <div class="action-item" @click="goToDownload">
-              <el-icon class="action-icon"><Download /></el-icon>
+            <div
+              class="action-item"
+              @click="goToDownload"
+            >
+              <el-icon class="action-icon">
+                <Download />
+              </el-icon>
               <span class="action-label">客户端下载</span>
             </div>
-            <div class="action-item" @click="goToDevices">
-              <el-icon class="action-icon"><Monitor /></el-icon>
+            <div
+              class="action-item"
+              @click="goToDevices"
+            >
+              <el-icon class="action-icon">
+                <Monitor />
+              </el-icon>
               <span class="action-label">在线设备</span>
             </div>
-            <div class="action-item" @click="goToTickets">
-              <el-icon class="action-icon"><ChatDotRound /></el-icon>
+            <div
+              class="action-item"
+              @click="goToTickets"
+            >
+              <el-icon class="action-icon">
+                <ChatDotRound />
+              </el-icon>
               <span class="action-label">工单支持</span>
             </div>
-            <div class="action-item" @click="goToSettings">
-              <el-icon class="action-icon"><Setting /></el-icon>
+            <div
+              class="action-item"
+              @click="goToSettings"
+            >
+              <el-icon class="action-icon">
+                <Setting />
+              </el-icon>
               <span class="action-label">个人设置</span>
             </div>
-            <div class="action-item" @click="goToHelp">
-              <el-icon class="action-icon"><QuestionFilled /></el-icon>
+            <div
+              class="action-item"
+              @click="goToHelp"
+            >
+              <el-icon class="action-icon">
+                <QuestionFilled />
+              </el-icon>
               <span class="action-label">帮助中心</span>
             </div>
           </div>
@@ -183,14 +287,22 @@
     </el-row>
 
     <!-- 公告区域 -->
-    <el-card class="announcements-card" shadow="never" v-if="announcements.length > 0">
+    <el-card
+      v-if="announcements.length > 0"
+      class="announcements-card"
+      shadow="never"
+    >
       <template #header>
         <div class="card-header">
           <span>
             <el-icon><Bell /></el-icon>
             最新公告
           </span>
-          <el-button link type="primary" @click="goToAnnouncements">
+          <el-button
+            link
+            type="primary"
+            @click="goToAnnouncements"
+          >
             查看全部
             <el-icon><ArrowRight /></el-icon>
           </el-button>
@@ -218,11 +330,20 @@
     </el-card>
 
     <!-- 试用和暂停状态卡片 -->
-    <el-row :gutter="20" class="status-section">
-      <el-col :xs="24" :lg="12">
+    <el-row
+      :gutter="20"
+      class="status-section"
+    >
+      <el-col
+        :xs="24"
+        :lg="12"
+      >
         <TrialCard />
       </el-col>
-      <el-col :xs="24" :lg="12">
+      <el-col
+        :xs="24"
+        :lg="12"
+      >
         <PauseCard />
       </el-col>
     </el-row>

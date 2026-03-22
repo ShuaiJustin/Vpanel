@@ -2,11 +2,18 @@
   <div class="roles-page">
     <div class="page-header">
       <div class="page-heading">
-        <h1 class="page-title">角色管理</h1>
-        <p class="page-subtitle">整理角色权限、系统角色和用户归属关系</p>
+        <h1 class="page-title">
+          角色管理
+        </h1>
+        <p class="page-subtitle">
+          整理角色权限、系统角色和用户归属关系
+        </p>
       </div>
       <div class="page-actions">
-        <el-button type="primary" @click="showCreateDialog">
+        <el-button
+          type="primary"
+          @click="showCreateDialog"
+        >
           <el-icon><Plus /></el-icon>
           新建角色
         </el-button>
@@ -41,15 +48,37 @@
       </template>
 
       <div class="table-shell">
-        <el-table :data="roles" v-loading="loading" style="width: 100%">
-          <el-table-column prop="id" label="ID" width="80" />
-          <el-table-column prop="name" label="角色名称" width="150">
+        <el-table
+          v-loading="loading"
+          :data="roles"
+          style="width: 100%"
+        >
+          <el-table-column
+            prop="id"
+            label="ID"
+            width="80"
+          />
+          <el-table-column
+            prop="name"
+            label="角色名称"
+            width="150"
+          >
             <template #default="{ row }">
-              <el-tag :type="row.is_system ? 'danger' : 'primary'">{{ row.name }}</el-tag>
+              <el-tag :type="row.is_system ? 'danger' : 'primary'">
+                {{ row.name }}
+              </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="description" label="描述" min-width="200" />
-          <el-table-column prop="permissions" label="权限" min-width="250">
+          <el-table-column
+            prop="description"
+            label="描述"
+            min-width="200"
+          />
+          <el-table-column
+            prop="permissions"
+            label="权限"
+            min-width="250"
+          >
             <template #default="{ row }">
               <div class="permissions-list">
                 <el-tag
@@ -63,29 +92,43 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column prop="user_count" label="用户数" width="100" />
-          <el-table-column label="类型" width="100">
+          <el-table-column
+            prop="user_count"
+            label="用户数"
+            width="100"
+          />
+          <el-table-column
+            label="类型"
+            width="100"
+          >
             <template #default="{ row }">
-              <el-tag :type="row.is_system ? 'warning' : 'success'" size="small">
+              <el-tag
+                :type="row.is_system ? 'warning' : 'success'"
+                size="small"
+              >
                 {{ row.is_system ? '系统角色' : '自定义' }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="180" fixed="right">
+          <el-table-column
+            label="操作"
+            width="180"
+            fixed="right"
+          >
             <template #default="{ row }">
               <el-button
                 type="primary"
                 size="small"
-                @click="editRole(row)"
                 :disabled="row.is_system"
+                @click="editRole(row)"
               >
                 编辑
               </el-button>
               <el-button
                 type="danger"
                 size="small"
-                @click="deleteRole(row)"
                 :disabled="row.is_system || row.user_count > 0"
+                @click="deleteRole(row)"
               >
                 删除
               </el-button>
@@ -102,11 +145,26 @@
       :width="dialogWidth"
       class="role-dialog"
     >
-      <el-form :model="roleForm" :rules="rules" ref="formRef" :label-width="formLabelWidth" class="role-form">
-        <el-form-item label="角色名称" prop="name">
-          <el-input v-model="roleForm.name" placeholder="请输入角色名称" />
+      <el-form
+        ref="formRef"
+        :model="roleForm"
+        :rules="rules"
+        :label-width="formLabelWidth"
+        class="role-form"
+      >
+        <el-form-item
+          label="角色名称"
+          prop="name"
+        >
+          <el-input
+            v-model="roleForm.name"
+            placeholder="请输入角色名称"
+          />
         </el-form-item>
-        <el-form-item label="描述" prop="description">
+        <el-form-item
+          label="描述"
+          prop="description"
+        >
           <el-input 
             v-model="roleForm.description" 
             type="textarea" 
@@ -114,7 +172,10 @@
             placeholder="请输入角色描述" 
           />
         </el-form-item>
-        <el-form-item label="权限" prop="permissions">
+        <el-form-item
+          label="权限"
+          prop="permissions"
+        >
           <el-checkbox-group v-model="roleForm.permissions">
             <el-checkbox 
               v-for="perm in allPermissions" 
@@ -127,8 +188,14 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitForm" :loading="submitting">
+        <el-button @click="dialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="submitting"
+          @click="submitForm"
+        >
           {{ isEdit ? '保存' : '创建' }}
         </el-button>
       </template>

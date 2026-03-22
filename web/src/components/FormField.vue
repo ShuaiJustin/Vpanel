@@ -5,10 +5,17 @@
     :required="isRequired"
     :class="['form-field', { 'has-error': hasError, 'is-valid': isValid && showValidIcon }]"
   >
-    <template #label v-if="$slots.label || tooltip">
+    <template
+      v-if="$slots.label || tooltip"
+      #label
+    >
       <span class="field-label">
         <slot name="label">{{ label }}</slot>
-        <el-tooltip v-if="tooltip" :content="tooltip" placement="top">
+        <el-tooltip
+          v-if="tooltip"
+          :content="tooltip"
+          placement="top"
+        >
           <el-icon class="label-tooltip"><QuestionFilled /></el-icon>
         </el-tooltip>
       </span>
@@ -18,18 +25,28 @@
       <slot />
       
       <!-- 验证状态图标 -->
-      <span v-if="showValidIcon && isValid && !hasError" class="valid-icon">
+      <span
+        v-if="showValidIcon && isValid && !hasError"
+        class="valid-icon"
+      >
         <el-icon color="var(--el-color-success)"><CircleCheck /></el-icon>
       </span>
     </div>
     
     <!-- 帮助文本 -->
-    <div v-if="helpText && !hasError" class="field-help">
+    <div
+      v-if="helpText && !hasError"
+      class="field-help"
+    >
       {{ helpText }}
     </div>
     
     <!-- 字符计数 -->
-    <div v-if="showCount && maxLength" class="field-count" :class="{ 'count-warning': isNearLimit }">
+    <div
+      v-if="showCount && maxLength"
+      class="field-count"
+      :class="{ 'count-warning': isNearLimit }"
+    >
       {{ currentLength }} / {{ maxLength }}
     </div>
   </el-form-item>

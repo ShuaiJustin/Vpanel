@@ -3,62 +3,152 @@
     <div class="page-header">
       <div class="page-heading">
         <h1>系统设置</h1>
-        <p class="page-subtitle">维护面板、数据库、邮件和核心运行参数</p>
+        <p class="page-subtitle">
+          维护面板、数据库、邮件和核心运行参数
+        </p>
       </div>
     </div>
     
-    <el-tabs type="border-card" v-model="activeName" @tab-click="handleTabClick">
-      <el-tab-pane label="服务器配置" name="server">
-        <el-form :model="serverForm" label-width="120px" class="settings-form">
+    <el-tabs
+      v-model="activeName"
+      type="border-card"
+      @tab-click="handleTabClick"
+    >
+      <el-tab-pane
+        label="服务器配置"
+        name="server"
+      >
+        <el-form
+          :model="serverForm"
+          label-width="120px"
+          class="settings-form"
+        >
           <el-form-item label="面板监听地址">
-            <el-input v-model="serverForm.panelListenIP" placeholder="0.0.0.0"></el-input>
-            <div class="form-tips">默认为 0.0.0.0，代表监听所有 IP</div>
+            <el-input
+              v-model="serverForm.panelListenIP"
+              placeholder="0.0.0.0"
+            />
+            <div class="form-tips">
+              默认为 0.0.0.0，代表监听所有 IP
+            </div>
           </el-form-item>
           <el-form-item label="面板端口">
-            <el-input-number v-model="serverForm.panelPort" :min="1" :max="65535"></el-input-number>
-            <div class="form-tips">默认为 9000，修改后需要重启服务</div>
+            <el-input-number
+              v-model="serverForm.panelPort"
+              :min="1"
+              :max="65535"
+            />
+            <div class="form-tips">
+              默认为 9000，修改后需要重启服务
+            </div>
           </el-form-item>
           <el-form-item label="面板URL基础路径">
-            <el-input v-model="serverForm.panelBasePath" placeholder="/"></el-input>
-            <div class="form-tips">默认为 /，修改后需要重启服务</div>
+            <el-input
+              v-model="serverForm.panelBasePath"
+              placeholder="/"
+            />
+            <div class="form-tips">
+              默认为 /，修改后需要重启服务
+            </div>
           </el-form-item>
           <el-form-item label="代理服务模式">
-            <el-select v-model="serverForm.proxyMode" style="width: 100%">
-              <el-option label="兼容模式" value="compatible"></el-option>
-              <el-option label="Xray 内核" value="xray"></el-option>
-              <el-option label="V2Ray 内核" value="v2ray"></el-option>
+            <el-select
+              v-model="serverForm.proxyMode"
+              style="width: 100%"
+            >
+              <el-option
+                label="兼容模式"
+                value="compatible"
+              />
+              <el-option
+                label="Xray 内核"
+                value="xray"
+              />
+              <el-option
+                label="V2Ray 内核"
+                value="v2ray"
+              />
             </el-select>
-            <div class="form-tips">默认为兼容模式，可同时使用 Xray 和 V2Ray 协议</div>
+            <div class="form-tips">
+              默认为兼容模式，可同时使用 Xray 和 V2Ray 协议
+            </div>
           </el-form-item>
           <el-form-item label="服务时区">
-            <el-select v-model="serverForm.timezone" style="width: 100%">
-              <el-option label="Asia/Shanghai (UTC+8)" value="Asia/Shanghai"></el-option>
-              <el-option label="UTC" value="UTC"></el-option>
-              <el-option label="America/New_York (UTC-5)" value="America/New_York"></el-option>
-              <el-option label="Europe/London (UTC+0)" value="Europe/London"></el-option>
+            <el-select
+              v-model="serverForm.timezone"
+              style="width: 100%"
+            >
+              <el-option
+                label="Asia/Shanghai (UTC+8)"
+                value="Asia/Shanghai"
+              />
+              <el-option
+                label="UTC"
+                value="UTC"
+              />
+              <el-option
+                label="America/New_York (UTC-5)"
+                value="America/New_York"
+              />
+              <el-option
+                label="Europe/London (UTC+0)"
+                value="Europe/London"
+              />
             </el-select>
           </el-form-item>
-          <el-divider></el-divider>
+          <el-divider />
           <el-form-item>
-            <el-button type="primary" @click="saveServerSettings">保存服务器配置</el-button>
-            <el-button type="warning" @click="restartPanel">重启面板</el-button>
+            <el-button
+              type="primary"
+              @click="saveServerSettings"
+            >
+              保存服务器配置
+            </el-button>
+            <el-button
+              type="warning"
+              @click="restartPanel"
+            >
+              重启面板
+            </el-button>
           </el-form-item>
         </el-form>
       </el-tab-pane>
       
-      <el-tab-pane label="数据库配置" name="db">
-        <el-form :model="dbForm" label-width="120px" class="settings-form">
+      <el-tab-pane
+        label="数据库配置"
+        name="db"
+      >
+        <el-form
+          :model="dbForm"
+          label-width="120px"
+          class="settings-form"
+        >
           <el-form-item label="数据库类型">
-            <el-select v-model="dbForm.dbType" style="width: 100%">
-              <el-option label="SQLite" value="sqlite"></el-option>
-              <el-option label="MySQL" value="mysql"></el-option>
-              <el-option label="PostgreSQL" value="postgres"></el-option>
+            <el-select
+              v-model="dbForm.dbType"
+              style="width: 100%"
+            >
+              <el-option
+                label="SQLite"
+                value="sqlite"
+              />
+              <el-option
+                label="MySQL"
+                value="mysql"
+              />
+              <el-option
+                label="PostgreSQL"
+                value="postgres"
+              />
             </el-select>
           </el-form-item>
           
           <template v-if="dbForm.dbType !== 'sqlite'">
             <el-form-item label="数据库服务器">
-              <el-input v-model="dbForm.dbHost" placeholder="localhost"></el-input>
+              <el-input
+                v-model="dbForm.dbHost"
+                placeholder="localhost"
+              />
             </el-form-item>
             <el-form-item label="数据库端口">
               <el-input-number 
@@ -66,71 +156,150 @@
                 :min="1" 
                 :max="65535"
                 :placeholder="dbForm.dbType === 'mysql' ? '3306' : '5432'"
-              ></el-input-number>
+              />
             </el-form-item>
             <el-form-item label="数据库名称">
-              <el-input v-model="dbForm.dbName" placeholder="v_panel"></el-input>
+              <el-input
+                v-model="dbForm.dbName"
+                placeholder="v_panel"
+              />
             </el-form-item>
             <el-form-item label="用户名">
-              <el-input v-model="dbForm.dbUser" placeholder="root"></el-input>
+              <el-input
+                v-model="dbForm.dbUser"
+                placeholder="root"
+              />
             </el-form-item>
             <el-form-item label="密码">
-              <el-input v-model="dbForm.dbPassword" type="password" placeholder="密码" show-password></el-input>
+              <el-input
+                v-model="dbForm.dbPassword"
+                type="password"
+                placeholder="密码"
+                show-password
+              />
             </el-form-item>
           </template>
           
           <template v-else>
             <el-form-item label="SQLite文件路径">
-              <el-input v-model="dbForm.sqlitePath" placeholder="/usr/local/v-panel/data.db"></el-input>
-              <div class="form-tips">默认在程序目录下的 data.db 文件</div>
+              <el-input
+                v-model="dbForm.sqlitePath"
+                placeholder="/usr/local/v-panel/data.db"
+              />
+              <div class="form-tips">
+                默认在程序目录下的 data.db 文件
+              </div>
             </el-form-item>
           </template>
           
-          <el-divider></el-divider>
+          <el-divider />
           <el-form-item>
-            <el-button type="primary" @click="saveDbSettings">保存数据库配置</el-button>
-            <el-button @click="testDbConnection">测试连接</el-button>
-            <el-button type="success" @click="backupDb">备份数据库</el-button>
+            <el-button
+              type="primary"
+              @click="saveDbSettings"
+            >
+              保存数据库配置
+            </el-button>
+            <el-button @click="testDbConnection">
+              测试连接
+            </el-button>
+            <el-button
+              type="success"
+              @click="backupDb"
+            >
+              备份数据库
+            </el-button>
           </el-form-item>
         </el-form>
       </el-tab-pane>
       
-      <el-tab-pane label="日志配置" name="log">
-        <el-form :model="logForm" label-width="120px" class="settings-form">
+      <el-tab-pane
+        label="日志配置"
+        name="log"
+      >
+        <el-form
+          :model="logForm"
+          label-width="120px"
+          class="settings-form"
+        >
           <el-form-item label="日志级别">
-            <el-select v-model="logForm.logLevel" style="width: 100%">
-              <el-option label="DEBUG" value="debug"></el-option>
-              <el-option label="INFO" value="info"></el-option>
-              <el-option label="WARN" value="warn"></el-option>
-              <el-option label="ERROR" value="error"></el-option>
+            <el-select
+              v-model="logForm.logLevel"
+              style="width: 100%"
+            >
+              <el-option
+                label="DEBUG"
+                value="debug"
+              />
+              <el-option
+                label="INFO"
+                value="info"
+              />
+              <el-option
+                label="WARN"
+                value="warn"
+              />
+              <el-option
+                label="ERROR"
+                value="error"
+              />
             </el-select>
           </el-form-item>
           <el-form-item label="日志保留天数">
-            <el-input-number v-model="logForm.logRetentionDays" :min="1" :max="365"></el-input-number>
-            <div class="form-tips">超过该天数的日志将被自动清理</div>
+            <el-input-number
+              v-model="logForm.logRetentionDays"
+              :min="1"
+              :max="365"
+            />
+            <div class="form-tips">
+              超过该天数的日志将被自动清理
+            </div>
           </el-form-item>
           <el-form-item label="日志存储路径">
-            <el-input v-model="logForm.logPath"></el-input>
-            <div class="form-tips">默认在程序目录下的 logs 文件夹</div>
+            <el-input v-model="logForm.logPath" />
+            <div class="form-tips">
+              默认在程序目录下的 logs 文件夹
+            </div>
           </el-form-item>
           <el-form-item label="启用访问日志">
-            <el-switch v-model="logForm.enableAccessLog"></el-switch>
-            <div class="form-tips">记录所有HTTP请求访问日志</div>
+            <el-switch v-model="logForm.enableAccessLog" />
+            <div class="form-tips">
+              记录所有HTTP请求访问日志
+            </div>
           </el-form-item>
           <el-form-item label="启用操作日志">
-            <el-switch v-model="logForm.enableOperationLog"></el-switch>
-            <div class="form-tips">记录所有用户操作日志</div>
+            <el-switch v-model="logForm.enableOperationLog" />
+            <div class="form-tips">
+              记录所有用户操作日志
+            </div>
           </el-form-item>
-          <el-divider></el-divider>
+          <el-divider />
           <el-form-item>
-            <el-button type="primary" @click="saveLogSettings">保存日志配置</el-button>
-            <el-button type="danger" @click="clearLogs">清理日志</el-button>
+            <el-button
+              type="primary"
+              @click="saveLogSettings"
+            >
+              保存日志配置
+            </el-button>
+            <el-button
+              type="danger"
+              @click="clearLogs"
+            >
+              清理日志
+            </el-button>
           </el-form-item>
         </el-form>
       </el-tab-pane>
 
-      <el-tab-pane label="邮箱配置" name="email">
-        <el-form :model="emailForm" label-width="140px" class="settings-form">
+      <el-tab-pane
+        label="邮箱配置"
+        name="email"
+      >
+        <el-form
+          :model="emailForm"
+          label-width="140px"
+          class="settings-form"
+        >
           <el-alert
             title="邮箱配置用于注册验证、密码重置和系统提醒"
             type="info"
@@ -140,28 +309,44 @@
           />
 
           <el-form-item label="SMTP 服务器">
-            <el-input v-model="emailForm.host" placeholder="例如：smtp.qq.com" />
+            <el-input
+              v-model="emailForm.host"
+              placeholder="例如：smtp.qq.com"
+            />
           </el-form-item>
           <el-form-item label="SMTP 端口">
-            <el-input-number v-model="emailForm.port" :min="1" :max="65535" />
-            <div class="form-tips">常见端口为 465 / 587 / 25</div>
+            <el-input-number
+              v-model="emailForm.port"
+              :min="1"
+              :max="65535"
+            />
+            <div class="form-tips">
+              常见端口为 465 / 587 / 25
+            </div>
           </el-form-item>
           <el-form-item label="SMTP 用户名">
-            <el-input v-model="emailForm.user" placeholder="通常为邮箱地址" />
+            <el-input
+              v-model="emailForm.user"
+              placeholder="通常为邮箱地址"
+            />
           </el-form-item>
           <el-form-item label="发件邮箱">
             <el-input
               v-model="emailForm.from"
               placeholder="留空则默认使用 SMTP 用户名"
             />
-            <div class="form-tips">用于注册验证、重置密码等系统邮件的发件人地址</div>
+            <div class="form-tips">
+              用于注册验证、重置密码等系统邮件的发件人地址
+            </div>
           </el-form-item>
           <el-form-item label="告警收件邮箱">
             <el-input
               v-model="emailForm.alertEmail"
               placeholder="留空则默认发到 SMTP 用户名"
             />
-            <div class="form-tips">用于节点异常、系统提醒等后台告警邮件</div>
+            <div class="form-tips">
+              用于节点异常、系统提醒等后台告警邮件
+            </div>
           </el-form-item>
           <el-form-item label="SMTP 密码">
             <el-input
@@ -178,16 +363,36 @@
             />
           </el-form-item>
 
-          <el-divider></el-divider>
+          <el-divider />
           <el-form-item>
-            <el-button type="primary" :loading="emailForm.saving" @click="saveEmailSettings">保存邮箱配置</el-button>
-            <el-button :loading="emailForm.loading" @click="loadEmailSettings">刷新</el-button>
-            <el-button type="success" :loading="emailForm.testing" @click="testEmailSettings">发送测试邮件</el-button>
+            <el-button
+              type="primary"
+              :loading="emailForm.saving"
+              @click="saveEmailSettings"
+            >
+              保存邮箱配置
+            </el-button>
+            <el-button
+              :loading="emailForm.loading"
+              @click="loadEmailSettings"
+            >
+              刷新
+            </el-button>
+            <el-button
+              type="success"
+              :loading="emailForm.testing"
+              @click="testEmailSettings"
+            >
+              发送测试邮件
+            </el-button>
           </el-form-item>
         </el-form>
       </el-tab-pane>
 
-      <el-tab-pane label="支付设置" name="payment">
+      <el-tab-pane
+        label="支付设置"
+        name="payment"
+      >
         <el-alert
           title="支付配置已迁移到商业化管理"
           description="为避免系统设置和商业化管理出现两套支付配置入口，这里只保留跳转入口。请统一在“商业化管理 -> 支付配置”中维护商户参数。"
@@ -196,13 +401,19 @@
           show-icon
         />
         <div style="margin-top: 16px;">
-          <el-button type="primary" @click="openPaymentSettingsPage">
+          <el-button
+            type="primary"
+            @click="openPaymentSettingsPage"
+          >
             前往商业化管理中的支付配置
           </el-button>
         </div>
       </el-tab-pane>
       
-      <el-tab-pane label="面板本地Xray" name="xray">
+      <el-tab-pane
+        label="面板本地Xray"
+        name="xray"
+      >
         <el-alert
           v-if="xraySettings.currentVersion === '未安装' && !xraySettings.running"
           type="info"
@@ -211,25 +422,33 @@
           style="margin-bottom: 16px;"
           title="这里管理的是面板服务器本地 Xray，不是远程节点内核。Docker 或远程节点部署下显示“未安装”通常是正常现象。"
         />
-        <el-form label-width="120px" class="settings-form">
+        <el-form
+          label-width="120px"
+          class="settings-form"
+        >
           <el-form-item label="当前版本">
             <div class="version-info">
-              <el-tag size="large" type="success">{{ xraySettings.currentVersion || '未安装' }}</el-tag>
+              <el-tag
+                size="large"
+                type="success"
+              >
+                {{ xraySettings.currentVersion || '未安装' }}
+              </el-tag>
               <el-button 
                 type="primary" 
                 size="small" 
-                @click="refreshXrayVersions"
                 :loading="xraySettings.loading"
                 style="margin-left: 10px;"
+                @click="refreshXrayVersions"
               >
                 刷新
               </el-button>
               <el-button 
                 type="warning" 
                 size="small" 
-                @click="syncVersionsFromGitHub"
                 :loading="xraySettings.syncing"
                 style="margin-left: 10px;"
+                @click="syncVersionsFromGitHub"
               >
                 从GitHub同步
               </el-button>
@@ -244,9 +463,9 @@
               v-if="!xraySettings.running"
               type="success" 
               size="small" 
-              @click="startXray"
               :loading="xraySettings.starting"
               style="margin-left: 10px;"
+              @click="startXray"
             >
               启动
             </el-button>
@@ -254,9 +473,9 @@
               v-else
               type="danger" 
               size="small" 
-              @click="stopXray"
               :loading="xraySettings.stopping"
               style="margin-left: 10px;"
+              @click="stopXray"
             >
               停止
             </el-button>
@@ -286,32 +505,54 @@
               </el-select>
               <el-button 
                 type="primary" 
-                @click="handleSwitchVersion" 
-                :loading="xraySettings.switching"
+                :loading="xraySettings.switching" 
                 :disabled="!xraySettings.selectedVersion || xraySettings.selectedVersion === xraySettings.currentVersion"
                 style="margin-left: 10px;"
+                @click="handleSwitchVersion"
               >
                 切换版本
               </el-button>
             </div>
-            <div class="form-tips">选择要切换的 Xray 版本，切换后需要重启服务</div>
+            <div class="form-tips">
+              选择要切换的 Xray 版本，切换后需要重启服务
+            </div>
           </el-form-item>
           
           <el-form-item label="自动更新">
             <el-switch v-model="xraySettings.autoUpdate" />
-            <div class="form-tips">启用后，系统将自动更新到最新的稳定版</div>
+            <div class="form-tips">
+              启用后，系统将自动更新到最新的稳定版
+            </div>
           </el-form-item>
           
-          <el-divider></el-divider>
+          <el-divider />
           <el-form-item>
-            <el-button type="primary" @click="saveXraySettings">保存设置</el-button>
-            <el-button type="success" @click="restartXray" :loading="xraySettings.restarting">重启Xray</el-button>
+            <el-button
+              type="primary"
+              @click="saveXraySettings"
+            >
+              保存设置
+            </el-button>
+            <el-button
+              type="success"
+              :loading="xraySettings.restarting"
+              @click="restartXray"
+            >
+              重启Xray
+            </el-button>
           </el-form-item>
         </el-form>
       </el-tab-pane>
       
-      <el-tab-pane label="管理员配置" name="admin">
-        <el-form :model="adminForm" label-width="120px" class="settings-form">
+      <el-tab-pane
+        label="管理员配置"
+        name="admin"
+      >
+        <el-form
+          :model="adminForm"
+          label-width="120px"
+          class="settings-form"
+        >
           <el-alert
             title="管理员账号安全提示"
             type="warning"
@@ -322,67 +563,145 @@
           />
           
           <el-form-item label="管理员用户名">
-            <el-input v-model="adminForm.username" placeholder="admin" :disabled="true"></el-input>
-            <div class="form-tips">默认管理员用户名不可修改</div>
+            <el-input
+              v-model="adminForm.username"
+              placeholder="admin"
+              :disabled="true"
+            />
+            <div class="form-tips">
+              默认管理员用户名不可修改
+            </div>
           </el-form-item>
           <el-form-item label="当前密码">
-            <el-input v-model="adminForm.currentPassword" type="password" placeholder="当前密码" show-password></el-input>
+            <el-input
+              v-model="adminForm.currentPassword"
+              type="password"
+              placeholder="当前密码"
+              show-password
+            />
           </el-form-item>
           <el-form-item label="新密码">
-            <el-input v-model="adminForm.newPassword" type="password" placeholder="新密码" show-password></el-input>
+            <el-input
+              v-model="adminForm.newPassword"
+              type="password"
+              placeholder="新密码"
+              show-password
+            />
           </el-form-item>
           <el-form-item label="确认新密码">
-            <el-input v-model="adminForm.confirmPassword" type="password" placeholder="确认新密码" show-password></el-input>
+            <el-input
+              v-model="adminForm.confirmPassword"
+              type="password"
+              placeholder="确认新密码"
+              show-password
+            />
           </el-form-item>
           
-          <el-divider></el-divider>
+          <el-divider />
           <el-form-item>
-            <el-button type="primary" @click="changeAdminPassword">修改密码</el-button>
-            <el-button type="warning" @click="resetAdminPassword">重置为默认密码</el-button>
+            <el-button
+              type="primary"
+              @click="changeAdminPassword"
+            >
+              修改密码
+            </el-button>
+            <el-button
+              type="warning"
+              @click="resetAdminPassword"
+            >
+              重置为默认密码
+            </el-button>
           </el-form-item>
         </el-form>
       </el-tab-pane>
       
-      <el-tab-pane label="安全设置" name="security">
-        <el-form :model="securityForm" label-width="120px" class="settings-form">
+      <el-tab-pane
+        label="安全设置"
+        name="security"
+      >
+        <el-form
+          :model="securityForm"
+          label-width="120px"
+          class="settings-form"
+        >
           <el-form-item label="会话超时时间">
-            <el-input-number v-model="securityForm.sessionTimeout" :min="5" :max="1440"></el-input-number>
-            <div class="form-tips">单位：分钟，超过该时间未操作将自动注销</div>
+            <el-input-number
+              v-model="securityForm.sessionTimeout"
+              :min="5"
+              :max="1440"
+            />
+            <div class="form-tips">
+              单位：分钟，超过该时间未操作将自动注销
+            </div>
           </el-form-item>
           <el-form-item label="启用IP白名单">
-            <el-switch v-model="securityForm.enableIpWhitelist"></el-switch>
+            <el-switch v-model="securityForm.enableIpWhitelist" />
           </el-form-item>
-          <el-form-item label="IP白名单" v-if="securityForm.enableIpWhitelist">
+          <el-form-item
+            v-if="securityForm.enableIpWhitelist"
+            label="IP白名单"
+          >
             <el-input 
               v-model="securityForm.ipWhitelist" 
               type="textarea" 
               :rows="4"
               placeholder="每行一个IP地址，支持CIDR格式，如：192.168.1.0/24"
-            ></el-input>
+            />
           </el-form-item>
           <el-form-item label="登录失败锁定">
-            <el-switch v-model="securityForm.enableLoginLock"></el-switch>
-            <div class="form-tips">连续登录失败将暂时锁定账号</div>
+            <el-switch v-model="securityForm.enableLoginLock" />
+            <div class="form-tips">
+              连续登录失败将暂时锁定账号
+            </div>
           </el-form-item>
-          <el-form-item label="失败尝试次数" v-if="securityForm.enableLoginLock">
-            <el-input-number v-model="securityForm.maxLoginAttempts" :min="3" :max="10"></el-input-number>
+          <el-form-item
+            v-if="securityForm.enableLoginLock"
+            label="失败尝试次数"
+          >
+            <el-input-number
+              v-model="securityForm.maxLoginAttempts"
+              :min="3"
+              :max="10"
+            />
           </el-form-item>
-          <el-form-item label="锁定时间(分钟)" v-if="securityForm.enableLoginLock">
-            <el-input-number v-model="securityForm.lockDuration" :min="5" :max="60"></el-input-number>
+          <el-form-item
+            v-if="securityForm.enableLoginLock"
+            label="锁定时间(分钟)"
+          >
+            <el-input-number
+              v-model="securityForm.lockDuration"
+              :min="5"
+              :max="60"
+            />
           </el-form-item>
           
-          <el-divider></el-divider>
+          <el-divider />
           <el-form-item>
-            <el-button type="primary" @click="saveSecuritySettings">保存安全设置</el-button>
+            <el-button
+              type="primary"
+              @click="saveSecuritySettings"
+            >
+              保存安全设置
+            </el-button>
           </el-form-item>
         </el-form>
       </el-tab-pane>
       
       <!-- 新增协议管理标签页 -->
-      <el-tab-pane label="协议管理" name="protocol">
+      <el-tab-pane
+        label="协议管理"
+        name="protocol"
+      >
         <el-form class="settings-form">
-          <el-form-item label="支持的协议" label-width="120px">
-            <el-descriptions :column="1" border size="medium">
+          <el-form-item
+            label="支持的协议"
+            label-width="120px"
+          >
+            <el-descriptions
+              :column="1"
+              border
+              size="medium"
+            >
               <el-descriptions-item>
                 <template #label>
                   <el-switch
@@ -393,8 +712,20 @@
                 </template>
                 <div class="protocol-description">
                   <p>Trojan 协议：基于 TLS 的轻量级协议，伪装成 HTTPS 流量。</p>
-                  <el-tag type="success" size="small" v-if="protocolSettings.enableTrojan">已启用</el-tag>
-                  <el-tag type="danger" size="small" v-else>已禁用</el-tag>
+                  <el-tag
+                    v-if="protocolSettings.enableTrojan"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
                 </div>
               </el-descriptions-item>
               
@@ -408,8 +739,20 @@
                 </template>
                 <div class="protocol-description">
                   <p>VMess 协议：V2Ray 的核心传输协议，支持多种传输层。</p>
-                  <el-tag type="success" size="small" v-if="protocolSettings.enableVMess">已启用</el-tag>
-                  <el-tag type="danger" size="small" v-else>已禁用</el-tag>
+                  <el-tag
+                    v-if="protocolSettings.enableVMess"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
                 </div>
               </el-descriptions-item>
               
@@ -423,8 +766,20 @@
                 </template>
                 <div class="protocol-description">
                   <p>VLESS 协议：轻量化的 VMess 协议，去除不必要的加密。</p>
-                  <el-tag type="success" size="small" v-if="protocolSettings.enableVLESS">已启用</el-tag>
-                  <el-tag type="danger" size="small" v-else>已禁用</el-tag>
+                  <el-tag
+                    v-if="protocolSettings.enableVLESS"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
                 </div>
               </el-descriptions-item>
               
@@ -438,8 +793,20 @@
                 </template>
                 <div class="protocol-description">
                   <p>Shadowsocks 协议：经典的加密代理协议。</p>
-                  <el-tag type="success" size="small" v-if="protocolSettings.enableShadowsocks">已启用</el-tag>
-                  <el-tag type="danger" size="small" v-else>已禁用</el-tag>
+                  <el-tag
+                    v-if="protocolSettings.enableShadowsocks"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
                 </div>
               </el-descriptions-item>
               
@@ -453,8 +820,20 @@
                 </template>
                 <div class="protocol-description">
                   <p>SOCKS 协议：标准代理协议，支持 TCP/UDP。</p>
-                  <el-tag type="success" size="small" v-if="protocolSettings.enableSocks">已启用</el-tag>
-                  <el-tag type="danger" size="small" v-else>已禁用</el-tag>
+                  <el-tag
+                    v-if="protocolSettings.enableSocks"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
                 </div>
               </el-descriptions-item>
               
@@ -468,17 +847,38 @@
                 </template>
                 <div class="protocol-description">
                   <p>HTTP 协议：基础代理协议，明文传输。</p>
-                  <el-tag type="success" size="small" v-if="protocolSettings.enableHTTP">已启用</el-tag>
-                  <el-tag type="danger" size="small" v-else>已禁用</el-tag>
+                  <el-tag
+                    v-if="protocolSettings.enableHTTP"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
                 </div>
               </el-descriptions-item>
             </el-descriptions>
           </el-form-item>
           
-          <el-divider content-position="left">传输层设置</el-divider>
+          <el-divider content-position="left">
+            传输层设置
+          </el-divider>
           
-          <el-form-item label="支持的传输层" label-width="120px">
-            <el-descriptions :column="1" border size="medium">
+          <el-form-item
+            label="支持的传输层"
+            label-width="120px"
+          >
+            <el-descriptions
+              :column="1"
+              border
+              size="medium"
+            >
               <el-descriptions-item>
                 <template #label>
                   <el-switch
@@ -489,8 +889,20 @@
                 </template>
                 <div class="protocol-description">
                   <p>TCP 传输：最基础的传输方式。</p>
-                  <el-tag type="success" size="small" v-if="transportSettings.enableTCP">已启用</el-tag>
-                  <el-tag type="danger" size="small" v-else>已禁用</el-tag>
+                  <el-tag
+                    v-if="transportSettings.enableTCP"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
                 </div>
               </el-descriptions-item>
               
@@ -504,8 +916,20 @@
                 </template>
                 <div class="protocol-description">
                   <p>WebSocket 传输：基于HTTP协议的持久化连接，兼容性好。</p>
-                  <el-tag type="success" size="small" v-if="transportSettings.enableWebSocket">已启用</el-tag>
-                  <el-tag type="danger" size="small" v-else>已禁用</el-tag>
+                  <el-tag
+                    v-if="transportSettings.enableWebSocket"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
                 </div>
               </el-descriptions-item>
               
@@ -519,8 +943,20 @@
                 </template>
                 <div class="protocol-description">
                   <p>HTTP/2 传输：新一代HTTP协议，多路复用，需启用TLS。</p>
-                  <el-tag type="success" size="small" v-if="transportSettings.enableHTTP2">已启用</el-tag>
-                  <el-tag type="danger" size="small" v-else>已禁用</el-tag>
+                  <el-tag
+                    v-if="transportSettings.enableHTTP2"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
                 </div>
               </el-descriptions-item>
               
@@ -534,8 +970,20 @@
                 </template>
                 <div class="protocol-description">
                   <p>gRPC 传输：基于HTTP/2的高性能RPC框架，抗干扰能力强。</p>
-                  <el-tag type="success" size="small" v-if="transportSettings.enableGRPC">已启用</el-tag>
-                  <el-tag type="danger" size="small" v-else>已禁用</el-tag>
+                  <el-tag
+                    v-if="transportSettings.enableGRPC"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
                 </div>
               </el-descriptions-item>
               
@@ -549,18 +997,42 @@
                 </template>
                 <div class="protocol-description">
                   <p>QUIC 传输：基于UDP的传输层协议，低延迟。</p>
-                  <el-tag type="success" size="small" v-if="transportSettings.enableQUIC">已启用</el-tag>
-                  <el-tag type="danger" size="small" v-else>已禁用</el-tag>
+                  <el-tag
+                    v-if="transportSettings.enableQUIC"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
                 </div>
               </el-descriptions-item>
             </el-descriptions>
           </el-form-item>
           
-          <el-divider></el-divider>
+          <el-divider />
           
           <el-form-item>
-            <el-button type="primary" @click="saveProtocolSettings" :loading="protocolsLoading">保存协议配置</el-button>
-            <el-button type="warning" @click="restartXrayAfterProtocolChange" :loading="xraySettings.restarting">保存并重启Xray</el-button>
+            <el-button
+              type="primary"
+              :loading="protocolsLoading"
+              @click="saveProtocolSettings"
+            >
+              保存协议配置
+            </el-button>
+            <el-button
+              type="warning"
+              :loading="xraySettings.restarting"
+              @click="restartXrayAfterProtocolChange"
+            >
+              保存并重启Xray
+            </el-button>
           </el-form-item>
         </el-form>
       </el-tab-pane>
@@ -574,9 +1046,14 @@
     :width="versionDetailsDialogWidth"
     destroy-on-close
   >
-    <el-descriptions :column="1" border>
+    <el-descriptions
+      :column="1"
+      border
+    >
       <el-descriptions-item label="版本">
-        <el-tag type="success">{{ xraySettings.versionDetails.version }}</el-tag>
+        <el-tag type="success">
+          {{ xraySettings.versionDetails.version }}
+        </el-tag>
       </el-descriptions-item>
       <el-descriptions-item label="发布日期">
         {{ xraySettings.versionDetails.releaseDate }}
@@ -586,7 +1063,10 @@
       </el-descriptions-item>
       <el-descriptions-item label="更新日志">
         <ul class="changelog-list">
-          <li v-for="(change, index) in xraySettings.versionDetails.changelog" :key="index">
+          <li
+            v-for="(change, index) in xraySettings.versionDetails.changelog"
+            :key="index"
+          >
             {{ change }}
           </li>
         </ul>
@@ -595,7 +1075,10 @@
     <template #footer>
       <span class="dialog-footer">
         <el-button @click="xraySettings.showVersionDetails = false">关闭</el-button>
-        <el-button type="primary" @click="openXrayReleasePage">
+        <el-button
+          type="primary"
+          @click="openXrayReleasePage"
+        >
           查看GitHub发布页
         </el-button>
       </span>
@@ -615,31 +1098,39 @@
       <el-progress 
         :percentage="xraySettings.updateProgress.percent" 
         :status="xraySettings.updateProgress.status === 'error' ? 'exception' : 
-                xraySettings.updateProgress.status === 'completed' ? 'success' : ''"
+          xraySettings.updateProgress.status === 'completed' ? 'success' : ''"
         :striped="xraySettings.updateProgress.status === 'downloading' || xraySettings.updateProgress.status === 'installing'"
         :striped-flow="xraySettings.updateProgress.status === 'downloading' || xraySettings.updateProgress.status === 'installing'"
-      ></el-progress>
+      />
       
       <div class="update-status">
         <span>{{ xraySettings.updateProgress.message }}</span>
-        <span class="error-message" v-if="xraySettings.updateProgress.status === 'error'">
+        <span
+          v-if="xraySettings.updateProgress.status === 'error'"
+          class="error-message"
+        >
           错误: {{ xraySettings.updateProgress.error }}
         </span>
       </div>
     </div>
     
-    <template #footer v-if="xraySettings.updateProgress.status === 'completed' || xraySettings.updateProgress.status === 'error'">
-      <el-button @click="xraySettings.updateProgress.visible = false">关闭</el-button>
+    <template
+      v-if="xraySettings.updateProgress.status === 'completed' || xraySettings.updateProgress.status === 'error'"
+      #footer
+    >
+      <el-button @click="xraySettings.updateProgress.visible = false">
+        关闭
+      </el-button>
       <el-button 
-        type="primary" 
-        v-if="xraySettings.updateProgress.status === 'completed'"
+        v-if="xraySettings.updateProgress.status === 'completed'" 
+        type="primary"
         @click="restartXray"
       >
         重启Xray
       </el-button>
       <el-button 
-        type="warning" 
-        v-if="xraySettings.updateProgress.status === 'error'"
+        v-if="xraySettings.updateProgress.status === 'error'" 
+        type="warning"
         @click="downloadXrayVersion(xraySettings.downloadingVersion)"
       >
         重试
@@ -664,7 +1155,10 @@
         style="margin-bottom: 15px;"
       />
       
-      <el-card shadow="never" class="error-card">
+      <el-card
+        shadow="never"
+        class="error-card"
+      >
         <template #header>
           <div class="error-header">
             <span>错误信息</span>
@@ -672,37 +1166,54 @@
               type="primary" 
               size="small" 
               plain 
-              @click="copyErrorToClipboard"
               circle
               icon="CopyDocument"
+              @click="copyErrorToClipboard"
             />
           </div>
         </template>
         <pre class="error-message-content">{{ errorDetails.message }}</pre>
       </el-card>
       
-      <div class="error-resolution" v-if="errorDetails.resolution">
+      <div
+        v-if="errorDetails.resolution"
+        class="error-resolution"
+      >
         <h4>可能的解决方案：</h4>
         <div v-if="errorDetails.resolution.includes('\n')">
-          <p v-for="(line, index) in errorDetails.resolution.split('\n')" :key="index" 
-             :style="line.startsWith('   -') ? 'margin-left: 20px;' : ''">
+          <p
+            v-for="(line, index) in errorDetails.resolution.split('\n')"
+            :key="index" 
+            :style="line.startsWith('   -') ? 'margin-left: 20px;' : ''"
+          >
             {{ line }}
           </p>
         </div>
-        <p v-else>{{ errorDetails.resolution }}</p>
+        <p v-else>
+          {{ errorDetails.resolution }}
+        </p>
       </div>
 
-      <div class="error-troubleshooting" v-if="errorDetails.title && errorDetails.title.includes('下载') || 
-           (errorDetails.message && errorDetails.message.toLowerCase().includes('timeout'))">
+      <div
+        v-if="errorDetails.title && errorDetails.title.includes('下载') || 
+          (errorDetails.message && errorDetails.message.toLowerCase().includes('timeout'))"
+        class="error-troubleshooting"
+      >
         <h4>手动下载指南：</h4>
         <p>如果自动下载失败，您可以按照以下步骤手动下载：</p>
         <ol>
-          <li>根据您的系统类型，打开
-            <el-link href="https://github.com/XTLS/Xray-core/releases" type="primary" target="_blank">
+          <li>
+            根据您的系统类型，打开
+            <el-link
+              href="https://github.com/XTLS/Xray-core/releases"
+              type="primary"
+              target="_blank"
+            >
               Xray GitHub 发布页
             </el-link>
           </li>
-          <li>下载适合您系统的文件，例如：
+          <li>
+            下载适合您系统的文件，例如：
             <ul>
               <li>Windows 64位: <code>Xray-windows-64.zip</code></li>
               <li>Windows 32位: <code>Xray-windows-32.zip</code></li>
@@ -715,7 +1226,10 @@
         </ol>
       </div>
 
-      <div class="error-troubleshooting" v-if="errorDetails.title && errorDetails.title.includes('Xray 版本')">
+      <div
+        v-if="errorDetails.title && errorDetails.title.includes('Xray 版本')"
+        class="error-troubleshooting"
+      >
         <h4>故障排除建议：</h4>
         <ul>
           <li>检查Xray服务状态是否正常</li>
@@ -730,16 +1244,28 @@
     <template #footer>
       <span class="dialog-footer">
         <el-button @click="errorDetails.visible = false">关闭</el-button>
-        <el-button type="primary" @click="retryFailedOperation" v-if="errorDetails.canRetry">
+        <el-button
+          v-if="errorDetails.canRetry"
+          type="primary"
+          @click="retryFailedOperation"
+        >
           重试操作
         </el-button>
-        <el-button type="warning" @click="refreshXrayVersions" v-if="errorDetails.title && errorDetails.title.includes('Xray 版本')">
+        <el-button
+          v-if="errorDetails.title && errorDetails.title.includes('Xray 版本')"
+          type="warning"
+          @click="refreshXrayVersions"
+        >
           刷新版本信息
         </el-button>
-        <el-button type="info" @click="openGitHubReleases" v-if="errorDetails.message && 
-                   (errorDetails.message.toLowerCase().includes('timeout') || 
-                    errorDetails.message.includes('下载') || 
-                    errorDetails.message.includes('download'))">
+        <el-button
+          v-if="errorDetails.message && 
+            (errorDetails.message.toLowerCase().includes('timeout') || 
+              errorDetails.message.includes('下载') || 
+              errorDetails.message.includes('download'))"
+          type="info"
+          @click="openGitHubReleases"
+        >
           访问下载页面
         </el-button>
       </span>
@@ -748,11 +1274,10 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed, watch, onUnmounted } from 'vue'
+import { ref, reactive, onMounted, computed, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
-import api, { systemApi } from '@/api/index'
-import { InfoFilled, CopyDocument, Refresh, Connection, Download, Link, Loading, ArrowRight } from '@element-plus/icons-vue'
+import api from '@/api/index'
 import { useViewport } from '@/composables/useViewport'
 
 // store
@@ -1343,65 +1868,6 @@ const handleDownloadProgressEvent = (event) => {
   }
 };
 
-// 加载Xray版本信息
-const loadXrayVersions = async () => {
-  xraySettings.loading = true
-  try {
-    // 显示正在刷新的提示
-    ElMessage.info('正在刷新Xray版本信息...')
-    
-    // 从API获取Xray版本信息
-    try {
-      const response = await api.get('/xray/versions')
-      if (response && response.current_version) {
-        xraySettings.currentVersion = response.current_version
-      }
-      
-      if (response && Array.isArray(response.supported_versions) && response.supported_versions.length > 0) {
-        xraySettings.versions = response.supported_versions
-      }
-    } catch (error) {
-      console.warn('Failed to get versions from API:', error)
-      // 使用默认版本列表
-      xraySettings.versions = [
-        'v1.8.24', 'v1.8.23', 'v1.8.22', 'v1.8.21', 'v1.8.20',
-        'v25.3.6', 'v25.3.3', 'v25.2.21', 'v25.2.18', 'v25.1.30'
-      ]
-    }
-    
-    // 确保selectedVersion有值，默认为当前版本
-    if (!xraySettings.selectedVersion || xraySettings.selectedVersion === '') {
-      if (xraySettings.currentVersion && xraySettings.currentVersion !== '未知') {
-        xraySettings.selectedVersion = xraySettings.currentVersion
-      } else if (xraySettings.versions.length > 0) {
-        xraySettings.selectedVersion = xraySettings.versions[0]
-      }
-    }
-    
-    // 成功刷新提示
-    ElMessage.success('Xray版本信息已刷新')
-    
-    // 同时加载Xray设置
-    await loadXraySettings()
-  } catch (error) {
-    console.error('Failed to refresh Xray versions:', error)
-    ElMessage.error('刷新Xray版本信息失败: ' + (error.message || '未知错误'))
-    
-    // 使用默认版本列表
-    xraySettings.versions = [
-      'v1.8.24', 'v1.8.23', 'v1.8.22', 'v1.8.21', 'v1.8.20',
-      'v25.3.6', 'v25.3.3', 'v25.2.21', 'v25.2.18', 'v25.1.30'
-    ]
-    
-    // 选择一个默认版本
-    if (!xraySettings.selectedVersion || xraySettings.selectedVersion === '') {
-      xraySettings.selectedVersion = xraySettings.versions[0]
-    }
-  } finally {
-    xraySettings.loading = false
-  }
-}
-
 // 从GitHub同步Xray版本
 const syncVersionsFromGitHub = async () => {
   // 设置同步状态
@@ -1762,41 +2228,6 @@ const openPaymentSettingsPage = () => {
   window.location.href = '/admin/payment-settings'
 }
 
-const savePaymentSettings = async () => {
-  paymentForm.saving = true
-  try {
-    const payload = {
-      payment_alipay_enabled: paymentForm.alipayEnabled,
-      payment_alipay_app_id: paymentForm.alipayAppId.trim(),
-      payment_alipay_public_key: paymentForm.alipayPublicKey.trim(),
-      payment_alipay_notify_url: paymentForm.alipayNotifyUrl.trim(),
-      payment_alipay_return_url: paymentForm.alipayReturnUrl.trim(),
-      payment_alipay_sandbox: paymentForm.alipaySandbox,
-      payment_wechat_enabled: paymentForm.wechatEnabled,
-      payment_wechat_app_id: paymentForm.wechatAppId.trim(),
-      payment_wechat_mch_id: paymentForm.wechatMchId.trim(),
-      payment_wechat_notify_url: paymentForm.wechatNotifyUrl.trim(),
-      payment_wechat_sandbox: paymentForm.wechatSandbox
-    }
-
-    if (paymentForm.alipayPrivateKey.trim()) {
-      payload.payment_alipay_private_key = paymentForm.alipayPrivateKey.trim()
-    }
-    if (paymentForm.wechatApiKey.trim()) {
-      payload.payment_wechat_api_key = paymentForm.wechatApiKey.trim()
-    }
-
-    const response = await api.put('/settings', payload)
-    applyPaymentSettings(response?.data || {})
-    ElMessage.success('支付设置保存成功')
-  } catch (error) {
-    console.error('Failed to save payment settings:', error)
-    ElMessage.error(error.message || '保存支付设置失败')
-  } finally {
-    paymentForm.saving = false
-  }
-}
-
 const clearLogs = () => {
   ElMessageBox.confirm(
     '确定要清理所有日志吗？此操作不可恢复。',
@@ -1904,24 +2335,6 @@ const saveSecuritySettings = async () => {
   }
 }
 
-// 测试自定义配置
-const testCustomConfig = async () => {
-  if (!xraySettings.configPath) {
-    ElMessage.warning('请输入配置文件路径')
-    return
-  }
-  
-  try {
-    await api.post('/xray/test-config', {
-      config_path: xraySettings.configPath
-    })
-    ElMessage.success('配置文件测试通过')
-  } catch (error) {
-    console.error('Failed to test config:', error)
-    ElMessage.error('配置文件测试失败：' + (error.response?.data?.message || '文件不存在或格式错误'))
-  }
-}
-
 // 保存Xray设置
 const saveXraySettings = async () => {
   try {
@@ -1958,30 +2371,6 @@ const saveXraySettings = async () => {
       true,
       'saveSettings'
     )
-  }
-}
-
-// 加载协议设置
-const loadProtocolSettings = async () => {
-  try {
-    const response = await api.get('/settings/protocols')
-    // 协议设置
-    protocolSettings.enableTrojan = response.protocols?.trojan ?? true
-    protocolSettings.enableVMess = response.protocols?.vmess ?? true
-    protocolSettings.enableVLESS = response.protocols?.vless ?? true
-    protocolSettings.enableShadowsocks = response.protocols?.shadowsocks ?? true
-    protocolSettings.enableSocks = response.protocols?.socks ?? false
-    protocolSettings.enableHTTP = response.protocols?.http ?? false
-    
-    // 传输层设置
-    transportSettings.enableTCP = response.transports?.tcp ?? true
-    transportSettings.enableWebSocket = response.transports?.ws ?? true
-    transportSettings.enableHTTP2 = response.transports?.http2 ?? true
-    transportSettings.enableGRPC = response.transports?.grpc ?? true
-    transportSettings.enableQUIC = response.transports?.quic ?? false
-  } catch (error) {
-    console.error('Failed to load protocol settings:', error)
-    ElMessage.error('加载协议设置失败')
   }
 }
 
@@ -2029,137 +2418,10 @@ const restartXrayAfterProtocolChange = async () => {
   }
 }
 
-// 专门处理自动更新开关
-const toggleAutoUpdate = async (newValue) => {
-  console.log('自动更新开关切换:', newValue);
-  
-  try {
-    // 构建请求数据
-    const requestData = {
-      auto_update: newValue,
-      custom_config: xraySettings.customConfig,
-      config_path: xraySettings.configPath,
-      check_interval: xraySettings.checkInterval
-    };
-    
-    console.log('自动更新请求数据:', requestData);
-    
-    // 发送请求前临时禁用开关，防止重复点击
-    const originalValue = xraySettings.autoUpdate;
-    
-    // 发送请求
-    const response = await api.post('/settings/xray', requestData);
-    
-    console.log('自动更新响应数据:', response);
-    
-    if (response.success) {
-      ElMessage.success(`自动更新已${newValue ? '启用' : '禁用'}`);
-      
-      // 设置一个延迟后再刷新设置，确保后端已完成持久化
-      setTimeout(async () => {
-        try {
-          // 进行多次验证确保设置生效
-          const verify1 = await api.get('/settings/xray');
-          console.log('验证1结果:', verify1);
-          
-          // 再次刷新设置
-          await refreshXraySettings();
-          
-          // 最终验证
-          const verify2 = await api.get('/settings/xray');
-          console.log('验证2结果:', verify2);
-          
-          // 检查设置是否一致
-          if (verify2.auto_update !== newValue) {
-            console.error('设置验证失败，值不一致:', {
-              expected: newValue,
-              actual: verify2.auto_update
-            });
-            ElMessage.warning('设置可能未正确保存，请刷新页面后重试');
-          } else {
-            console.log('设置验证成功，值一致:', newValue);
-          }
-        } catch (verifyError) {
-          console.error('设置验证失败:', verifyError);
-        }
-      }, 500);
-    } else {
-      // 如果失败，恢复之前的状态
-      xraySettings.autoUpdate = originalValue;
-      ElMessage.error('设置自动更新失败');
-    }
-  } catch (error) {
-    console.error('设置自动更新失败:', error);
-    // 恢复之前的状态
-    xraySettings.autoUpdate = !newValue;
-    ElMessage.error('设置自动更新失败: ' + (error.response?.data?.message || '未知错误'));
-  }
-}
-
-// 加载版本详情
-const loadVersionDetails = async (version) => {
-  try {
-    xraySettings.loading = true
-    
-    const response = await api.get(`/xray/version/${version}/details`)
-
-    xraySettings.versionDetails = {
-      version: response.version,
-      releaseDate: response.release_date,
-      description: response.description,
-      changelog: response.changelog || []
-    }
-    
-    // 显示版本详情对话框
-    xraySettings.showVersionDetails = true
-  } catch (error) {
-    console.error('Failed to load version details:', error)
-    ElMessage.error('加载版本详情失败：' + (error.message || '未知错误'))
-  } finally {
-    xraySettings.loading = false
-  }
-}
-
 // 打开GitHub Xray发布页面
 const openXrayReleasePage = () => {
   window.open('https://github.com/XTLS/Xray-core/releases', '_blank')
 }
-
-// 检查Xray更新
-const checkXrayUpdates = async () => {
-  if (xraySettings.checkingForUpdates) return;
-  
-  try {
-    xraySettings.checkingForUpdates = true;
-    ElMessage.info('正在检查Xray更新...');
-    
-    const response = await api.get('/xray/check-updates');
-    
-    if (response.has_update) {
-      ElMessageBox.confirm(
-        `发现新版本: ${response.latest_version}\n\n更新说明:\n${response.release_notes || ''}`,
-        '有可用更新',
-        {
-          confirmButtonText: '更新',
-          cancelButtonText: '取消',
-          type: 'info',
-          dangerouslyUseHTMLString: true
-        }
-      ).then(() => {
-        downloadXrayVersion(response.latest_version);
-      }).catch(() => {
-        ElMessage.info('已取消更新');
-      });
-    } else {
-      ElMessage.success('当前已经是最新版本');
-    }
-  } catch (error) {
-    console.error('Failed to check for updates:', error);
-    ElMessage.error('检查更新失败: ' + (error.message || '未知错误'));
-  } finally {
-    xraySettings.checkingForUpdates = false;
-  }
-};
 
 // 下载并安装Xray版本
 const downloadXrayVersion = async (version) => {
@@ -2172,7 +2434,7 @@ const downloadXrayVersion = async (version) => {
   
   try {
     // 调用API下载版本
-    const response = await api.post('/xray/download', { version }, {
+    await api.post('/xray/download', { version }, {
       onDownloadProgress: (progressEvent) => {
         if (progressEvent.total) {
           xraySettings.updateProgress.percent = Math.round((progressEvent.loaded / progressEvent.total) * 100);
@@ -2313,36 +2575,6 @@ const refreshXraySettings = async () => {
   }
 }
 
-// 获取时间格式化函数
-const getTimeAgo = () => {
-  if (!lastSyncTime.value) {
-    return '尚未同步';
-  }
-  
-  const now = new Date();
-  const syncDate = new Date(parseInt(lastSyncTime.value));
-  const diffInMs = now - syncDate;
-  const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-  const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
-  const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
-
-  if (diffInMinutes < 1) {
-    return '刚刚';
-  } else if (diffInMinutes < 60) {
-    return `${diffInMinutes}分钟前`;
-  } else if (diffInHours < 24) {
-    return `${diffInHours}小时前`;
-  } else if (diffInDays < 7) {
-    return `${diffInDays}天前`;
-  } else if (diffInDays < 30) {
-    return `${Math.floor(diffInDays / 7)}周前`;
-  } else if (diffInDays < 365) {
-    return `${Math.floor(diffInDays / 30)}月前`;
-  } else {
-    return `${Math.floor(diffInDays / 365)}年前`;
-  }
-}
-
 // 处理版本切换
 const handleSwitchVersion = async () => {
   try {
@@ -2462,20 +2694,6 @@ const handleSwitchVersion = async () => {
     xraySettings.switching = false
   }
 }
-
-// 按版本类型分组的计算属性
-const stableVersions = computed(() => {
-  return xraySettings.versions.filter(v => v.startsWith('v1.'));
-});
-
-const betaVersions = computed(() => {
-  return xraySettings.versions.filter(v => !v.startsWith('v1.'));
-});
-
-// 获取V2系列版本
-const v2Versions = computed(() => {
-  return xraySettings.versions.filter(v => !v.startsWith('v1.'));
-});
 
 // 打开GitHub发布页
 const openGitHubReleases = () => {

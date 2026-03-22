@@ -106,10 +106,12 @@ func (s *Service) GetTrafficSummaryInRange(ctx context.Context, userID int64, st
 		Upload   int64
 		Download int64
 	}
+	dialect := s.db.Dialector.Name()
+	rangeArgs := repository.BuildTimeRangeArgs(dialect, start, end)
 	if err := s.db.WithContext(ctx).
 		Table("traffic").
 		Select("COALESCE(SUM(upload), 0) as upload, COALESCE(SUM(download), 0) as download").
-		Where("user_id = ? AND recorded_at BETWEEN ? AND ?", userID, start, end).
+		Where("user_id = ? AND "+repository.BuildTimeRangeCondition(dialect, "recorded_at"), append([]any{userID}, rangeArgs...)...).
 		Scan(&result).Error; err != nil {
 		return nil, err
 	}
@@ -222,11 +224,13 @@ func (s *Service) getNodeUsage(ctx context.Context, userID int64, start, end tim
 	}
 
 	var rows []nodeUsageRow
+	dialect := s.db.Dialector.Name()
+	rangeArgs := repository.BuildTimeRangeArgs(dialect, start, end)
 	if err := s.db.WithContext(ctx).
 		Table("node_traffic nt").
 		Select("nt.node_id, n.name as node_name, COALESCE(SUM(nt.upload), 0) as upload, COALESCE(SUM(nt.download), 0) as download").
 		Joins("JOIN nodes n ON n.id = nt.node_id").
-		Where("nt.user_id = ? AND nt.recorded_at BETWEEN ? AND ?", userID, start, end).
+		Where("nt.user_id = ? AND "+repository.BuildTimeRangeCondition(dialect, "nt.recorded_at"), append([]any{userID}, rangeArgs...)...).
 		Group("nt.node_id, n.name").
 		Order("(COALESCE(SUM(nt.upload), 0) + COALESCE(SUM(nt.download), 0)) DESC").
 		Scan(&rows).Error; err != nil {
@@ -266,11 +270,13 @@ func (s *Service) getProtocolUsage(ctx context.Context, userID int64, start, end
 	}
 
 	var rows []protocolUsageRow
+	dialect := s.db.Dialector.Name()
+	rangeArgs := repository.BuildTimeRangeArgs(dialect, start, end)
 	if err := s.db.WithContext(ctx).
 		Table("traffic t").
 		Select("p.protocol, COUNT(DISTINCT t.proxy_id) as count, COALESCE(SUM(t.upload), 0) as upload, COALESCE(SUM(t.download), 0) as download").
 		Joins("JOIN proxies p ON p.id = t.proxy_id").
-		Where("t.user_id = ? AND t.recorded_at BETWEEN ? AND ?", userID, start, end).
+		Where("t.user_id = ? AND "+repository.BuildTimeRangeCondition(dialect, "t.recorded_at"), append([]any{userID}, rangeArgs...)...).
 		Group("p.protocol").
 		Order("(COALESCE(SUM(t.upload), 0) + COALESCE(SUM(t.download), 0)) DESC").
 		Scan(&rows).Error; err != nil {

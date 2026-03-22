@@ -14,19 +14,28 @@
             <el-button 
               type="danger" 
               size="small" 
-              @click="showRegenerateDialog"
               :loading="loading"
+              @click="showRegenerateDialog"
             >
               重新生成
             </el-button>
           </div>
         </template>
 
-        <div v-if="loading" class="loading-container">
-          <el-skeleton :rows="3" animated />
+        <div
+          v-if="loading"
+          class="loading-container"
+        >
+          <el-skeleton
+            :rows="3"
+            animated
+          />
         </div>
 
-        <div v-else-if="hasSubscription" class="link-section">
+        <div
+          v-else-if="hasSubscription"
+          class="link-section"
+        >
           <!-- 主链接 -->
           <div class="link-item">
             <label>订阅链接</label>
@@ -42,14 +51,20 @@
                   </el-button>
                 </template>
               </el-input>
-              <el-button @click="showQRCode(link)" class="qr-button">
+              <el-button
+                class="qr-button"
+                @click="showQRCode(link)"
+              >
                 <el-icon><Grid /></el-icon>
               </el-button>
             </div>
           </div>
 
           <!-- 短链接 -->
-          <div v-if="shortLink" class="link-item">
+          <div
+            v-if="shortLink"
+            class="link-item"
+          >
             <label>短链接</label>
             <div class="link-input-group">
               <el-input 
@@ -63,22 +78,36 @@
                   </el-button>
                 </template>
               </el-input>
-              <el-button @click="showQRCode(shortLink)" class="qr-button">
+              <el-button
+                class="qr-button"
+                @click="showQRCode(shortLink)"
+              >
                 <el-icon><Grid /></el-icon>
               </el-button>
             </div>
           </div>
         </div>
 
-        <div v-else class="empty-state">
+        <div
+          v-else
+          class="empty-state"
+        >
           <el-empty description="暂无订阅链接">
-            <el-button type="primary" @click="fetchSubscription">获取订阅链接</el-button>
+            <el-button
+              type="primary"
+              @click="fetchSubscription"
+            >
+              获取订阅链接
+            </el-button>
           </el-empty>
         </div>
       </el-card>
 
       <!-- 格式选择卡片 -->
-      <el-card v-if="hasSubscription" class="formats-card">
+      <el-card
+        v-if="hasSubscription"
+        class="formats-card"
+      >
         <template #header>
           <span>客户端格式</span>
         </template>
@@ -91,30 +120,47 @@
             @click="copyLink(format.link)"
           >
             <div class="format-icon">
-              <el-icon :size="24"><Link /></el-icon>
+              <el-icon :size="24">
+                <Link />
+              </el-icon>
             </div>
             <div class="format-info">
-              <div class="format-name">{{ format.display_name }}</div>
-              <div class="format-desc">点击复制链接</div>
+              <div class="format-name">
+                {{ format.display_name }}
+              </div>
+              <div class="format-desc">
+                点击复制链接
+              </div>
             </div>
           </div>
         </div>
       </el-card>
 
       <!-- 访问统计卡片 -->
-      <el-card v-if="hasSubscription" class="stats-card">
+      <el-card
+        v-if="hasSubscription"
+        class="stats-card"
+      >
         <template #header>
           <span>访问统计</span>
         </template>
 
         <div class="stats-grid">
           <div class="stat-item">
-            <div class="stat-value">{{ accessCount }}</div>
-            <div class="stat-label">总访问次数</div>
+            <div class="stat-value">
+              {{ accessCount }}
+            </div>
+            <div class="stat-label">
+              总访问次数
+            </div>
           </div>
           <div class="stat-item">
-            <div class="stat-value">{{ formatDate(lastAccessAt) }}</div>
-            <div class="stat-label">最后访问时间</div>
+            <div class="stat-value">
+              {{ formatDate(lastAccessAt) }}
+            </div>
+            <div class="stat-label">
+              最后访问时间
+            </div>
           </div>
         </div>
       </el-card>
@@ -128,10 +174,12 @@
       center
     >
       <div class="qr-container">
-        <canvas ref="qrCanvas"></canvas>
+        <canvas ref="qrCanvas" />
       </div>
       <template #footer>
-        <el-button @click="qrDialogVisible = false">关闭</el-button>
+        <el-button @click="qrDialogVisible = false">
+          关闭
+        </el-button>
       </template>
     </el-dialog>
 
@@ -142,14 +190,25 @@
       width="400px"
     >
       <div class="regenerate-warning">
-        <el-icon :size="48" color="#E6A23C"><Warning /></el-icon>
+        <el-icon
+          :size="48"
+          color="#E6A23C"
+        >
+          <Warning />
+        </el-icon>
         <p>重新生成订阅链接后，旧链接将立即失效。</p>
         <p>所有使用旧链接的客户端都需要重新配置。</p>
         <p><strong>确定要继续吗？</strong></p>
       </div>
       <template #footer>
-        <el-button @click="regenerateDialogVisible = false">取消</el-button>
-        <el-button type="danger" @click="confirmRegenerate" :loading="loading">
+        <el-button @click="regenerateDialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="danger"
+          :loading="loading"
+          @click="confirmRegenerate"
+        >
           确认重新生成
         </el-button>
       </template>

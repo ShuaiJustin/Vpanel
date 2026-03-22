@@ -68,7 +68,11 @@ export function formatApiError(error) {
   
   if (error.response) {
     const { status, data } = error.response
-    const code = data?.code || STATUS_TO_ERROR_CODE[status] || 'UNKNOWN_ERROR'
+    const code =
+      data?.code ||
+      data?.error?.code ||
+      STATUS_TO_ERROR_CODE[status] ||
+      'UNKNOWN_ERROR'
     const message =
       data?.message ||
       data?.error?.message ||
@@ -79,7 +83,7 @@ export function formatApiError(error) {
       errorId,
       code,
       message,
-      details: data?.details || {},
+      details: data?.details || data?.error?.details || {},
       requestId: data?.request_id,
       status,
       timestamp: new Date().toISOString()

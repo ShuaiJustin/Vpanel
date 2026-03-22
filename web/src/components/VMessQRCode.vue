@@ -1,22 +1,41 @@
 <template>
   <div class="vmess-qrcode-container">
-    <div v-if="loading" class="qrcode-loading">
-      <el-icon class="is-loading"><Loading /></el-icon>
+    <div
+      v-if="loading"
+      class="qrcode-loading"
+    >
+      <el-icon class="is-loading">
+        <Loading />
+      </el-icon>
       <span>生成二维码中...</span>
     </div>
-    <div v-else-if="error" class="qrcode-error">
+    <div
+      v-else-if="error"
+      class="qrcode-error"
+    >
       <el-icon><Warning /></el-icon>
       <span>{{ error }}</span>
     </div>
-    <div v-else class="qrcode-content">
+    <div
+      v-else
+      class="qrcode-content"
+    >
       <div class="protocol-header">
         <span class="protocol-badge">VMESS</span>
         <span class="protocol-name">{{ connectionName }}</span>
       </div>
       
       <div class="qrcode-display">
-        <img v-if="qrCodeImage" :src="qrCodeImage" alt="VMess QR Code" />
-        <div v-else ref="qrcodeTarget" class="qrcode-element"></div>
+        <img
+          v-if="qrCodeImage"
+          :src="qrCodeImage"
+          alt="VMess QR Code"
+        >
+        <div
+          v-else
+          ref="qrcodeTarget"
+          class="qrcode-element"
+        />
       </div>
       
       <div class="connection-details">
@@ -60,7 +79,10 @@
           class="share-link-input"
         >
           <template #append>
-            <el-button type="primary" @click="copyLink">
+            <el-button
+              type="primary"
+              @click="copyLink"
+            >
               <el-icon><DocumentCopy /></el-icon>
             </el-button>
           </template>
@@ -68,12 +90,19 @@
       </div>
       
       <div class="actions">
-        <el-button type="primary" @click="downloadQRCode">
-          <el-icon class="el-icon--left"><Download /></el-icon>
+        <el-button
+          type="primary"
+          @click="downloadQRCode"
+        >
+          <el-icon class="el-icon--left">
+            <Download />
+          </el-icon>
           下载二维码
         </el-button>
         <el-button @click="regenerateQRCode">
-          <el-icon class="el-icon--left"><Refresh /></el-icon>
+          <el-icon class="el-icon--left">
+            <Refresh />
+          </el-icon>
           刷新
         </el-button>
       </div>
@@ -164,6 +193,21 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  // 加密方式
+  cipher: {
+    type: String,
+    default: 'auto'
+  },
+  // ALPN
+  alpn: {
+    type: String,
+    default: ''
+  },
+  // 指纹
+  fingerprint: {
+    type: String,
+    default: ''
+  },
   // 自定义备注
   remark: {
     type: String,
@@ -178,29 +222,47 @@ const qrCodeImage = ref('')
 const qrcodeTarget = ref(null)
 const uuidVisible = ref(false)
 
+const encodeBase64UTF8 = (value) => {
+  const bytes = new TextEncoder().encode(value)
+  let binary = ''
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoa(binary)
+}
+
 // 计算分享链接
 const shareLink = computed(() => {
-  // VMess 使用 JSON 对象，然后 Base64 编码
   const vmessConfig = {
-    v: "2", // 版本号，目前为2
-    ps: props.remark || props.connectionName || "VMess", // 备注
-    add: props.server, // 服务器地址
-    port: Number(props.port), // 端口
-    id: props.uuid, // 用户ID
-    aid: Number(props.alterId), // 额外ID
-    net: props.transport, // 传输协议
-    type: props.headerType, // 伪装类型
-    host: (props.transport === 'ws' ? props.wsHost : 
-           props.transport === 'http' ? props.httpHost : ""), // 伪装域名
-    path: (props.transport === 'ws' ? props.wsPath : 
-           props.transport === 'http' ? props.httpPath : 
-           props.transport === 'grpc' ? props.grpcServiceName : ""), // 路径
-    tls: props.security === 'tls' ? "tls" : "none", // TLS
-    sni: props.sni // SNI
+    v: '2',
+    ps: props.remark || props.connectionName || 'VMess',
+    add: props.server,
+    port: String(props.port ?? ''),
+    id: props.uuid,
+    aid: String(props.alterId ?? 0),
+    scy: props.cipher || 'auto',
+    net: props.transport || 'tcp',
+    type: props.headerType || 'none',
+    host: (
+      props.transport === 'ws' ? props.wsHost :
+      props.transport === 'http' ? props.httpHost : ''
+    ),
+    path: (
+      props.transport === 'ws' ? props.wsPath :
+      props.transport === 'http' ? props.httpPath :
+      props.transport === 'grpc' ? props.grpcServiceName : ''
+    ),
+    tls: props.security === 'tls' ? 'tls' : '',
+    sni: props.sni || '',
+    alpn: props.alpn || '',
+    fp: props.fingerprint || ''
   }
-  
-  // Base64 编码 JSON 字符串
-  return `vmess://${btoa(JSON.stringify(vmessConfig))}`
+
+  if (props.allowInsecure) {
+    vmessConfig.allowInsecure = true
+  }
+
+  return `vmess://${encodeBase64UTF8(JSON.stringify(vmessConfig))}`
 })
 
 // UUID掩码
@@ -301,6 +363,9 @@ watch(
     props.httpHost,
     props.grpcServiceName,
     props.allowInsecure,
+    props.cipher,
+    props.alpn,
+    props.fingerprint,
     props.remark,
     props.connectionName
   ],

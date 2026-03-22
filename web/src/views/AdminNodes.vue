@@ -2,16 +2,27 @@
   <div class="admin-nodes-page">
     <div class="page-header">
       <div class="page-heading">
-        <h1 class="page-title">节点管理</h1>
-        <p class="page-subtitle">统一查看节点接入、TLS 配置、负载表现和安装状态</p>
+        <h1 class="page-title">
+          节点管理
+        </h1>
+        <p class="page-subtitle">
+          统一查看节点接入、TLS 配置、负载表现和安装状态
+        </p>
       </div>
       <div class="page-actions">
         <el-button @click="fetchNodes">
-          <el-icon class="el-icon--left"><Refresh /></el-icon>
+          <el-icon class="el-icon--left">
+            <Refresh />
+          </el-icon>
           刷新
         </el-button>
-        <el-button type="primary" @click="showCreateDialog">
-          <el-icon class="el-icon--left"><Plus /></el-icon>
+        <el-button
+          type="primary"
+          @click="showCreateDialog"
+        >
+          <el-icon class="el-icon--left">
+            <Plus />
+          </el-icon>
           添加节点
         </el-button>
       </div>
@@ -58,9 +69,18 @@
           clearable
           @change="fetchNodes"
         >
-          <el-option label="在线" value="online" />
-          <el-option label="离线" value="offline" />
-          <el-option label="不健康" value="unhealthy" />
+          <el-option
+            label="在线"
+            value="online"
+          />
+          <el-option
+            label="离线"
+            value="offline"
+          />
+          <el-option
+            label="不健康"
+            value="unhealthy"
+          />
         </el-select>
         <el-select
           v-model="nodeStore.filters.region"
@@ -75,7 +95,9 @@
             :value="region"
           />
         </el-select>
-        <el-button @click="resetFilters">重置</el-button>
+        <el-button @click="resetFilters">
+          重置
+        </el-button>
       </div>
       <div class="toolbar-actions">
         <span class="toolbar-summary">
@@ -94,156 +116,207 @@
 
       <div class="table-shell">
         <el-table
-          :data="nodeStore.filteredNodes"
           v-loading="nodeStore.loading"
+          :data="nodeStore.filteredNodes"
           border
           stripe
           row-key="id"
           class="nodes-table"
           :empty-text="hasActiveFilters ? '暂无匹配节点' : '暂无节点'"
         >
-        <el-table-column label="节点对象" min-width="320">
-          <template #default="{ row }">
-            <div class="entity-cell">
-              <div class="entity-cell__header">
-                <span class="entity-cell__title">{{ row.name }}</span>
-                <span :class="['metric-pill', getStatusPillClass(row.status)]">
-                  {{ getStatusText(row.status) }}
-                </span>
-              </div>
-              <div class="entity-cell__meta">
-                <span>ID：{{ row.id }}</span>
-                <span>地区：{{ row.region || '未设置' }}</span>
-                <span>权重：{{ row.weight }}</span>
-              </div>
-              <div class="node-address" :title="`${row.address}:${row.port}`">
-                {{ row.address }}:{{ row.port }}
-              </div>
-              <div v-if="parseTags(row.tags).length" class="stack-tags">
-                <el-tag
-                  v-for="tag in parseTags(row.tags).slice(0, 3)"
-                  :key="tag"
-                  size="small"
-                  effect="plain"
+          <el-table-column
+            label="节点对象"
+            min-width="320"
+          >
+            <template #default="{ row }">
+              <div class="entity-cell">
+                <div class="entity-cell__header">
+                  <span class="entity-cell__title">{{ row.name }}</span>
+                  <span :class="['metric-pill', getStatusPillClass(row.status)]">
+                    {{ getStatusText(row.status) }}
+                  </span>
+                </div>
+                <div class="entity-cell__meta">
+                  <span>ID：{{ row.id }}</span>
+                  <span>地区：{{ row.region || '未设置' }}</span>
+                  <span>权重：{{ row.weight }}</span>
+                </div>
+                <div
+                  class="node-address"
+                  :title="`${row.address}:${row.port}`"
                 >
-                  {{ tag }}
-                </el-tag>
-                <el-tag
-                  v-if="parseTags(row.tags).length > 3"
-                  size="small"
-                  effect="plain"
-                  type="info"
+                  {{ row.address }}:{{ row.port }}
+                </div>
+                <div
+                  v-if="parseTags(row.tags).length"
+                  class="stack-tags"
                 >
-                  +{{ parseTags(row.tags).length - 3 }}
-                </el-tag>
+                  <el-tag
+                    v-for="tag in parseTags(row.tags).slice(0, 3)"
+                    :key="tag"
+                    size="small"
+                    effect="plain"
+                  >
+                    {{ tag }}
+                  </el-tag>
+                  <el-tag
+                    v-if="parseTags(row.tags).length > 3"
+                    size="small"
+                    effect="plain"
+                    type="info"
+                  >
+                    +{{ parseTags(row.tags).length - 3 }}
+                  </el-tag>
+                </div>
               </div>
-            </div>
-          </template>
-        </el-table-column>
+            </template>
+          </el-table-column>
 
-        <el-table-column label="TLS 与接入" min-width="250">
-          <template #default="{ row }">
-            <div class="stack-cell">
-              <div class="stack-item stack-item--inline">
-                <span class="stack-label">TLS 状态</span>
-                <span :class="['metric-pill', row.tls_enabled ? 'is-success' : 'is-muted']">
-                  {{ row.tls_enabled ? '已启用' : '未启用' }}
-                </span>
+          <el-table-column
+            label="TLS 与接入"
+            min-width="250"
+          >
+            <template #default="{ row }">
+              <div class="stack-cell">
+                <div class="stack-item stack-item--inline">
+                  <span class="stack-label">TLS 状态</span>
+                  <span :class="['metric-pill', row.tls_enabled ? 'is-success' : 'is-muted']">
+                    {{ row.tls_enabled ? '已启用' : '未启用' }}
+                  </span>
+                </div>
+                <div class="stack-item">
+                  <span class="stack-label">TLS 域名</span>
+                  <span class="stack-value">{{ row.tls_domain || '未配置' }}</span>
+                </div>
+                <div class="stack-item">
+                  <span class="stack-label">系统证书</span>
+                  <span class="stack-value">{{ row.certificate_id ? getAssignedCertificateDisplay(row.certificate_id) : '未关联' }}</span>
+                </div>
+                <div class="entity-cell__hint">
+                  {{ getTlsHint(row) }}
+                </div>
               </div>
-              <div class="stack-item">
-                <span class="stack-label">TLS 域名</span>
-                <span class="stack-value">{{ row.tls_domain || '未配置' }}</span>
-              </div>
-              <div class="stack-item">
-                <span class="stack-label">系统证书</span>
-                <span class="stack-value">{{ row.certificate_id ? getAssignedCertificateDisplay(row.certificate_id) : '未关联' }}</span>
-              </div>
-              <div class="entity-cell__hint">
-                {{ getTlsHint(row) }}
-              </div>
-            </div>
-          </template>
-        </el-table-column>
+            </template>
+          </el-table-column>
 
-        <el-table-column label="负载与同步" min-width="250">
-          <template #default="{ row }">
-            <div class="stack-cell">
-              <div class="stack-item">
-                <span class="stack-label">用户负载</span>
-                <span class="stack-value is-strong">{{ row.current_users }}/{{ row.max_users || "∞" }}</span>
+          <el-table-column
+            label="负载与同步"
+            min-width="250"
+          >
+            <template #default="{ row }">
+              <div class="stack-cell">
+                <div class="stack-item">
+                  <span class="stack-label">用户负载</span>
+                  <span class="stack-value is-strong">{{ row.current_users }}/{{ row.max_users || "∞" }}</span>
+                </div>
+                <el-progress
+                  v-if="row.max_users > 0"
+                  :percentage="getLoadPercent(row)"
+                  :stroke-width="6"
+                  :show-text="false"
+                  :status="getLoadStatus(row)"
+                />
+                <div class="stack-item">
+                  <span class="stack-label">节点延迟</span>
+                  <span :class="['stack-value', getLatencyValueClass(row.latency)]">{{ row.latency }}ms</span>
+                </div>
+                <div class="stack-tags">
+                  <span :class="['metric-pill', getSyncPillClass(row.sync_status)]">
+                    {{ getSyncStatusText(row.sync_status) }}
+                  </span>
+                  <span :class="['metric-pill', getInstallPillClass(row.install_status)]">
+                    {{ getInstallStatusText(row.install_status) }}
+                  </span>
+                </div>
               </div>
-              <el-progress
-                v-if="row.max_users > 0"
-                :percentage="getLoadPercent(row)"
-                :stroke-width="6"
-                :show-text="false"
-                :status="getLoadStatus(row)"
-              />
-              <div class="stack-item">
-                <span class="stack-label">节点延迟</span>
-                <span :class="['stack-value', getLatencyValueClass(row.latency)]">{{ row.latency }}ms</span>
-              </div>
-              <div class="stack-tags">
-                <span :class="['metric-pill', getSyncPillClass(row.sync_status)]">
-                  {{ getSyncStatusText(row.sync_status) }}
-                </span>
-                <span :class="['metric-pill', getInstallPillClass(row.install_status)]">
-                  {{ getInstallStatusText(row.install_status) }}
-                </span>
-              </div>
-            </div>
-          </template>
-        </el-table-column>
+            </template>
+          </el-table-column>
 
-        <el-table-column label="最近活动" min-width="220">
-          <template #default="{ row }">
-            <div class="stack-cell">
-              <div class="stack-item">
-                <span class="stack-label">最后在线</span>
-                <span class="stack-value">{{ formatTime(row.last_seen_at) }}</span>
+          <el-table-column
+            label="最近活动"
+            min-width="220"
+          >
+            <template #default="{ row }">
+              <div class="stack-cell">
+                <div class="stack-item">
+                  <span class="stack-label">最后在线</span>
+                  <span class="stack-value">{{ formatTime(row.last_seen_at) }}</span>
+                </div>
+                <div class="stack-item">
+                  <span class="stack-label">最后同步</span>
+                  <span class="stack-value">{{ formatTime(row.synced_at) }}</span>
+                </div>
               </div>
-              <div class="stack-item">
-                <span class="stack-label">最后同步</span>
-                <span class="stack-value">{{ formatTime(row.synced_at) }}</span>
-              </div>
-            </div>
-          </template>
-        </el-table-column>
+            </template>
+          </el-table-column>
 
-        <el-table-column label="操作" width="210" fixed="right" align="right">
-          <template #default="{ row }">
-            <div class="operation-btns">
-              <el-button size="small" class="row-action row-action--primary" @click="viewNodeDetail(row)">
-                详情
-              </el-button>
-              <el-button
-                size="small"
-                class="row-action row-action--success"
-                @click="showDeployDialog(row)"
-              >
-                部署
-              </el-button>
-              <el-dropdown trigger="click" @command="(command) => handleNodeCommand(command, row)">
-                <el-button size="small" class="row-action row-action--more" circle title="更多操作">
-                  <el-icon><MoreFilled /></el-icon>
+          <el-table-column
+            label="操作"
+            width="210"
+            fixed="right"
+            align="right"
+          >
+            <template #default="{ row }">
+              <div class="operation-btns">
+                <el-button
+                  size="small"
+                  class="row-action row-action--primary"
+                  @click="viewNodeDetail(row)"
+                >
+                  详情
                 </el-button>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item command="edit">编辑节点</el-dropdown-item>
-                    <el-dropdown-item command="token">Token 管理</el-dropdown-item>
-                    <el-dropdown-item command="script">下载脚本</el-dropdown-item>
-                    <el-dropdown-item command="progress">安装进度</el-dropdown-item>
-                    <el-dropdown-item command="delete" divided>删除节点</el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
-            </div>
-          </template>
-        </el-table-column>
+                <el-button
+                  size="small"
+                  class="row-action row-action--success"
+                  @click="showDeployDialog(row)"
+                >
+                  部署
+                </el-button>
+                <el-dropdown
+                  trigger="click"
+                  @command="(command) => handleNodeCommand(command, row)"
+                >
+                  <el-button
+                    size="small"
+                    class="row-action row-action--more"
+                    circle
+                    title="更多操作"
+                  >
+                    <el-icon><MoreFilled /></el-icon>
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="edit">
+                        编辑节点
+                      </el-dropdown-item>
+                      <el-dropdown-item command="token">
+                        Token 管理
+                      </el-dropdown-item>
+                      <el-dropdown-item command="script">
+                        下载脚本
+                      </el-dropdown-item>
+                      <el-dropdown-item command="progress">
+                        安装进度
+                      </el-dropdown-item>
+                      <el-dropdown-item
+                        command="delete"
+                        divided
+                      >
+                        删除节点
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+              </div>
+            </template>
+          </el-table-column>
         </el-table>
       </div>
 
-      <div v-if="nodeStore.total > 0" class="pagination-container">
+      <div
+        v-if="nodeStore.total > 0"
+        class="pagination-container"
+      >
         <el-pagination
           v-model:current-page="pagination.page"
           v-model:page-size="pagination.pageSize"
@@ -262,18 +335,40 @@
       :title="isEdit ? '编辑节点' : '添加节点'"
       width="700px"
     >
-      <el-form :model="form" :rules="rules" ref="formRef" label-width="120px">
-        <el-divider content-position="left">节点信息</el-divider>
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        label-width="120px"
+      >
+        <el-divider content-position="left">
+          节点信息
+        </el-divider>
 
-        <el-form-item label="节点名称" prop="name">
-          <el-input v-model="form.name" placeholder="请输入节点名称" />
+        <el-form-item
+          label="节点名称"
+          prop="name"
+        >
+          <el-input
+            v-model="form.name"
+            placeholder="请输入节点名称"
+          />
         </el-form-item>
 
-        <el-form-item label="地区" prop="region">
-          <el-input v-model="form.region" placeholder="如：香港、日本、美国" />
+        <el-form-item
+          label="地区"
+          prop="region"
+        >
+          <el-input
+            v-model="form.region"
+            placeholder="如：香港、日本、美国"
+          />
         </el-form-item>
 
-        <el-form-item label="权重" prop="weight">
+        <el-form-item
+          label="权重"
+          prop="weight"
+        >
           <el-input-number
             v-model="form.weight"
             :min="1"
@@ -283,7 +378,10 @@
           <span class="form-tip">负载均衡权重，数值越大分配用户越多</span>
         </el-form-item>
 
-        <el-form-item label="最大用户数" prop="max_users">
+        <el-form-item
+          label="最大用户数"
+          prop="max_users"
+        >
           <el-input-number
             v-model="form.max_users"
             :min="0"
@@ -297,8 +395,8 @@
             v-for="(tag, index) in form.tags"
             :key="index"
             closable
-            @close="removeTag(index)"
             style="margin-right: 8px; margin-bottom: 8px"
+            @close="removeTag(index)"
           >
             {{ tag }}
           </el-tag>
@@ -310,9 +408,13 @@
             @keyup.enter="addTag"
             @blur="addTag"
           />
-          <el-button v-else size="small" @click="showTagInput = true"
-            >+ 添加标签</el-button
+          <el-button
+            v-else
+            size="small"
+            @click="showTagInput = true"
           >
+            + 添加标签
+          </el-button>
         </el-form-item>
 
         <el-form-item label="IP 白名单">
@@ -324,7 +426,9 @@
           />
         </el-form-item>
 
-        <el-divider content-position="left">TLS 与证书</el-divider>
+        <el-divider content-position="left">
+          TLS 与证书
+        </el-divider>
 
         <el-form-item label="启用 TLS">
           <el-switch
@@ -334,12 +438,17 @@
           />
         </el-form-item>
 
-        <el-form-item label="TLS 域名" prop="tls_domain">
+        <el-form-item
+          label="TLS 域名"
+          prop="tls_domain"
+        >
           <el-input
             v-model="form.tls_domain"
             placeholder="如 jp.example.com"
           />
-          <div class="form-tip-inline">用于节点 TLS 标识、健康检查和系统证书自动匹配。</div>
+          <div class="form-tip-inline">
+            用于节点 TLS 标识、健康检查和系统证书自动匹配。
+          </div>
         </el-form-item>
 
         <el-form-item label="系统证书">
@@ -359,8 +468,13 @@
               :value="cert.id"
             />
           </el-select>
-          <div class="form-tip-inline">选择后会自动回填 TLS 域名，你仍可继续手动修改。</div>
-          <div v-if="selectedCertificate" class="certificate-tip">
+          <div class="form-tip-inline">
+            选择后会自动回填 TLS 域名，你仍可继续手动修改。
+          </div>
+          <div
+            v-if="selectedCertificate"
+            class="certificate-tip"
+          >
             当前证书：{{ selectedCertificate.domain }}
             <span v-if="selectedCertificate.expireDate && selectedCertificate.expireDate !== '-'">
               ，到期 {{ selectedCertificate.expireDate }}
@@ -369,17 +483,32 @@
         </el-form-item>
 
         <template v-if="!isEdit && form.installMethod === 'manual'">
-          <el-divider content-position="left">节点连接信息</el-divider>
+          <el-divider content-position="left">
+            节点连接信息
+          </el-divider>
 
-          <el-alert type="info" :closable="false" style="margin-bottom: 16px">
+          <el-alert
+            type="info"
+            :closable="false"
+            style="margin-bottom: 16px"
+          >
             手动安装模式需要提供节点地址和端口，用于后续连接
           </el-alert>
 
-          <el-form-item label="节点地址" prop="address">
-            <el-input v-model="form.address" placeholder="IP 地址或域名" />
+          <el-form-item
+            label="节点地址"
+            prop="address"
+          >
+            <el-input
+              v-model="form.address"
+              placeholder="IP 地址或域名"
+            />
           </el-form-item>
 
-          <el-form-item label="节点端口" prop="port">
+          <el-form-item
+            label="节点端口"
+            prop="port"
+          >
             <el-input-number
               v-model="form.port"
               :min="1"
@@ -391,21 +520,34 @@
         </template>
 
         <template v-if="!isEdit">
-          <el-divider content-position="left">安装方式</el-divider>
+          <el-divider content-position="left">
+            安装方式
+          </el-divider>
 
           <el-form-item label="安装方式">
             <el-radio-group v-model="form.installMethod">
-              <el-radio label="manual">稍后手动安装</el-radio>
-              <el-radio label="auto">立即自动安装</el-radio>
+              <el-radio label="manual">
+                稍后手动安装
+              </el-radio>
+              <el-radio label="auto">
+                立即自动安装
+              </el-radio>
             </el-radio-group>
           </el-form-item>
 
           <template v-if="form.installMethod === 'auto'">
-            <el-alert type="info" :closable="false" style="margin-bottom: 16px">
+            <el-alert
+              type="info"
+              :closable="false"
+              style="margin-bottom: 16px"
+            >
               通过 SSH 连接到服务器并自动安装 Agent 和 Xray
             </el-alert>
 
-            <el-form-item label="Panel 地址" prop="panel_url">
+            <el-form-item
+              label="Panel 地址"
+              prop="panel_url"
+            >
               <el-input
                 v-model="form.panel_url"
                 placeholder="http://your-panel-ip:8080"
@@ -414,17 +556,24 @@
                   <el-icon><Link /></el-icon>
                 </template>
               </el-input>
-              <span class="form-tip"
-                >Agent 连接到 Panel 的地址，必须是 Agent
-                服务器能访问的地址</span
-              >
+              <span class="form-tip">Agent 连接到 Panel 的地址，必须是 Agent
+                服务器能访问的地址</span>
             </el-form-item>
 
-            <el-form-item label="服务器地址" prop="ssh_host">
-              <el-input v-model="form.ssh_host" placeholder="IP 地址或域名" />
+            <el-form-item
+              label="服务器地址"
+              prop="ssh_host"
+            >
+              <el-input
+                v-model="form.ssh_host"
+                placeholder="IP 地址或域名"
+              />
             </el-form-item>
 
-            <el-form-item label="SSH 端口" prop="ssh_port">
+            <el-form-item
+              label="SSH 端口"
+              prop="ssh_port"
+            >
               <el-input-number
                 v-model="form.ssh_port"
                 :min="1"
@@ -433,17 +582,27 @@
               />
             </el-form-item>
 
-            <el-form-item label="用户名" prop="ssh_username">
+            <el-form-item
+              label="用户名"
+              prop="ssh_username"
+            >
               <el-input
                 v-model="form.ssh_username"
                 placeholder="SSH 用户名 (通常为 root)"
               />
             </el-form-item>
 
-            <el-form-item label="认证方式" prop="ssh_auth_method">
+            <el-form-item
+              label="认证方式"
+              prop="ssh_auth_method"
+            >
               <el-radio-group v-model="form.ssh_auth_method">
-                <el-radio label="password">密码</el-radio>
-                <el-radio label="key">私钥</el-radio>
+                <el-radio label="password">
+                  密码
+                </el-radio>
+                <el-radio label="key">
+                  私钥
+                </el-radio>
               </el-radio-group>
             </el-form-item>
 
@@ -475,8 +634,8 @@
 
             <el-form-item>
               <el-button
-                @click="testSSHConnection"
                 :loading="testingConnection"
+                @click="testSSHConnection"
               >
                 <el-icon><Connection /></el-icon>
                 测试连接
@@ -500,13 +659,19 @@
               :closable="false"
               style="margin-bottom: 16px"
             >
-              <template #title>常见问题排查</template>
+              <template #title>
+                常见问题排查
+              </template>
               <div style="font-size: 13px; line-height: 1.6">
                 <p style="margin: 4px 0">
                   • 确认 SSH 服务正在运行: <code>systemctl status sshd</code>
                 </p>
-                <p style="margin: 4px 0">• 确认端口正确 (默认 22)</p>
-                <p style="margin: 4px 0">• 确认防火墙允许 SSH 连接</p>
+                <p style="margin: 4px 0">
+                  • 确认端口正确 (默认 22)
+                </p>
+                <p style="margin: 4px 0">
+                  • 确认防火墙允许 SSH 连接
+                </p>
                 <p style="margin: 4px 0">
                   • 如果使用密码认证，确认服务器允许:
                   <code>PasswordAuthentication yes</code>
@@ -517,8 +682,14 @@
         </template>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="submitForm">
+        <el-button @click="dialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="submitting"
+          @click="submitForm"
+        >
           {{
             isEdit
               ? "保存"
@@ -531,23 +702,44 @@
     </el-dialog>
 
     <!-- Token 管理对话框 -->
-    <el-dialog v-model="tokenDialogVisible" title="Token 管理" width="500px">
-      <div v-if="currentNode" class="token-dialog-content">
+    <el-dialog
+      v-model="tokenDialogVisible"
+      title="Token 管理"
+      width="500px"
+    >
+      <div
+        v-if="currentNode"
+        class="token-dialog-content"
+      >
         <div class="token-info">
-          <div class="token-label">节点名称</div>
-          <div class="token-value">{{ currentNode.name }}</div>
+          <div class="token-label">
+            节点名称
+          </div>
+          <div class="token-value">
+            {{ currentNode.name }}
+          </div>
         </div>
         <div class="token-info">
-          <div class="token-label">当前 Token</div>
+          <div class="token-label">
+            当前 Token
+          </div>
           <div class="token-value token-text">
             <span v-if="showToken">{{ currentToken || "未生成" }}</span>
             <span v-else>{{
               currentToken ? "••••••••••••••••" : "未生成"
             }}</span>
-            <el-button v-if="currentToken" link @click="showToken = !showToken">
+            <el-button
+              v-if="currentToken"
+              link
+              @click="showToken = !showToken"
+            >
               <el-icon><View v-if="!showToken" /><Hide v-else /></el-icon>
             </el-button>
-            <el-button v-if="currentToken" link @click="copyToken">
+            <el-button
+              v-if="currentToken"
+              link
+              @click="copyToken"
+            >
               <el-icon><CopyDocument /></el-icon>
             </el-button>
           </div>
@@ -555,24 +747,24 @@
         <div class="token-actions">
           <el-button
             type="primary"
-            @click="handleGenerateToken"
             :loading="tokenLoading"
+            @click="handleGenerateToken"
           >
             {{ currentToken ? "重新生成" : "生成 Token" }}
           </el-button>
           <el-button
             v-if="currentToken"
             type="warning"
-            @click="handleRotateToken"
             :loading="tokenLoading"
+            @click="handleRotateToken"
           >
             轮换 Token
           </el-button>
           <el-button
             v-if="currentToken"
             type="danger"
-            @click="handleRevokeToken"
             :loading="tokenLoading"
+            @click="handleRevokeToken"
           >
             撤销 Token
           </el-button>
@@ -584,8 +776,12 @@
           show-icon
           class="new-token-alert"
         >
-          <template #title> 新 Token 已生成，请妥善保存： </template>
-          <div class="new-token-text">{{ newToken }}</div>
+          <template #title>
+            新 Token 已生成，请妥善保存：
+          </template>
+          <div class="new-token-text">
+            {{ newToken }}
+          </div>
         </el-alert>
       </div>
     </el-dialog>
@@ -604,7 +800,12 @@
           v-if="!deployResult && deploySteps.length === 0 && !deployLogs"
           class="deploy-loading"
         >
-          <el-icon class="is-loading" :size="40"><Loading /></el-icon>
+          <el-icon
+            class="is-loading"
+            :size="40"
+          >
+            <Loading />
+          </el-icon>
           <p style="margin-top: 16px; color: #909399">
             {{ deployStatusMessage || "正在部署 Agent，请稍候..." }}
           </p>
@@ -627,10 +828,16 @@
         </el-steps>
 
         <!-- 日志显示 -->
-        <div v-if="deployLogs" class="deploy-logs">
+        <div
+          v-if="deployLogs"
+          class="deploy-logs"
+        >
           <div class="logs-header">
             <span>部署日志</span>
-            <el-button link @click="copyDeployLogs">
+            <el-button
+              link
+              @click="copyDeployLogs"
+            >
               <el-icon><CopyDocument /></el-icon>
               复制日志
             </el-button>
@@ -650,9 +857,11 @@
       </div>
 
       <template #footer>
-        <el-button @click="closeDeployProgress">{{
-          deployResult ? "关闭" : "后台继续安装"
-        }}</el-button>
+        <el-button @click="closeDeployProgress">
+          {{
+            deployResult ? "关闭" : "后台继续安装"
+          }}
+        </el-button>
       </template>
     </el-dialog>
 
@@ -662,24 +871,37 @@
       title="部署 Agent 到节点"
       width="600px"
     >
-      <el-alert type="info" :closable="false" style="margin-bottom: 20px">
+      <el-alert
+        type="info"
+        :closable="false"
+        style="margin-bottom: 20px"
+      >
         <template #title>
           将 Agent 部署到节点: {{ currentNode?.name }}
         </template>
       </el-alert>
 
       <el-form
+        ref="deployFormRef"
         :model="deployForm"
         :rules="deployRules"
-        ref="deployFormRef"
         label-width="100px"
       >
-        <el-form-item label="服务器地址" prop="host">
-          <el-input v-model="deployForm.host" placeholder="IP 地址或域名" />
+        <el-form-item
+          label="服务器地址"
+          prop="host"
+        >
+          <el-input
+            v-model="deployForm.host"
+            placeholder="IP 地址或域名"
+          />
           <span class="form-tip">通常与节点地址相同</span>
         </el-form-item>
 
-        <el-form-item label="SSH 端口" prop="port">
+        <el-form-item
+          label="SSH 端口"
+          prop="port"
+        >
           <el-input-number
             v-model="deployForm.port"
             :min="1"
@@ -688,14 +910,27 @@
           />
         </el-form-item>
 
-        <el-form-item label="用户名" prop="username">
-          <el-input v-model="deployForm.username" placeholder="SSH 用户名" />
+        <el-form-item
+          label="用户名"
+          prop="username"
+        >
+          <el-input
+            v-model="deployForm.username"
+            placeholder="SSH 用户名"
+          />
         </el-form-item>
 
-        <el-form-item label="认证方式" prop="authMethod">
+        <el-form-item
+          label="认证方式"
+          prop="authMethod"
+        >
           <el-radio-group v-model="deployForm.authMethod">
-            <el-radio label="password">密码</el-radio>
-            <el-radio label="key">私钥</el-radio>
+            <el-radio label="password">
+              密码
+            </el-radio>
+            <el-radio label="key">
+              私钥
+            </el-radio>
           </el-radio-group>
         </el-form-item>
 
@@ -727,62 +962,103 @@
       </el-form>
 
       <template #footer>
-        <el-button @click="deployToNodeDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="deploying" @click="submitDeploy">
+        <el-button @click="deployToNodeDialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="deploying"
+          @click="submitDeploy"
+        >
           开始部署
         </el-button>
       </template>
     </el-dialog>
 
     <!-- 节点详情对话框 -->
-    <el-dialog v-model="detailDialogVisible" title="节点详情" width="700px">
-      <div v-if="currentNode" class="node-detail">
-        <el-descriptions :column="2" border>
-          <el-descriptions-item label="ID">{{
-            currentNode.id
-          }}</el-descriptions-item>
-          <el-descriptions-item label="名称">{{
-            currentNode.name
-          }}</el-descriptions-item>
-          <el-descriptions-item label="地址"
-            >{{ currentNode.address }}:{{
+    <el-dialog
+      v-model="detailDialogVisible"
+      title="节点详情"
+      width="700px"
+    >
+      <div
+        v-if="currentNode"
+        class="node-detail"
+      >
+        <el-descriptions
+          :column="2"
+          border
+        >
+          <el-descriptions-item label="ID">
+            {{
+              currentNode.id
+            }}
+          </el-descriptions-item>
+          <el-descriptions-item label="名称">
+            {{
+              currentNode.name
+            }}
+          </el-descriptions-item>
+          <el-descriptions-item label="地址">
+            {{ currentNode.address }}:{{
               currentNode.port
-            }}</el-descriptions-item
-          >
+            }}
+          </el-descriptions-item>
           <el-descriptions-item label="状态">
-            <el-tag :type="getStatusType(currentNode.status)">{{
-              getStatusText(currentNode.status)
-            }}</el-tag>
+            <el-tag :type="getStatusType(currentNode.status)">
+              {{
+                getStatusText(currentNode.status)
+              }}
+            </el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="地区">{{
-            currentNode.region || "-"
-          }}</el-descriptions-item>
-          <el-descriptions-item label="权重">{{
-            currentNode.weight
-          }}</el-descriptions-item>
-          <el-descriptions-item label="当前用户">{{
-            currentNode.current_users
-          }}</el-descriptions-item>
-          <el-descriptions-item label="最大用户">{{
-            currentNode.max_users || "无限制"
-          }}</el-descriptions-item>
-          <el-descriptions-item label="延迟"
-            >{{ currentNode.latency }}ms</el-descriptions-item
-          >
+          <el-descriptions-item label="地区">
+            {{
+              currentNode.region || "-"
+            }}
+          </el-descriptions-item>
+          <el-descriptions-item label="权重">
+            {{
+              currentNode.weight
+            }}
+          </el-descriptions-item>
+          <el-descriptions-item label="当前用户">
+            {{
+              currentNode.current_users
+            }}
+          </el-descriptions-item>
+          <el-descriptions-item label="最大用户">
+            {{
+              currentNode.max_users || "无限制"
+            }}
+          </el-descriptions-item>
+          <el-descriptions-item label="延迟">
+            {{ currentNode.latency }}ms
+          </el-descriptions-item>
           <el-descriptions-item label="同步状态">
-            <el-tag :type="getSyncStatusType(currentNode.sync_status)">{{
-              getSyncStatusText(currentNode.sync_status)
-            }}</el-tag>
+            <el-tag :type="getSyncStatusType(currentNode.sync_status)">
+              {{
+                getSyncStatusText(currentNode.sync_status)
+              }}
+            </el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="最后在线">{{
-            formatTime(currentNode.last_seen_at)
-          }}</el-descriptions-item>
-          <el-descriptions-item label="最后同步">{{
-            formatTime(currentNode.synced_at)
-          }}</el-descriptions-item>
-          <el-descriptions-item label="创建时间" :span="2">{{
-            formatTime(currentNode.created_at)
-          }}</el-descriptions-item>
+          <el-descriptions-item label="最后在线">
+            {{
+              formatTime(currentNode.last_seen_at)
+            }}
+          </el-descriptions-item>
+          <el-descriptions-item label="最后同步">
+            {{
+              formatTime(currentNode.synced_at)
+            }}
+          </el-descriptions-item>
+          <el-descriptions-item
+            label="创建时间"
+            :span="2"
+          >
+            {{
+              formatTime(currentNode.created_at)
+            }}
+          </el-descriptions-item>
         </el-descriptions>
         <div
           v-if="currentNode.tags && currentNode.tags.length"
@@ -1172,17 +1448,6 @@ const getSyncPillClass = (status) => {
   return classes[status] || "is-muted";
 };
 
-const getInstallStatusType = (status) => {
-  const types = {
-    idle: "info",
-    queued: "warning",
-    running: "warning",
-    success: "success",
-    failed: "danger",
-  };
-  return types[status] || "info";
-};
-
 const getInstallStatusText = (status) => {
   const texts = {
     idle: "未安装",
@@ -1211,12 +1476,6 @@ const getLoadStatus = (node) => {
   if (ratio >= 0.9) return "exception";
   if (ratio >= 0.7) return "warning";
   return "success";
-};
-
-const getLatencyClass = (latency) => {
-  if (latency < 100) return "latency-good";
-  if (latency < 300) return "latency-medium";
-  return "latency-bad";
 };
 
 const getLatencyValueClass = (latency) => {

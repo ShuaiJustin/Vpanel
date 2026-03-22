@@ -1,15 +1,23 @@
 <template>
-  <div class="node-card" :class="{ offline: node.status !== 'online' }">
+  <div
+    class="node-card"
+    :class="{ offline: node.status !== 'online' }"
+  >
     <!-- 卡片头部 -->
     <div class="card-header">
       <div class="node-info">
         <span class="node-flag">{{ regionFlag }}</span>
         <div class="node-details">
-          <h3 class="node-name">{{ node.name }}</h3>
+          <h3 class="node-name">
+            {{ node.name }}
+          </h3>
           <span class="node-region">{{ regionLabel }}</span>
         </div>
       </div>
-      <el-tag :type="statusType" size="small">
+      <el-tag
+        :type="statusType"
+        size="small"
+      >
         {{ statusLabel }}
       </el-tag>
     </div>
@@ -19,7 +27,12 @@
       <!-- 协议和端口 -->
       <div class="info-row">
         <span class="info-label">协议</span>
-        <el-tag size="small" type="info">{{ node.protocol }}</el-tag>
+        <el-tag
+          size="small"
+          type="info"
+        >
+          {{ node.protocol }}
+        </el-tag>
       </div>
 
       <!-- 负载 -->
@@ -39,14 +52,23 @@
       <!-- 延迟 -->
       <div class="info-row">
         <span class="info-label">延迟</span>
-        <span v-if="testing" class="latency-testing">
+        <span
+          v-if="testing"
+          class="latency-testing"
+        >
           <el-icon class="is-loading"><Loading /></el-icon>
           测速中...
         </span>
-        <span v-else-if="latency" :class="latencyClass">
+        <span
+          v-else-if="latency"
+          :class="latencyClass"
+        >
           {{ latency }}ms
         </span>
-        <span v-else class="latency-unknown">
+        <span
+          v-else
+          class="latency-unknown"
+        >
           未测试
         </span>
       </div>
@@ -56,9 +78,9 @@
     <div class="card-footer">
       <el-button 
         size="small" 
-        @click="$emit('test')" 
-        :loading="testing"
+        :loading="testing" 
         :disabled="node.status !== 'online'"
+        @click="$emit('test')"
       >
         <el-icon><Timer /></el-icon>
         测速
@@ -66,8 +88,8 @@
       <el-button 
         size="small" 
         type="primary" 
-        @click="$emit('copy')"
         :disabled="node.status !== 'online'"
+        @click="$emit('copy')"
       >
         <el-icon><CopyDocument /></el-icon>
         复制配置
@@ -75,7 +97,10 @@
     </div>
 
     <!-- 维护中遮罩 -->
-    <div v-if="node.status === 'maintenance'" class="maintenance-overlay">
+    <div
+      v-if="node.status === 'maintenance'"
+      class="maintenance-overlay"
+    >
       <el-icon><Warning /></el-icon>
       <span>维护中</span>
     </div>

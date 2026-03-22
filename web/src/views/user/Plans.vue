@@ -4,8 +4,12 @@
     <div class="page-header">
       <div class="header-content">
         <div>
-          <h1 class="page-title">选择套餐</h1>
-          <p class="page-subtitle">选择适合您的套餐，享受高速稳定的服务</p>
+          <h1 class="page-title">
+            选择套餐
+          </h1>
+          <p class="page-subtitle">
+            选择适合您的套餐，享受高速稳定的服务
+          </p>
         </div>
         <!-- 货币选择器 -->
         <CurrencySelector />
@@ -13,12 +17,21 @@
     </div>
 
     <!-- 加载状态 -->
-    <div v-if="loading" class="loading-container">
-      <el-skeleton :rows="3" animated />
+    <div
+      v-if="loading"
+      class="loading-container"
+    >
+      <el-skeleton
+        :rows="3"
+        animated
+      />
     </div>
 
     <!-- 套餐列表 -->
-    <div v-else class="plans-grid">
+    <div
+      v-else
+      class="plans-grid"
+    >
       <div
         v-for="plan in sortedPlans"
         :key="plan.id"
@@ -26,15 +39,22 @@
         :class="{ 'plan-card--popular': plan.is_recommended }"
       >
         <!-- 热门标签 -->
-        <div v-if="plan.is_recommended" class="popular-badge">
+        <div
+          v-if="plan.is_recommended"
+          class="popular-badge"
+        >
           <el-icon><Star /></el-icon>
           热门
         </div>
 
         <!-- 套餐名称 -->
         <div class="plan-header">
-          <h3 class="plan-name">{{ plan.name }}</h3>
-          <p class="plan-description">{{ plan.description }}</p>
+          <h3 class="plan-name">
+            {{ plan.name }}
+          </h3>
+          <p class="plan-description">
+            {{ plan.description }}
+          </p>
         </div>
 
         <!-- 价格 -->
@@ -59,7 +79,10 @@
             <el-icon><Check /></el-icon>
             {{ plan.ip_limit }} 台设备同时在线
           </li>
-          <li v-for="feature in plan.features" :key="feature">
+          <li
+            v-for="feature in plan.features"
+            :key="feature"
+          >
             <el-icon><Check /></el-icon>
             {{ feature }}
           </li>
@@ -79,7 +102,10 @@
     </div>
 
     <!-- 空状态 -->
-    <el-empty v-if="!loading && sortedPlans.length === 0" description="暂无可用套餐" />
+    <el-empty
+      v-if="!loading && sortedPlans.length === 0"
+      description="暂无可用套餐"
+    />
   </div>
 </template>
 
@@ -113,11 +139,6 @@ const formatMonthlyPrice = (plan) => {
   const price = plan.display_price || plan.price
   if (!plan || plan.duration <= 0) return '0.00'
   return formatPrice(Math.round(price / (plan.duration / 30)))
-}
-
-const getMonthlyPrice = (plan) => {
-  if (!plan || plan.duration <= 0) return 0
-  return Math.round(plan.price / (plan.duration / 30))
 }
 
 const formatTraffic = (bytes) => {

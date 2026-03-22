@@ -3,10 +3,17 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-content">
-        <h1 class="page-title">工单列表</h1>
-        <p class="page-subtitle">提交工单获取技术支持</p>
+        <h1 class="page-title">
+          工单列表
+        </h1>
+        <p class="page-subtitle">
+          提交工单获取技术支持
+        </p>
       </div>
-      <el-button type="primary" @click="createTicket">
+      <el-button
+        type="primary"
+        @click="createTicket"
+      >
         <el-icon><Plus /></el-icon>
         创建工单
       </el-button>
@@ -14,28 +21,57 @@
 
     <!-- 筛选栏 -->
     <div class="filter-bar">
-      <el-radio-group v-model="selectedStatus" size="default">
-        <el-radio-button value="">全部</el-radio-button>
-        <el-radio-button value="open">待处理</el-radio-button>
-        <el-radio-button value="pending">处理中</el-radio-button>
-        <el-radio-button value="resolved">已解决</el-radio-button>
-        <el-radio-button value="closed">已关闭</el-radio-button>
+      <el-radio-group
+        v-model="selectedStatus"
+        size="default"
+      >
+        <el-radio-button value="">
+          全部
+        </el-radio-button>
+        <el-radio-button value="open">
+          待处理
+        </el-radio-button>
+        <el-radio-button value="pending">
+          处理中
+        </el-radio-button>
+        <el-radio-button value="resolved">
+          已解决
+        </el-radio-button>
+        <el-radio-button value="closed">
+          已关闭
+        </el-radio-button>
       </el-radio-group>
     </div>
 
     <!-- 加载状态 -->
-    <div v-if="loading" class="loading-state">
-      <el-icon class="loading-icon"><Loading /></el-icon>
+    <div
+      v-if="loading"
+      class="loading-state"
+    >
+      <el-icon class="loading-icon">
+        <Loading />
+      </el-icon>
       <p>加载工单列表...</p>
     </div>
 
     <!-- 空状态 -->
-    <el-empty v-else-if="filteredTickets.length === 0" description="暂无工单">
-      <el-button type="primary" @click="createTicket">创建工单</el-button>
+    <el-empty
+      v-else-if="filteredTickets.length === 0"
+      description="暂无工单"
+    >
+      <el-button
+        type="primary"
+        @click="createTicket"
+      >
+        创建工单
+      </el-button>
     </el-empty>
 
     <!-- 工单列表 -->
-    <div v-else class="tickets-list">
+    <div
+      v-else
+      class="tickets-list"
+    >
       <div 
         v-for="ticket in filteredTickets" 
         :key="ticket.id"
@@ -44,12 +80,17 @@
       >
         <div class="ticket-header">
           <span class="ticket-id">#{{ ticket.id }}</span>
-          <el-tag :type="getStatusType(ticket.status)" size="small">
+          <el-tag
+            :type="getStatusType(ticket.status)"
+            size="small"
+          >
             {{ getStatusLabel(ticket.status) }}
           </el-tag>
         </div>
 
-        <h3 class="ticket-subject">{{ ticket.subject }}</h3>
+        <h3 class="ticket-subject">
+          {{ ticket.subject }}
+        </h3>
 
         <div class="ticket-meta">
           <span class="meta-item">
@@ -69,12 +110,17 @@
           </el-tag>
         </div>
 
-        <el-icon class="arrow-icon"><ArrowRight /></el-icon>
+        <el-icon class="arrow-icon">
+          <ArrowRight />
+        </el-icon>
       </div>
     </div>
 
     <!-- 分页 -->
-    <div v-if="total > pageSize" class="pagination">
+    <div
+      v-if="total > pageSize"
+      class="pagination"
+    >
       <el-pagination
         v-model:current-page="currentPage"
         :page-size="pageSize"

@@ -1,31 +1,76 @@
 <template>
-  <div class="empty-state" :class="[size, { 'with-border': bordered }]">
+  <div
+    class="empty-state"
+    :class="[size, { 'with-border': bordered }]"
+  >
     <!-- 图标或图片 -->
     <div class="empty-state-icon">
       <slot name="icon">
-        <component :is="iconComponent" v-if="iconComponent" />
-        <svg v-else viewBox="0 0 200 200" class="default-icon">
-          <circle cx="100" cy="80" r="40" fill="#e8e8e8" />
-          <rect x="40" y="130" width="120" height="10" rx="5" fill="#e8e8e8" />
-          <rect x="60" y="150" width="80" height="10" rx="5" fill="#f0f0f0" />
+        <component
+          :is="iconComponent"
+          v-if="iconComponent"
+        />
+        <svg
+          v-else
+          viewBox="0 0 200 200"
+          class="default-icon"
+        >
+          <circle
+            cx="100"
+            cy="80"
+            r="40"
+            fill="#e8e8e8"
+          />
+          <rect
+            x="40"
+            y="130"
+            width="120"
+            height="10"
+            rx="5"
+            fill="#e8e8e8"
+          />
+          <rect
+            x="60"
+            y="150"
+            width="80"
+            height="10"
+            rx="5"
+            fill="#f0f0f0"
+          />
         </svg>
       </slot>
     </div>
 
     <!-- 标题 -->
-    <div class="empty-state-title" v-if="title || $slots.title">
-      <slot name="title">{{ title }}</slot>
+    <div
+      v-if="displayTitle || $slots.title"
+      class="empty-state-title"
+    >
+      <slot name="title">
+        {{ displayTitle }}
+      </slot>
     </div>
 
     <!-- 描述 -->
-    <div class="empty-state-description" v-if="description || $slots.description">
-      <slot name="description">{{ description }}</slot>
+    <div
+      v-if="displayDescription || $slots.description"
+      class="empty-state-description"
+    >
+      <slot name="description">
+        {{ displayDescription }}
+      </slot>
     </div>
 
     <!-- 操作按钮 -->
-    <div class="empty-state-actions" v-if="$slots.actions || actionText">
+    <div
+      v-if="$slots.actions || actionText"
+      class="empty-state-actions"
+    >
       <slot name="actions">
-        <el-button type="primary" @click="$emit('action')">
+        <el-button
+          type="primary"
+          @click="$emit('action')"
+        >
           {{ actionText }}
         </el-button>
       </slot>

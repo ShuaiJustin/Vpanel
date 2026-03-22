@@ -1,10 +1,15 @@
 <template>
   <div class="test-page-container">
     <div class="page-header">
-      <div class="title">VLESS 协议测试</div>
+      <div class="title">
+        VLESS 协议测试
+      </div>
     </div>
     
-    <el-card shadow="hover" class="test-card">
+    <el-card
+      shadow="hover"
+      class="test-card"
+    >
       <template #header>
         <div class="card-header">
           <span>测试 VLESS 配置</span>
@@ -18,19 +23,34 @@
           label-width="100px"
         >
           <el-row :gutter="20">
-            <el-col :xs="24" :md="12">
+            <el-col
+              :xs="24"
+              :md="12"
+            >
               <el-form-item label="连接名称">
-                <el-input v-model="configForm.name" placeholder="请输入连接名称" />
+                <el-input
+                  v-model="configForm.name"
+                  placeholder="请输入连接名称"
+                />
               </el-form-item>
             </el-col>
             
-            <el-col :xs="24" :md="12">
+            <el-col
+              :xs="24"
+              :md="12"
+            >
               <el-form-item label="服务器地址">
-                <el-input v-model="configForm.server" placeholder="请输入服务器地址" />
+                <el-input
+                  v-model="configForm.server"
+                  placeholder="请输入服务器地址"
+                />
               </el-form-item>
             </el-col>
             
-            <el-col :xs="24" :md="12">
+            <el-col
+              :xs="24"
+              :md="12"
+            >
               <el-form-item label="端口">
                 <el-input-number 
                   v-model="configForm.port" 
@@ -42,7 +62,10 @@
               </el-form-item>
             </el-col>
             
-            <el-col :xs="24" :md="12">
+            <el-col
+              :xs="24"
+              :md="12"
+            >
               <el-form-item label="UUID">
                 <el-input 
                   v-model="configForm.uuid" 
@@ -50,110 +73,217 @@
                   show-password 
                 >
                   <template #append>
-                    <el-button @click="generateRandomUUID">随机</el-button>
+                    <el-button @click="generateRandomUUID">
+                      随机
+                    </el-button>
                   </template>
                 </el-input>
               </el-form-item>
             </el-col>
             
-            <el-col :xs="24" :md="12">
+            <el-col
+              :xs="24"
+              :md="12"
+            >
               <el-form-item label="安全类型">
-                <el-select v-model="configForm.security" style="width: 100%">
-                  <el-option label="无加密" value="none" />
-                  <el-option label="TLS" value="tls" />
-                  <el-option label="XTLS" value="xtls" />
+                <el-select
+                  v-model="configForm.security"
+                  style="width: 100%"
+                >
+                  <el-option
+                    label="无加密"
+                    value="none"
+                  />
+                  <el-option
+                    label="TLS"
+                    value="tls"
+                  />
+                  <el-option
+                    label="XTLS"
+                    value="xtls"
+                  />
                 </el-select>
               </el-form-item>
             </el-col>
             
-            <el-col :xs="24" :md="12" v-if="configForm.security !== 'none'">
+            <el-col
+              v-if="configForm.security !== 'none'"
+              :xs="24"
+              :md="12"
+            >
               <el-form-item label="SNI">
-                <el-input v-model="configForm.sni" placeholder="请输入SNI" />
+                <el-input
+                  v-model="configForm.sni"
+                  placeholder="请输入SNI"
+                />
               </el-form-item>
             </el-col>
             
-            <el-col :xs="24" :md="12" v-if="configForm.security === 'xtls'">
+            <el-col
+              v-if="configForm.security === 'xtls'"
+              :xs="24"
+              :md="12"
+            >
               <el-form-item label="流控">
-                <el-select v-model="configForm.flow" style="width: 100%">
-                  <el-option label="无流控" value="" />
-                  <el-option label="xtls-rprx-vision" value="xtls-rprx-vision" />
-                  <el-option label="xtls-rprx-vision-udp443" value="xtls-rprx-vision-udp443" />
+                <el-select
+                  v-model="configForm.flow"
+                  style="width: 100%"
+                >
+                  <el-option
+                    label="无流控"
+                    value=""
+                  />
+                  <el-option
+                    label="xtls-rprx-vision"
+                    value="xtls-rprx-vision"
+                  />
+                  <el-option
+                    label="xtls-rprx-vision-udp443"
+                    value="xtls-rprx-vision-udp443"
+                  />
                 </el-select>
               </el-form-item>
             </el-col>
             
-            <el-col :xs="24" :md="12">
+            <el-col
+              :xs="24"
+              :md="12"
+            >
               <el-form-item label="传输方式">
-                <el-select v-model="configForm.transport" style="width: 100%">
-                  <el-option label="TCP" value="tcp" />
-                  <el-option label="WebSocket" value="ws" />
-                  <el-option label="HTTP/2" value="http" />
-                  <el-option label="gRPC" value="grpc" />
+                <el-select
+                  v-model="configForm.transport"
+                  style="width: 100%"
+                >
+                  <el-option
+                    label="TCP"
+                    value="tcp"
+                  />
+                  <el-option
+                    label="WebSocket"
+                    value="ws"
+                  />
+                  <el-option
+                    label="HTTP/2"
+                    value="http"
+                  />
+                  <el-option
+                    label="gRPC"
+                    value="grpc"
+                  />
                 </el-select>
               </el-form-item>
             </el-col>
             
             <!-- WebSocket 特有设置 -->
             <template v-if="configForm.transport === 'ws'">
-              <el-col :xs="24" :md="12">
+              <el-col
+                :xs="24"
+                :md="12"
+              >
                 <el-form-item label="WebSocket 路径">
-                  <el-input v-model="configForm.wsPath" placeholder="/vless-ws" />
+                  <el-input
+                    v-model="configForm.wsPath"
+                    placeholder="/vless-ws"
+                  />
                 </el-form-item>
               </el-col>
               
-              <el-col :xs="24" :md="12">
+              <el-col
+                :xs="24"
+                :md="12"
+              >
                 <el-form-item label="WebSocket 主机">
-                  <el-input v-model="configForm.wsHost" placeholder="example.com" />
+                  <el-input
+                    v-model="configForm.wsHost"
+                    placeholder="example.com"
+                  />
                 </el-form-item>
               </el-col>
             </template>
             
             <!-- HTTP/2 特有设置 -->
             <template v-if="configForm.transport === 'http'">
-              <el-col :xs="24" :md="12">
+              <el-col
+                :xs="24"
+                :md="12"
+              >
                 <el-form-item label="HTTP/2 路径">
-                  <el-input v-model="configForm.httpPath" placeholder="/vless-h2" />
+                  <el-input
+                    v-model="configForm.httpPath"
+                    placeholder="/vless-h2"
+                  />
                 </el-form-item>
               </el-col>
               
-              <el-col :xs="24" :md="12">
+              <el-col
+                :xs="24"
+                :md="12"
+              >
                 <el-form-item label="HTTP/2 主机">
-                  <el-input v-model="configForm.httpHost" placeholder="example.com" />
+                  <el-input
+                    v-model="configForm.httpHost"
+                    placeholder="example.com"
+                  />
                 </el-form-item>
               </el-col>
             </template>
             
             <!-- gRPC 特有设置 -->
             <template v-if="configForm.transport === 'grpc'">
-              <el-col :xs="24" :md="12">
+              <el-col
+                :xs="24"
+                :md="12"
+              >
                 <el-form-item label="gRPC 服务名称">
-                  <el-input v-model="configForm.grpcServiceName" placeholder="vless-grpc-service" />
+                  <el-input
+                    v-model="configForm.grpcServiceName"
+                    placeholder="vless-grpc-service"
+                  />
                 </el-form-item>
               </el-col>
             </template>
             
-            <el-col :xs="24" :md="12">
+            <el-col
+              :xs="24"
+              :md="12"
+            >
               <el-form-item label="跳过证书验证">
                 <el-switch v-model="configForm.allowInsecure" />
               </el-form-item>
             </el-col>
             
-            <el-col :xs="24" :md="12">
+            <el-col
+              :xs="24"
+              :md="12"
+            >
               <el-form-item label="备注">
-                <el-input v-model="configForm.remark" placeholder="自定义备注" />
+                <el-input
+                  v-model="configForm.remark"
+                  placeholder="自定义备注"
+                />
               </el-form-item>
             </el-col>
           </el-row>
           
           <div class="actions">
-            <el-button type="primary" @click="applyConfig">应用配置</el-button>
-            <el-button @click="resetConfig">重置</el-button>
+            <el-button
+              type="primary"
+              @click="applyConfig"
+            >
+              应用配置
+            </el-button>
+            <el-button @click="resetConfig">
+              重置
+            </el-button>
           </div>
         </el-form>
       </div>
     </el-card>
     
-    <el-card shadow="hover" class="test-card">
+    <el-card
+      shadow="hover"
+      class="test-card"
+    >
       <template #header>
         <div class="card-header">
           <span>VLESS 二维码</span>
@@ -181,7 +311,10 @@
       </div>
     </el-card>
     
-    <el-card shadow="hover" class="test-card">
+    <el-card
+      shadow="hover"
+      class="test-card"
+    >
       <template #header>
         <div class="card-header">
           <span>预设配置</span>
@@ -189,12 +322,39 @@
       </template>
       
       <div class="presets">
-        <el-button @click="loadPreset('tcp')" type="primary">TCP 预设</el-button>
-        <el-button @click="loadPreset('ws')" type="success">WebSocket 预设</el-button>
-        <el-button @click="loadPreset('http')" type="warning">HTTP/2 预设</el-button>
-        <el-button @click="loadPreset('grpc')" type="info">gRPC 预设</el-button>
-        <el-button @click="loadPreset('xtls')" type="danger">XTLS 预设</el-button>
-        <el-button @click="loadRealConfig">加载真实配置</el-button>
+        <el-button
+          type="primary"
+          @click="loadPreset('tcp')"
+        >
+          TCP 预设
+        </el-button>
+        <el-button
+          type="success"
+          @click="loadPreset('ws')"
+        >
+          WebSocket 预设
+        </el-button>
+        <el-button
+          type="warning"
+          @click="loadPreset('http')"
+        >
+          HTTP/2 预设
+        </el-button>
+        <el-button
+          type="info"
+          @click="loadPreset('grpc')"
+        >
+          gRPC 预设
+        </el-button>
+        <el-button
+          type="danger"
+          @click="loadPreset('xtls')"
+        >
+          XTLS 预设
+        </el-button>
+        <el-button @click="loadRealConfig">
+          加载真实配置
+        </el-button>
       </div>
     </el-card>
   </div>

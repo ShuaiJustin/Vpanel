@@ -1,31 +1,66 @@
 <template>
   <div class="connections-container">
     <div class="page-header">
-      <div class="title">Trojan 连接管理</div>
-      <el-button type="primary" @click="refresh">
-        <el-icon class="el-icon--left"><Refresh /></el-icon> 刷新
+      <div class="title">
+        Trojan 连接管理
+      </div>
+      <el-button
+        type="primary"
+        @click="refresh"
+      >
+        <el-icon class="el-icon--left">
+          <Refresh />
+        </el-icon> 刷新
       </el-button>
     </div>
     
     <div class="stats-cards">
-      <el-card shadow="hover" class="stats-card">
-        <div class="stat-value">{{ stats.totalConnections }}</div>
-        <div class="stat-label">总连接数</div>
+      <el-card
+        shadow="hover"
+        class="stats-card"
+      >
+        <div class="stat-value">
+          {{ stats.totalConnections }}
+        </div>
+        <div class="stat-label">
+          总连接数
+        </div>
       </el-card>
       
-      <el-card shadow="hover" class="stats-card">
-        <div class="stat-value">{{ formatBytes(stats.totalUpload) }}</div>
-        <div class="stat-label">总上传流量</div>
+      <el-card
+        shadow="hover"
+        class="stats-card"
+      >
+        <div class="stat-value">
+          {{ formatBytes(stats.totalUpload) }}
+        </div>
+        <div class="stat-label">
+          总上传流量
+        </div>
       </el-card>
       
-      <el-card shadow="hover" class="stats-card">
-        <div class="stat-value">{{ formatBytes(stats.totalDownload) }}</div>
-        <div class="stat-label">总下载流量</div>
+      <el-card
+        shadow="hover"
+        class="stats-card"
+      >
+        <div class="stat-value">
+          {{ formatBytes(stats.totalDownload) }}
+        </div>
+        <div class="stat-label">
+          总下载流量
+        </div>
       </el-card>
       
-      <el-card shadow="hover" class="stats-card">
-        <div class="stat-value">{{ stats.activeConnections }}</div>
-        <div class="stat-label">活跃连接</div>
+      <el-card
+        shadow="hover"
+        class="stats-card"
+      >
+        <div class="stat-value">
+          {{ stats.activeConnections }}
+        </div>
+        <div class="stat-label">
+          活跃连接
+        </div>
       </el-card>
     </div>
     
@@ -36,18 +71,38 @@
       style="width: 100%"
       stripe
     >
-      <el-table-column prop="id" label="ID" width="80" />
+      <el-table-column
+        prop="id"
+        label="ID"
+        width="80"
+      />
       
-      <el-table-column prop="source" label="客户端" min-width="160">
+      <el-table-column
+        prop="source"
+        label="客户端"
+        min-width="160"
+      >
         <template #default="{ row }">
-          <div class="ip-address">{{ row.source }}</div>
-          <div class="location">{{ row.location }}</div>
+          <div class="ip-address">
+            {{ row.source }}
+          </div>
+          <div class="location">
+            {{ row.location }}
+          </div>
         </template>
       </el-table-column>
       
-      <el-table-column prop="target" label="目标地址" min-width="160" />
+      <el-table-column
+        prop="target"
+        label="目标地址"
+        min-width="160"
+      />
       
-      <el-table-column label="连接状态" width="100" align="center">
+      <el-table-column
+        label="连接状态"
+        width="100"
+        align="center"
+      >
         <template #default="{ row }">
           <el-tag :type="row.status === 'active' ? 'success' : 'info'">
             {{ row.status === 'active' ? '活跃' : '关闭' }}
@@ -55,7 +110,10 @@
         </template>
       </el-table-column>
       
-      <el-table-column label="上传/下载" min-width="160">
+      <el-table-column
+        label="上传/下载"
+        min-width="160"
+      >
         <template #default="{ row }">
           <div class="traffic-info">
             <span class="traffic-label">上传:</span>
@@ -68,21 +126,33 @@
         </template>
       </el-table-column>
       
-      <el-table-column prop="duration" label="连接时长" min-width="100">
+      <el-table-column
+        prop="duration"
+        label="连接时长"
+        min-width="100"
+      >
         <template #default="{ row }">
           {{ formatDuration(row.duration) }}
         </template>
       </el-table-column>
       
-      <el-table-column prop="created_at" label="开始时间" min-width="180" />
+      <el-table-column
+        prop="created_at"
+        label="开始时间"
+        min-width="180"
+      />
       
-      <el-table-column label="操作" width="100" fixed="right">
+      <el-table-column
+        label="操作"
+        width="100"
+        fixed="right"
+      >
         <template #default="{ row }">
           <el-button
             size="small"
             type="danger"
-            @click="disconnectClient(row)"
             :disabled="row.status !== 'active'"
+            @click="disconnectClient(row)"
           >
             断开
           </el-button>

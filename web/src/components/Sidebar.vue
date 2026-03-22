@@ -20,7 +20,10 @@
       <span>我的订阅</span>
     </el-menu-item>
     
-    <el-sub-menu index="admin" v-if="isAdmin">
+    <el-sub-menu
+      v-if="isAdmin"
+      index="admin"
+    >
       <template #title>
         <el-icon><Management /></el-icon>
         <span>管理</span>

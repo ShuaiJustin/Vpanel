@@ -2,8 +2,12 @@
   <div class="forgot-page">
     <div class="forgot-card">
       <div class="forgot-header">
-        <el-icon class="forgot-icon"><Key /></el-icon>
-        <h1 class="forgot-title">忘记密码</h1>
+        <el-icon class="forgot-icon">
+          <Key />
+        </el-icon>
+        <h1 class="forgot-title">
+          忘记密码
+        </h1>
         <p class="forgot-subtitle">
           输入您的邮箱地址，我们将发送密码重置链接
         </p>
@@ -43,8 +47,13 @@
       </el-form>
 
       <!-- 发送成功提示 -->
-      <div v-else class="success-message">
-        <el-icon class="success-icon"><CircleCheck /></el-icon>
+      <div
+        v-else
+        class="success-message"
+      >
+        <el-icon class="success-icon">
+          <CircleCheck />
+        </el-icon>
         <h3>邮件已发送</h3>
         <p>
           我们已向 <strong>{{ forgotForm.email }}</strong> 发送了密码重置链接。
@@ -52,12 +61,21 @@
         </p>
         <p class="hint">
           如果没有收到邮件，请检查垃圾邮件文件夹，或者
-          <el-button link type="primary" @click="resendEmail">重新发送</el-button>
+          <el-button
+            link
+            type="primary"
+            @click="resendEmail"
+          >
+            重新发送
+          </el-button>
         </p>
       </div>
 
       <div class="forgot-footer">
-        <router-link to="/user/login" class="back-link">
+        <router-link
+          to="/user/login"
+          class="back-link"
+        >
           <el-icon><ArrowLeft /></el-icon>
           返回登录
         </router-link>

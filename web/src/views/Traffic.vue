@@ -2,8 +2,12 @@
   <div class="traffic-page">
     <div class="page-header">
       <div>
-        <h1 class="page-title">流量统计</h1>
-        <p class="page-subtitle">查看后台总流量趋势和用户流量排行</p>
+        <h1 class="page-title">
+          流量统计
+        </h1>
+        <p class="page-subtitle">
+          查看后台总流量趋势和用户流量排行
+        </p>
       </div>
       <div class="header-actions">
         <el-date-picker
@@ -14,49 +18,100 @@
           end-placeholder="结束日期"
           :style="{ width: datePickerWidth }"
         />
-        <el-button type="primary" :loading="loading" @click="fetchTrafficData">查询</el-button>
-        <el-button :disabled="filteredUsers.length === 0" @click="exportTrafficData">导出 CSV</el-button>
+        <el-button
+          type="primary"
+          :loading="loading"
+          @click="fetchTrafficData"
+        >
+          查询
+        </el-button>
+        <el-button
+          :disabled="filteredUsers.length === 0"
+          @click="exportTrafficData"
+        >
+          导出 CSV
+        </el-button>
       </div>
     </div>
 
-    <el-row :gutter="isMobile ? 12 : 20" class="summary-row">
+    <el-row
+      :gutter="isMobile ? 12 : 20"
+      class="summary-row"
+    >
       <el-col :span="statCardSpan">
-        <el-card class="summary-card" shadow="never">
-          <div class="summary-label">总流量</div>
-          <div class="summary-value">{{ formatTraffic(totalStats.totalTraffic) }}</div>
+        <el-card
+          class="summary-card"
+          shadow="never"
+        >
+          <div class="summary-label">
+            总流量
+          </div>
+          <div class="summary-value">
+            {{ formatTraffic(totalStats.totalTraffic) }}
+          </div>
         </el-card>
       </el-col>
       <el-col :span="statCardSpan">
-        <el-card class="summary-card" shadow="never">
-          <div class="summary-label">总上传</div>
-          <div class="summary-value">{{ formatTraffic(totalStats.uploadTraffic) }}</div>
+        <el-card
+          class="summary-card"
+          shadow="never"
+        >
+          <div class="summary-label">
+            总上传
+          </div>
+          <div class="summary-value">
+            {{ formatTraffic(totalStats.uploadTraffic) }}
+          </div>
         </el-card>
       </el-col>
       <el-col :span="statCardSpan">
-        <el-card class="summary-card" shadow="never">
-          <div class="summary-label">总下载</div>
-          <div class="summary-value">{{ formatTraffic(totalStats.downloadTraffic) }}</div>
+        <el-card
+          class="summary-card"
+          shadow="never"
+        >
+          <div class="summary-label">
+            总下载
+          </div>
+          <div class="summary-value">
+            {{ formatTraffic(totalStats.downloadTraffic) }}
+          </div>
         </el-card>
       </el-col>
       <el-col :span="statCardSpan">
-        <el-card class="summary-card" shadow="never">
-          <div class="summary-label">活跃用户</div>
-          <div class="summary-value">{{ totalStats.activeUsers }}</div>
+        <el-card
+          class="summary-card"
+          shadow="never"
+        >
+          <div class="summary-label">
+            活跃用户
+          </div>
+          <div class="summary-value">
+            {{ totalStats.activeUsers }}
+          </div>
         </el-card>
       </el-col>
     </el-row>
 
-    <el-card shadow="never" class="chart-card">
+    <el-card
+      shadow="never"
+      class="chart-card"
+    >
       <template #header>
         <div class="card-header">
           <span>流量趋势</span>
           <span class="card-meta">{{ rangeLabel }}</span>
         </div>
       </template>
-      <div ref="trafficChartRef" class="traffic-chart"></div>
+      <div
+        ref="trafficChartRef"
+        class="traffic-chart"
+      />
     </el-card>
 
-    <el-card shadow="never" class="table-card">
+    <el-card
+      shadow="never"
+      class="table-card"
+    >
       <template #header>
         <div class="card-header">
           <span>用户流量排行</span>
@@ -67,36 +122,76 @@
               placeholder="搜索用户名/邮箱"
               :style="{ width: searchWidth }"
             />
-            <el-select v-model="sortBy" :style="{ width: sortWidth }">
-              <el-option label="总流量降序" value="total_desc" />
-              <el-option label="总流量升序" value="total_asc" />
-              <el-option label="用户名" value="username" />
+            <el-select
+              v-model="sortBy"
+              :style="{ width: sortWidth }"
+            >
+              <el-option
+                label="总流量降序"
+                value="total_desc"
+              />
+              <el-option
+                label="总流量升序"
+                value="total_asc"
+              />
+              <el-option
+                label="用户名"
+                value="username"
+              />
             </el-select>
           </div>
         </div>
       </template>
 
       <div class="table-shell">
-        <el-table :data="filteredUsers" v-loading="loading" style="width: 100%">
-          <el-table-column prop="username" label="用户名" min-width="140" />
-          <el-table-column prop="email" label="邮箱" min-width="180" />
-          <el-table-column prop="proxy_count" label="代理数" width="100" />
-          <el-table-column label="总流量" width="150">
+        <el-table
+          v-loading="loading"
+          :data="filteredUsers"
+          style="width: 100%"
+        >
+          <el-table-column
+            prop="username"
+            label="用户名"
+            min-width="140"
+          />
+          <el-table-column
+            prop="email"
+            label="邮箱"
+            min-width="180"
+          />
+          <el-table-column
+            prop="proxy_count"
+            label="代理数"
+            width="100"
+          />
+          <el-table-column
+            label="总流量"
+            width="150"
+          >
             <template #default="{ row }">
               {{ formatTraffic(row.total) }}
             </template>
           </el-table-column>
-          <el-table-column label="上传" width="140">
+          <el-table-column
+            label="上传"
+            width="140"
+          >
             <template #default="{ row }">
               {{ formatTraffic(row.upload) }}
             </template>
           </el-table-column>
-          <el-table-column label="下载" width="140">
+          <el-table-column
+            label="下载"
+            width="140"
+          >
             <template #default="{ row }">
               {{ formatTraffic(row.download) }}
             </template>
           </el-table-column>
-          <el-table-column label="使用占比" min-width="220">
+          <el-table-column
+            label="使用占比"
+            min-width="220"
+          >
             <template #default="{ row }">
               <template v-if="row.traffic_limit > 0">
                 <el-progress
@@ -107,10 +202,16 @@
                   {{ formatTraffic(row.total) }} / {{ formatTraffic(row.traffic_limit) }}
                 </div>
               </template>
-              <span v-else class="limit-note">不限额</span>
+              <span
+                v-else
+                class="limit-note"
+              >不限额</span>
             </template>
           </el-table-column>
-          <el-table-column label="最后活跃" min-width="180">
+          <el-table-column
+            label="最后活跃"
+            min-width="180"
+          >
             <template #default="{ row }">
               {{ formatDateTime(row.last_active) }}
             </template>
@@ -128,7 +229,7 @@ import { ElMessage } from 'element-plus'
 import { statsApi } from '@/api'
 import { useViewport } from '@/composables/useViewport'
 
-const { isMobile, isTablet } = useViewport({ mobileBreakpoint: 768, tabletBreakpoint: 1200 })
+const { isMobile, isTablet } = useViewport()
 
 const loading = ref(false)
 const dateRange = ref([])

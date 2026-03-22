@@ -2,8 +2,12 @@
   <div class="login-page">
     <div class="login-card">
       <div class="login-header">
-        <h1 class="login-title">用户登录</h1>
-        <p class="login-subtitle">欢迎回来，请登录您的账户</p>
+        <h1 class="login-title">
+          用户登录
+        </h1>
+        <p class="login-subtitle">
+          欢迎回来，请登录您的账户
+        </p>
       </div>
 
       <!-- 登录表单 -->
@@ -39,8 +43,13 @@
         </el-form-item>
 
         <div class="form-options">
-          <el-checkbox v-model="loginForm.remember">记住我</el-checkbox>
-          <router-link to="/user/forgot-password" class="forgot-link">
+          <el-checkbox v-model="loginForm.remember">
+            记住我
+          </el-checkbox>
+          <router-link
+            to="/user/forgot-password"
+            class="forgot-link"
+          >
             忘记密码？
           </router-link>
         </div>
@@ -68,7 +77,9 @@
         @submit.prevent="handle2FAVerify"
       >
         <div class="twofa-header">
-          <el-icon class="twofa-icon"><Key /></el-icon>
+          <el-icon class="twofa-icon">
+            <Key />
+          </el-icon>
           <h3>两步验证</h3>
           <p>请输入您的验证器应用中的验证码</p>
         </div>
@@ -97,16 +108,28 @@
         </el-form-item>
 
         <div class="twofa-options">
-          <el-button link type="primary" @click="useBackupCode = !useBackupCode">
+          <el-button
+            link
+            type="primary"
+            @click="useBackupCode = !useBackupCode"
+          >
             {{ useBackupCode ? '使用验证码' : '使用备份码' }}
           </el-button>
-          <el-button link @click="cancelTwoFA">返回登录</el-button>
+          <el-button
+            link
+            @click="cancelTwoFA"
+          >
+            返回登录
+          </el-button>
         </div>
       </el-form>
 
       <div class="login-footer">
         <span>还没有账户？</span>
-        <router-link to="/user/register" class="register-link">
+        <router-link
+          to="/user/register"
+          class="register-link"
+        >
           立即注册
         </router-link>
       </div>

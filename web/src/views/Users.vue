@@ -3,7 +3,9 @@
     <div class="page-header">
       <div class="page-heading">
         <h1>用户管理</h1>
-        <p class="page-subtitle">统一维护账户资料、权限角色和启用状态</p>
+        <p class="page-subtitle">
+          统一维护账户资料、权限角色和启用状态
+        </p>
       </div>
     </div>
 
@@ -45,8 +47,14 @@
           placeholder="角色"
           @change="handleFilterChange"
         >
-          <el-option label="管理员" value="admin" />
-          <el-option label="普通用户" value="user" />
+          <el-option
+            label="管理员"
+            value="admin"
+          />
+          <el-option
+            label="普通用户"
+            value="user"
+          />
         </el-select>
         <el-select
           v-model="statusFilter"
@@ -54,32 +62,51 @@
           placeholder="状态"
           @change="handleFilterChange"
         >
-          <el-option label="启用中" value="enabled" />
-          <el-option label="已禁用" value="disabled" />
+          <el-option
+            label="启用中"
+            value="enabled"
+          />
+          <el-option
+            label="已禁用"
+            value="disabled"
+          />
         </el-select>
-        <el-button @click="resetFilters">重置</el-button>
+        <el-button @click="resetFilters">
+          重置
+        </el-button>
       </div>
       <div class="toolbar-actions">
         <span class="toolbar-summary">当前筛选 {{ displayTotal }} 个账户，当前页 {{ paginatedUsers.length }} 个</span>
-        <el-button type="primary" @click="showAddDialog">添加用户</el-button>
+        <el-button
+          type="primary"
+          @click="showAddDialog"
+        >
+          添加用户
+        </el-button>
       </div>
     </div>
 
     <div class="users-table-wrap table-shell">
       <el-table
+        v-loading="loading"
         :data="paginatedUsers"
         border
         stripe
         row-key="id"
-        v-loading="loading"
         class="users-table"
         :empty-text="displayTotal ? '当前页暂无数据' : (hasActiveFilters ? '暂无匹配用户' : '暂无用户')"
       >
-        <el-table-column label="用户信息" min-width="280">
+        <el-table-column
+          label="用户信息"
+          min-width="280"
+        >
           <template #default="{ row }">
             <div class="entity-cell">
               <div class="entity-cell__header">
-                <span class="entity-cell__title" :title="row.username">{{ row.username }}</span>
+                <span
+                  class="entity-cell__title"
+                  :title="row.username"
+                >{{ row.username }}</span>
                 <span :class="['metric-pill', row.role === 'admin' ? 'is-danger' : 'is-primary']">
                   {{ row.role === 'admin' ? '管理员' : '普通用户' }}
                 </span>
@@ -95,7 +122,10 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="账户概况" min-width="220">
+        <el-table-column
+          label="账户概况"
+          min-width="220"
+        >
           <template #default="{ row }">
             <div class="stack-cell">
               <div class="stack-item">
@@ -110,7 +140,10 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="状态与权限" min-width="220">
+        <el-table-column
+          label="状态与权限"
+          min-width="220"
+        >
           <template #default="{ row }">
             <div class="stack-cell">
               <div class="stack-item stack-item--inline">
@@ -130,7 +163,12 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="190" align="right" fixed="right">
+        <el-table-column
+          label="操作"
+          width="190"
+          align="right"
+          fixed="right"
+        >
           <template #default="{ row }">
             <div class="operation-btns">
               <el-button
@@ -148,14 +186,29 @@
               >
                 {{ row.status ? '禁用' : '启用' }}
               </el-button>
-              <el-dropdown trigger="click" @command="(command) => handleRowCommand(command, row)">
-                <el-button size="small" class="row-action row-action--more" circle title="更多操作">
+              <el-dropdown
+                trigger="click"
+                @command="(command) => handleRowCommand(command, row)"
+              >
+                <el-button
+                  size="small"
+                  class="row-action row-action--more"
+                  circle
+                  title="更多操作"
+                >
                   <el-icon><MoreFilled /></el-icon>
                 </el-button>
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item command="resetPassword">重置密码</el-dropdown-item>
-                    <el-dropdown-item command="delete" divided>删除用户</el-dropdown-item>
+                    <el-dropdown-item command="resetPassword">
+                      重置密码
+                    </el-dropdown-item>
+                    <el-dropdown-item
+                      command="delete"
+                      divided
+                    >
+                      删除用户
+                    </el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -178,8 +231,8 @@
     </div>
 
     <el-dialog
-      :title="dialogType === 'add' ? '添加用户' : '编辑用户'"
       v-model="dialogVisible"
+      :title="dialogType === 'add' ? '添加用户' : '编辑用户'"
       :width="isMobile ? 'calc(100vw - 24px)' : '520px'"
     >
       <el-form
@@ -188,16 +241,40 @@
         :rules="rules"
         :label-width="isMobile ? '72px' : '100px'"
       >
-        <el-form-item label="用户名" prop="username">
-          <el-input v-model="userForm.username" placeholder="请输入用户名" />
+        <el-form-item
+          label="用户名"
+          prop="username"
+        >
+          <el-input
+            v-model="userForm.username"
+            placeholder="请输入用户名"
+          />
         </el-form-item>
-        <el-form-item label="邮箱" prop="email">
-          <el-input v-model="userForm.email" placeholder="请输入邮箱" />
+        <el-form-item
+          label="邮箱"
+          prop="email"
+        >
+          <el-input
+            v-model="userForm.email"
+            placeholder="请输入邮箱"
+          />
         </el-form-item>
-        <el-form-item v-if="dialogType === 'add'" label="密码" prop="password">
-          <el-input v-model="userForm.password" type="password" show-password placeholder="请输入密码" />
+        <el-form-item
+          v-if="dialogType === 'add'"
+          label="密码"
+          prop="password"
+        >
+          <el-input
+            v-model="userForm.password"
+            type="password"
+            show-password
+            placeholder="请输入密码"
+          />
         </el-form-item>
-        <el-form-item v-else label="新密码">
+        <el-form-item
+          v-else
+          label="新密码"
+        >
           <el-input
             v-model="userForm.password"
             type="password"
@@ -205,16 +282,37 @@
             placeholder="留空则不修改密码"
           />
         </el-form-item>
-        <el-form-item label="角色" prop="role">
-          <el-select v-model="userForm.role" placeholder="请选择角色" style="width: 100%">
-            <el-option label="管理员" value="admin" />
-            <el-option label="普通用户" value="user" />
+        <el-form-item
+          label="角色"
+          prop="role"
+        >
+          <el-select
+            v-model="userForm.role"
+            placeholder="请选择角色"
+            style="width: 100%"
+          >
+            <el-option
+              label="管理员"
+              value="admin"
+            />
+            <el-option
+              label="普通用户"
+              value="user"
+            />
           </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="handleSaveUser">保存</el-button>
+        <el-button @click="dialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="saving"
+          @click="handleSaveUser"
+        >
+          保存
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -227,7 +325,7 @@ import { MoreFilled, Search } from '@element-plus/icons-vue'
 import { usersApi } from '@/api'
 import { useViewport } from '@/composables/useViewport'
 
-const { isMobile, viewportWidth } = useViewport({ mobileBreakpoint: 768, tabletBreakpoint: 1280 })
+const { isMobile, viewportWidth } = useViewport()
 
 const users = ref([])
 const loading = ref(false)

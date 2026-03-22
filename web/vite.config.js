@@ -88,13 +88,13 @@ export default defineConfig({
             }
           });
           
-          proxy.on('proxyReq', (proxyReq, req, res) => {
+          proxy.on('proxyReq', (proxyReq, req) => {
             if (req.url.includes('/xray/')) {
               console.log(`请求Xray API: ${req.method} ${req.url}`);
             }
           });
-          
-          proxy.on('proxyRes', (proxyRes, req, res) => {
+
+          proxy.on('proxyRes', (proxyRes, req) => {
             if (req.url.includes('/xray/') && proxyRes.statusCode >= 400) {
               console.warn(`Xray API错误响应: ${proxyRes.statusCode} ${req.method} ${req.url}`);
             }

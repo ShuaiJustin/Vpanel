@@ -47,3 +47,14 @@ func TestGenerateInbounds_UsesResolvedAPIPort(t *testing.T) {
 	assert.Equal(t, "api", inbounds[0].Tag)
 	assert.Equal(t, 63004, inbounds[0].Port)
 }
+
+func TestGenerateOutbounds_UsesDirectAsDefaultOutbound(t *testing.T) {
+	generator := &ConfigGenerator{logger: logger.NewNopLogger()}
+
+	outbounds := generator.generateOutbounds()
+
+	require.Len(t, outbounds, 2)
+	assert.Equal(t, "direct", outbounds[0].Tag)
+	assert.Equal(t, "freedom", outbounds[0].Protocol)
+	assert.Equal(t, "blocked", outbounds[1].Tag)
+}

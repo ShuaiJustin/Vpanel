@@ -2,11 +2,21 @@
   <div class="admin-subscriptions-page">
     <div class="page-header">
       <div class="page-heading">
-        <div class="title">订阅管理</div>
-        <div class="page-subtitle">统一查看订阅凭据、访问活跃度和最后使用记录</div>
+        <div class="title">
+          订阅管理
+        </div>
+        <div class="page-subtitle">
+          统一查看订阅凭据、访问活跃度和最后使用记录
+        </div>
       </div>
-      <el-button type="primary" class="refresh-btn" @click="fetchSubscriptions">
-        <el-icon class="el-icon--left"><RefreshRight /></el-icon> 刷新列表
+      <el-button
+        type="primary"
+        class="refresh-btn"
+        @click="fetchSubscriptions"
+      >
+        <el-icon class="el-icon--left">
+          <RefreshRight />
+        </el-icon> 刷新列表
       </el-button>
     </div>
 
@@ -41,25 +51,73 @@
             <el-icon><Search /></el-icon>
           </template>
         </el-input>
-        <el-select v-model="filters.accessRange" clearable placeholder="访问次数">
-          <el-option label="从未访问" value="0" />
-          <el-option label="1-10 次" value="1-10" />
-          <el-option label="11-100 次" value="11-100" />
-          <el-option label="100 次以上" value="100+" />
+        <el-select
+          v-model="filters.accessRange"
+          clearable
+          placeholder="访问次数"
+        >
+          <el-option
+            label="从未访问"
+            value="0"
+          />
+          <el-option
+            label="1-10 次"
+            value="1-10"
+          />
+          <el-option
+            label="11-100 次"
+            value="11-100"
+          />
+          <el-option
+            label="100 次以上"
+            value="100+"
+          />
         </el-select>
-        <el-select v-model="filters.activity" clearable placeholder="活跃状态">
-          <el-option label="从未访问" value="never" />
-          <el-option label="近 7 天活跃" value="recent" />
-          <el-option label="30 天未访问" value="stale" />
+        <el-select
+          v-model="filters.activity"
+          clearable
+          placeholder="活跃状态"
+        >
+          <el-option
+            label="从未访问"
+            value="never"
+          />
+          <el-option
+            label="近 7 天活跃"
+            value="recent"
+          />
+          <el-option
+            label="30 天未访问"
+            value="stale"
+          />
         </el-select>
-        <el-select v-model="sortKey" placeholder="排序方式">
-          <el-option label="最近访问优先" value="recent_access" />
-          <el-option label="访问次数优先" value="access_desc" />
-          <el-option label="创建时间优先" value="created_desc" />
-          <el-option label="用户 ID 优先" value="user_desc" />
+        <el-select
+          v-model="sortKey"
+          placeholder="排序方式"
+        >
+          <el-option
+            label="最近访问优先"
+            value="recent_access"
+          />
+          <el-option
+            label="访问次数优先"
+            value="access_desc"
+          />
+          <el-option
+            label="创建时间优先"
+            value="created_desc"
+          />
+          <el-option
+            label="用户 ID 优先"
+            value="user_desc"
+          />
         </el-select>
-        <el-button @click="resetFilters">重置</el-button>
-        <el-button @click="fetchSubscriptions">刷新</el-button>
+        <el-button @click="resetFilters">
+          重置
+        </el-button>
+        <el-button @click="fetchSubscriptions">
+          刷新
+        </el-button>
       </div>
       <div class="toolbar-summary">
         总记录 {{ total }} 条，当前筛选 {{ filteredSubscriptions.length }} 条
@@ -75,11 +133,17 @@
       row-key="id"
       :empty-text="filteredSubscriptions.length ? '当前页暂无数据' : (hasActiveFilters ? '暂无匹配的订阅' : '暂无订阅记录')"
     >
-      <el-table-column label="订阅对象" min-width="230">
+      <el-table-column
+        label="订阅对象"
+        min-width="230"
+      >
         <template #default="{ row }">
           <div class="user-cell">
             <div class="user-cell__header">
-              <span class="user-name" :title="row.username_display">{{ row.username_display }}</span>
+              <span
+                class="user-name"
+                :title="row.username_display"
+              >{{ row.username_display }}</span>
               <span :class="['activity-pill', row.activity_class]">
                 {{ row.activity_label }}
               </span>
@@ -96,13 +160,19 @@
         </template>
       </el-table-column>
 
-      <el-table-column label="订阅凭据" min-width="290">
+      <el-table-column
+        label="订阅凭据"
+        min-width="290"
+      >
         <template #default="{ row }">
           <div class="credential-cell">
             <div class="credential-item">
               <span class="credential-label">令牌</span>
               <div class="credential-main">
-                <span class="credential-value" :title="row.token">{{ maskToken(row.token) }}</span>
+                <span
+                  class="credential-value"
+                  :title="row.token"
+                >{{ maskToken(row.token) }}</span>
                 <el-button
                   text
                   class="copy-token-btn"
@@ -115,7 +185,10 @@
             <div class="credential-item">
               <span class="credential-label">短码</span>
               <div class="credential-main">
-                <span class="credential-value" :title="row.short_code || '未设置'">
+                <span
+                  class="credential-value"
+                  :title="row.short_code || '未设置'"
+                >
                   {{ row.short_code || '未设置' }}
                 </span>
                 <el-button
@@ -132,7 +205,10 @@
         </template>
       </el-table-column>
 
-      <el-table-column label="访问情况" min-width="220">
+      <el-table-column
+        label="访问情况"
+        min-width="220"
+      >
         <template #default="{ row }">
           <div class="detail-cell">
             <div class="detail-item">
@@ -153,7 +229,12 @@
         </template>
       </el-table-column>
 
-      <el-table-column label="操作" width="126" align="right" fixed="right">
+      <el-table-column
+        label="操作"
+        width="126"
+        align="right"
+        fixed="right"
+      >
         <template #default="{ row }">
           <div class="operation-btns">
             <el-button
@@ -938,7 +1019,7 @@ onMounted(() => {
   width: 104px;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1280px) {
   .overview-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

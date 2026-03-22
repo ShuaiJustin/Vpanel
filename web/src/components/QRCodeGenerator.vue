@@ -1,16 +1,30 @@
 <template>
   <div class="qrcode-container">
-    <div v-if="loading" class="qrcode-loading">
-      <el-icon class="is-loading"><Loading /></el-icon>
+    <div
+      v-if="loading"
+      class="qrcode-loading"
+    >
+      <el-icon class="is-loading">
+        <Loading />
+      </el-icon>
       <span>生成中...</span>
     </div>
-    <div v-else-if="error" class="qrcode-error">
+    <div
+      v-else-if="error"
+      class="qrcode-error"
+    >
       <el-icon><WarningFilled /></el-icon>
       <span>{{ error }}</span>
     </div>
-    <div v-else class="qrcode-content">
+    <div
+      v-else
+      class="qrcode-content"
+    >
       <div class="qrcode-image">
-        <img :src="qrCodeImage" alt="二维码" />
+        <img
+          :src="qrCodeImage"
+          alt="二维码"
+        >
       </div>
       <div class="qrcode-info">
         <div class="link-display">
@@ -21,15 +35,30 @@
             :disabled="!shareLink"
           >
             <template #append>
-              <el-button type="primary" @click="copyLink" :disabled="!shareLink">
+              <el-button
+                type="primary"
+                :disabled="!shareLink"
+                @click="copyLink"
+              >
                 <el-icon><CopyDocument /></el-icon>
               </el-button>
             </template>
           </el-input>
         </div>
         <div class="actions">
-          <el-button type="primary" @click="downloadQRCode" :disabled="!qrCodeImage">下载二维码</el-button>
-          <el-button @click="refreshQRCode" :disabled="loading">刷新</el-button>
+          <el-button
+            type="primary"
+            :disabled="!qrCodeImage"
+            @click="downloadQRCode"
+          >
+            下载二维码
+          </el-button>
+          <el-button
+            :disabled="loading"
+            @click="refreshQRCode"
+          >
+            刷新
+          </el-button>
         </div>
       </div>
     </div>
@@ -37,7 +66,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Loading, WarningFilled, CopyDocument } from '@element-plus/icons-vue'
 import QRCode from 'qrcode'

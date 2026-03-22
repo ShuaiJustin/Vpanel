@@ -1,7 +1,9 @@
 <template>
   <div class="legal-page">
     <div class="legal-container">
-      <h1 class="legal-title">服务条款</h1>
+      <h1 class="legal-title">
+        服务条款
+      </h1>
       <div class="legal-meta">
         <span>生效日期：{{ effectiveDate }}</span>
         <span>最后更新：{{ lastUpdated }}</span>
@@ -53,7 +55,14 @@
 
         <section>
           <h2>6. 隐私保护</h2>
-          <p>我们重视您的隐私。有关我们如何收集、使用和保护您的个人信息，请参阅我们的<router-link to="/legal/privacy" class="link">隐私政策</router-link>。</p>
+          <p>
+            我们重视您的隐私。有关我们如何收集、使用和保护您的个人信息，请参阅我们的<router-link
+              to="/legal/privacy"
+              class="link"
+            >
+              隐私政策
+            </router-link>。
+          </p>
         </section>
 
         <section>
@@ -95,14 +104,28 @@
           <p>如对本服务条款有任何疑问，请通过以下方式联系我们：</p>
           <ul>
             <li>邮箱：support@example.com</li>
-            <li>工单系统：<router-link to="/user/tickets" class="link">提交工单</router-link></li>
+            <li>
+              工单系统：<router-link
+                to="/user/tickets"
+                class="link"
+              >
+                提交工单
+              </router-link>
+            </li>
           </ul>
         </section>
       </div>
 
       <div class="legal-footer">
-        <el-button @click="goBack">返回</el-button>
-        <el-button type="primary" @click="acceptTerms">我已阅读并同意</el-button>
+        <el-button @click="goBack">
+          返回
+        </el-button>
+        <el-button
+          type="primary"
+          @click="acceptTerms"
+        >
+          我已阅读并同意
+        </el-button>
       </div>
     </div>
   </div>

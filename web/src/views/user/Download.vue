@@ -2,11 +2,18 @@
   <div class="download-page">
     <!-- 页面标题 -->
     <div class="page-header">
-      <h1 class="page-title">客户端下载</h1>
-      <p class="page-subtitle">选择适合您设备的客户端，安装后即可导入订阅开始使用</p>
+      <h1 class="page-title">
+        客户端下载
+      </h1>
+      <p class="page-subtitle">
+        选择适合您设备的客户端，安装后即可导入订阅开始使用
+      </p>
     </div>
 
-    <el-card class="quick-start-card" shadow="never">
+    <el-card
+      class="quick-start-card"
+      shadow="never"
+    >
       <div class="quick-start-content">
         <div class="quick-start-main">
           <span class="platform-hint">
@@ -23,7 +30,10 @@
                 : '请选择系统平台后，下载客户端并导入订阅。'
             }}
           </p>
-          <div v-if="subscriptionLink" class="quick-start-link">
+          <div
+            v-if="subscriptionLink"
+            class="quick-start-link"
+          >
             <span class="quick-start-link__label">订阅链接</span>
             <span class="quick-start-link__value">{{ subscriptionLinkPreview }}</span>
           </div>
@@ -58,7 +68,10 @@
 
     <!-- 平台选择 -->
     <div class="platform-tabs">
-      <el-radio-group v-model="selectedPlatform" size="large">
+      <el-radio-group
+        v-model="selectedPlatform"
+        size="large"
+      >
         <el-radio-button 
           v-for="platform in platforms" 
           :key="platform.value" 
@@ -81,13 +94,24 @@
           <!-- 客户端信息 -->
           <div class="client-header">
             <div class="client-logo">
-              <img v-if="client.logo" :src="client.logo" :alt="client.name" />
-              <el-icon v-else><Box /></el-icon>
+              <img
+                v-if="client.logo"
+                :src="client.logo"
+                :alt="client.name"
+              >
+              <el-icon v-else>
+                <Box />
+              </el-icon>
             </div>
             <div class="client-info">
               <div class="client-title-row">
-                <h3 class="client-name">{{ client.name }}</h3>
-                <span v-if="client.recommended" class="client-recommend-chip">
+                <h3 class="client-name">
+                  {{ client.name }}
+                </h3>
+                <span
+                  v-if="client.recommended"
+                  class="client-recommend-chip"
+                >
                   <el-icon><Star /></el-icon>
                   首选
                 </span>
@@ -107,7 +131,9 @@
             </div>
           </div>
 
-          <p class="client-description">{{ client.description }}</p>
+          <p class="client-description">
+            {{ client.description }}
+          </p>
 
           <!-- 特性标签 -->
           <div class="client-features">
@@ -125,8 +151,8 @@
           <div class="client-actions">
             <el-button 
               type="primary" 
-              @click="downloadClient(client)"
               :disabled="!client.downloadUrl"
+              @click="downloadClient(client)"
             >
               <el-icon><Download /></el-icon>
               下载
@@ -143,7 +169,10 @@
     </div>
 
     <!-- 使用说明 -->
-    <el-card class="tips-card" shadow="never">
+    <el-card
+      class="tips-card"
+      shadow="never"
+    >
       <template #header>
         <span>
           <el-icon><InfoFilled /></el-icon>
@@ -152,16 +181,25 @@
       </template>
 
       <el-collapse v-model="activeTip">
-        <el-collapse-item title="如何选择客户端？" name="1">
+        <el-collapse-item
+          title="如何选择客户端？"
+          name="1"
+        >
           <p>根据您的设备系统选择对应的客户端。推荐使用带有"推荐"标签的客户端，它们通常具有更好的兼容性和用户体验。</p>
         </el-collapse-item>
-        <el-collapse-item title="如何导入订阅？" name="2">
+        <el-collapse-item
+          title="如何导入订阅？"
+          name="2"
+        >
           <p>1. 下载并安装客户端</p>
           <p>2. 打开客户端，找到"订阅"或"配置"选项</p>
           <p>3. 添加订阅链接（可在"订阅管理"页面获取）</p>
           <p>4. 更新订阅，选择节点连接</p>
         </el-collapse-item>
-        <el-collapse-item title="遇到问题怎么办？" name="3">
+        <el-collapse-item
+          title="遇到问题怎么办？"
+          name="3"
+        >
           <p>如果在使用过程中遇到问题，您可以：</p>
           <p>1. 查看帮助中心的常见问题</p>
           <p>2. 提交工单获取技术支持</p>
@@ -177,9 +215,16 @@
       :fullscreen="isMobile"
       class="tutorial-dialog"
     >
-      <div v-if="currentClient" class="tutorial-content">
+      <div
+        v-if="currentClient"
+        class="tutorial-content"
+      >
         <!-- 教程步骤 -->
-        <el-steps :active="tutorialStep" finish-status="success" align-center>
+        <el-steps
+          :active="tutorialStep"
+          finish-status="success"
+          align-center
+        >
           <el-step title="下载安装" />
           <el-step title="导入订阅" />
           <el-step title="连接使用" />
@@ -189,21 +234,21 @@
         <div class="tutorial-step-content">
           <div 
             v-for="(step, index) in tutorialSteps" 
-            :key="index"
-            v-show="tutorialStep === index" 
+            v-show="tutorialStep === index"
+            :key="index" 
             class="step-panel"
           >
             <h3>{{ step.title }}</h3>
             <div class="step-content">
-              <!-- 使用 v-html 渲染教程内容（内容已验证为安全的硬编码内容） -->
-              <div v-html="step.content"></div>
+              <!-- eslint-disable-next-line vue/no-v-html -->
+              <div v-html="step.content" />
               
               <!-- 步骤 1 的下载按钮 -->
               <el-button 
                 v-if="index === 0"
                 type="primary" 
-                @click="downloadClient(currentClient)"
                 style="margin-top: 16px"
+                @click="downloadClient(currentClient)"
               >
                 <el-icon><Download /></el-icon>
                 立即下载
@@ -223,15 +268,15 @@
                       <div class="subscription-inline__actions">
                         <el-button
                           size="small"
-                          @click="copySubscriptionLink"
                           link
+                          @click="copySubscriptionLink"
                         >
                           复制链接
                         </el-button>
                         <el-button
                           size="small"
-                          @click="goToSubscription"
                           link
+                          @click="goToSubscription"
                         >
                           订阅管理
                         </el-button>
@@ -282,6 +327,7 @@ import { ElMessage } from 'element-plus'
 import { useViewport } from '@/composables/useViewport'
 import { useSubscriptionStore } from '@/stores/subscription'
 import { copyText } from '@/utils/clipboard'
+import { sanitizeHtml } from '@/utils/htmlSanitizer'
 import { 
   Monitor, Iphone, Apple, Platform,
   Download, Document, Star, Box, InfoFilled, Link
@@ -1267,9 +1313,9 @@ const subscriptionLinkPreview = computed(() => {
 const tutorialSteps = computed(() => {
   const tutorial = currentTutorial.value
   return [
-    { title: '第一步：下载并安装客户端', content: tutorial.step1 },
-    { title: '第二步：导入订阅链接', content: tutorial.step2 },
-    { title: '第三步：连接并开始使用', content: tutorial.step3 }
+    { title: '第一步：下载并安装客户端', content: sanitizeHtml(tutorial.step1) },
+    { title: '第二步：导入订阅链接', content: sanitizeHtml(tutorial.step2) },
+    { title: '第三步：连接并开始使用', content: sanitizeHtml(tutorial.step3) }
   ]
 })
 

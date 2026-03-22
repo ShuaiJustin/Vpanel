@@ -44,7 +44,7 @@ class RequestCancelManager {
    * 取消所有请求
    */
   cancelAll() {
-    for (const [key, controller] of this.controllers) {
+    for (const controller of this.controllers.values()) {
       controller.abort()
     }
     this.controllers.clear()

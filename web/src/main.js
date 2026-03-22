@@ -12,12 +12,15 @@ import './styles/responsive.css'
 import './styles/admin-ui.css'
 import './styles/dark-mode-fixes.css'
 import router from './router'
+import { initializeViewportScaling } from './composables/useViewport'
 
 // 导入事件源客户端
 import xrayEventSource from './utils/eventSourceClient'
 
 // 导入全局错误处理器
 import { installGlobalErrorHandler } from './utils/globalErrorHandler'
+
+initializeViewportScaling()
 
 // 创建Vue实例和状态管理
 const app = createApp(App)

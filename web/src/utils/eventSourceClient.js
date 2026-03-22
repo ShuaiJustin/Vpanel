@@ -53,7 +53,7 @@ class XrayEventSource {
   /**
    * 处理连接成功事件
    */
-  handleConnected(event) {
+  handleConnected() {
     this.connected = true;
     this.retryCount = 0;
     console.log('XrayEventSource: Connected to server');

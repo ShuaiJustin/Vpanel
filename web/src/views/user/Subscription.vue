@@ -2,28 +2,51 @@
   <div class="subscription-page">
     <!-- 页面标题 -->
     <div class="page-header">
-      <h1 class="page-title">订阅管理</h1>
-      <p class="page-subtitle">获取订阅链接，导入到您的客户端使用</p>
+      <h1 class="page-title">
+        订阅管理
+      </h1>
+      <p class="page-subtitle">
+        获取订阅链接，导入到您的客户端使用
+      </p>
     </div>
 
     <!-- 订阅状态和操作卡片 -->
-    <el-row :gutter="20" class="subscription-actions">
+    <el-row
+      :gutter="20"
+      class="subscription-actions"
+    >
       <!-- 订阅状态卡片 -->
-      <el-col :xs="24" :lg="12">
-        <el-card class="status-card" shadow="never">
+      <el-col
+        :xs="24"
+        :lg="12"
+      >
+        <el-card
+          class="status-card"
+          shadow="never"
+        >
           <template #header>
             <div class="card-header">
               <span>订阅状态</span>
-              <el-tag :type="subscriptionStatus.type" size="small">
+              <el-tag
+                :type="subscriptionStatus.type"
+                size="small"
+              >
                 {{ subscriptionStatus.label }}
               </el-tag>
             </div>
           </template>
           <div class="status-content">
-            <el-descriptions :column="1" border size="small">
+            <el-descriptions
+              :column="1"
+              border
+              size="small"
+            >
               <el-descriptions-item label="到期时间">
                 {{ expiresAt || '永久有效' }}
-                <span v-if="daysUntilExpiry !== null" class="days-hint">
+                <span
+                  v-if="daysUntilExpiry !== null"
+                  class="days-hint"
+                >
                   ({{ daysUntilExpiry > 0 ? `剩余 ${daysUntilExpiry} 天` : '已过期' }})
                 </span>
               </el-descriptions-item>
@@ -37,11 +60,17 @@
             
             <!-- 升级/降级按钮 -->
             <div class="action-buttons">
-              <el-button type="primary" @click="goToPlanUpgrade">
+              <el-button
+                type="primary"
+                @click="goToPlanUpgrade"
+              >
                 <el-icon><TrendCharts /></el-icon>
                 升级/降级套餐
               </el-button>
-              <el-button type="success" @click="goToPlans">
+              <el-button
+                type="success"
+                @click="goToPlans"
+              >
                 <el-icon><ShoppingCart /></el-icon>
                 续费套餐
               </el-button>
@@ -51,17 +80,27 @@
       </el-col>
 
       <!-- 暂停/恢复卡片 -->
-      <el-col :xs="24" :lg="12">
+      <el-col
+        :xs="24"
+        :lg="12"
+      >
         <PauseCard />
       </el-col>
     </el-row>
 
     <!-- 订阅链接卡片 -->
-    <el-card class="subscription-card" shadow="never">
+    <el-card
+      class="subscription-card"
+      shadow="never"
+    >
       <template #header>
         <div class="card-header">
           <span>订阅链接</span>
-          <el-button link type="primary" @click="resetSubscription">
+          <el-button
+            link
+            type="primary"
+            @click="resetSubscription"
+          >
             <el-icon><Refresh /></el-icon>
             重置链接
           </el-button>
@@ -72,7 +111,10 @@
         <!-- 订阅格式选择 -->
         <div class="format-selector">
           <span class="selector-label">订阅格式：</span>
-          <el-radio-group v-model="selectedFormat" size="small">
+          <el-radio-group
+            v-model="selectedFormat"
+            size="small"
+          >
             <el-radio-button 
               v-for="format in formats" 
               :key="format.value" 
@@ -102,10 +144,13 @@
         <!-- QR 码 -->
         <div class="qrcode-section">
           <div class="qrcode-wrapper">
-            <canvas ref="qrcodeCanvas"></canvas>
+            <canvas ref="qrcodeCanvas" />
           </div>
           <div class="qrcode-actions">
-            <el-button size="small" @click="downloadQRCode">
+            <el-button
+              size="small"
+              @click="downloadQRCode"
+            >
               <el-icon><Download /></el-icon>
               下载二维码
             </el-button>
@@ -132,11 +177,18 @@
     </el-card>
 
     <!-- 客户端推荐 -->
-    <el-card class="clients-card" shadow="never">
+    <el-card
+      class="clients-card"
+      shadow="never"
+    >
       <template #header>
         <div class="card-header">
           <span>推荐客户端</span>
-          <el-button link type="primary" @click="goToDownload">
+          <el-button
+            link
+            type="primary"
+            @click="goToDownload"
+          >
             查看全部
             <el-icon><ArrowRight /></el-icon>
           </el-button>
@@ -154,10 +206,14 @@
             <el-icon><component :is="client.icon" /></el-icon>
           </div>
           <div class="client-info">
-            <h4 class="client-name">{{ client.name }}</h4>
+            <h4 class="client-name">
+              {{ client.name }}
+            </h4>
             <span class="client-platform">{{ client.platform }}</span>
           </div>
-          <el-icon class="client-arrow"><ArrowRight /></el-icon>
+          <el-icon class="client-arrow">
+            <ArrowRight />
+          </el-icon>
         </div>
       </div>
     </el-card>
@@ -178,8 +234,14 @@
         </template>
       </el-alert>
       <template #footer>
-        <el-button @click="showResetDialog = false">取消</el-button>
-        <el-button type="danger" @click="confirmReset" :loading="resetting">
+        <el-button @click="showResetDialog = false">
+          取消
+        </el-button>
+        <el-button
+          type="danger"
+          :loading="resetting"
+          @click="confirmReset"
+        >
           确认重置
         </el-button>
       </template>
@@ -190,7 +252,7 @@
 <script setup>
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { 
   Refresh, CopyDocument, Download, ArrowRight,
   Monitor, Iphone, Apple, TrendCharts, ShoppingCart

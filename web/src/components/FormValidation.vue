@@ -15,7 +15,10 @@
       <slot />
       
       <!-- 表单操作按钮 -->
-      <el-form-item v-if="showActions" class="form-actions">
+      <el-form-item
+        v-if="showActions"
+        class="form-actions"
+      >
         <slot name="actions">
           <el-button
             type="primary"
@@ -25,10 +28,16 @@
           >
             {{ submitText }}
           </el-button>
-          <el-button v-if="showReset" @click="handleReset">
+          <el-button
+            v-if="showReset"
+            @click="handleReset"
+          >
             {{ resetText }}
           </el-button>
-          <el-button v-if="showCancel" @click="$emit('cancel')">
+          <el-button
+            v-if="showCancel"
+            @click="$emit('cancel')"
+          >
             {{ cancelText }}
           </el-button>
         </slot>
@@ -36,7 +45,10 @@
     </el-form>
     
     <!-- 验证摘要 -->
-    <div v-if="showSummary && hasErrors" class="validation-summary">
+    <div
+      v-if="showSummary && hasErrors"
+      class="validation-summary"
+    >
       <el-alert
         type="error"
         :closable="false"
@@ -46,7 +58,10 @@
           请修正以下错误：
         </template>
         <ul class="error-list">
-          <li v-for="(error, field) in errors" :key="field">
+          <li
+            v-for="(error, field) in errors"
+            :key="field"
+          >
             <span class="field-name">{{ getFieldLabel(field) }}:</span>
             <span class="error-message">{{ error }}</span>
           </li>
@@ -61,7 +76,7 @@
  * 表单验证组件
  * 提供内联验证、实时反馈和验证摘要
  */
-import { ref, computed, watch, provide, onMounted } from 'vue'
+import { ref, computed, watch, provide } from 'vue'
 
 const props = defineProps({
   // 表单数据 (v-model)

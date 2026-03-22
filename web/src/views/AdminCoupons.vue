@@ -2,12 +2,21 @@
   <div class="admin-coupons-page">
     <div class="page-header">
       <div class="page-heading">
-        <h1 class="page-title">优惠券管理</h1>
-        <p class="page-subtitle">集中维护优惠策略、使用限制和有效期状态</p>
+        <h1 class="page-title">
+          优惠券管理
+        </h1>
+        <p class="page-subtitle">
+          集中维护优惠策略、使用限制和有效期状态
+        </p>
       </div>
       <div class="page-actions">
-        <el-button type="primary" @click="showCreateDialog">
-          <el-icon class="el-icon--left"><Plus /></el-icon>
+        <el-button
+          type="primary"
+          @click="showCreateDialog"
+        >
+          <el-icon class="el-icon--left">
+            <Plus />
+          </el-icon>
           创建优惠券
         </el-button>
       </div>
@@ -35,13 +44,25 @@
     <div class="toolbar-card">
       <div class="toolbar-actions">
         <span class="toolbar-summary">当前页 {{ coupons.length }} 张优惠券，共 {{ pagination.total }} 张</span>
-        <el-button @click="fetchCoupons">刷新</el-button>
+        <el-button @click="fetchCoupons">
+          刷新
+        </el-button>
       </div>
     </div>
 
     <div class="table-shell">
-      <el-table :data="coupons" v-loading="loading" border stripe class="coupons-table" row-key="id">
-        <el-table-column label="优惠券信息" min-width="300">
+      <el-table
+        v-loading="loading"
+        :data="coupons"
+        border
+        stripe
+        class="coupons-table"
+        row-key="id"
+      >
+        <el-table-column
+          label="优惠券信息"
+          min-width="300"
+        >
           <template #default="{ row }">
             <div class="entity-cell">
               <div class="entity-cell__header">
@@ -53,7 +74,11 @@
                 <span>优惠码：</span>
                 <span class="mono-code">
                   <span class="mono-code__value">{{ row.code }}</span>
-                  <el-button text class="inline-copy-btn" @click="copyCode(row.code)">
+                  <el-button
+                    text
+                    class="inline-copy-btn"
+                    @click="copyCode(row.code)"
+                  >
                     <el-icon><CopyDocument /></el-icon>
                   </el-button>
                 </span>
@@ -65,7 +90,10 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="优惠规则" min-width="240">
+        <el-table-column
+          label="优惠规则"
+          min-width="240"
+        >
           <template #default="{ row }">
             <div class="stack-cell">
               <div class="stack-item">
@@ -80,7 +108,10 @@
                 <span class="stack-label">最低消费</span>
                 <span class="stack-value">{{ row.min_order_amount ? `¥${formatPrice(row.min_order_amount)}` : '无门槛' }}</span>
               </div>
-              <div v-if="row.type === 'percentage'" class="stack-item">
+              <div
+                v-if="row.type === 'percentage'"
+                class="stack-item"
+              >
                 <span class="stack-label">最大减免</span>
                 <span class="stack-value">{{ row.max_discount ? `¥${formatPrice(row.max_discount)}` : '不封顶' }}</span>
               </div>
@@ -88,7 +119,10 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="使用与有效期" min-width="260">
+        <el-table-column
+          label="使用与有效期"
+          min-width="260"
+        >
           <template #default="{ row }">
             <div class="stack-cell">
               <div class="stack-item">
@@ -107,18 +141,38 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="150" align="right" fixed="right">
+        <el-table-column
+          label="操作"
+          width="150"
+          align="right"
+          fixed="right"
+        >
           <template #default="{ row }">
             <div class="operation-btns">
-              <el-button size="small" class="row-action row-action--primary" @click="editCoupon(row)">编辑</el-button>
-              <el-button size="small" class="row-action row-action--danger" @click="deleteCoupon(row)">删除</el-button>
+              <el-button
+                size="small"
+                class="row-action row-action--primary"
+                @click="editCoupon(row)"
+              >
+                编辑
+              </el-button>
+              <el-button
+                size="small"
+                class="row-action row-action--danger"
+                @click="deleteCoupon(row)"
+              >
+                删除
+              </el-button>
             </div>
           </template>
         </el-table-column>
       </el-table>
     </div>
 
-    <div v-if="pagination.total > 0" class="pagination-container">
+    <div
+      v-if="pagination.total > 0"
+      class="pagination-container"
+    >
       <el-pagination
         v-model:current-page="pagination.page"
         v-model:page-size="pagination.pageSize"
@@ -130,39 +184,105 @@
       />
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑优惠券' : '创建优惠券'" :width="isMobile ? 'calc(100vw - 24px)' : '600px'">
-      <el-form :model="form" :rules="rules" ref="formRef" :label-width="isMobile ? '90px' : '100px'">
-        <el-form-item label="优惠码" prop="code">
-          <el-input v-model="form.code" placeholder="留空自动生成" :disabled="isEdit" />
+    <el-dialog
+      v-model="dialogVisible"
+      :title="isEdit ? '编辑优惠券' : '创建优惠券'"
+      :width="isMobile ? 'calc(100vw - 24px)' : '600px'"
+    >
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        :label-width="isMobile ? '90px' : '100px'"
+      >
+        <el-form-item
+          label="优惠码"
+          prop="code"
+        >
+          <el-input
+            v-model="form.code"
+            placeholder="留空自动生成"
+            :disabled="isEdit"
+          />
         </el-form-item>
-        <el-form-item label="名称" prop="name">
-          <el-input v-model="form.name" placeholder="请输入优惠券名称" />
+        <el-form-item
+          label="名称"
+          prop="name"
+        >
+          <el-input
+            v-model="form.name"
+            placeholder="请输入优惠券名称"
+          />
         </el-form-item>
-        <el-form-item label="类型" prop="type">
+        <el-form-item
+          label="类型"
+          prop="type"
+        >
           <el-radio-group v-model="form.type">
-            <el-radio label="fixed">固定金额</el-radio>
-            <el-radio label="percentage">百分比</el-radio>
+            <el-radio label="fixed">
+              固定金额
+            </el-radio>
+            <el-radio label="percentage">
+              百分比
+            </el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="优惠值" prop="value">
-          <el-input-number v-model="form.value" :min="0" :max="form.type === 'percentage' ? 100 : 999999" />
+        <el-form-item
+          label="优惠值"
+          prop="value"
+        >
+          <el-input-number
+            v-model="form.value"
+            :min="0"
+            :max="form.type === 'percentage' ? 100 : 999999"
+          />
           <span class="form-unit">{{ form.type === 'fixed' ? '元' : '%' }}</span>
         </el-form-item>
-        <el-form-item label="最低消费" prop="min_order_amount">
-          <el-input-number v-model="form.min_order_amount" :min="0" />
+        <el-form-item
+          label="最低消费"
+          prop="min_order_amount"
+        >
+          <el-input-number
+            v-model="form.min_order_amount"
+            :min="0"
+          />
           <span class="form-unit">元</span>
         </el-form-item>
-        <el-form-item v-if="form.type === 'percentage'" label="最大折扣" prop="max_discount">
-          <el-input-number v-model="form.max_discount" :min="0" />
+        <el-form-item
+          v-if="form.type === 'percentage'"
+          label="最大折扣"
+          prop="max_discount"
+        >
+          <el-input-number
+            v-model="form.max_discount"
+            :min="0"
+          />
           <span class="form-unit">元</span>
         </el-form-item>
-        <el-form-item label="总数量" prop="total_limit">
-          <el-input-number v-model="form.total_limit" :min="0" placeholder="0表示无限制" />
+        <el-form-item
+          label="总数量"
+          prop="total_limit"
+        >
+          <el-input-number
+            v-model="form.total_limit"
+            :min="0"
+            placeholder="0表示无限制"
+          />
         </el-form-item>
-        <el-form-item label="每人限用" prop="per_user_limit">
-          <el-input-number v-model="form.per_user_limit" :min="0" placeholder="0表示无限制" />
+        <el-form-item
+          label="每人限用"
+          prop="per_user_limit"
+        >
+          <el-input-number
+            v-model="form.per_user_limit"
+            :min="0"
+            placeholder="0表示无限制"
+          />
         </el-form-item>
-        <el-form-item label="有效期" prop="dateRange">
+        <el-form-item
+          label="有效期"
+          prop="dateRange"
+        >
           <el-date-picker
             v-model="form.dateRange"
             type="datetimerange"
@@ -175,8 +295,16 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="submitForm">确定</el-button>
+        <el-button @click="dialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="submitting"
+          @click="submitForm"
+        >
+          确定
+        </el-button>
       </template>
     </el-dialog>
   </div>

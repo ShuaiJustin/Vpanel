@@ -2,12 +2,21 @@
   <div class="admin-plans-page">
     <div class="page-header">
       <div class="page-heading">
-        <h1 class="page-title">套餐管理</h1>
-        <p class="page-subtitle">集中维护销售套餐的价格、时长、流量和上架状态</p>
+        <h1 class="page-title">
+          套餐管理
+        </h1>
+        <p class="page-subtitle">
+          集中维护销售套餐的价格、时长、流量和上架状态
+        </p>
       </div>
       <div class="page-actions">
-        <el-button type="primary" @click="showCreateDialog">
-          <el-icon class="el-icon--left"><Plus /></el-icon>
+        <el-button
+          type="primary"
+          @click="showCreateDialog"
+        >
+          <el-icon class="el-icon--left">
+            <Plus />
+          </el-icon>
           创建套餐
         </el-button>
       </div>
@@ -35,17 +44,32 @@
     <div class="toolbar-card">
       <div class="toolbar-filters">
         <span class="toolbar-summary">显示停用套餐</span>
-        <el-switch v-model="includeInactive" @change="handleIncludeInactiveChange" />
+        <el-switch
+          v-model="includeInactive"
+          @change="handleIncludeInactiveChange"
+        />
       </div>
       <div class="toolbar-actions">
         <span class="toolbar-summary">当前页 {{ plans.length }} 个套餐，共 {{ pagination.total }} 个</span>
-        <el-button @click="fetchPlans">刷新</el-button>
+        <el-button @click="fetchPlans">
+          刷新
+        </el-button>
       </div>
     </div>
 
     <div class="table-shell">
-      <el-table :data="plans" v-loading="loading" border stripe class="plans-table" row-key="id">
-        <el-table-column label="套餐信息" min-width="300">
+      <el-table
+        v-loading="loading"
+        :data="plans"
+        border
+        stripe
+        class="plans-table"
+        row-key="id"
+      >
+        <el-table-column
+          label="套餐信息"
+          min-width="300"
+        >
           <template #default="{ row }">
             <div class="entity-cell">
               <div class="entity-cell__header">
@@ -61,11 +85,24 @@
               <div class="entity-cell__hint">
                 {{ row.description || '未填写套餐描述。' }}
               </div>
-              <div v-if="row.features?.length" class="stack-tags">
-                <el-tag v-for="feature in row.features.slice(0, 3)" :key="feature" size="small" effect="plain">
+              <div
+                v-if="row.features?.length"
+                class="stack-tags"
+              >
+                <el-tag
+                  v-for="feature in row.features.slice(0, 3)"
+                  :key="feature"
+                  size="small"
+                  effect="plain"
+                >
                   {{ feature }}
                 </el-tag>
-                <el-tag v-if="row.features.length > 3" size="small" effect="plain" type="info">
+                <el-tag
+                  v-if="row.features.length > 3"
+                  size="small"
+                  effect="plain"
+                  type="info"
+                >
                   +{{ row.features.length - 3 }}
                 </el-tag>
               </div>
@@ -73,7 +110,10 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="计费规则" min-width="220">
+        <el-table-column
+          label="计费规则"
+          min-width="220"
+        >
           <template #default="{ row }">
             <div class="stack-cell">
               <div class="stack-item">
@@ -95,7 +135,10 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="配额与状态" min-width="250">
+        <el-table-column
+          label="配额与状态"
+          min-width="250"
+        >
           <template #default="{ row }">
             <div class="stack-cell">
               <div class="stack-item">
@@ -108,24 +151,47 @@
               </div>
               <div class="stack-item stack-item--inline">
                 <span class="stack-label">启用状态</span>
-                <el-switch v-model="row.is_active" @change="toggleStatus(row)" />
+                <el-switch
+                  v-model="row.is_active"
+                  @change="toggleStatus(row)"
+                />
               </div>
             </div>
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="150" align="right" fixed="right">
+        <el-table-column
+          label="操作"
+          width="150"
+          align="right"
+          fixed="right"
+        >
           <template #default="{ row }">
             <div class="operation-btns">
-              <el-button size="small" class="row-action row-action--primary" @click="editPlan(row)">编辑</el-button>
-              <el-button size="small" class="row-action row-action--danger" @click="deletePlan(row)">删除</el-button>
+              <el-button
+                size="small"
+                class="row-action row-action--primary"
+                @click="editPlan(row)"
+              >
+                编辑
+              </el-button>
+              <el-button
+                size="small"
+                class="row-action row-action--danger"
+                @click="deletePlan(row)"
+              >
+                删除
+              </el-button>
             </div>
           </template>
         </el-table-column>
       </el-table>
     </div>
 
-    <div v-if="pagination.total > 0" class="pagination-container">
+    <div
+      v-if="pagination.total > 0"
+      class="pagination-container"
+    >
       <el-pagination
         v-model:current-page="pagination.page"
         v-model:page-size="pagination.pageSize"
@@ -137,29 +203,85 @@
       />
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑套餐' : '创建套餐'" :width="isMobile ? 'calc(100vw - 24px)' : '600px'">
-      <el-form :model="form" :rules="rules" ref="formRef" :label-width="isMobile ? '82px' : '100px'">
-        <el-form-item label="名称" prop="name">
-          <el-input v-model="form.name" placeholder="请输入套餐名称" />
+    <el-dialog
+      v-model="dialogVisible"
+      :title="isEdit ? '编辑套餐' : '创建套餐'"
+      :width="isMobile ? 'calc(100vw - 24px)' : '600px'"
+    >
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        :label-width="isMobile ? '82px' : '100px'"
+      >
+        <el-form-item
+          label="名称"
+          prop="name"
+        >
+          <el-input
+            v-model="form.name"
+            placeholder="请输入套餐名称"
+          />
         </el-form-item>
-        <el-form-item label="描述" prop="description">
-          <el-input v-model="form.description" type="textarea" :rows="2" placeholder="请输入套餐描述" />
+        <el-form-item
+          label="描述"
+          prop="description"
+        >
+          <el-input
+            v-model="form.description"
+            type="textarea"
+            :rows="2"
+            placeholder="请输入套餐描述"
+          />
         </el-form-item>
-        <el-form-item label="价格(元)" prop="price">
-          <el-input-number v-model="form.price" :min="0" :precision="2" />
+        <el-form-item
+          label="价格(元)"
+          prop="price"
+        >
+          <el-input-number
+            v-model="form.price"
+            :min="0"
+            :precision="2"
+          />
         </el-form-item>
-        <el-form-item label="时长(天)" prop="duration">
-          <el-input-number v-model="form.duration" :min="1" />
+        <el-form-item
+          label="时长(天)"
+          prop="duration"
+        >
+          <el-input-number
+            v-model="form.duration"
+            :min="1"
+          />
         </el-form-item>
-        <el-form-item label="流量限制" prop="traffic_limit">
-          <el-input-number v-model="form.traffic_limit" :min="0" placeholder="0表示无限制" />
+        <el-form-item
+          label="流量限制"
+          prop="traffic_limit"
+        >
+          <el-input-number
+            v-model="form.traffic_limit"
+            :min="0"
+            placeholder="0表示无限制"
+          />
           <span class="form-unit">GB</span>
         </el-form-item>
-        <el-form-item label="并发 IP" prop="ip_limit">
-          <el-input-number v-model="form.ip_limit" :min="0" placeholder="0表示不限制" />
+        <el-form-item
+          label="并发 IP"
+          prop="ip_limit"
+        >
+          <el-input-number
+            v-model="form.ip_limit"
+            :min="0"
+            placeholder="0表示不限制"
+          />
         </el-form-item>
-        <el-form-item label="排序" prop="sort_order">
-          <el-input-number v-model="form.sort_order" :min="0" />
+        <el-form-item
+          label="排序"
+          prop="sort_order"
+        >
+          <el-input-number
+            v-model="form.sort_order"
+            :min="0"
+          />
         </el-form-item>
         <el-form-item label="启用状态">
           <el-switch v-model="form.is_active" />
@@ -185,14 +307,28 @@
                 @keyup.enter="addFeature"
                 @blur="addFeature"
               />
-              <el-button v-else size="small" @click="showFeatureInput = true">添加特性</el-button>
+              <el-button
+                v-else
+                size="small"
+                @click="showFeatureInput = true"
+              >
+                添加特性
+              </el-button>
             </div>
           </div>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="submitForm">确定</el-button>
+        <el-button @click="dialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="submitting"
+          @click="submitForm"
+        >
+          确定
+        </el-button>
       </template>
     </el-dialog>
   </div>

@@ -1,8 +1,14 @@
 <template>
   <el-container class="layout-container">
-    <el-aside :width="isCollapse ? '64px' : '200px'" class="aside">
+    <el-aside
+      :width="isCollapse ? '64px' : '200px'"
+      class="aside"
+    >
       <div class="logo">
-        <img src="@/assets/logo.png" alt="Logo" />
+        <img
+          src="@/assets/logo.png"
+          alt="Logo"
+        >
         <span v-show="!isCollapse">V Panel</span>
       </div>
       <el-menu
@@ -14,23 +20,33 @@
       >
         <el-menu-item index="/">
           <el-icon><Monitor /></el-icon>
-          <template #title>仪表盘</template>
+          <template #title>
+            仪表盘
+          </template>
         </el-menu-item>
         <el-menu-item index="/users">
           <el-icon><User /></el-icon>
-          <template #title>用户管理</template>
+          <template #title>
+            用户管理
+          </template>
         </el-menu-item>
         <el-menu-item index="/proxies">
           <el-icon><Connection /></el-icon>
-          <template #title>代理管理</template>
+          <template #title>
+            代理管理
+          </template>
         </el-menu-item>
         <el-menu-item index="/clients">
           <el-icon><Avatar /></el-icon>
-          <template #title>客户端管理</template>
+          <template #title>
+            客户端管理
+          </template>
         </el-menu-item>
         <el-menu-item index="/certificates">
           <el-icon><Lock /></el-icon>
-          <template #title>证书管理</template>
+          <template #title>
+            证书管理
+          </template>
         </el-menu-item>
         <el-sub-menu index="monitor-submenu">
           <template #title>
@@ -39,28 +55,40 @@
           </template>
           <el-menu-item index="/traffic">
             <el-icon><Histogram /></el-icon>
-            <template #title>流量监控</template>
+            <template #title>
+              流量监控
+            </template>
           </el-menu-item>
           <el-menu-item index="/monitor">
             <el-icon><Monitor /></el-icon>
-            <template #title>资源监控</template>
+            <template #title>
+              资源监控
+            </template>
           </el-menu-item>
           <el-menu-item index="/logs">
             <el-icon><Document /></el-icon>
-            <template #title>系统日志</template>
+            <template #title>
+              系统日志
+            </template>
           </el-menu-item>
           <el-menu-item index="/alerts">
             <el-icon><Bell /></el-icon>
-            <template #title>告警设置</template>
+            <template #title>
+              告警设置
+            </template>
           </el-menu-item>
         </el-sub-menu>
         <el-menu-item index="/backups">
           <el-icon><Files /></el-icon>
-          <template #title>备份恢复</template>
+          <template #title>
+            备份恢复
+          </template>
         </el-menu-item>
         <el-menu-item index="/settings">
           <el-icon><Setting /></el-icon>
-          <template #title>系统设置</template>
+          <template #title>
+            系统设置
+          </template>
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -69,11 +97,11 @@
         <div class="header-left">
           <el-button
             type="text"
-            @click="toggleCollapse"
             class="collapse-btn"
+            @click="toggleCollapse"
           >
             <el-icon>
-              <component :is="isCollapse ? 'Expand' : 'Fold'" />
+              <component :is="isCollapse ? Expand : Fold" />
             </el-icon>
           </el-button>
         </div>
@@ -85,8 +113,12 @@
             </span>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="profile">个人信息</el-dropdown-item>
-                <el-dropdown-item command="logout">退出登录</el-dropdown-item>
+                <el-dropdown-item command="profile">
+                  个人信息
+                </el-dropdown-item>
+                <el-dropdown-item command="logout">
+                  退出登录
+                </el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -135,15 +167,6 @@ const activeMenu = computed(() => {
   }
   
   return path
-})
-
-// 计算当前激活的子菜单
-const activeSub = computed(() => {
-  const path = route.path
-  if (['/traffic', '/monitor', '/logs', '/alerts'].includes(path)) {
-    return 'monitor-submenu'
-  }
-  return ''
 })
 
 // 默认展开的子菜单，确保即使页面刷新，当前选中的子菜单也能保持展开状态

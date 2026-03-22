@@ -2,32 +2,56 @@
   <div class="invite-page">
     <!-- 页面标题 -->
     <div class="page-header">
-      <h1 class="page-title">邀请推广</h1>
-      <p class="page-subtitle">邀请好友注册，获得佣金奖励</p>
+      <h1 class="page-title">
+        邀请推广
+      </h1>
+      <p class="page-subtitle">
+        邀请好友注册，获得佣金奖励
+      </p>
     </div>
 
     <!-- 邀请码卡片 -->
-    <el-card shadow="never" class="invite-card">
+    <el-card
+      shadow="never"
+      class="invite-card"
+    >
       <div class="invite-content">
         <div class="invite-code-section">
-          <div class="invite-label">我的邀请码</div>
-          <div class="invite-code">{{ code || '加载中...' }}</div>
-          <el-button type="primary" @click="copyCode">
+          <div class="invite-label">
+            我的邀请码
+          </div>
+          <div class="invite-code">
+            {{ code || '加载中...' }}
+          </div>
+          <el-button
+            type="primary"
+            @click="copyCode"
+          >
             <el-icon><CopyDocument /></el-icon>
             复制邀请码
           </el-button>
         </div>
         <div class="invite-link-section">
-          <div class="invite-label">邀请链接</div>
-          <el-input v-model="inviteLink" readonly>
+          <div class="invite-label">
+            邀请链接
+          </div>
+          <el-input
+            v-model="inviteLink"
+            readonly
+          >
             <template #append>
-              <el-button @click="copyLink">复制</el-button>
+              <el-button @click="copyLink">
+                复制
+              </el-button>
             </template>
           </el-input>
         </div>
         <div class="invite-qr-section">
-          <canvas ref="qrcodeCanvas"></canvas>
-          <el-button size="small" @click="downloadQR">
+          <canvas ref="qrcodeCanvas" />
+          <el-button
+            size="small"
+            @click="downloadQR"
+          >
             <el-icon><Download /></el-icon>
             下载二维码
           </el-button>
@@ -37,26 +61,57 @@
 
     <!-- 统计卡片 -->
     <div class="stats-grid">
-      <el-card shadow="never" class="stat-card">
-        <div class="stat-value">{{ totalInvites }}</div>
-        <div class="stat-label">邀请人数</div>
+      <el-card
+        shadow="never"
+        class="stat-card"
+      >
+        <div class="stat-value">
+          {{ totalInvites }}
+        </div>
+        <div class="stat-label">
+          邀请人数
+        </div>
       </el-card>
-      <el-card shadow="never" class="stat-card">
-        <div class="stat-value">{{ convertedInvites }}</div>
-        <div class="stat-label">已转化</div>
+      <el-card
+        shadow="never"
+        class="stat-card"
+      >
+        <div class="stat-value">
+          {{ convertedInvites }}
+        </div>
+        <div class="stat-label">
+          已转化
+        </div>
       </el-card>
-      <el-card shadow="never" class="stat-card">
-        <div class="stat-value">{{ conversionRate.toFixed(1) }}%</div>
-        <div class="stat-label">转化率</div>
+      <el-card
+        shadow="never"
+        class="stat-card"
+      >
+        <div class="stat-value">
+          {{ conversionRate.toFixed(1) }}%
+        </div>
+        <div class="stat-label">
+          转化率
+        </div>
       </el-card>
-      <el-card shadow="never" class="stat-card stat-card--highlight">
-        <div class="stat-value">¥{{ formattedTotalEarnings }}</div>
-        <div class="stat-label">累计收益</div>
+      <el-card
+        shadow="never"
+        class="stat-card stat-card--highlight"
+      >
+        <div class="stat-value">
+          ¥{{ formattedTotalEarnings }}
+        </div>
+        <div class="stat-label">
+          累计收益
+        </div>
       </el-card>
     </div>
 
     <!-- 收益信息 -->
-    <el-card shadow="never" class="earnings-card">
+    <el-card
+      shadow="never"
+      class="earnings-card"
+    >
       <template #header>
         <span>收益明细</span>
       </template>
@@ -70,7 +125,11 @@
           <span class="earnings-value confirmed">¥{{ formattedTotalEarnings }}</span>
         </div>
       </div>
-      <el-alert type="info" :closable="false" show-icon>
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+      >
         <template #title>
           佣金将在订单完成后7天自动确认并转入您的余额
         </template>
@@ -78,31 +137,59 @@
     </el-card>
 
     <!-- 推荐列表 -->
-    <el-card shadow="never" class="referrals-card">
+    <el-card
+      shadow="never"
+      class="referrals-card"
+    >
       <template #header>
         <span>推荐记录</span>
       </template>
 
-      <el-table :data="referrals" style="width: 100%">
-        <el-table-column prop="invitee_id" label="用户ID" width="100" />
-        <el-table-column label="状态" width="100">
+      <el-table
+        :data="referrals"
+        style="width: 100%"
+      >
+        <el-table-column
+          prop="invitee_id"
+          label="用户ID"
+          width="100"
+        />
+        <el-table-column
+          label="状态"
+          width="100"
+        >
           <template #default="{ row }">
-            <el-tag :type="getReferralStatusInfo(row.status).type" size="small">
+            <el-tag
+              :type="getReferralStatusInfo(row.status).type"
+              size="small"
+            >
               {{ getReferralStatusInfo(row.status).label }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="created_at" label="注册时间" />
-        <el-table-column prop="converted_at" label="转化时间">
+        <el-table-column
+          prop="created_at"
+          label="注册时间"
+        />
+        <el-table-column
+          prop="converted_at"
+          label="转化时间"
+        >
           <template #default="{ row }">
             {{ row.converted_at || '-' }}
           </template>
         </el-table-column>
       </el-table>
 
-      <el-empty v-if="referrals.length === 0" description="暂无推荐记录" />
+      <el-empty
+        v-if="referrals.length === 0"
+        description="暂无推荐记录"
+      />
 
-      <div v-if="referralPagination.total > 0" class="pagination-container">
+      <div
+        v-if="referralPagination.total > 0"
+        class="pagination-container"
+      >
         <el-pagination
           v-model:current-page="referralPagination.page"
           :total="referralPagination.total"
@@ -114,41 +201,75 @@
     </el-card>
 
     <!-- 佣金列表 -->
-    <el-card shadow="never" class="commissions-card">
+    <el-card
+      shadow="never"
+      class="commissions-card"
+    >
       <template #header>
         <span>佣金记录</span>
       </template>
 
-      <el-table :data="commissions" style="width: 100%">
-        <el-table-column prop="from_user_id" label="来源用户" width="100" />
-        <el-table-column label="金额" width="120">
+      <el-table
+        :data="commissions"
+        style="width: 100%"
+      >
+        <el-table-column
+          prop="from_user_id"
+          label="来源用户"
+          width="100"
+        />
+        <el-table-column
+          label="金额"
+          width="120"
+        >
           <template #default="{ row }">
             <span class="commission-amount">¥{{ formatPrice(row.amount) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="比例" width="80">
+        <el-table-column
+          label="比例"
+          width="80"
+        >
           <template #default="{ row }">
             {{ (row.rate * 100).toFixed(0) }}%
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="100">
+        <el-table-column
+          label="状态"
+          width="100"
+        >
           <template #default="{ row }">
-            <el-tag :type="getCommissionStatusInfo(row.status).type" size="small">
+            <el-tag
+              :type="getCommissionStatusInfo(row.status).type"
+              size="small"
+            >
               {{ getCommissionStatusInfo(row.status).label }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="created_at" label="创建时间" />
-        <el-table-column prop="confirm_at" label="确认时间">
+        <el-table-column
+          prop="created_at"
+          label="创建时间"
+        />
+        <el-table-column
+          prop="confirm_at"
+          label="确认时间"
+        >
           <template #default="{ row }">
             {{ row.confirm_at || '-' }}
           </template>
         </el-table-column>
       </el-table>
 
-      <el-empty v-if="commissions.length === 0" description="暂无佣金记录" />
+      <el-empty
+        v-if="commissions.length === 0"
+        description="暂无佣金记录"
+      />
 
-      <div v-if="commissionPagination.total > 0" class="pagination-container">
+      <div
+        v-if="commissionPagination.total > 0"
+        class="pagination-container"
+      >
         <el-pagination
           v-model:current-page="commissionPagination.page"
           :total="commissionPagination.total"

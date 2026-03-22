@@ -2,7 +2,9 @@
   <div class="terms-container">
     <div class="terms-header">
       <h1>服务条款</h1>
-      <p class="update-time">最后更新：{{ updateTime }}</p>
+      <p class="update-time">
+        最后更新：{{ updateTime }}
+      </p>
     </div>
 
     <div class="terms-content">
@@ -129,8 +131,15 @@
     </div>
 
     <div class="terms-footer">
-      <el-button @click="goBack">返回</el-button>
-      <el-button type="primary" @click="acceptAndClose">我已阅读并同意</el-button>
+      <el-button @click="goBack">
+        返回
+      </el-button>
+      <el-button
+        type="primary"
+        @click="acceptAndClose"
+      >
+        我已阅读并同意
+      </el-button>
     </div>
   </div>
 </template>

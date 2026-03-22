@@ -296,7 +296,7 @@ describe('createDebouncedSearch - Unit Tests', () => {
 
   it('should create debounced search function', () => {
     const searchFn = vi.fn()
-    const { search, cancel } = createDebouncedSearch(searchFn, 300)
+    const { search } = createDebouncedSearch(searchFn, 300)
     
     search('test')
     search('testing')

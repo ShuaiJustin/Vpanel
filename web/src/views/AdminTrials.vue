@@ -2,12 +2,21 @@
   <div class="admin-trials-page">
     <div class="page-header">
       <div class="page-heading">
-        <h1 class="page-title">试用管理</h1>
-        <p class="page-subtitle">查看试用数据、执行过期检查并为指定用户授予试用</p>
+        <h1 class="page-title">
+          试用管理
+        </h1>
+        <p class="page-subtitle">
+          查看试用数据、执行过期检查并为指定用户授予试用
+        </p>
       </div>
       <div class="page-actions">
-        <el-button type="primary" @click="showGrantDialog">
-          <el-icon class="el-icon--left"><Plus /></el-icon>
+        <el-button
+          type="primary"
+          @click="showGrantDialog"
+        >
+          <el-icon class="el-icon--left">
+            <Plus />
+          </el-icon>
           授予试用
         </el-button>
       </div>
@@ -41,32 +50,50 @@
         <span class="toolbar-summary">
           当前试用功能{{ trialConfig.enabled ? '已启用' : '已禁用' }}，默认时长 {{ trialConfig.duration || 0 }} 天
         </span>
-        <el-button type="warning" :loading="expiring" @click="expireTrials">
-          <el-icon class="el-icon--left"><Timer /></el-icon>
+        <el-button
+          type="warning"
+          :loading="expiring"
+          @click="expireTrials"
+        >
+          <el-icon class="el-icon--left">
+            <Timer />
+          </el-icon>
           手动过期检查
         </el-button>
         <el-button @click="refreshAll">
-          <el-icon class="el-icon--left"><Refresh /></el-icon>
+          <el-icon class="el-icon--left">
+            <Refresh />
+          </el-icon>
           刷新统计
         </el-button>
       </div>
     </div>
 
     <div class="detail-grid">
-      <el-card shadow="never" class="config-card">
+      <el-card
+        shadow="never"
+        class="config-card"
+      >
         <template #header>
           <div class="card-header">
             <span>试用配置</span>
           </div>
         </template>
-        <el-descriptions :column="isMobile ? 1 : 2" border>
+        <el-descriptions
+          :column="isMobile ? 1 : 2"
+          border
+        >
           <el-descriptions-item label="试用功能">
             <span :class="['metric-pill', trialConfig.enabled ? 'is-success' : 'is-danger']">
               {{ trialConfig.enabled ? '已启用' : '已禁用' }}
             </span>
           </el-descriptions-item>
-          <el-descriptions-item label="试用时长">{{ trialConfig.duration || 0 }} 天</el-descriptions-item>
-          <el-descriptions-item label="流量限制">{{ formatTraffic(trialConfig.traffic_limit) }}</el-descriptions-item>
+          <el-descriptions-item label="试用时长">
+            {{ trialConfig.duration || 0 }} 天
+          </el-descriptions-item>
+          <el-descriptions-item label="流量限制">
+            {{ formatTraffic(trialConfig.traffic_limit) }}
+          </el-descriptions-item>
           <el-descriptions-item label="邮箱验证">
             <span :class="['metric-pill', trialConfig.require_email_verify ? 'is-warning' : 'is-muted']">
               {{ trialConfig.require_email_verify ? '需要验证' : '无需验证' }}
@@ -75,51 +102,115 @@
         </el-descriptions>
       </el-card>
 
-      <el-card shadow="never" class="search-card">
+      <el-card
+        shadow="never"
+        class="search-card"
+      >
         <template #header>
           <div class="card-header">
             <span>查询用户试用</span>
           </div>
         </template>
-        <el-form :inline="!isMobile" class="trial-search-form">
+        <el-form
+          :inline="!isMobile"
+          class="trial-search-form"
+        >
           <el-form-item label="用户ID">
-            <el-input v-model="searchUserId" placeholder="输入用户ID" clearable />
+            <el-input
+              v-model="searchUserId"
+              placeholder="输入用户ID"
+              clearable
+            />
           </el-form-item>
           <el-form-item>
-            <el-button type="primary" :loading="searching" @click="searchUserTrial">查询</el-button>
+            <el-button
+              type="primary"
+              :loading="searching"
+              @click="searchUserTrial"
+            >
+              查询
+            </el-button>
           </el-form-item>
         </el-form>
-        <div v-if="searchResult" class="search-result">
-          <el-descriptions :column="isMobile ? 1 : 2" border>
-            <el-descriptions-item label="用户ID">{{ searchResult.user_id }}</el-descriptions-item>
+        <div
+          v-if="searchResult"
+          class="search-result"
+        >
+          <el-descriptions
+            :column="isMobile ? 1 : 2"
+            border
+          >
+            <el-descriptions-item label="用户ID">
+              {{ searchResult.user_id }}
+            </el-descriptions-item>
             <el-descriptions-item label="状态">
               <span :class="['metric-pill', getStatusPillClass(searchResult.status)]">{{ getStatusLabel(searchResult.status) }}</span>
             </el-descriptions-item>
-            <el-descriptions-item label="开始时间">{{ formatTime(searchResult.start_at) }}</el-descriptions-item>
-            <el-descriptions-item label="到期时间">{{ formatTime(searchResult.expire_at) }}</el-descriptions-item>
-            <el-descriptions-item label="剩余天数">{{ searchResult.remaining_days }} 天</el-descriptions-item>
+            <el-descriptions-item label="开始时间">
+              {{ formatTime(searchResult.start_at) }}
+            </el-descriptions-item>
+            <el-descriptions-item label="到期时间">
+              {{ formatTime(searchResult.expire_at) }}
+            </el-descriptions-item>
+            <el-descriptions-item label="剩余天数">
+              {{ searchResult.remaining_days }} 天
+            </el-descriptions-item>
             <el-descriptions-item label="流量使用">
               {{ formatTraffic(searchResult.traffic_used) }} / {{ formatTraffic(searchResult.traffic_limit) }}
             </el-descriptions-item>
           </el-descriptions>
         </div>
-        <el-empty v-else-if="searchResult === null && searchUserId" description="该用户没有试用记录" />
+        <el-empty
+          v-else-if="searchResult === null && searchUserId"
+          description="该用户没有试用记录"
+        />
       </el-card>
     </div>
 
-    <el-dialog v-model="grantDialogVisible" title="授予试用" :width="isMobile ? 'calc(100vw - 24px)' : '420px'">
-      <el-form :model="grantForm" :rules="grantRules" ref="grantFormRef" :label-width="isMobile ? '76px' : '80px'">
-        <el-form-item label="用户ID" prop="user_id">
-          <el-input-number v-model="grantForm.user_id" :min="1" style="width: 100%" />
+    <el-dialog
+      v-model="grantDialogVisible"
+      title="授予试用"
+      :width="isMobile ? 'calc(100vw - 24px)' : '420px'"
+    >
+      <el-form
+        ref="grantFormRef"
+        :model="grantForm"
+        :rules="grantRules"
+        :label-width="isMobile ? '76px' : '80px'"
+      >
+        <el-form-item
+          label="用户ID"
+          prop="user_id"
+        >
+          <el-input-number
+            v-model="grantForm.user_id"
+            :min="1"
+            style="width: 100%"
+          />
         </el-form-item>
-        <el-form-item label="试用天数" prop="duration">
-          <el-input-number v-model="grantForm.duration" :min="1" :max="365" />
+        <el-form-item
+          label="试用天数"
+          prop="duration"
+        >
+          <el-input-number
+            v-model="grantForm.duration"
+            :min="1"
+            :max="365"
+          />
           <span class="form-unit">天</span>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="grantDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="granting" @click="submitGrant">授予</el-button>
+        <el-button @click="grantDialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="granting"
+          @click="submitGrant"
+        >
+          授予
+        </el-button>
       </template>
     </el-dialog>
   </div>

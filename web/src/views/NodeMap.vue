@@ -2,12 +2,21 @@
   <div class="node-map-page">
     <div class="page-header">
       <div class="page-heading">
-        <h1 class="page-title">节点地理分布</h1>
-        <p class="page-subtitle">用真实世界地图查看节点覆盖区域、状态分布和地区负载密度</p>
+        <h1 class="page-title">
+          节点地理分布
+        </h1>
+        <p class="page-subtitle">
+          用真实世界地图查看节点覆盖区域、状态分布和地区负载密度
+        </p>
       </div>
       <div class="page-actions">
-        <el-button @click="fetchNodes" :loading="loading">
-          <el-icon class="el-icon--left"><Refresh /></el-icon>
+        <el-button
+          :loading="loading"
+          @click="fetchNodes"
+        >
+          <el-icon class="el-icon--left">
+            <Refresh />
+          </el-icon>
           刷新
         </el-button>
       </div>
@@ -42,12 +51,20 @@
         <span class="toolbar-summary">在线 {{ visibleOnlineCount }} / 离线 {{ visibleOfflineCount }} / 异常 {{ visibleUnhealthyCount }}</span>
       </div>
       <div class="toolbar-actions">
-        <el-button v-if="selectedRegion" @click="clearRegionFilter">显示全部地区</el-button>
+        <el-button
+          v-if="selectedRegion"
+          @click="clearRegionFilter"
+        >
+          显示全部地区
+        </el-button>
       </div>
     </div>
 
     <div class="map-layout">
-      <el-card shadow="never" class="map-card">
+      <el-card
+        shadow="never"
+        class="map-card"
+      >
         <template #header>
           <div class="card-header map-card__header">
             <div class="map-card__heading">
@@ -61,22 +78,25 @@
         </template>
 
         <div class="map-stage">
-          <div ref="mapChartRef" class="map-chart"></div>
-          <div class="map-stage__glow map-stage__glow--top"></div>
-          <div class="map-stage__glow map-stage__glow--bottom"></div>
+          <div
+            ref="mapChartRef"
+            class="map-chart"
+          />
+          <div class="map-stage__glow map-stage__glow--top" />
+          <div class="map-stage__glow map-stage__glow--bottom" />
         </div>
 
         <div class="map-legend">
           <div class="legend-item">
-            <span class="legend-dot online"></span>
+            <span class="legend-dot online" />
             <span>在线 {{ visibleOnlineCount }}</span>
           </div>
           <div class="legend-item">
-            <span class="legend-dot offline"></span>
+            <span class="legend-dot offline" />
             <span>离线 {{ visibleOfflineCount }}</span>
           </div>
           <div class="legend-item">
-            <span class="legend-dot unhealthy"></span>
+            <span class="legend-dot unhealthy" />
             <span>不健康 {{ visibleUnhealthyCount }}</span>
           </div>
         </div>
@@ -98,7 +118,10 @@
       </el-card>
 
       <div class="side-panels">
-        <el-card shadow="never" class="region-card">
+        <el-card
+          shadow="never"
+          class="region-card"
+        >
           <template #header>
             <div class="card-header">
               <span>地区热度榜</span>
@@ -127,20 +150,36 @@
               <div class="region-item__bottom">
                 <span class="toolbar-summary">平均延迟 {{ region.avgLatency }}ms</span>
                 <div class="region-status">
-                  <span class="status-dot online" v-if="region.online > 0">{{ region.online }}</span>
-                  <span class="status-dot offline" v-if="region.offline > 0">{{ region.offline }}</span>
-                  <span class="status-dot unhealthy" v-if="region.unhealthy > 0">{{ region.unhealthy }}</span>
+                  <span
+                    v-if="region.online > 0"
+                    class="status-dot online"
+                  >{{ region.online }}</span>
+                  <span
+                    v-if="region.offline > 0"
+                    class="status-dot offline"
+                  >{{ region.offline }}</span>
+                  <span
+                    v-if="region.unhealthy > 0"
+                    class="status-dot unhealthy"
+                  >{{ region.unhealthy }}</span>
                 </div>
               </div>
             </button>
           </div>
         </el-card>
 
-        <el-card shadow="never" class="detail-card">
+        <el-card
+          shadow="never"
+          class="detail-card"
+        >
           <template #header>
             <div class="card-header">
               <span>{{ selectedNode ? '节点详情' : '地图说明' }}</span>
-              <el-button v-if="selectedNode" link @click="selectedNode = null">
+              <el-button
+                v-if="selectedNode"
+                link
+                @click="selectedNode = null"
+              >
                 <el-icon><Close /></el-icon>
               </el-button>
             </div>
@@ -177,7 +216,12 @@
             </div>
 
             <div class="detail-card__actions">
-              <el-button type="primary" @click="openSelectedNodeDetail">查看详情</el-button>
+              <el-button
+                type="primary"
+                @click="openSelectedNodeDetail"
+              >
+                查看详情
+              </el-button>
             </div>
           </template>
 
@@ -893,7 +937,7 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1280px) {
   .map-layout {
     grid-template-columns: 1fr;
   }

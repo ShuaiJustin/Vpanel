@@ -1,31 +1,45 @@
 <template>
-  <el-card class="proxy-card" shadow="hover">
+  <el-card
+    class="proxy-card"
+    shadow="hover"
+  >
     <template #header>
       <div class="card-header">
-        <h3 class="name">{{ proxy.name }}</h3>
+        <h3 class="name">
+          {{ proxy.name }}
+        </h3>
         <div class="actions">
-          <el-tooltip content="二维码" placement="top">
+          <el-tooltip
+            content="二维码"
+            placement="top"
+          >
             <el-button
               type="primary"
               text
-              @click="showQRCode = true"
               :icon="QrCode"
+              @click="showQRCode = true"
             />
           </el-tooltip>
-          <el-tooltip content="编辑" placement="top">
+          <el-tooltip
+            content="编辑"
+            placement="top"
+          >
             <el-button
               type="primary" 
               text
-              @click="$emit('edit', proxy.id)"
               :icon="Edit"
+              @click="$emit('edit', proxy.id)"
             />
           </el-tooltip>
-          <el-tooltip content="删除" placement="top">
+          <el-tooltip
+            content="删除"
+            placement="top"
+          >
             <el-button
               type="danger"
               text
-              @click="handleDelete"
               :icon="Delete"
+              @click="handleDelete"
             />
           </el-tooltip>
         </div>
@@ -36,7 +50,10 @@
       <div class="info-row">
         <span class="label">协议:</span>
         <span class="value protocol">
-          <el-tag size="small" :type="getProtocolTagType(proxy.protocol)">
+          <el-tag
+            size="small"
+            :type="getProtocolTagType(proxy.protocol)"
+          >
             {{ proxy.protocol.toUpperCase() }}
           </el-tag>
         </span>
@@ -47,7 +64,10 @@
         <span class="value">{{ proxy.server }}:{{ proxy.port }}</span>
       </div>
       
-      <div v-if="proxy.remark" class="info-row">
+      <div
+        v-if="proxy.remark"
+        class="info-row"
+      >
         <span class="label">备注:</span>
         <span class="value">{{ proxy.remark }}</span>
       </div>
@@ -72,8 +92,15 @@
       <div class="delete-confirm">
         <p>确定要删除代理 "{{ proxy.name }}" 吗？此操作无法撤销。</p>
         <div class="confirm-buttons">
-          <el-button @click="showDeleteConfirm = false">取消</el-button>
-          <el-button type="danger" @click="confirmDelete">删除</el-button>
+          <el-button @click="showDeleteConfirm = false">
+            取消
+          </el-button>
+          <el-button
+            type="danger"
+            @click="confirmDelete"
+          >
+            删除
+          </el-button>
         </div>
       </div>
     </el-dialog>
@@ -82,7 +109,7 @@
 
 <script setup>
 import { ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { Edit, Delete, QrCode } from '@element-plus/icons-vue'
 import QRCodeGenerator from './QRCodeGenerator.vue'
 
@@ -116,7 +143,7 @@ const handleDelete = () => {
 }
 
 // 确认删除
-const confirmDelete = async () => {
+const confirmDelete = () => {
   try {
     // 向父组件发送删除事件
     emit('delete', props.proxy.id)

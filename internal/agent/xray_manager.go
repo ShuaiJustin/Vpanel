@@ -20,6 +20,8 @@ type XrayManagerConfig struct {
 	BinaryPath string
 	ConfigPath string
 	BackupDir  string
+	Stdout     io.Writer
+	Stderr     io.Writer
 }
 
 // XrayStatus represents the current status of Xray.
@@ -33,12 +35,13 @@ type XrayStatus struct {
 
 // XrayManager manages the local Xray process.
 type XrayManager struct {
-	mu         sync.RWMutex
-	config     XrayManagerConfig
-	logger     logger.Logger
-	cmd        *exec.Cmd
-	startedAt  time.Time
-	version    string
+	mu        sync.RWMutex
+	config    XrayManagerConfig
+	logger    logger.Logger
+	cmd       *exec.Cmd
+	waitDone  chan error
+	startedAt time.Time
+	version   string
 }
 
 // NewXrayManager creates a new Xray manager.
@@ -60,35 +63,35 @@ func NewXrayManager(cfg XrayManagerConfig, log logger.Logger) *XrayManager {
 
 // Start starts the Xray process.
 func (m *XrayManager) Start(ctx context.Context) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.cmd != nil && m.cmd.Process != nil {
-		// Check if process is still running
-		if err := m.cmd.Process.Signal(os.Signal(nil)); err == nil {
-			return fmt.Errorf("xray is already running")
-		}
-	}
-
 	// Validate config before starting
 	if err := m.validateConfig(ctx); err != nil {
 		return fmt.Errorf("config validation failed: %w", err)
 	}
 
-	// Start Xray process
-	m.cmd = exec.CommandContext(ctx, m.config.BinaryPath, "run", "-c", m.config.ConfigPath)
-	m.cmd.Stdout = io.Discard
-	m.cmd.Stderr = io.Discard
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	if err := m.cmd.Start(); err != nil {
+	if m.isManagedProcessRunningLocked() {
+		return fmt.Errorf("xray is already running")
+	}
+
+	// Start Xray process
+	cmd := exec.Command(m.config.BinaryPath, "run", "-c", m.config.ConfigPath)
+	cmd.Stdout = outputWriterOrDiscard(m.config.Stdout)
+	cmd.Stderr = outputWriterOrDiscard(m.config.Stderr)
+
+	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start xray: %w", err)
 	}
 
+	done := make(chan error, 1)
+	m.cmd = cmd
+	m.waitDone = done
 	m.startedAt = time.Now()
-	m.logger.Info("xray started", logger.F("pid", m.cmd.Process.Pid))
+	m.logger.Info("xray started", logger.F("pid", cmd.Process.Pid))
 
 	// Start process monitor
-	go m.monitorProcess(ctx)
+	go m.monitorProcess(cmd, done)
 
 	return nil
 }
@@ -96,36 +99,49 @@ func (m *XrayManager) Start(ctx context.Context) error {
 // Stop stops the Xray process.
 func (m *XrayManager) Stop(ctx context.Context) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.cmd == nil || m.cmd.Process == nil {
+	cmd := m.cmd
+	done := m.waitDone
+	if cmd == nil || cmd.Process == nil {
+		m.mu.Unlock()
 		return nil // Already stopped
 	}
+	m.mu.Unlock()
 
 	// Send SIGTERM first
-	if err := m.cmd.Process.Signal(os.Interrupt); err != nil {
+	if err := cmd.Process.Signal(os.Interrupt); err != nil {
 		m.logger.Warn("failed to send interrupt signal", logger.F("error", err))
 	}
 
-	// Wait for graceful shutdown
-	done := make(chan error, 1)
-	go func() {
-		done <- m.cmd.Wait()
-	}()
-
 	select {
-	case <-time.After(5 * time.Second):
-		// Force kill if not stopped
-		if err := m.cmd.Process.Kill(); err != nil {
-			m.logger.Error("failed to kill xray process", logger.F("error", err))
-		}
 	case err := <-done:
 		if err != nil {
 			m.logger.Debug("xray process exited", logger.F("error", err))
 		}
+	case <-time.After(5 * time.Second):
+		// Force kill if not stopped
+		if err := cmd.Process.Kill(); err != nil {
+			m.logger.Error("failed to kill xray process", logger.F("error", err))
+		}
+		select {
+		case err := <-done:
+			if err != nil {
+				m.logger.Debug("xray process exited after kill", logger.F("error", err))
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+		}
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 
-	m.cmd = nil
+	m.mu.Lock()
+	if m.cmd == cmd {
+		m.cmd = nil
+		m.waitDone = nil
+	}
+	m.mu.Unlock()
+
 	m.logger.Info("xray stopped")
 	return nil
 }
@@ -149,14 +165,11 @@ func (m *XrayManager) GetStatus() *XrayStatus {
 		Version: m.version,
 	}
 
-	if m.cmd != nil && m.cmd.Process != nil {
-		// Check if process is still running
-		if err := m.cmd.Process.Signal(os.Signal(nil)); err == nil {
-			status.Running = true
-			status.PID = m.cmd.Process.Pid
-			status.StartedAt = m.startedAt
-			status.Uptime = time.Since(m.startedAt).Round(time.Second).String()
-		}
+	if m.isManagedProcessRunningLocked() {
+		status.Running = true
+		status.PID = m.cmd.Process.Pid
+		status.StartedAt = m.startedAt
+		status.Uptime = time.Since(m.startedAt).Round(time.Second).String()
 	}
 
 	return status
@@ -311,17 +324,13 @@ func (m *XrayManager) getVersionString() string {
 }
 
 // monitorProcess monitors the Xray process.
-func (m *XrayManager) monitorProcess(ctx context.Context) {
-	m.mu.RLock()
-	cmd := m.cmd
-	m.mu.RUnlock()
-
-	if cmd == nil {
-		return
-	}
-
+func (m *XrayManager) monitorProcess(cmd *exec.Cmd, done chan error) {
 	// Wait for process to exit
 	err := cmd.Wait()
+	select {
+	case done <- err:
+	default:
+	}
 	if err != nil {
 		m.logger.Warn("xray process exited", logger.F("error", err))
 	}
@@ -329,6 +338,18 @@ func (m *XrayManager) monitorProcess(ctx context.Context) {
 	m.mu.Lock()
 	if m.cmd == cmd {
 		m.cmd = nil
+		m.waitDone = nil
 	}
 	m.mu.Unlock()
+}
+
+func (m *XrayManager) isManagedProcessRunningLocked() bool {
+	return m.cmd != nil && m.cmd.Process != nil && m.cmd.Process.Signal(os.Signal(nil)) == nil
+}
+
+func outputWriterOrDiscard(w io.Writer) io.Writer {
+	if w == nil {
+		return io.Discard
+	}
+	return w
 }

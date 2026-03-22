@@ -47,6 +47,9 @@ func (h *PortalStatsHandler) GetTrafficStats(c *gin.Context) {
 
 	trafficStats, err := h.statsService.GetTrafficStatsInRange(c.Request.Context(), userID.(int64), resolvedPeriod, start, end)
 	if err != nil {
+		if handleRequestContextError(c, err) {
+			return
+		}
 		h.logger.Error("failed to get traffic stats", logger.F("error", err), logger.F("user_id", userID))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取流量统计失败"})
 		return
@@ -77,6 +80,9 @@ func (h *PortalStatsHandler) GetUsageStats(c *gin.Context) {
 
 	summary, byNode, byProtocol, err := h.statsService.GetUsageStats(c.Request.Context(), userID.(int64), period, startDate, endDate)
 	if err != nil {
+		if handleRequestContextError(c, err) {
+			return
+		}
 		h.logger.Error("failed to get usage stats", logger.F("error", err), logger.F("user_id", userID))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取使用统计失败"})
 		return
@@ -107,6 +113,9 @@ func (h *PortalStatsHandler) ExportStats(c *gin.Context) {
 
 	csvData, err := h.statsService.ExportTrafficCSV(c.Request.Context(), userID.(int64), days)
 	if err != nil {
+		if handleRequestContextError(c, err) {
+			return
+		}
 		h.logger.Error("failed to export stats", logger.F("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "导出统计数据失败"})
 		return
@@ -137,6 +146,9 @@ func (h *PortalStatsHandler) GetDailyTraffic(c *gin.Context) {
 
 	daily, err := h.statsService.GetDailyTraffic(c.Request.Context(), userID.(int64), days)
 	if err != nil {
+		if handleRequestContextError(c, err) {
+			return
+		}
 		h.logger.Error("failed to get daily traffic", logger.F("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取每日流量失败"})
 		return

@@ -1,34 +1,56 @@
+<!-- eslint-disable vue/no-v-html -->
 <template>
   <div class="help-article-page">
     <!-- 返回按钮 -->
     <div class="back-bar">
-      <el-button link @click="goBack">
+      <el-button
+        link
+        @click="goBack"
+      >
         <el-icon><ArrowLeft /></el-icon>
         返回帮助中心
       </el-button>
     </div>
 
     <!-- 加载状态 -->
-    <div v-if="loading" class="loading-state">
-      <el-icon class="loading-icon"><Loading /></el-icon>
+    <div
+      v-if="loading"
+      class="loading-state"
+    >
+      <el-icon class="loading-icon">
+        <Loading />
+      </el-icon>
       <p>加载文章内容...</p>
     </div>
 
     <!-- 文章不存在 -->
-    <el-empty v-else-if="!article" description="文章不存在或已删除" />
+    <el-empty
+      v-else-if="!article"
+      description="文章不存在或已删除"
+    />
 
     <!-- 文章内容 -->
     <template v-else>
-      <el-card class="article-card" shadow="never">
+      <el-card
+        class="article-card"
+        shadow="never"
+      >
         <div class="article-header">
           <div class="header-meta">
-            <el-tag size="small" type="info">{{ article.category }}</el-tag>
+            <el-tag
+              size="small"
+              type="info"
+            >
+              {{ article.category }}
+            </el-tag>
             <span class="view-count">
               <el-icon><View /></el-icon>
               {{ article.view_count }} 次浏览
             </span>
           </div>
-          <h1 class="article-title">{{ article.title }}</h1>
+          <h1 class="article-title">
+            {{ article.title }}
+          </h1>
           <div class="article-info">
             <span class="info-item">
               <el-icon><Calendar /></el-icon>
@@ -39,10 +61,17 @@
 
         <el-divider />
 
-        <div class="article-content" v-html="article.content"></div>
+        <!-- eslint-disable-next-line vue/no-v-html -->
+        <div
+          class="article-content"
+          v-html="safeArticleContent"
+        />
 
         <!-- 标签 -->
-        <div v-if="article.tags && article.tags.length" class="article-tags">
+        <div
+          v-if="article.tags && article.tags.length"
+          class="article-tags"
+        >
           <span class="tags-label">相关标签：</span>
           <el-tag 
             v-for="tag in article.tags" 
@@ -80,7 +109,11 @@
       </el-card>
 
       <!-- 相关文章 -->
-      <el-card v-if="relatedArticles.length > 0" class="related-card" shadow="never">
+      <el-card
+        v-if="relatedArticles.length > 0"
+        class="related-card"
+        shadow="never"
+      >
         <template #header>
           <span>相关文章</span>
         </template>
@@ -102,7 +135,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { 
@@ -110,6 +143,7 @@ import {
   CircleCheck, CircleClose 
 } from '@element-plus/icons-vue'
 import { help as helpApi } from '@/api/modules/portal'
+import { sanitizeHtml } from '@/utils/htmlSanitizer'
 
 const router = useRouter()
 const route = useRoute()
@@ -119,6 +153,7 @@ const loading = ref(false)
 const article = ref(null)
 const relatedArticles = ref([])
 const feedback = ref(null)
+const safeArticleContent = computed(() => sanitizeHtml(article.value?.content || ''))
 
 // 方法
 function formatDate(dateStr) {

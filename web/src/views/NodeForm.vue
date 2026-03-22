@@ -2,15 +2,23 @@
   <div class="node-form-page">
     <div class="page-header">
       <div class="header-left">
-        <el-button link @click="goBack">
+        <el-button
+          link
+          @click="goBack"
+        >
           <el-icon><ArrowLeft /></el-icon>
           返回
         </el-button>
-        <h1 class="page-title">{{ isEdit ? "编辑节点" : "添加节点" }}</h1>
+        <h1 class="page-title">
+          {{ isEdit ? "编辑节点" : "添加节点" }}
+        </h1>
       </div>
     </div>
 
-    <el-card shadow="never" v-loading="loading">
+    <el-card
+      v-loading="loading"
+      shadow="never"
+    >
       <el-form
         ref="formRef"
         :model="form"
@@ -18,22 +26,46 @@
         label-width="120px"
         style="max-width: 600px"
       >
-        <el-form-item label="节点名称" prop="name">
-          <el-input v-model="form.name" placeholder="请输入节点名称" />
+        <el-form-item
+          label="节点名称"
+          prop="name"
+        >
+          <el-input
+            v-model="form.name"
+            placeholder="请输入节点名称"
+          />
         </el-form-item>
 
-        <el-form-item label="节点地址" prop="address">
-          <el-input v-model="form.address" placeholder="IP 地址或域名">
+        <el-form-item
+          label="节点地址"
+          prop="address"
+        >
+          <el-input
+            v-model="form.address"
+            placeholder="IP 地址或域名"
+          >
             <template #prepend>
-              <el-select v-model="addressType" style="width: 80px">
-                <el-option label="IP" value="ip" />
-                <el-option label="域名" value="domain" />
+              <el-select
+                v-model="addressType"
+                style="width: 80px"
+              >
+                <el-option
+                  label="IP"
+                  value="ip"
+                />
+                <el-option
+                  label="域名"
+                  value="domain"
+                />
               </el-select>
             </template>
           </el-input>
         </el-form-item>
 
-        <el-form-item label="Agent 端口" prop="port">
+        <el-form-item
+          label="Agent 端口"
+          prop="port"
+        >
           <el-input-number
             v-model="form.port"
             :min="1"
@@ -43,25 +75,55 @@
           <span class="form-tip">Node Agent 监听端口</span>
         </el-form-item>
 
-        <el-form-item label="地区" prop="region">
+        <el-form-item
+          label="地区"
+          prop="region"
+        >
           <el-select
             v-model="form.region"
             filterable
             allow-create
             placeholder="选择或输入地区"
           >
-            <el-option label="香港" value="香港" />
-            <el-option label="日本" value="日本" />
-            <el-option label="新加坡" value="新加坡" />
-            <el-option label="美国" value="美国" />
-            <el-option label="韩国" value="韩国" />
-            <el-option label="台湾" value="台湾" />
-            <el-option label="德国" value="德国" />
-            <el-option label="英国" value="英国" />
+            <el-option
+              label="香港"
+              value="香港"
+            />
+            <el-option
+              label="日本"
+              value="日本"
+            />
+            <el-option
+              label="新加坡"
+              value="新加坡"
+            />
+            <el-option
+              label="美国"
+              value="美国"
+            />
+            <el-option
+              label="韩国"
+              value="韩国"
+            />
+            <el-option
+              label="台湾"
+              value="台湾"
+            />
+            <el-option
+              label="德国"
+              value="德国"
+            />
+            <el-option
+              label="英国"
+              value="英国"
+            />
           </el-select>
         </el-form-item>
 
-        <el-form-item label="负载均衡权重" prop="weight">
+        <el-form-item
+          label="负载均衡权重"
+          prop="weight"
+        >
           <el-slider
             v-model="form.weight"
             :min="1"
@@ -69,10 +131,15 @@
             show-input
             style="width: 400px"
           />
-          <div class="form-tip">权重越高，分配的用户越多</div>
+          <div class="form-tip">
+            权重越高，分配的用户越多
+          </div>
         </el-form-item>
 
-        <el-form-item label="最大用户数" prop="max_users">
+        <el-form-item
+          label="最大用户数"
+          prop="max_users"
+        >
           <el-input-number
             v-model="form.max_users"
             :min="0"
@@ -87,8 +154,8 @@
               v-for="(tag, index) in form.tags"
               :key="index"
               closable
-              @close="removeTag(index)"
               style="margin-right: 8px; margin-bottom: 8px"
+              @close="removeTag(index)"
             >
               {{ tag }}
             </el-tag>
@@ -101,9 +168,13 @@
               @keyup.enter="addTag"
               @blur="addTag"
             />
-            <el-button v-else size="small" @click="showTagInputField"
-              >+ 添加标签</el-button
+            <el-button
+              v-else
+              size="small"
+              @click="showTagInputField"
             >
+              + 添加标签
+            </el-button>
           </div>
         </el-form-item>
 
@@ -114,7 +185,9 @@
             :rows="4"
             placeholder="每行一个 IP 地址，留空表示不限制&#10;支持 CIDR 格式，如 192.168.1.0/24"
           />
-          <div class="form-tip">限制可以连接到此节点的 IP 地址</div>
+          <div class="form-tip">
+            限制可以连接到此节点的 IP 地址
+          </div>
         </el-form-item>
 
         <el-divider />
@@ -141,7 +214,9 @@
               </span>
             </el-option>
           </el-select>
-          <div class="form-tip">节点可以同时属于多个分组</div>
+          <div class="form-tip">
+            节点可以同时属于多个分组
+          </div>
         </el-form-item>
 
         <el-divider />
@@ -154,12 +229,17 @@
           />
         </el-form-item>
 
-        <el-form-item label="TLS 域名" prop="tls_domain">
+        <el-form-item
+          label="TLS 域名"
+          prop="tls_domain"
+        >
           <el-input
             v-model="form.tls_domain"
             placeholder="如 jp.example.com"
           />
-          <div class="form-tip-inline">用于节点 TLS 标识、健康检查和系统证书自动匹配。</div>
+          <div class="form-tip-inline">
+            用于节点 TLS 标识、健康检查和系统证书自动匹配。
+          </div>
         </el-form-item>
 
         <el-form-item label="系统证书">
@@ -179,8 +259,13 @@
               :value="cert.id"
             />
           </el-select>
-          <div class="form-tip-inline">选择后会自动回填 TLS 域名，你仍可继续手动修改。</div>
-          <div v-if="selectedCertificate" class="certificate-tip">
+          <div class="form-tip-inline">
+            选择后会自动回填 TLS 域名，你仍可继续手动修改。
+          </div>
+          <div
+            v-if="selectedCertificate"
+            class="certificate-tip"
+          >
             当前证书：{{ selectedCertificate.domain }}
             <span v-if="selectedCertificate.expireDate && selectedCertificate.expireDate !== '-'">
               ，到期 {{ selectedCertificate.expireDate }}
@@ -196,14 +281,20 @@
             <el-checkbox v-model="enableAutoInstall">
               自动安装 Agent（通过 SSH 远程安装）
             </el-checkbox>
-            <div class="form-tip" style="margin-left: 0; margin-top: 8px">
+            <div
+              class="form-tip"
+              style="margin-left: 0; margin-top: 8px"
+            >
               勾选后，系统将自动连接到服务器并安装 Agent 和 Xray
             </div>
           </div>
 
           <template v-if="enableAutoInstall">
             <el-form-item label="服务器 IP">
-              <el-input v-model="form.ssh_host" placeholder="服务器 IP 地址" />
+              <el-input
+                v-model="form.ssh_host"
+                placeholder="服务器 IP 地址"
+              />
             </el-form-item>
 
             <el-form-item label="SSH 端口">
@@ -216,13 +307,20 @@
             </el-form-item>
 
             <el-form-item label="SSH 用户名">
-              <el-input v-model="form.ssh_username" placeholder="通常为 root" />
+              <el-input
+                v-model="form.ssh_username"
+                placeholder="通常为 root"
+              />
             </el-form-item>
 
             <el-form-item label="认证方式">
               <el-radio-group v-model="form.ssh_auth_type">
-                <el-radio value="password">密码</el-radio>
-                <el-radio value="key">私钥</el-radio>
+                <el-radio value="password">
+                  密码
+                </el-radio>
+                <el-radio value="key">
+                  私钥
+                </el-radio>
               </el-radio-group>
             </el-form-item>
 
@@ -238,7 +336,10 @@
               />
             </el-form-item>
 
-            <el-form-item v-if="form.ssh_auth_type === 'key'" label="SSH 私钥">
+            <el-form-item
+              v-if="form.ssh_auth_type === 'key'"
+              label="SSH 私钥"
+            >
               <el-input
                 v-model="form.ssh_private_key"
                 type="textarea"
@@ -249,8 +350,8 @@
 
             <el-form-item>
               <el-button
-                @click="testSSHConnection"
                 :loading="testingConnection"
+                @click="testSSHConnection"
               >
                 测试 SSH 连接
               </el-button>
@@ -259,7 +360,11 @@
         </template>
 
         <el-form-item>
-          <el-button type="primary" @click="submitForm" :loading="submitting">
+          <el-button
+            type="primary"
+            :loading="submitting"
+            @click="submitForm"
+          >
             {{
               isEdit
                 ? "保存修改"
@@ -268,7 +373,9 @@
                   : "创建节点"
             }}
           </el-button>
-          <el-button @click="goBack">取消</el-button>
+          <el-button @click="goBack">
+            取消
+          </el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -280,28 +387,44 @@
       width="500px"
       :close-on-click-modal="false"
     >
-      <el-alert type="success" :closable="false" show-icon>
-        <template #title>节点已创建成功！</template>
+      <el-alert
+        type="success"
+        :closable="false"
+        show-icon
+      >
+        <template #title>
+          节点已创建成功！
+        </template>
         请保存以下 Token，用于 Node Agent 连接认证。此 Token 只显示一次。
       </el-alert>
       <div class="token-display">
-        <div class="token-label">认证 Token</div>
+        <div class="token-label">
+          认证 Token
+        </div>
         <div class="token-value">
           <code>{{ createdToken }}</code>
-          <el-button link @click="copyToken">
+          <el-button
+            link
+            @click="copyToken"
+          >
             <el-icon><CopyDocument /></el-icon>
             复制
           </el-button>
         </div>
       </div>
       <div class="agent-config">
-        <div class="config-label">Agent 配置示例</div>
+        <div class="config-label">
+          Agent 配置示例
+        </div>
         <pre class="config-code">{{ agentConfigExample }}</pre>
       </div>
       <template #footer>
-        <el-button type="primary" @click="finishCreate"
-          >我已保存，完成</el-button
+        <el-button
+          type="primary"
+          @click="finishCreate"
         >
+          我已保存，完成
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -815,5 +938,54 @@ onMounted(async () => {
   font-size: 12px;
   overflow-x: auto;
   white-space: pre;
+}
+
+@media (max-width: 768px) {
+  .node-form-page {
+    padding: var(--vp-page-padding);
+  }
+
+  .page-header {
+    margin-bottom: 16px;
+  }
+
+  .header-left {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .page-title {
+    font-size: var(--vp-title-size);
+  }
+
+  .form-tip {
+    display: block;
+    width: 100%;
+    margin-left: 0;
+    margin-top: 8px;
+  }
+
+  .tags-input {
+    width: 100%;
+  }
+
+  :deep(.el-form) {
+    max-width: 100% !important;
+  }
+
+  :deep(.el-input-number),
+  :deep(.el-slider) {
+    width: 100% !important;
+    max-width: 100%;
+  }
+
+  :deep(.el-input-group__prepend .el-select) {
+    width: 72px !important;
+  }
+
+  .tags-input :deep(.el-input) {
+    width: 100% !important;
+  }
 }
 </style>

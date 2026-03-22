@@ -34,7 +34,6 @@ const Logs = () => import(/* webpackChunkName: "system" */ '../views/Logs.vue')
 const IPRestriction = () => import(/* webpackChunkName: "system" */ '../views/IPRestriction.vue')
 
 // 订阅管理 - 按需加载
-const Subscription = () => import(/* webpackChunkName: "subscription" */ '../views/Subscription.vue')
 const AdminSubscriptions = () => import(/* webpackChunkName: "subscription" */ '../views/AdminSubscriptions.vue')
 
 // 商业化管理 - 按需加载

@@ -390,7 +390,7 @@ func TestStatisticsAccuracy_TrafficByPeriod(t *testing.T) {
 	trafficRepo := repository.NewTrafficRepository(db)
 	ctx := context.Background()
 
-	now := time.Now()
+	now := time.Date(2026, 3, 22, 12, 0, 0, 0, time.Local)
 
 	// Create traffic records at different times
 	// Today's traffic
@@ -449,7 +449,7 @@ func TestTrafficPeriodFiltering_TodayFilter(t *testing.T) {
 	trafficRepo := repository.NewTrafficRepository(db)
 	ctx := context.Background()
 
-	now := time.Now()
+	now := time.Date(2026, 3, 22, 12, 0, 0, 0, time.Local)
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 
 	// Create today's traffic

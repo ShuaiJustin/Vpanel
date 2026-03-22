@@ -3,18 +3,29 @@
     <div class="header">
       <div class="page-heading">
         <h1>日志管理</h1>
-        <p class="page-subtitle">按级别、来源和时间范围快速定位后台运行问题</p>
+        <p class="page-subtitle">
+          按级别、来源和时间范围快速定位后台运行问题
+        </p>
       </div>
       <div class="actions">
-        <el-button type="primary" @click="refreshLogs">
+        <el-button
+          type="primary"
+          @click="refreshLogs"
+        >
           <el-icon><Refresh /></el-icon>
           刷新
         </el-button>
-        <el-button type="success" @click="handleExport">
+        <el-button
+          type="success"
+          @click="handleExport"
+        >
           <el-icon><Download /></el-icon>
           导出
         </el-button>
-        <el-button type="warning" @click="showCleanupDialog">
+        <el-button
+          type="warning"
+          @click="showCleanupDialog"
+        >
           <el-icon><Delete /></el-icon>
           清理
         </el-button>
@@ -42,21 +53,55 @@
 
     <!-- 过滤控件 -->
     <el-card class="filter-card">
-      <el-form :inline="!isMobile" :model="filterForm" class="filter-form">
+      <el-form
+        :inline="!isMobile"
+        :model="filterForm"
+        class="filter-form"
+      >
         <el-form-item label="日志级别">
-          <el-select v-model="filterForm.level" placeholder="全部级别" clearable class="filter-select">
-            <el-option label="Debug" value="debug" />
-            <el-option label="Info" value="info" />
-            <el-option label="Warn" value="warn" />
-            <el-option label="Error" value="error" />
-            <el-option label="Fatal" value="fatal" />
+          <el-select
+            v-model="filterForm.level"
+            placeholder="全部级别"
+            clearable
+            class="filter-select"
+          >
+            <el-option
+              label="Debug"
+              value="debug"
+            />
+            <el-option
+              label="Info"
+              value="info"
+            />
+            <el-option
+              label="Warn"
+              value="warn"
+            />
+            <el-option
+              label="Error"
+              value="error"
+            />
+            <el-option
+              label="Fatal"
+              value="fatal"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="日志来源">
-          <el-input v-model="filterForm.source" placeholder="来源" clearable class="filter-source" />
+          <el-input
+            v-model="filterForm.source"
+            placeholder="来源"
+            clearable
+            class="filter-source"
+          />
         </el-form-item>
         <el-form-item label="关键词">
-          <el-input v-model="filterForm.keyword" placeholder="搜索关键词" clearable class="filter-keyword">
+          <el-input
+            v-model="filterForm.keyword"
+            placeholder="搜索关键词"
+            clearable
+            class="filter-keyword"
+          >
             <template #prefix>
               <el-icon><Search /></el-icon>
             </template>
@@ -74,8 +119,15 @@
           />
         </el-form-item>
         <el-form-item class="filter-actions">
-          <el-button type="primary" @click="handleFilter">查询</el-button>
-          <el-button @click="resetFilter">重置</el-button>
+          <el-button
+            type="primary"
+            @click="handleFilter"
+          >
+            查询
+          </el-button>
+          <el-button @click="resetFilter">
+            重置
+          </el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -83,31 +135,64 @@
     <!-- 日志列表 -->
     <div class="table-shell">
       <el-table
+        v-loading="loading"
         :data="logs"
         border
-        v-loading="loading"
         class="logs-table"
         :row-class-name="getRowClassName"
         @row-click="handleRowClick"
       >
-        <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="level" label="级别" width="100">
+        <el-table-column
+          prop="id"
+          label="ID"
+          width="80"
+        />
+        <el-table-column
+          prop="level"
+          label="级别"
+          width="100"
+        >
           <template #default="scope">
-            <el-tag :type="getLevelTagType(scope.row.level)" size="small">
+            <el-tag
+              :type="getLevelTagType(scope.row.level)"
+              size="small"
+            >
               {{ (scope.row.level || '').toUpperCase() }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="source" label="来源" width="150" />
-        <el-table-column prop="message" label="消息" min-width="300" show-overflow-tooltip />
-        <el-table-column prop="created_at" label="时间" width="180">
+        <el-table-column
+          prop="source"
+          label="来源"
+          width="150"
+        />
+        <el-table-column
+          prop="message"
+          label="消息"
+          min-width="300"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          prop="created_at"
+          label="时间"
+          width="180"
+        >
           <template #default="scope">
             {{ formatDateTime(scope.row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column
+          label="操作"
+          width="100"
+          fixed="right"
+        >
           <template #default="scope">
-            <el-button type="primary" link size="small" @click.stop="showLogDetail(scope.row)">
+            <el-button
+              type="primary"
+              link
+              size="small"
+              @click.stop="showLogDetail(scope.row)"
+            >
               详情
             </el-button>
           </template>
@@ -136,41 +221,97 @@
       class="log-detail-dialog"
       destroy-on-close
     >
-      <div v-if="selectedLog" class="log-detail-content">
-      <el-descriptions :column="detailDescriptionColumns" border class="log-detail-meta">
-        <el-descriptions-item label="ID">{{ selectedLog.id }}</el-descriptions-item>
-        <el-descriptions-item label="级别">
-          <el-tag :type="getLevelTagType(selectedLog.level)" size="small">
-            {{ (selectedLog.level || '').toUpperCase() }}
-          </el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="来源">{{ selectedLog.source }}</el-descriptions-item>
-        <el-descriptions-item label="时间">{{ formatDateTime(selectedLog.created_at) }}</el-descriptions-item>
-        <el-descriptions-item label="用户 ID" v-if="selectedLog.user_id">{{ selectedLog.user_id }}</el-descriptions-item>
-        <el-descriptions-item label="IP 地址" v-if="selectedLog.ip">{{ selectedLog.ip }}</el-descriptions-item>
-        <el-descriptions-item label="User Agent" :span="detailDescriptionColumns" v-if="selectedLog.user_agent">
-          <div class="log-detail-text">{{ selectedLog.user_agent }}</div>
-        </el-descriptions-item>
-        <el-descriptions-item label="请求 ID" :span="detailDescriptionColumns" v-if="selectedLog.request_id">
-          <div class="log-detail-text">{{ selectedLog.request_id }}</div>
-        </el-descriptions-item>
-      </el-descriptions>
-      <section class="log-detail-section">
-        <div class="log-detail-section-title">消息</div>
-        <pre class="log-message">{{ selectedLog.message }}</pre>
-      </section>
-      <section class="log-detail-section" v-if="formattedLogFields">
-        <div class="log-detail-section-title">附加字段</div>
-        <pre class="log-fields">{{ formattedLogFields }}</pre>
-      </section>
+      <div
+        v-if="selectedLog"
+        class="log-detail-content"
+      >
+        <el-descriptions
+          :column="detailDescriptionColumns"
+          border
+          class="log-detail-meta"
+        >
+          <el-descriptions-item label="ID">
+            {{ selectedLog.id }}
+          </el-descriptions-item>
+          <el-descriptions-item label="级别">
+            <el-tag
+              :type="getLevelTagType(selectedLog.level)"
+              size="small"
+            >
+              {{ (selectedLog.level || '').toUpperCase() }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="来源">
+            {{ selectedLog.source }}
+          </el-descriptions-item>
+          <el-descriptions-item label="时间">
+            {{ formatDateTime(selectedLog.created_at) }}
+          </el-descriptions-item>
+          <el-descriptions-item
+            v-if="selectedLog.user_id"
+            label="用户 ID"
+          >
+            {{ selectedLog.user_id }}
+          </el-descriptions-item>
+          <el-descriptions-item
+            v-if="selectedLog.ip"
+            label="IP 地址"
+          >
+            {{ selectedLog.ip }}
+          </el-descriptions-item>
+          <el-descriptions-item
+            v-if="selectedLog.user_agent"
+            label="User Agent"
+            :span="detailDescriptionColumns"
+          >
+            <div class="log-detail-text">
+              {{ selectedLog.user_agent }}
+            </div>
+          </el-descriptions-item>
+          <el-descriptions-item
+            v-if="selectedLog.request_id"
+            label="请求 ID"
+            :span="detailDescriptionColumns"
+          >
+            <div class="log-detail-text">
+              {{ selectedLog.request_id }}
+            </div>
+          </el-descriptions-item>
+        </el-descriptions>
+        <section class="log-detail-section">
+          <div class="log-detail-section-title">
+            消息
+          </div>
+          <pre class="log-message">{{ selectedLog.message }}</pre>
+        </section>
+        <section
+          v-if="formattedLogFields"
+          class="log-detail-section"
+        >
+          <div class="log-detail-section-title">
+            附加字段
+          </div>
+          <pre class="log-fields">{{ formattedLogFields }}</pre>
+        </section>
       </div>
     </el-dialog>
 
     <!-- 清理对话框 -->
-    <el-dialog v-model="cleanupDialogVisible" title="清理日志" :width="compactDialogWidth">
-      <el-form :model="cleanupForm" :label-width="isMobile ? '88px' : '100px'">
+    <el-dialog
+      v-model="cleanupDialogVisible"
+      title="清理日志"
+      :width="compactDialogWidth"
+    >
+      <el-form
+        :model="cleanupForm"
+        :label-width="isMobile ? '88px' : '100px'"
+      >
         <el-form-item label="保留天数">
-          <el-input-number v-model="cleanupForm.retentionDays" :min="1" :max="365" />
+          <el-input-number
+            v-model="cleanupForm.retentionDays"
+            :min="1"
+            :max="365"
+          />
           <span style="margin-left: 10px; color: #909399;">天</span>
         </el-form-item>
         <el-alert
@@ -183,20 +324,37 @@
         </el-alert>
       </el-form>
       <template #footer>
-        <el-button @click="cleanupDialogVisible = false">取消</el-button>
-        <el-button type="danger" @click="handleCleanup" :loading="cleanupLoading">
+        <el-button @click="cleanupDialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="danger"
+          :loading="cleanupLoading"
+          @click="handleCleanup"
+        >
           确认清理
         </el-button>
       </template>
     </el-dialog>
 
     <!-- 导出对话框 -->
-    <el-dialog v-model="exportDialogVisible" title="导出日志" :width="compactDialogWidth">
-      <el-form :model="exportForm" :label-width="isMobile ? '88px' : '100px'">
+    <el-dialog
+      v-model="exportDialogVisible"
+      title="导出日志"
+      :width="compactDialogWidth"
+    >
+      <el-form
+        :model="exportForm"
+        :label-width="isMobile ? '88px' : '100px'"
+      >
         <el-form-item label="导出格式">
           <el-radio-group v-model="exportForm.format">
-            <el-radio value="json">JSON</el-radio>
-            <el-radio value="csv">CSV</el-radio>
+            <el-radio value="json">
+              JSON
+            </el-radio>
+            <el-radio value="csv">
+              CSV
+            </el-radio>
           </el-radio-group>
         </el-form-item>
         <el-alert
@@ -209,8 +367,14 @@
         </el-alert>
       </el-form>
       <template #footer>
-        <el-button @click="exportDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmExport" :loading="exportLoading">
+        <el-button @click="exportDialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="exportLoading"
+          @click="confirmExport"
+        >
           导出
         </el-button>
       </template>
@@ -220,7 +384,7 @@
 
 <script setup>
 import { computed, ref, reactive, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { Search, Refresh, Download, Delete } from '@element-plus/icons-vue'
 import { logsApi } from '@/api'
 import { useViewport } from '@/composables/useViewport'

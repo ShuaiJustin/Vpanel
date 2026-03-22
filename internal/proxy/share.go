@@ -47,6 +47,41 @@ func ResolveSNI(settings map[string]any) string {
 	return ""
 }
 
+func ResolveTLSSkipVerify(settings map[string]any) bool {
+	for _, key := range []string{"allowInsecure", "skipCertVerify"} {
+		value, ok := settings[key]
+		if !ok {
+			continue
+		}
+
+		switch typed := value.(type) {
+		case bool:
+			return typed
+		case string:
+			normalized := strings.TrimSpace(strings.ToLower(typed))
+			return normalized == "1" || normalized == "true"
+		}
+	}
+
+	return false
+}
+
+func ResolveVMessCipher(settings map[string]any) string {
+	for _, key := range []string{"cipher", "scy"} {
+		if value := strings.TrimSpace(strings.ToLower(getSettingString(settings, key))); value != "" {
+			return value
+		}
+	}
+
+	security := strings.TrimSpace(strings.ToLower(getSettingString(settings, "security")))
+	switch security {
+	case "", "tls", "xtls", "reality":
+		return "auto"
+	default:
+		return security
+	}
+}
+
 func HasTLSSettings(settings map[string]any) bool {
 	if settings == nil {
 		return false

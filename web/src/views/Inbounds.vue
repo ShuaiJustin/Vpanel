@@ -2,11 +2,21 @@
   <div class="inbounds-page">
     <div class="page-header">
       <div class="page-heading">
-        <div class="title">代理服务</div>
-        <div class="page-subtitle">更清晰地查看协议、节点、有效期和分享信息</div>
+        <div class="title">
+          代理服务
+        </div>
+        <div class="page-subtitle">
+          更清晰地查看协议、节点、有效期和分享信息
+        </div>
       </div>
-      <el-button type="primary" class="add-btn" @click="openAddInboundDialog">
-        <el-icon class="el-icon--left"><Plus /></el-icon> 添加代理
+      <el-button
+        type="primary"
+        class="add-btn"
+        @click="openAddInboundDialog"
+      >
+        <el-icon class="el-icon--left">
+          <Plus />
+        </el-icon> 添加代理
       </el-button>
     </div>
 
@@ -37,7 +47,11 @@
           class="toolbar-search"
           placeholder="搜索名称、节点、地址或端口"
         />
-        <el-select v-model="filters.protocol" clearable placeholder="协议类型">
+        <el-select
+          v-model="filters.protocol"
+          clearable
+          placeholder="协议类型"
+        >
           <el-option
             v-for="option in protocolOptions"
             :key="option.value"
@@ -45,12 +59,26 @@
             :value="option.value"
           />
         </el-select>
-        <el-select v-model="filters.status" clearable placeholder="运行状态">
-          <el-option label="运行中" value="enabled" />
-          <el-option label="已停止" value="disabled" />
+        <el-select
+          v-model="filters.status"
+          clearable
+          placeholder="运行状态"
+        >
+          <el-option
+            label="运行中"
+            value="enabled"
+          />
+          <el-option
+            label="已停止"
+            value="disabled"
+          />
         </el-select>
-        <el-button @click="resetFilters">重置</el-button>
-        <el-button @click="loadInbounds">刷新</el-button>
+        <el-button @click="resetFilters">
+          重置
+        </el-button>
+        <el-button @click="loadInbounds">
+          刷新
+        </el-button>
       </div>
       <div class="toolbar-actions">
         <span class="toolbar-summary">
@@ -94,12 +122,22 @@
       :empty-text="filteredInbounds.length ? '当前页暂无数据' : (hasActiveFilters ? '暂无匹配的代理服务' : '暂无代理服务')"
       @selection-change="handleSelectionChange"
     >
-      <el-table-column type="selection" width="48" reserve-selection />
-      <el-table-column label="代理服务" min-width="320">
+      <el-table-column
+        type="selection"
+        width="48"
+        reserve-selection
+      />
+      <el-table-column
+        label="代理服务"
+        min-width="320"
+      >
         <template #default="{ row }">
           <div class="service-cell">
             <div class="service-cell__header">
-              <span class="service-name" :title="getInboundName(row)">{{ getInboundName(row) }}</span>
+              <span
+                class="service-name"
+                :title="getInboundName(row)"
+              >{{ getInboundName(row) }}</span>
               <span :class="['protocol-tag', normalizeProtocol(row.protocol)]">
                 {{ formatProtocolLabel(row.protocol) }}
               </span>
@@ -120,7 +158,10 @@
         </template>
       </el-table-column>
 
-      <el-table-column label="生命周期" min-width="240">
+      <el-table-column
+        label="生命周期"
+        min-width="240"
+      >
         <template #default="{ row }">
           <div class="detail-cell">
             <div class="detail-item">
@@ -131,14 +172,25 @@
               <span class="detail-label">到期时间</span>
               <span class="detail-value">{{ row.expires_at_display || '未设置' }}</span>
             </div>
-            <div v-if="row.expiry_source_label" class="detail-tags">
-              <el-tag size="small" effect="plain">{{ row.expiry_source_label }}</el-tag>
+            <div
+              v-if="row.expiry_source_label"
+              class="detail-tags"
+            >
+              <el-tag
+                size="small"
+                effect="plain"
+              >
+                {{ row.expiry_source_label }}
+              </el-tag>
             </div>
           </div>
         </template>
       </el-table-column>
 
-      <el-table-column label="限制与状态" min-width="220">
+      <el-table-column
+        label="限制与状态"
+        min-width="220"
+      >
         <template #default="{ row }">
           <div class="detail-cell">
             <div class="detail-item">
@@ -151,14 +203,27 @@
                 {{ row.enable ? '运行中' : '已停止' }}
               </span>
             </div>
-            <div v-if="row.traffic_limit_source_label" class="detail-tags">
-              <el-tag size="small" effect="plain" type="warning">{{ row.traffic_limit_source_label }}</el-tag>
+            <div
+              v-if="row.traffic_limit_source_label"
+              class="detail-tags"
+            >
+              <el-tag
+                size="small"
+                effect="plain"
+                type="warning"
+              >
+                {{ row.traffic_limit_source_label }}
+              </el-tag>
             </div>
           </div>
         </template>
       </el-table-column>
 
-      <el-table-column label="操作" width="190" align="right">
+      <el-table-column
+        label="操作"
+        width="190"
+        align="right"
+      >
         <template #default="{ row }">
           <div class="operation-btns">
             <el-button
@@ -178,15 +243,32 @@
               {{ row.enable ? '停用' : '启用' }}
             </el-button>
 
-            <el-dropdown trigger="click" @command="(command) => handleRowCommand(command, row)">
-              <el-button size="small" class="row-action row-action--more" circle title="更多操作">
+            <el-dropdown
+              trigger="click"
+              @command="(command) => handleRowCommand(command, row)"
+            >
+              <el-button
+                size="small"
+                class="row-action row-action--more"
+                circle
+                title="更多操作"
+              >
                 <el-icon><MoreFilled /></el-icon>
               </el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="qr">二维码</el-dropdown-item>
-                  <el-dropdown-item command="edit">编辑</el-dropdown-item>
-                  <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
+                  <el-dropdown-item command="qr">
+                    二维码
+                  </el-dropdown-item>
+                  <el-dropdown-item command="edit">
+                    编辑
+                  </el-dropdown-item>
+                  <el-dropdown-item
+                    command="delete"
+                    divided
+                  >
+                    删除
+                  </el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -217,28 +299,59 @@
       :close-on-click-modal="false"
     >
       <el-form
-        v-loading="dialogLoading"
         ref="inboundFormRef"
+        v-loading="dialogLoading"
         :model="inboundForm"
         :rules="rules"
         label-width="100px"
         label-position="left"
       >
-        <el-form-item label="协议" prop="protocol">
-          <el-select v-model="inboundForm.protocol" style="width: 100%" :disabled="dialogMode === 'edit'">
-            <el-option label="VMess" value="vmess" />
-            <el-option label="VLESS" value="vless" />
-            <el-option label="Trojan" value="trojan" />
-            <el-option label="Shadowsocks" value="shadowsocks" />
-            <el-option label="Dokodemo-Door" value="dokodemo-door" />
+        <el-form-item
+          label="协议"
+          prop="protocol"
+        >
+          <el-select
+            v-model="inboundForm.protocol"
+            style="width: 100%"
+            :disabled="dialogMode === 'edit'"
+          >
+            <el-option
+              label="VMess"
+              value="vmess"
+            />
+            <el-option
+              label="VLESS"
+              value="vless"
+            />
+            <el-option
+              label="Trojan"
+              value="trojan"
+            />
+            <el-option
+              label="Shadowsocks"
+              value="shadowsocks"
+            />
+            <el-option
+              label="Dokodemo-Door"
+              value="dokodemo-door"
+            />
           </el-select>
         </el-form-item>
         
-        <el-form-item label="备注" prop="remark">
-          <el-input v-model="inboundForm.remark" placeholder="请输入备注" />
+        <el-form-item
+          label="备注"
+          prop="remark"
+        >
+          <el-input
+            v-model="inboundForm.remark"
+            placeholder="请输入备注"
+          />
         </el-form-item>
         
-        <el-form-item label="部署节点" prop="node_id">
+        <el-form-item
+          label="部署节点"
+          prop="node_id"
+        >
           <el-select 
             v-model="inboundForm.node_id" 
             placeholder="选择节点（可选）" 
@@ -262,11 +375,20 @@
           </div>
         </el-form-item>
         
-        <el-form-item label="IP监听" prop="listen">
-          <el-input v-model="inboundForm.listen" placeholder="填空默认使用0.0.0.0" />
+        <el-form-item
+          label="IP监听"
+          prop="listen"
+        >
+          <el-input
+            v-model="inboundForm.listen"
+            placeholder="填空默认使用0.0.0.0"
+          />
         </el-form-item>
         
-        <el-form-item label="端口" prop="port">
+        <el-form-item
+          label="端口"
+          prop="port"
+        >
           <el-input-number 
             v-model="inboundForm.port" 
             :min="1" 
@@ -286,8 +408,14 @@
         
         <!-- VMess 特有设置 -->
         <template v-if="inboundForm.protocol === 'vmess'">
-          <el-form-item label="用户ID" prop="vmess_id">
-            <el-input v-model="inboundForm.vmess_id" placeholder="UUID格式" />
+          <el-form-item
+            label="用户ID"
+            prop="vmess_id"
+          >
+            <el-input
+              v-model="inboundForm.vmess_id"
+              placeholder="UUID格式"
+            />
             <el-button 
               size="small" 
               type="primary" 
@@ -298,7 +426,10 @@
             </el-button>
           </el-form-item>
           
-          <el-form-item label="额外ID" prop="vmess_aid">
+          <el-form-item
+            label="额外ID"
+            prop="vmess_aid"
+          >
             <el-input-number 
               v-model="inboundForm.vmess_aid" 
               :min="0" 
@@ -311,8 +442,14 @@
         
         <!-- VLESS 特有设置 -->
         <template v-if="inboundForm.protocol === 'vless'">
-          <el-form-item label="用户ID" prop="vless_id">
-            <el-input v-model="inboundForm.vless_id" placeholder="UUID格式" />
+          <el-form-item
+            label="用户ID"
+            prop="vless_id"
+          >
+            <el-input
+              v-model="inboundForm.vless_id"
+              placeholder="UUID格式"
+            />
             <el-button 
               size="small" 
               type="primary" 
@@ -323,20 +460,43 @@
             </el-button>
           </el-form-item>
           
-          <el-form-item label="流控" prop="vless_flow">
-            <el-select v-model="inboundForm.vless_flow" style="width: 100%">
-              <el-option label="无流控" value="none" />
-              <el-option label="xtls-rprx-vision" value="xtls-rprx-vision" />
-              <el-option label="xtls-rprx-vision-udp443" value="xtls-rprx-vision-udp443" />
+          <el-form-item
+            label="流控"
+            prop="vless_flow"
+          >
+            <el-select
+              v-model="inboundForm.vless_flow"
+              style="width: 100%"
+            >
+              <el-option
+                label="无流控"
+                value="none"
+              />
+              <el-option
+                label="xtls-rprx-vision"
+                value="xtls-rprx-vision"
+              />
+              <el-option
+                label="xtls-rprx-vision-udp443"
+                value="xtls-rprx-vision-udp443"
+              />
             </el-select>
-            <div class="form-tip">VLESS 的 XTLS/Vision 由这里的流控值决定；下方 TLS 只负责证书与 SNI。</div>
+            <div class="form-tip">
+              VLESS 的 XTLS/Vision 由这里的流控值决定；下方 TLS 只负责证书与 SNI。
+            </div>
           </el-form-item>
         </template>
         
         <!-- Trojan 特有设置 -->
         <template v-if="inboundForm.protocol === 'trojan'">
-          <el-form-item label="密码" prop="trojan_password">
-            <el-input v-model="inboundForm.trojan_password" placeholder="请输入密码" />
+          <el-form-item
+            label="密码"
+            prop="trojan_password"
+          >
+            <el-input
+              v-model="inboundForm.trojan_password"
+              placeholder="请输入密码"
+            />
             <el-button 
               size="small" 
               type="primary" 
@@ -347,28 +507,75 @@
             </el-button>
           </el-form-item>
           
-          <el-form-item label="流控" prop="trojan_flow">
-            <el-select v-model="inboundForm.trojan_flow" style="width: 100%">
-              <el-option label="无流控" value="none" />
-              <el-option label="xtls-rprx-direct" value="xtls-rprx-direct" />
-              <el-option label="xtls-rprx-direct-udp443" value="xtls-rprx-direct-udp443" />
+          <el-form-item
+            label="流控"
+            prop="trojan_flow"
+          >
+            <el-select
+              v-model="inboundForm.trojan_flow"
+              style="width: 100%"
+            >
+              <el-option
+                label="无流控"
+                value="none"
+              />
+              <el-option
+                label="xtls-rprx-direct"
+                value="xtls-rprx-direct"
+              />
+              <el-option
+                label="xtls-rprx-direct-udp443"
+                value="xtls-rprx-direct-udp443"
+              />
             </el-select>
-            <div class="form-tip">Trojan 的 XTLS 流控由这里决定；下方 TLS 只负责证书与 SNI。</div>
+            <div class="form-tip">
+              Trojan 的 XTLS 流控由这里决定；下方 TLS 只负责证书与 SNI。
+            </div>
           </el-form-item>
           
-          <el-form-item label="回落" prop="trojan_fallbacks">
-            <el-button type="primary" @click="addFallback">添加回落</el-button>
+          <el-form-item
+            label="回落"
+            prop="trojan_fallbacks"
+          >
+            <el-button
+              type="primary"
+              @click="addFallback"
+            >
+              添加回落
+            </el-button>
             
-            <div v-for="(fallback, index) in inboundForm.trojan_fallbacks" :key="index" class="fallback-item">
-              <el-form-item label="地址" style="margin-bottom: 0; margin-right: 10px; flex: 1;">
-                <el-input v-model="fallback.dest" placeholder="回落地址，例如: 127.0.0.1" />
+            <div
+              v-for="(fallback, index) in inboundForm.trojan_fallbacks"
+              :key="index"
+              class="fallback-item"
+            >
+              <el-form-item
+                label="地址"
+                style="margin-bottom: 0; margin-right: 10px; flex: 1;"
+              >
+                <el-input
+                  v-model="fallback.dest"
+                  placeholder="回落地址，例如: 127.0.0.1"
+                />
               </el-form-item>
               
-              <el-form-item label="端口" style="margin-bottom: 0; margin-right: 10px; width: 150px;">
-                <el-input-number v-model="fallback.port" :min="1" :max="65535" style="width: 100%" />
+              <el-form-item
+                label="端口"
+                style="margin-bottom: 0; margin-right: 10px; width: 150px;"
+              >
+                <el-input-number
+                  v-model="fallback.port"
+                  :min="1"
+                  :max="65535"
+                  style="width: 100%"
+                />
               </el-form-item>
               
-              <el-button type="danger" @click="removeFallback(index)" circle>
+              <el-button
+                type="danger"
+                circle
+                @click="removeFallback(index)"
+              >
                 <el-icon><Delete /></el-icon>
               </el-button>
             </div>
@@ -377,18 +584,45 @@
         
         <!-- Shadowsocks 特有设置 -->
         <template v-if="inboundForm.protocol === 'shadowsocks'">
-          <el-form-item label="加密方式" prop="ss_method">
-            <el-select v-model="inboundForm.ss_method" style="width: 100%">
-              <el-option label="aes-256-gcm" value="aes-256-gcm" />
-              <el-option label="aes-128-gcm" value="aes-128-gcm" />
-              <el-option label="chacha20-poly1305" value="chacha20-poly1305" />
-              <el-option label="chacha20-ietf-poly1305" value="chacha20-ietf-poly1305" />
-              <el-option label="none" value="none" />
+          <el-form-item
+            label="加密方式"
+            prop="ss_method"
+          >
+            <el-select
+              v-model="inboundForm.ss_method"
+              style="width: 100%"
+            >
+              <el-option
+                label="aes-256-gcm"
+                value="aes-256-gcm"
+              />
+              <el-option
+                label="aes-128-gcm"
+                value="aes-128-gcm"
+              />
+              <el-option
+                label="chacha20-poly1305"
+                value="chacha20-poly1305"
+              />
+              <el-option
+                label="chacha20-ietf-poly1305"
+                value="chacha20-ietf-poly1305"
+              />
+              <el-option
+                label="none"
+                value="none"
+              />
             </el-select>
           </el-form-item>
           
-          <el-form-item label="密码" prop="ss_password">
-            <el-input v-model="inboundForm.ss_password" placeholder="请输入密码" />
+          <el-form-item
+            label="密码"
+            prop="ss_password"
+          >
+            <el-input
+              v-model="inboundForm.ss_password"
+              placeholder="请输入密码"
+            />
             <el-button 
               size="small" 
               type="primary" 
@@ -402,11 +636,20 @@
         
         <!-- Dokodemo-Door 特有设置 -->
         <template v-if="inboundForm.protocol === 'dokodemo-door'">
-          <el-form-item label="目标地址" prop="dokodemo_address">
-            <el-input v-model="inboundForm.dokodemo_address" placeholder="请输入目标地址" />
+          <el-form-item
+            label="目标地址"
+            prop="dokodemo_address"
+          >
+            <el-input
+              v-model="inboundForm.dokodemo_address"
+              placeholder="请输入目标地址"
+            />
           </el-form-item>
           
-          <el-form-item label="目标端口" prop="dokodemo_port">
+          <el-form-item
+            label="目标端口"
+            prop="dokodemo_port"
+          >
             <el-input-number 
               v-model="inboundForm.dokodemo_port" 
               :min="1" 
@@ -417,23 +660,58 @@
           </el-form-item>
         </template>
         
-        <el-form-item label="网络" prop="network">
-          <el-select v-model="inboundForm.network" style="width: 100%">
-            <el-option label="TCP+UDP" value="tcp+udp" />
-            <el-option label="TCP" value="tcp" />
-            <el-option label="UDP" value="udp" />
+        <el-form-item
+          label="网络"
+          prop="network"
+        >
+          <el-select
+            v-model="inboundForm.network"
+            style="width: 100%"
+          >
+            <el-option
+              label="TCP+UDP"
+              value="tcp+udp"
+            />
+            <el-option
+              label="TCP"
+              value="tcp"
+            />
+            <el-option
+              label="UDP"
+              value="udp"
+            />
           </el-select>
         </el-form-item>
         
-        <el-divider content-position="left">传输设置</el-divider>
+        <el-divider content-position="left">
+          传输设置
+        </el-divider>
         
         <el-form-item label="传输协议">
-          <el-select v-model="inboundForm.stream_settings.network" style="width: 100%">
-            <el-option label="TCP" value="tcp" />
-            <el-option label="WebSocket" value="ws" />
-            <el-option label="HTTP/2" value="http" />
-            <el-option label="QUIC" value="quic" />
-            <el-option label="gRPC" value="grpc" />
+          <el-select
+            v-model="inboundForm.stream_settings.network"
+            style="width: 100%"
+          >
+            <el-option
+              label="TCP"
+              value="tcp"
+            />
+            <el-option
+              label="WebSocket"
+              value="ws"
+            />
+            <el-option
+              label="HTTP/2"
+              value="http"
+            />
+            <el-option
+              label="QUIC"
+              value="quic"
+            />
+            <el-option
+              label="gRPC"
+              value="grpc"
+            />
           </el-select>
         </el-form-item>
         
@@ -513,17 +791,31 @@
               active-text="开启"
               inactive-text="关闭"
             />
-            <div class="form-tip">对应 Xray 的 gRPC `multiMode`，仅在客户端也开启时生效。</div>
+            <div class="form-tip">
+              对应 Xray 的 gRPC `multiMode`，仅在客户端也开启时生效。
+            </div>
           </el-form-item>
         </template>
 
         <!-- QUIC 设置 -->
         <template v-if="inboundForm.stream_settings.network === 'quic'">
           <el-form-item label="加密方式">
-            <el-select v-model="inboundForm.stream_settings.quic_settings.security" style="width: 100%">
-              <el-option label="none" value="none" />
-              <el-option label="aes-128-gcm" value="aes-128-gcm" />
-              <el-option label="chacha20-poly1305" value="chacha20-poly1305" />
+            <el-select
+              v-model="inboundForm.stream_settings.quic_settings.security"
+              style="width: 100%"
+            >
+              <el-option
+                label="none"
+                value="none"
+              />
+              <el-option
+                label="aes-128-gcm"
+                value="aes-128-gcm"
+              />
+              <el-option
+                label="chacha20-poly1305"
+                value="chacha20-poly1305"
+              />
             </el-select>
           </el-form-item>
 
@@ -535,30 +827,73 @@
           </el-form-item>
 
           <el-form-item label="头类型">
-            <el-select v-model="inboundForm.stream_settings.quic_settings.header_type" style="width: 100%">
-              <el-option label="none" value="none" />
-              <el-option label="srtp" value="srtp" />
-              <el-option label="utp" value="utp" />
-              <el-option label="wechat-video" value="wechat-video" />
-              <el-option label="dtls" value="dtls" />
-              <el-option label="wireguard" value="wireguard" />
+            <el-select
+              v-model="inboundForm.stream_settings.quic_settings.header_type"
+              style="width: 100%"
+            >
+              <el-option
+                label="none"
+                value="none"
+              />
+              <el-option
+                label="srtp"
+                value="srtp"
+              />
+              <el-option
+                label="utp"
+                value="utp"
+              />
+              <el-option
+                label="wechat-video"
+                value="wechat-video"
+              />
+              <el-option
+                label="dtls"
+                value="dtls"
+              />
+              <el-option
+                label="wireguard"
+                value="wireguard"
+              />
             </el-select>
           </el-form-item>
 
-          <div class="form-tip">QUIC 会直接写入 `quicSettings`，不再依赖扁平参数。</div>
+          <div class="form-tip">
+            QUIC 会直接写入 `quicSettings`，不再依赖扁平参数。
+          </div>
         </template>
         
-        <el-divider content-position="left">安全设置</el-divider>
+        <el-divider content-position="left">
+          安全设置
+        </el-divider>
 
-        <el-form-item v-if="supportsReality" label="安全协议">
-          <el-select v-model="securityMode" style="width: 100%">
-            <el-option label="无" value="none" />
-            <el-option label="TLS" value="tls" />
-            <el-option label="Reality" value="reality" />
+        <el-form-item
+          v-if="supportsReality"
+          label="安全协议"
+        >
+          <el-select
+            v-model="securityMode"
+            style="width: 100%"
+          >
+            <el-option
+              label="无"
+              value="none"
+            />
+            <el-option
+              label="TLS"
+              value="tls"
+            />
+            <el-option
+              label="Reality"
+              value="reality"
+            />
           </el-select>
         </el-form-item>
 
-        <el-form-item v-else label="TLS">
+        <el-form-item
+          v-else
+          label="TLS"
+        >
           <el-switch v-model="tlsEnabled" />
         </el-form-item>
         
@@ -580,21 +915,55 @@
                 :disabled="cert.disabled"
               />
             </el-select>
-            <div class="form-tip">只能从“证书管理”中选择已签发且可用的证书域名。</div>
-            <div v-if="selectedCertificateOption" class="form-tip">当前证书：{{ selectedCertificateOption.domain }}<span v-if="selectedCertificateOption.expireDate && selectedCertificateOption.expireDate !== '-'">，到期 {{ selectedCertificateOption.expireDate }}</span></div>
-            <div v-else-if="!certificatesLoading && !availableCertificateOptions.length" class="form-tip">当前没有可选证书，请先到“证书管理”申请或上传证书。</div>
-            <div v-if="effectiveSNI" class="cert-input" style="margin-top: 8px">
-              <el-tag type="info">客户端连接预览</el-tag>
-              <div v-if="effectiveServerAddress" class="form-tip">服务器地址：{{ effectiveServerAddress }}<span v-if="effectiveServerAddressSource">（来源：{{ effectiveServerAddressSource }}）</span></div>
-              <div v-if="effectiveSNI" class="form-tip">SNI：{{ effectiveSNI }}</div>
-              <div class="form-tip">保存后，分享链接会优先使用这里展示的服务器地址与 SNI。</div>
+            <div class="form-tip">
+              只能从“证书管理”中选择已签发且可用的证书域名。
+            </div>
+            <div
+              v-if="selectedCertificateOption"
+              class="form-tip"
+            >
+              当前证书：{{ selectedCertificateOption.domain }}<span v-if="selectedCertificateOption.expireDate && selectedCertificateOption.expireDate !== '-'">，到期 {{ selectedCertificateOption.expireDate }}</span>
+            </div>
+            <div
+              v-else-if="!certificatesLoading && !availableCertificateOptions.length"
+              class="form-tip"
+            >
+              当前没有可选证书，请先到“证书管理”申请或上传证书。
+            </div>
+            <div
+              v-if="effectiveSNI"
+              class="cert-input"
+              style="margin-top: 8px"
+            >
+              <el-tag type="info">
+                客户端连接预览
+              </el-tag>
+              <div
+                v-if="effectiveServerAddress"
+                class="form-tip"
+              >
+                服务器地址：{{ effectiveServerAddress }}<span v-if="effectiveServerAddressSource">（来源：{{ effectiveServerAddressSource }}）</span>
+              </div>
+              <div
+                v-if="effectiveSNI"
+                class="form-tip"
+              >
+                SNI：{{ effectiveSNI }}
+              </div>
+              <div class="form-tip">
+                保存后，分享链接会优先使用这里展示的服务器地址与 SNI。
+              </div>
             </div>
           </el-form-item>
           
           <el-form-item label="证书配置">
             <div class="cert-input">
-              <el-tag type="success">自动匹配系统证书</el-tag>
-              <div class="form-tip">保存后会按上面的域名，从“证书管理”里自动匹配已签发且可用的系统证书。</div>
+              <el-tag type="success">
+                自动匹配系统证书
+              </el-tag>
+              <div class="form-tip">
+                保存后会按上面的域名，从“证书管理”里自动匹配已签发且可用的系统证书。
+              </div>
             </div>
           </el-form-item>
 
@@ -603,7 +972,9 @@
               v-model="inboundForm.stream_settings.tls_settings.alpn"
               placeholder="可选，例如: h2,http/1.1"
             />
-            <div class="form-tip">多个值用逗号分隔，保存后会写入 TLS 的 ALPN 列表。</div>
+            <div class="form-tip">
+              多个值用逗号分隔，保存后会写入 TLS 的 ALPN 列表。
+            </div>
           </el-form-item>
         </template>
 
@@ -613,7 +984,9 @@
               v-model="inboundForm.stream_settings.reality_settings.dest"
               placeholder="请输入 Reality dest，例如: www.cloudflare.com:443"
             />
-            <div class="form-tip">这是 Reality 服务端回落目标，会写入 `realitySettings.dest`。</div>
+            <div class="form-tip">
+              这是 Reality 服务端回落目标，会写入 `realitySettings.dest`。
+            </div>
           </el-form-item>
 
           <el-form-item label="ServerNames">
@@ -621,7 +994,9 @@
               v-model="inboundForm.stream_settings.reality_settings.server_names"
               placeholder="请输入 Server Names，多个值用逗号分隔"
             />
-            <div class="form-tip">第一个域名会同时作为分享链接的 SNI。</div>
+            <div class="form-tip">
+              第一个域名会同时作为分享链接的 SNI。
+            </div>
           </el-form-item>
 
           <el-form-item label="私钥">
@@ -631,7 +1006,9 @@
               :rows="3"
               placeholder="请输入 xray x25519 生成的 private key"
             />
-            <div class="form-tip">保存时会根据私钥自动推导公钥，并同步到订阅导出字段。</div>
+            <div class="form-tip">
+              保存时会根据私钥自动推导公钥，并同步到订阅导出字段。
+            </div>
           </el-form-item>
 
           <el-form-item label="公钥">
@@ -678,32 +1055,56 @@
                 :value="option"
               />
             </el-select>
-            <div class="form-tip">这是客户端分享/订阅参数，不影响服务端入站监听。</div>
+            <div class="form-tip">
+              这是客户端分享/订阅参数，不影响服务端入站监听。
+            </div>
           </el-form-item>
         </template>
 
         <template v-if="allowInsecureVisible">
           <el-form-item label="跳过证书校验">
             <el-switch v-model="inboundForm.stream_settings.client_settings.allow_insecure" />
-            <div class="form-tip">这是客户端参数，只会写进分享链接和订阅导出。</div>
+            <div class="form-tip">
+              这是客户端参数，只会写进分享链接和订阅导出。
+            </div>
           </el-form-item>
         </template>
         
-        <el-divider content-position="left">高级设置</el-divider>
+        <el-divider content-position="left">
+          高级设置
+        </el-divider>
         
         <el-form-item label="流量限制">
           <div class="expiry-readonly">
-            <div class="expiry-readonly__value">{{ inboundForm.traffic_limit_display || '不适用' }}</div>
-            <div v-if="inboundForm.traffic_limit_source_label" class="form-tip">来源：{{ inboundForm.traffic_limit_source_label }}</div>
-            <div class="form-tip">该额度跟随用户试用或订阅流量，不在代理协议里单独设置。</div>
+            <div class="expiry-readonly__value">
+              {{ inboundForm.traffic_limit_display || '不适用' }}
+            </div>
+            <div
+              v-if="inboundForm.traffic_limit_source_label"
+              class="form-tip"
+            >
+              来源：{{ inboundForm.traffic_limit_source_label }}
+            </div>
+            <div class="form-tip">
+              该额度跟随用户试用或订阅流量，不在代理协议里单独设置。
+            </div>
           </div>
         </el-form-item>
         
         <el-form-item label="过期时间">
           <div class="expiry-readonly">
-            <div class="expiry-readonly__value">{{ inboundForm.expires_at_display || '不适用' }}</div>
-            <div v-if="inboundForm.expiry_source_label" class="form-tip">来源：{{ inboundForm.expiry_source_label }}</div>
-            <div class="form-tip">该时间跟随用户试用或订阅有效期，不在代理协议里单独设置。</div>
+            <div class="expiry-readonly__value">
+              {{ inboundForm.expires_at_display || '不适用' }}
+            </div>
+            <div
+              v-if="inboundForm.expiry_source_label"
+              class="form-tip"
+            >
+              来源：{{ inboundForm.expiry_source_label }}
+            </div>
+            <div class="form-tip">
+              该时间跟随用户试用或订阅有效期，不在代理协议里单独设置。
+            </div>
           </div>
         </el-form-item>
         
@@ -714,8 +1115,16 @@
       
       <template #footer>
         <div style="text-align: right">
-          <el-button @click="addInboundDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="saveInbound" :loading="submitting">保存</el-button>
+          <el-button @click="addInboundDialogVisible = false">
+            取消
+          </el-button>
+          <el-button
+            type="primary"
+            :loading="submitting"
+            @click="saveInbound"
+          >
+            保存
+          </el-button>
         </div>
       </template>
     </el-dialog>
@@ -729,15 +1138,29 @@
       :close-on-click-modal="false"
     >
       <div class="qrcode-container">
-        <div id="qrcode-display" class="qrcode"></div>
-        <div class="protocol-name">{{ currentQrCodeInfo?.protocol.toUpperCase() }}</div>
-        <div class="remark">{{ currentQrCodeInfo?.remark }}</div>
+        <div
+          id="qrcode-display"
+          class="qrcode"
+        />
+        <div class="protocol-name">
+          {{ currentQrCodeInfo?.protocol.toUpperCase() }}
+        </div>
+        <div class="remark">
+          {{ currentQrCodeInfo?.remark }}
+        </div>
       </div>
       
       <template #footer>
         <div style="text-align: center">
-          <el-button type="primary" @click="downloadQrCode">下载二维码</el-button>
-          <el-button @click="qrCodeDialogVisible = false">关闭</el-button>
+          <el-button
+            type="primary"
+            @click="downloadQrCode"
+          >
+            下载二维码
+          </el-button>
+          <el-button @click="qrCodeDialogVisible = false">
+            关闭
+          </el-button>
         </div>
       </template>
     </el-dialog>
@@ -2118,20 +2541,29 @@ const getLocalGeneratedLink = (row) => {
   
   switch (protocol) {
     case 'vmess':
-      link = `vmess://${encodeBase64UTF8(JSON.stringify({
-        v: '2',
-        ps: row.remark || '',
-        add: fallbackServer,
-        port: String(row.port ?? ''),
-        id: settings.uuid || '8ad388ff-8d82-418c-9c44-fbb3a580c1fb',
-        aid: String(settings.alter_id ?? settings.alterId ?? 0),
-        net: settings.network || 'tcp',
-        type: 'none',
-        host: getSettingString(settings, 'host') || '',
-        path: getSettingString(settings, 'path') || '/',
-        tls: settings.security === 'tls' || settings.tls === true ? 'tls' : '',
-        sni: getSettingString(settings, 'sni', 'server_name')
-      }))}`
+      {
+        const fp = getSettingString(settings, 'fp', 'fingerprint')
+        const alpn = getSettingString(settings, 'alpn')
+        const vmessConfig = {
+          v: '2',
+          ps: row.remark || '',
+          add: fallbackServer,
+          port: String(row.port ?? ''),
+          id: settings.uuid || '8ad388ff-8d82-418c-9c44-fbb3a580c1fb',
+          aid: String(settings.alter_id ?? settings.alterId ?? 0),
+          scy: getSettingString(settings, 'scy', 'cipher') || 'auto',
+          net: settings.network || 'tcp',
+          type: getSettingString(settings, 'type') || 'none',
+          host: getSettingString(settings, 'host') || '',
+          path: getSettingString(settings, 'path') || '',
+          tls: settings.security === 'tls' || settings.tls === true ? 'tls' : '',
+          sni: getSettingString(settings, 'sni', 'server_name'),
+          alpn,
+          fp
+        }
+        if (settings.allowInsecure === true) vmessConfig.allowInsecure = true
+        link = `vmess://${encodeBase64UTF8(JSON.stringify(vmessConfig))}`
+      }
       break;
     case 'vless':
       {
@@ -2154,19 +2586,19 @@ const getLocalGeneratedLink = (row) => {
       }
       break;
     case 'trojan':
-      // 获取设置，如果有的话
-      let password = 'password123'
-      let sni = fallbackServer
-      
-      if (settings.password) {
-        password = settings.password
-      }
-      if (getSettingString(settings, 'sni', 'server_name')) {
-        sni = getSettingString(settings, 'sni', 'server_name')
-      }
-      
-      // 标准Trojan链接格式
       {
+        // 获取设置，如果有的话
+        let password = 'password123'
+        let sni = fallbackServer
+
+        if (settings.password) {
+          password = settings.password
+        }
+        if (getSettingString(settings, 'sni', 'server_name')) {
+          sni = getSettingString(settings, 'sni', 'server_name')
+        }
+
+        // 标准Trojan链接格式
         const params = new URLSearchParams()
         params.set('security', getSettingString(settings, 'security') || 'tls')
         params.set('sni', sni)
@@ -2812,7 +3244,7 @@ const downloadQrCode = async () => {
   margin-bottom: 10px;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1280px) {
   .overview-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

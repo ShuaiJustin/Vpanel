@@ -1,27 +1,46 @@
+<!-- eslint-disable vue/no-v-html -->
 <template>
   <div class="announcement-detail-page">
     <!-- 返回按钮 -->
     <div class="back-bar">
-      <el-button link @click="goBack">
+      <el-button
+        link
+        @click="goBack"
+      >
         <el-icon><ArrowLeft /></el-icon>
         返回公告列表
       </el-button>
     </div>
 
     <!-- 加载状态 -->
-    <div v-if="loading" class="loading-state">
-      <el-icon class="loading-icon"><Loading /></el-icon>
+    <div
+      v-if="loading"
+      class="loading-state"
+    >
+      <el-icon class="loading-icon">
+        <Loading />
+      </el-icon>
       <p>加载公告内容...</p>
     </div>
 
     <!-- 公告不存在 -->
-    <el-empty v-else-if="!announcement" description="公告不存在或已删除" />
+    <el-empty
+      v-else-if="!announcement"
+      description="公告不存在或已删除"
+    />
 
     <!-- 公告内容 -->
-    <el-card v-else class="announcement-card" shadow="never">
+    <el-card
+      v-else
+      class="announcement-card"
+      shadow="never"
+    >
       <div class="announcement-header">
         <div class="header-meta">
-          <el-tag :type="getCategoryType(announcement.category)" size="small">
+          <el-tag
+            :type="getCategoryType(announcement.category)"
+            size="small"
+          >
             {{ getCategoryLabel(announcement.category) }}
           </el-tag>
           <span class="publish-date">
@@ -29,28 +48,43 @@
             {{ formatDate(announcement.published_at) }}
           </span>
         </div>
-        <h1 class="announcement-title">{{ announcement.title }}</h1>
+        <h1 class="announcement-title">
+          {{ announcement.title }}
+        </h1>
       </div>
 
       <el-divider />
 
-      <div class="announcement-content" v-html="announcement.content"></div>
+      <!-- eslint-disable-next-line vue/no-v-html -->
+      <div
+        class="announcement-content"
+        v-html="safeAnnouncementContent"
+      />
 
       <el-divider />
 
       <div class="announcement-footer">
         <div class="footer-info">
-          <span v-if="announcement.is_pinned" class="pinned-tag">
+          <span
+            v-if="announcement.is_pinned"
+            class="pinned-tag"
+          >
             <el-icon><Top /></el-icon>
             置顶公告
           </span>
         </div>
         <div class="footer-actions">
-          <el-button v-if="prevAnnouncement" @click="viewAnnouncement(prevAnnouncement.id)">
+          <el-button
+            v-if="prevAnnouncement"
+            @click="viewAnnouncement(prevAnnouncement.id)"
+          >
             <el-icon><ArrowLeft /></el-icon>
             上一篇
           </el-button>
-          <el-button v-if="nextAnnouncement" @click="viewAnnouncement(nextAnnouncement.id)">
+          <el-button
+            v-if="nextAnnouncement"
+            @click="viewAnnouncement(nextAnnouncement.id)"
+          >
             下一篇
             <el-icon><ArrowRight /></el-icon>
           </el-button>
@@ -66,6 +100,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, ArrowRight, Loading, Calendar, Top } from '@element-plus/icons-vue'
 import { usePortalAnnouncementsStore } from '@/stores/portalAnnouncements'
+import { sanitizeHtml } from '@/utils/htmlSanitizer'
 
 const router = useRouter()
 const route = useRoute()
@@ -76,6 +111,7 @@ const loading = ref(false)
 const announcement = ref(null)
 const prevAnnouncement = ref(null)
 const nextAnnouncement = ref(null)
+const safeAnnouncementContent = computed(() => sanitizeHtml(announcement.value?.content || ''))
 
 // 方法
 function getCategoryType(category) {
