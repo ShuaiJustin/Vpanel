@@ -2,10 +2,7 @@
   <div class="node-form-page">
     <div class="page-header">
       <div class="header-left">
-        <el-button
-          link
-          @click="goBack"
-        >
+        <el-button link @click="goBack">
           <el-icon><ArrowLeft /></el-icon>
           返回
         </el-button>
@@ -15,10 +12,7 @@
       </div>
     </div>
 
-    <el-card
-      v-loading="loading"
-      shadow="never"
-    >
+    <el-card v-loading="loading" shadow="never">
       <el-form
         ref="formRef"
         :model="form"
@@ -26,46 +20,41 @@
         label-width="120px"
         style="max-width: 600px"
       >
-        <el-form-item
-          label="节点名称"
-          prop="name"
-        >
-          <el-input
-            v-model="form.name"
-            placeholder="请输入节点名称"
-          />
+        <el-form-item label="节点名称" prop="name">
+          <div class="name-field">
+            <el-input
+              v-model="form.name"
+              placeholder="请输入节点名称"
+              @input="handleNameInput"
+            />
+            <el-button
+              :loading="suggestionLoading"
+              @click="generateSuggestedName(true)"
+            >
+              自动生成
+            </el-button>
+          </div>
+          <div class="form-tip-inline">
+            {{ nameSuggestionMessage }}
+          </div>
         </el-form-item>
 
-        <el-form-item
-          label="节点地址"
-          prop="address"
-        >
+        <el-form-item label="节点地址" prop="address">
           <el-input
             v-model="form.address"
             placeholder="IP 地址或域名"
+            @blur="handleAddressBlur"
           >
             <template #prepend>
-              <el-select
-                v-model="addressType"
-                style="width: 80px"
-              >
-                <el-option
-                  label="IP"
-                  value="ip"
-                />
-                <el-option
-                  label="域名"
-                  value="domain"
-                />
+              <el-select v-model="addressType" style="width: 80px">
+                <el-option label="IP" value="ip" />
+                <el-option label="域名" value="domain" />
               </el-select>
             </template>
           </el-input>
         </el-form-item>
 
-        <el-form-item
-          label="Agent 端口"
-          prop="port"
-        >
+        <el-form-item label="Agent 端口" prop="port">
           <el-input-number
             v-model="form.port"
             :min="1"
@@ -75,55 +64,25 @@
           <span class="form-tip">Node Agent 监听端口</span>
         </el-form-item>
 
-        <el-form-item
-          label="地区"
-          prop="region"
-        >
+        <el-form-item label="地区" prop="region">
           <el-select
             v-model="form.region"
             filterable
             allow-create
             placeholder="选择或输入地区"
           >
-            <el-option
-              label="香港"
-              value="香港"
-            />
-            <el-option
-              label="日本"
-              value="日本"
-            />
-            <el-option
-              label="新加坡"
-              value="新加坡"
-            />
-            <el-option
-              label="美国"
-              value="美国"
-            />
-            <el-option
-              label="韩国"
-              value="韩国"
-            />
-            <el-option
-              label="台湾"
-              value="台湾"
-            />
-            <el-option
-              label="德国"
-              value="德国"
-            />
-            <el-option
-              label="英国"
-              value="英国"
-            />
+            <el-option label="香港" value="香港" />
+            <el-option label="日本" value="日本" />
+            <el-option label="新加坡" value="新加坡" />
+            <el-option label="美国" value="美国" />
+            <el-option label="韩国" value="韩国" />
+            <el-option label="台湾" value="台湾" />
+            <el-option label="德国" value="德国" />
+            <el-option label="英国" value="英国" />
           </el-select>
         </el-form-item>
 
-        <el-form-item
-          label="负载均衡权重"
-          prop="weight"
-        >
+        <el-form-item label="负载均衡权重" prop="weight">
           <el-slider
             v-model="form.weight"
             :min="1"
@@ -131,15 +90,10 @@
             show-input
             style="width: 400px"
           />
-          <div class="form-tip">
-            权重越高，分配的用户越多
-          </div>
+          <div class="form-tip">权重越高，分配的用户越多</div>
         </el-form-item>
 
-        <el-form-item
-          label="最大用户数"
-          prop="max_users"
-        >
+        <el-form-item label="最大用户数" prop="max_users">
           <el-input-number
             v-model="form.max_users"
             :min="0"
@@ -168,11 +122,7 @@
               @keyup.enter="addTag"
               @blur="addTag"
             />
-            <el-button
-              v-else
-              size="small"
-              @click="showTagInputField"
-            >
+            <el-button v-else size="small" @click="showTagInputField">
               + 添加标签
             </el-button>
           </div>
@@ -185,9 +135,7 @@
             :rows="4"
             placeholder="每行一个 IP 地址，留空表示不限制&#10;支持 CIDR 格式，如 192.168.1.0/24"
           />
-          <div class="form-tip">
-            限制可以连接到此节点的 IP 地址
-          </div>
+          <div class="form-tip">限制可以连接到此节点的 IP 地址</div>
         </el-form-item>
 
         <el-divider />
@@ -214,9 +162,7 @@
               </span>
             </el-option>
           </el-select>
-          <div class="form-tip">
-            节点可以同时属于多个分组
-          </div>
+          <div class="form-tip">节点可以同时属于多个分组</div>
         </el-form-item>
 
         <el-divider />
@@ -229,14 +175,8 @@
           />
         </el-form-item>
 
-        <el-form-item
-          label="TLS 域名"
-          prop="tls_domain"
-        >
-          <el-input
-            v-model="form.tls_domain"
-            placeholder="如 jp.example.com"
-          />
+        <el-form-item label="TLS 域名" prop="tls_domain">
+          <el-input v-model="form.tls_domain" placeholder="如 jp.example.com" />
           <div class="form-tip-inline">
             用于节点 TLS 标识、健康检查和系统证书自动匹配。
           </div>
@@ -262,12 +202,14 @@
           <div class="form-tip-inline">
             选择后会自动回填 TLS 域名，你仍可继续手动修改。
           </div>
-          <div
-            v-if="selectedCertificate"
-            class="certificate-tip"
-          >
+          <div v-if="selectedCertificate" class="certificate-tip">
             当前证书：{{ selectedCertificate.domain }}
-            <span v-if="selectedCertificate.expireDate && selectedCertificate.expireDate !== '-'">
+            <span
+              v-if="
+                selectedCertificate.expireDate &&
+                selectedCertificate.expireDate !== '-'
+              "
+            >
               ，到期 {{ selectedCertificate.expireDate }}
             </span>
           </div>
@@ -281,20 +223,14 @@
             <el-checkbox v-model="enableAutoInstall">
               自动安装 Agent（通过 SSH 远程安装）
             </el-checkbox>
-            <div
-              class="form-tip"
-              style="margin-left: 0; margin-top: 8px"
-            >
+            <div class="form-tip" style="margin-left: 0; margin-top: 8px">
               勾选后，系统将自动连接到服务器并安装 Agent 和 Xray
             </div>
           </div>
 
           <template v-if="enableAutoInstall">
             <el-form-item label="服务器 IP">
-              <el-input
-                v-model="form.ssh_host"
-                placeholder="服务器 IP 地址"
-              />
+              <el-input v-model="form.ssh_host" placeholder="服务器 IP 地址" />
             </el-form-item>
 
             <el-form-item label="SSH 端口">
@@ -307,20 +243,13 @@
             </el-form-item>
 
             <el-form-item label="SSH 用户名">
-              <el-input
-                v-model="form.ssh_username"
-                placeholder="通常为 root"
-              />
+              <el-input v-model="form.ssh_username" placeholder="通常为 root" />
             </el-form-item>
 
             <el-form-item label="认证方式">
               <el-radio-group v-model="form.ssh_auth_type">
-                <el-radio value="password">
-                  密码
-                </el-radio>
-                <el-radio value="key">
-                  私钥
-                </el-radio>
+                <el-radio value="password"> 密码 </el-radio>
+                <el-radio value="key"> 私钥 </el-radio>
               </el-radio-group>
             </el-form-item>
 
@@ -336,10 +265,7 @@
               />
             </el-form-item>
 
-            <el-form-item
-              v-if="form.ssh_auth_type === 'key'"
-              label="SSH 私钥"
-            >
+            <el-form-item v-if="form.ssh_auth_type === 'key'" label="SSH 私钥">
               <el-input
                 v-model="form.ssh_private_key"
                 type="textarea"
@@ -360,11 +286,7 @@
         </template>
 
         <el-form-item>
-          <el-button
-            type="primary"
-            :loading="submitting"
-            @click="submitForm"
-          >
+          <el-button type="primary" :loading="submitting" @click="submitForm">
             {{
               isEdit
                 ? "保存修改"
@@ -373,9 +295,7 @@
                   : "创建节点"
             }}
           </el-button>
-          <el-button @click="goBack">
-            取消
-          </el-button>
+          <el-button @click="goBack"> 取消 </el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -387,42 +307,26 @@
       width="500px"
       :close-on-click-modal="false"
     >
-      <el-alert
-        type="success"
-        :closable="false"
-        show-icon
-      >
-        <template #title>
-          节点已创建成功！
-        </template>
+      <el-alert type="success" :closable="false" show-icon>
+        <template #title> 节点已创建成功！ </template>
         请保存以下 Token，用于 Node Agent 连接认证。此 Token 只显示一次。
       </el-alert>
       <div class="token-display">
-        <div class="token-label">
-          认证 Token
-        </div>
+        <div class="token-label">认证 Token</div>
         <div class="token-value">
           <code>{{ createdToken }}</code>
-          <el-button
-            link
-            @click="copyToken"
-          >
+          <el-button link @click="copyToken">
             <el-icon><CopyDocument /></el-icon>
             复制
           </el-button>
         </div>
       </div>
       <div class="agent-config">
-        <div class="config-label">
-          Agent 配置示例
-        </div>
+        <div class="config-label">Agent 配置示例</div>
         <pre class="config-code">{{ agentConfigExample }}</pre>
       </div>
       <template #footer>
-        <el-button
-          type="primary"
-          @click="finishCreate"
-        >
+        <el-button type="primary" @click="finishCreate">
           我已保存，完成
         </el-button>
       </template>
@@ -431,13 +335,22 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, nextTick } from "vue";
+import {
+  ref,
+  reactive,
+  computed,
+  onMounted,
+  onBeforeUnmount,
+  nextTick,
+  watch,
+} from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { ArrowLeft, CopyDocument } from "@element-plus/icons-vue";
 import { useNodeStore } from "@/stores/node";
 import { certificatesApi, nodeGroupsApi, nodesApi } from "@/api";
 import { copyText } from "@/utils/clipboard";
+import { debounce } from "@/utils/debounce";
 
 const route = useRoute();
 const router = useRouter();
@@ -456,6 +369,15 @@ const certificates = ref([]);
 const certificatesLoading = ref(false);
 const tokenDialogVisible = ref(false);
 const createdToken = ref("");
+const suggestionLoading = ref(false);
+const suggestionEnabled = ref(false);
+const nameSuggestionMessage = ref(
+  "填写地址后会自动生成节点名称，你也可以手动覆盖。",
+);
+const isNameManuallyEdited = ref(false);
+const isApplyingSuggestedName = ref(false);
+const lastSuggestedName = ref("");
+let latestSuggestionRequestId = 0;
 
 // SSH 自动安装相关
 const enableAutoInstall = ref(false);
@@ -486,7 +408,12 @@ const form = reactive({
 const rules = {
   name: [
     { required: true, message: "请输入节点名称", trigger: "blur" },
-    { min: 2, max: 128, message: "名称长度在 2 到 128 个字符", trigger: "blur" },
+    {
+      min: 2,
+      max: 128,
+      message: "名称长度在 2 到 128 个字符",
+      trigger: "blur",
+    },
   ],
   address: [
     { required: true, message: "请输入节点地址", trigger: "blur" },
@@ -496,6 +423,21 @@ const rules = {
   tls_domain: [{ validator: validateTLSDomain, trigger: "blur" }],
 };
 
+const normalizeText = (value) =>
+  typeof value === "string" ? value.trim() : "";
+
+const isValidIPv4Address = (value) => /^(\d{1,3}\.){3}\d{1,3}$/.test(value);
+
+const isValidIPv6Address = (value) =>
+  /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::$|^([0-9a-fA-F]{1,4}:)*::([0-9a-fA-F]{1,4}:)*[0-9a-fA-F]{1,4}$/.test(
+    value,
+  );
+
+const isValidDomain = (value) =>
+  /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/.test(
+    value,
+  );
+
 function validateAddress(rule, value, callback) {
   if (!value) {
     callback(new Error("请输入节点地址"));
@@ -503,29 +445,18 @@ function validateAddress(rule, value, callback) {
   }
 
   if (addressType.value === "ip") {
-    // IPv4 或 IPv6 验证
-    const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
-    const ipv6Regex =
-      /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::$|^([0-9a-fA-F]{1,4}:)*::([0-9a-fA-F]{1,4}:)*[0-9a-fA-F]{1,4}$/;
-    if (!ipv4Regex.test(value) && !ipv6Regex.test(value)) {
+    if (!isValidIPv4Address(value) && !isValidIPv6Address(value)) {
       callback(new Error("请输入有效的 IP 地址"));
       return;
     }
   } else {
-    // 域名验证
-    const domainRegex =
-      /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-    if (!domainRegex.test(value)) {
+    if (!isValidDomain(value)) {
       callback(new Error("请输入有效的域名"));
       return;
     }
   }
   callback();
 }
-
-
-const normalizeText = (value) =>
-  typeof value === "string" ? value.trim() : "";
 
 const normalizeCertificateDomain = (domain) =>
   normalizeText(domain).replace(/^\*\./, "").toLowerCase();
@@ -540,7 +471,8 @@ const formatCertificateDate = (value) => {
 const normalizeCertificatesResponse = (response) => {
   if (Array.isArray(response)) return response;
   if (Array.isArray(response?.certificates)) return response.certificates;
-  if (Array.isArray(response?.data?.certificates)) return response.data.certificates;
+  if (Array.isArray(response?.data?.certificates))
+    return response.data.certificates;
   if (Array.isArray(response?.data)) return response.data;
   return [];
 };
@@ -583,6 +515,138 @@ xray:
   config_path: "/usr/local/etc/xray/config.json"`;
 });
 
+const buildSuggestionDetail = (result) => {
+  const parts = [];
+  if (normalizeText(result?.location_label)) {
+    parts.push(result.location_label);
+  } else if (normalizeText(result?.suggested_region)) {
+    parts.push(result.suggested_region);
+  }
+  if (normalizeText(result?.resolved_ip)) {
+    parts.push(result.resolved_ip);
+  }
+  return parts.join(" / ");
+};
+
+const canSuggestNodeName = () => {
+  const address = normalizeText(form.address);
+  if (!address) return false;
+  return addressType.value === "ip"
+    ? isValidIPv4Address(address) || isValidIPv6Address(address)
+    : isValidDomain(address);
+};
+
+const setNameSuggestionMessage = (message) => {
+  nameSuggestionMessage.value =
+    message || "填写地址后会自动生成节点名称，你也可以手动覆盖。";
+};
+
+const applySuggestedName = (result, force = false) => {
+  const previousSuggestedName = lastSuggestedName.value;
+  lastSuggestedName.value = normalizeText(result?.suggested_name);
+
+  if (!normalizeText(form.region) && normalizeText(result?.suggested_region)) {
+    form.region = result.suggested_region;
+  }
+
+  const shouldOverwriteName =
+    force ||
+    !normalizeText(form.name) ||
+    !isNameManuallyEdited.value ||
+    normalizeText(form.name) === previousSuggestedName;
+
+  const detail = buildSuggestionDetail(result);
+  if (shouldOverwriteName && lastSuggestedName.value) {
+    isApplyingSuggestedName.value = true;
+    form.name = lastSuggestedName.value;
+    isApplyingSuggestedName.value = false;
+    isNameManuallyEdited.value = false;
+    setNameSuggestionMessage(
+      detail
+        ? `已识别 ${detail}，节点名称已自动生成。`
+        : `节点名称已自动生成：${lastSuggestedName.value}`,
+    );
+    return;
+  }
+
+  setNameSuggestionMessage(
+    detail
+      ? `已识别 ${detail}，已保留当前手动名称。点击“自动生成”可重新回填。`
+      : "已保留当前手动名称。点击“自动生成”可重新回填。",
+  );
+};
+
+const generateSuggestedName = async (force = false) => {
+  const address = normalizeText(form.address);
+  if (!address) {
+    suggestionLoading.value = false;
+    if (!normalizeText(form.name)) {
+      lastSuggestedName.value = "";
+    }
+    setNameSuggestionMessage();
+    return;
+  }
+
+  if (!canSuggestNodeName()) {
+    suggestionLoading.value = false;
+    setNameSuggestionMessage("地址格式可用后会自动生成节点名称。");
+    return;
+  }
+
+  const requestId = ++latestSuggestionRequestId;
+  suggestionLoading.value = true;
+  if (force) {
+    setNameSuggestionMessage("正在根据地址解析节点名称...");
+  }
+
+  try {
+    const result = await nodesApi.suggestName({
+      address,
+      region: normalizeText(form.region) || undefined,
+    });
+    if (requestId !== latestSuggestionRequestId) return;
+    applySuggestedName(result, force);
+  } catch (e) {
+    if (requestId !== latestSuggestionRequestId) return;
+    setNameSuggestionMessage(
+      force
+        ? "自动生成失败，请检查地址后重试。"
+        : "地址已更新，但名称识别失败，可稍后点击“自动生成”重试。",
+    );
+    if (force) {
+      ElMessage.error(e.message || "自动生成失败");
+    }
+  } finally {
+    if (requestId === latestSuggestionRequestId) {
+      suggestionLoading.value = false;
+    }
+  }
+};
+
+const debouncedSuggestName = debounce(() => {
+  void generateSuggestedName(false);
+}, 500);
+
+const handleAddressBlur = () => {
+  if (!suggestionEnabled.value) return;
+  debouncedSuggestName.cancel();
+  void generateSuggestedName(false);
+};
+
+const handleNameInput = () => {
+  if (!suggestionEnabled.value || isApplyingSuggestedName.value) {
+    return;
+  }
+
+  if (normalizeText(form.name) === lastSuggestedName.value) {
+    isNameManuallyEdited.value = false;
+    return;
+  }
+
+  isNameManuallyEdited.value = true;
+  setNameSuggestionMessage("已切换为手动命名，点击“自动生成”可重新回填。");
+};
+
 const fetchGroups = async () => {
   try {
     const res = await nodeGroupsApi.list();
@@ -596,10 +660,12 @@ const fetchCertificates = async () => {
   certificatesLoading.value = true;
   try {
     const response = await certificatesApi.list();
-    certificates.value = normalizeCertificatesResponse(response).map((cert) => ({
-      ...cert,
-      expireDate: formatCertificateDate(cert.expires_at || cert.expiresAt),
-    }));
+    certificates.value = normalizeCertificatesResponse(response).map(
+      (cert) => ({
+        ...cert,
+        expireDate: formatCertificateDate(cert.expires_at || cert.expiresAt),
+      }),
+    );
   } catch (e) {
     console.error("获取证书失败:", e);
     certificates.value = [];
@@ -661,6 +727,11 @@ const fetchNode = async () => {
     // 判断地址类型
     const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$|^([0-9a-fA-F]{1,4}:)/;
     addressType.value = ipRegex.test(node.address) ? "ip" : "domain";
+    isNameManuallyEdited.value = Boolean(normalizeText(node.name));
+    lastSuggestedName.value = "";
+    setNameSuggestionMessage(
+      "当前名称视为手动命名，修改地址或地区后不会自动覆盖，可点击“自动生成”重新回填。",
+    );
   } catch (e) {
     ElMessage.error(e.message || "获取节点详情失败");
   } finally {
@@ -836,9 +907,38 @@ const goBack = () => {
   router.push("/admin/nodes");
 };
 
+watch(
+  () => [
+    normalizeText(form.address),
+    normalizeText(form.region),
+    addressType.value,
+  ],
+  ([address]) => {
+    if (!suggestionEnabled.value) return;
+    if (!address) {
+      lastSuggestedName.value = "";
+      if (!normalizeText(form.name) || !isNameManuallyEdited.value) {
+        setNameSuggestionMessage();
+      }
+      return;
+    }
+    debouncedSuggestName();
+  },
+);
+
 onMounted(async () => {
   await Promise.all([fetchGroups(), fetchCertificates()]);
   await fetchNode();
+  suggestionEnabled.value = true;
+
+  if (!isEdit.value && normalizeText(form.address)) {
+    void generateSuggestedName(false);
+  }
+});
+
+onBeforeUnmount(() => {
+  debouncedSuggestName.cancel();
+  latestSuggestionRequestId += 1;
 });
 </script>
 
@@ -864,6 +964,17 @@ onMounted(async () => {
   font-size: 24px;
   font-weight: 600;
   margin: 0;
+}
+
+.name-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.name-field :deep(.el-input) {
+  flex: 1;
 }
 
 .form-tip {
@@ -964,6 +1075,11 @@ onMounted(async () => {
     width: 100%;
     margin-left: 0;
     margin-top: 8px;
+  }
+
+  .name-field {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .tags-input {

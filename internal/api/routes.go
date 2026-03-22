@@ -269,7 +269,12 @@ func (r *Router) Setup() {
 	nodeAgentHandler := handlers.NewNodeAgentHandler(nodeService, nodeTrafficService, r.repos.Node, configGenerator, r.nodeRecoveryTracker, r.logger)
 
 	// Create node management handlers
+	var geoService *ip.GeolocationService
+	if ipService != nil {
+		geoService = ipService.GeoService()
+	}
 	nodeHandler := handlers.NewNodeHandler(nodeService, nodeGroupService, nodeDeployService, r.nodeRecoveryTracker, r.logger)
+	nodeNameSuggestionHandler := handlers.NewNodeNameSuggestionHandler(r.logger, geoService)
 	nodeGroupHandler := handlers.NewNodeGroupHandler(nodeGroupService, r.logger)
 	nodeHealthHandler := handlers.NewNodeHealthHandler(r.nodeHealthChecker, r.repos.HealthCheck, r.repos.Node, r.logger)
 	nodeStatsHandler := handlers.NewNodeStatsHandler(nodeTrafficService, nodeService, nodeGroupService, r.logger)
@@ -750,6 +755,7 @@ func (r *Router) Setup() {
 				// Node CRUD
 				adminNodes.GET("", nodeHandler.List)
 				adminNodes.POST("", nodeHandler.Create)
+				adminNodes.GET("/name-suggestion", nodeNameSuggestionHandler.Suggest)
 				adminNodes.GET("/statistics", nodeHandler.GetStatistics)
 
 				// Remote deployment (必须在 /:id 之前，避免被参数路由匹配)

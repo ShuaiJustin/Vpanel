@@ -95,6 +95,15 @@ export const nodesApi = {
   getStatistics: () => api.get("/admin/nodes/statistics"),
 
   /**
+   * 根据地址和地区自动生成节点名称
+   * @param {Object} params - 查询参数
+   * @param {string} params.address - 节点地址（IP 或域名）
+   * @param {string} [params.region] - 手动选择的地区
+   * @returns {Promise<Object>} 名称建议结果
+   */
+  suggestName: (params) => api.get("/admin/nodes/name-suggestion", { params }),
+
+  /**
    * 获取节点流量统计
    * @param {number|string} id - 节点 ID
    * @param {Object} params - 查询参数

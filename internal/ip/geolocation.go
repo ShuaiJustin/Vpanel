@@ -103,6 +103,13 @@ func (g *GeolocationService) LookupBatch(ctx context.Context, ips []string) (map
 	return results, nil
 }
 
+// Cache stores a geolocation result in the local cache for later reuse.
+func (g *GeolocationService) Cache(ctx context.Context, info *GeoInfo) error {
+	if info == nil || info.IP == "" {
+		return nil
+	}
+	return g.saveToCache(ctx, info)
+}
 
 // lookupFromDatabase performs the actual GeoIP lookup.
 func (g *GeolocationService) lookupFromDatabase(ipStr string) (*GeoInfo, error) {
