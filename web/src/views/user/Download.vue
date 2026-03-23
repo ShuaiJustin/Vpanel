@@ -1496,20 +1496,20 @@ onMounted(async () => {
 .page-title {
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 8px 0;
 }
 
 .page-subtitle {
   font-size: 14px;
-  color: #909399;
+  color: var(--color-text-secondary);
   margin: 0;
 }
 
 .quick-start-card {
   margin-bottom: 24px;
-  border: 1px solid #dbeafe;
-  background: linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%);
+  border: 1px solid var(--color-border);
+  background: linear-gradient(135deg, var(--color-bg-card) 0%, var(--color-border-light) 100%);
 }
 
 .quick-start-content {
@@ -1540,14 +1540,14 @@ onMounted(async () => {
   margin: 14px 0 8px;
   font-size: 22px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .quick-start-subtitle {
   margin: 0;
   font-size: 14px;
   line-height: 1.7;
-  color: #606266;
+  color: var(--color-text-regular);
 }
 
 .quick-start-link {
@@ -1559,14 +1559,14 @@ onMounted(async () => {
 
 .quick-start-link__label {
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 .quick-start-link__value {
   display: block;
   font-size: 13px;
   line-height: 1.6;
-  color: #303133;
+  color: var(--color-text-primary);
   word-break: break-all;
 }
 
@@ -1608,17 +1608,17 @@ onMounted(async () => {
 
 .client-card {
   position: relative;
-  background: #fff;
-  border: 1px solid #edf2f7;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 24px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-sm);
   transition: all 0.3s;
 }
 
 .client-card:hover {
-  border-color: #d9e3f0;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  border-color: var(--color-primary-light);
+  box-shadow: var(--shadow-md);
   transform: translateY(-2px);
 }
 
@@ -1636,10 +1636,10 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f7fa;
+  background: var(--color-border-light);
   border-radius: 12px;
   font-size: 24px;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 .client-logo img {
@@ -1659,7 +1659,7 @@ onMounted(async () => {
 .client-name {
   font-size: 18px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 4px 0;
 }
 
@@ -1678,7 +1678,7 @@ onMounted(async () => {
 
 .client-version {
   font-size: 13px;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 .client-meta {
@@ -1690,7 +1690,7 @@ onMounted(async () => {
 
 .client-description {
   font-size: 14px;
-  color: #606266;
+  color: var(--color-text-regular);
   line-height: 1.6;
   margin: 0 0 16px 0;
 }
@@ -1727,7 +1727,7 @@ onMounted(async () => {
 .tips-card p {
   margin: 8px 0;
   font-size: 14px;
-  color: #606266;
+  color: var(--color-text-regular);
   line-height: 1.6;
 }
 
@@ -1748,13 +1748,13 @@ onMounted(async () => {
 .step-panel h3 {
   font-size: 18px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 20px 0;
 }
 
 .step-content {
   font-size: 14px;
-  color: #606266;
+  color: var(--color-text-regular);
   line-height: 1.8;
 }
 
@@ -1777,7 +1777,7 @@ onMounted(async () => {
 }
 
 .step-content :deep(code) {
-  background: #f5f7fa;
+  background: var(--color-border-light);
   padding: 2px 8px;
   border-radius: 4px;
   font-family: 'Monaco', 'Menlo', monospace;
@@ -1829,7 +1829,7 @@ onMounted(async () => {
 .subscription-inline__value {
   font-size: 12px;
   line-height: 1.6;
-  color: #606266;
+  color: var(--color-text-regular);
   word-break: break-all;
 }
 
@@ -1839,7 +1839,7 @@ onMounted(async () => {
   gap: 12px;
   margin-top: 24px;
   padding-top: 24px;
-  border-top: 1px solid #ebeef5;
+  border-top: 1px solid var(--color-border);
 }
 
 /* 响应式 */

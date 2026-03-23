@@ -133,7 +133,8 @@ func (r *Router) Setup() {
 	// r.engine.Use(middleware.RateLimit(100)) // 100 requests per second per IP
 
 	// Create handlers
-	authHandler := handlers.NewAuthHandler(r.authService, r.repos.User, r.repos.LoginHistory, r.logger)
+	authHandler := handlers.NewAuthHandler(r.authService, r.repos.User, r.repos.LoginHistory, r.logger).
+		WithSecuritySettings(r.settingsService)
 	proxyHandler := handlers.NewProxyHandlerWithTraffic(r.proxyManager, r.repos.Proxy, r.repos.Traffic, r.logger).
 		WithNodeRepository(r.repos.Node).
 		WithUserRepositories(r.repos.User, r.repos.Trial)

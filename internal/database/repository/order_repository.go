@@ -4,6 +4,7 @@ package repository
 import (
 	"context"
 	"strconv"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -11,23 +12,23 @@ import (
 
 // Order represents an order in the database.
 type Order struct {
-	ID             int64      `gorm:"primaryKey;autoIncrement"`
-	OrderNo        string     `gorm:"uniqueIndex;size:64;not null"`
-	UserID         int64      `gorm:"index;not null"`
-	PlanID         int64      `gorm:"index;not null"`
-	CouponID       *int64     `gorm:"index"`
-	OriginalAmount int64      `gorm:"not null"`
-	DiscountAmount int64      `gorm:"default:0"`
-	BalanceUsed    int64      `gorm:"default:0"`
-	PayAmount      int64      `gorm:"not null"`
-	Status         string     `gorm:"size:32;default:pending;index"`
-	PaymentMethod  string     `gorm:"size:32"`
-	PaymentNo      string     `gorm:"size:128;index"`
+	ID             int64  `gorm:"primaryKey;autoIncrement"`
+	OrderNo        string `gorm:"uniqueIndex;size:64;not null"`
+	UserID         int64  `gorm:"index;not null"`
+	PlanID         int64  `gorm:"index;not null"`
+	CouponID       *int64 `gorm:"index"`
+	OriginalAmount int64  `gorm:"not null"`
+	DiscountAmount int64  `gorm:"default:0"`
+	BalanceUsed    int64  `gorm:"default:0"`
+	PayAmount      int64  `gorm:"not null"`
+	Status         string `gorm:"size:32;default:pending;index"`
+	PaymentMethod  string `gorm:"size:32"`
+	PaymentNo      string `gorm:"size:128;index"`
 	PaidAt         *time.Time
-	ExpiredAt      time.Time  `gorm:"index;not null"`
-	Notes          string     `gorm:"type:text"`
-	CreatedAt      time.Time  `gorm:"autoCreateTime"`
-	UpdatedAt      time.Time  `gorm:"autoUpdateTime"`
+	ExpiredAt      time.Time `gorm:"index;not null"`
+	Notes          string    `gorm:"type:text"`
+	CreatedAt      time.Time `gorm:"autoCreateTime"`
+	UpdatedAt      time.Time `gorm:"autoUpdateTime"`
 
 	User   *User           `gorm:"foreignKey:UserID"`
 	Plan   *CommercialPlan `gorm:"foreignKey:PlanID"`
@@ -147,12 +148,13 @@ func (r *orderRepository) List(ctx context.Context, filter OrderFilter, limit, o
 	if filter.UserID != nil {
 		query = query.Where("user_id = ?", *filter.UserID)
 	}
-	if filter.Search != "" {
-		searchLike := "%" + filter.Search + "%"
-		if userID, err := strconv.ParseInt(filter.Search, 10, 64); err == nil {
-			query = query.Where(r.db.WithContext(ctx).Where("user_id = ?", userID).Or("order_no LIKE ?", searchLike))
+	if searchQuery := strings.TrimSpace(filter.Search); searchQuery != "" {
+		if numericID, err := strconv.ParseInt(searchQuery, 10, 64); err == nil {
+			// Numeric search should match exact identifiers instead of fuzzy order numbers.
+			query = query.Where("(user_id = ? OR id = ?)", numericID, numericID)
 		} else {
-			query = query.Where("order_no LIKE ?", searchLike)
+			searchLike := "%" + searchQuery + "%"
+			query = query.Where("(order_no LIKE ? OR payment_no LIKE ?)", searchLike, searchLike)
 		}
 	}
 	if filter.Status != "" {

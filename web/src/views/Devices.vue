@@ -89,7 +89,7 @@
               </div>
               <div class="device-location">
                 <el-icon><Location /></el-icon>
-                {{ device.countryFlag }} {{ device.country }} {{ device.city ? `- ${device.city}` : '' }}
+                {{ device.locationText }}
               </div>
               <div class="device-time">
                 <el-icon><Clock /></el-icon>
@@ -263,16 +263,79 @@ const isNearLimit = computed(() => {
   return maxDevices.value > 0 && deviceUsagePercent.value >= 80
 })
 
+const formatDateTime = (value) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString('zh-CN')
+}
+
+const toCountryFlag = (countryCode) => {
+  const code = String(countryCode || '').trim().toUpperCase()
+  if (!/^[A-Z]{2}$/.test(code)) return ''
+  return String.fromCodePoint(...[...code].map((char) => char.charCodeAt(0) + 127397))
+}
+
+const buildLocationText = (country, city, countryFlag) => {
+  const countryLabel = country || '位置未知'
+  const cityLabel = city ? ` - ${city}` : ''
+  return `${countryFlag ? `${countryFlag} ` : ''}${countryLabel}${cityLabel}`
+}
+
+const unwrapApiPayload = (response) => {
+  const payload = response?.data ?? response ?? {}
+  if (payload && typeof payload === 'object' && !Array.isArray(payload) && 'code' in payload && 'data' in payload) {
+    return payload.data ?? {}
+  }
+  return payload
+}
+
+const normalizeDevice = (device, currentIP = '') => {
+  const ip = device.ip || '-'
+  const country = device.country || ''
+  const city = device.city || ''
+  const countryFlag = toCountryFlag(device.country_code || device.countryCode)
+  const isCurrent = Boolean(device.is_current ?? device.isCurrent ?? (currentIP && ip === currentIP))
+
+  return {
+    ...device,
+    ip,
+    country,
+    city,
+    countryFlag,
+    isCurrent,
+    kicking: false,
+    userAgent: device.user_agent || device.userAgent || '',
+    lastActivity: formatDateTime(device.last_active || device.lastActivity),
+    locationText: buildLocationText(country, city, countryFlag)
+  }
+}
+
+const normalizeHistoryItem = (item) => {
+  const country = item.country || '-'
+  const city = item.city || '-'
+  const countryFlag = toCountryFlag(item.country_code || item.countryCode)
+
+  return {
+    ...item,
+    country,
+    city,
+    countryFlag,
+    firstSeen: formatDateTime(item.first_seen || item.firstSeen || item.created_at || item.createdAt),
+    lastSeen: formatDateTime(item.last_seen || item.lastSeen || item.created_at || item.createdAt),
+    accessCount: Number(item.access_count ?? item.accessCount ?? 1),
+    userAgent: item.user_agent || item.userAgent || ''
+  }
+}
+
 // 获取设备列表
 const fetchDevices = async () => {
   loading.value = true
   try {
     const response = await api.get('/user/devices')
-    const payload = response?.data ?? response ?? {}
-    devices.value = (payload.devices || []).map(d => ({
-      ...d,
-      kicking: false
-    }))
+    const payload = unwrapApiPayload(response)
+    const currentIP = payload.current_ip ?? payload.currentIp ?? ''
+    devices.value = (payload.devices || []).map((device) => normalizeDevice(device, currentIP))
     maxDevices.value = Number(payload.max_devices ?? payload.maxDevices ?? 0)
   } catch (error) {
     console.error('Failed to fetch devices:', error)
@@ -317,7 +380,7 @@ const fetchIPHistory = async () => {
         offset: (historyPage.value - 1) * historyPageSize.value
       }
     })
-    const payload = response?.data ?? response ?? {}
+    const payload = unwrapApiPayload(response)
     const list = Array.isArray(payload)
       ? payload
       : Array.isArray(payload.data)
@@ -326,10 +389,11 @@ const fetchIPHistory = async () => {
           ? payload.list
           : []
 
-    ipHistory.value = list
+    ipHistory.value = list.map(normalizeHistoryItem)
     historyTotal.value = Number(payload.total ?? list.length)
   } catch (error) {
     console.error('Failed to fetch IP history:', error)
+    ElMessage.error('获取 IP 历史失败')
   } finally {
     historyLoading.value = false
   }

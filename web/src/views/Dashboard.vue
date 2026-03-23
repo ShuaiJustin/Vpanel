@@ -199,8 +199,9 @@
                 <div class="traffic-chart">
                   <el-progress
                     type="circle"
-                    :percentage="Math.min(trafficStats.percentage, 100)"
+                    :percentage="trafficProgressPercentage"
                     :width="isMobile ? 96 : 120"
+                    :format="formatTrafficProgress"
                   />
                 </div>
               </div>
@@ -441,6 +442,15 @@ const getDownPercentage = computed(() => {
   return total > 0 ? Math.round((trafficStats.value.down / total) * 100) : 50
 })
 
+const trafficProgressPercentage = computed(() => {
+  const rawValue = Number(trafficStats.value.percentage || 0)
+  if (!Number.isFinite(rawValue) || rawValue <= 0) {
+    return 0
+  }
+
+  return Math.min(rawValue, 100)
+})
+
 // CPU 颜色
 const getCpuColor = computed(() => {
   const cpu = systemStats.value.cpu
@@ -474,6 +484,25 @@ const formatTraffic = (bytes) => {
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+const formatTrafficProgress = (percentage) => {
+  const normalized = Number(percentage || 0)
+  if (!Number.isFinite(normalized) || normalized <= 0) {
+    return '0%'
+  }
+
+  const clamped = Math.min(normalized, 100)
+  if (clamped < 0.1) {
+    return '<0.1%'
+  }
+
+  const rounded = Math.round(clamped * 10) / 10
+  if (rounded >= 100) {
+    return '100%'
+  }
+
+  return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(1)}%`
 }
 
 // 格式化字节

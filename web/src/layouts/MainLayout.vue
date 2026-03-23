@@ -46,6 +46,31 @@
           <el-icon><Monitor /></el-icon>
           <span>仪表盘</span>
         </el-menu-item>
+
+        <el-sub-menu
+          v-if="isAdmin"
+          index="nodes"
+        >
+          <template #title>
+            <el-icon><Connection /></el-icon>
+            <span>节点管理</span>
+          </template>
+          <el-menu-item index="/admin/node-dashboard">
+            集群概览
+          </el-menu-item>
+          <el-menu-item index="/admin/nodes">
+            节点列表
+          </el-menu-item>
+          <el-menu-item index="/admin/node-groups">
+            节点分组
+          </el-menu-item>
+          <el-menu-item index="/admin/node-map">
+            地理分布
+          </el-menu-item>
+          <el-menu-item index="/admin/node-comparison">
+            性能对比
+          </el-menu-item>
+        </el-sub-menu>
         
         <el-menu-item index="/admin/inbounds">
           <el-icon><Connection /></el-icon>
@@ -119,31 +144,6 @@
           </el-menu-item>
           <el-menu-item index="/admin/reports">
             财务报表
-          </el-menu-item>
-        </el-sub-menu>
-
-        <el-sub-menu
-          v-if="isAdmin"
-          index="nodes"
-        >
-          <template #title>
-            <el-icon><Connection /></el-icon>
-            <span>节点管理</span>
-          </template>
-          <el-menu-item index="/admin/node-dashboard">
-            集群概览
-          </el-menu-item>
-          <el-menu-item index="/admin/nodes">
-            节点列表
-          </el-menu-item>
-          <el-menu-item index="/admin/node-groups">
-            节点分组
-          </el-menu-item>
-          <el-menu-item index="/admin/node-map">
-            地理分布
-          </el-menu-item>
-          <el-menu-item index="/admin/node-comparison">
-            性能对比
           </el-menu-item>
         </el-sub-menu>
 

@@ -1,304 +1,492 @@
 <template>
   <div class="node-form-page">
-    <div class="page-header">
-      <div class="header-left">
-        <el-button link @click="goBack">
+    <section class="hero-panel">
+      <div class="hero-panel__nav">
+        <el-button link class="back-link" @click="goBack">
           <el-icon><ArrowLeft /></el-icon>
-          返回
+          返回节点列表
         </el-button>
-        <h1 class="page-title">
-          {{ isEdit ? "编辑节点" : "添加节点" }}
-        </h1>
+        <div class="hero-panel__copy">
+          <span class="hero-panel__eyebrow">Node Workspace</span>
+          <h1 class="page-title">
+            {{ pageTitle }}
+          </h1>
+          <p class="page-subtitle">
+            {{ pageDescription }}
+          </p>
+        </div>
       </div>
-    </div>
 
-    <el-card v-loading="loading" shadow="never">
-      <el-form
-        ref="formRef"
-        :model="form"
-        :rules="rules"
-        label-width="120px"
-        style="max-width: 600px"
-      >
-        <el-form-item label="节点名称" prop="name">
-          <div class="name-field">
-            <el-input
-              v-model="form.name"
-              placeholder="请输入节点名称"
-              @input="handleNameInput"
-            />
-            <el-button
-              :loading="suggestionLoading"
-              @click="generateSuggestedName(true)"
-            >
-              自动生成
-            </el-button>
-          </div>
-          <div class="form-tip-inline">
-            {{ nameSuggestionMessage }}
-          </div>
-        </el-form-item>
+      <div class="hero-panel__stats">
+        <div class="hero-stat">
+          <span class="hero-stat__label">命名模式</span>
+          <strong class="hero-stat__value">{{ namingModeLabel }}</strong>
+        </div>
+        <div class="hero-stat">
+          <span class="hero-stat__label">节点地区</span>
+          <strong class="hero-stat__value">{{
+            form.region || "待识别"
+          }}</strong>
+        </div>
+        <div class="hero-stat">
+          <span class="hero-stat__label">部署方式</span>
+          <strong class="hero-stat__value">{{ deploymentModeLabel }}</strong>
+        </div>
+      </div>
+    </section>
 
-        <el-form-item label="节点地址" prop="address">
-          <el-input
-            v-model="form.address"
-            placeholder="IP 地址或域名"
-            @blur="handleAddressBlur"
-          >
-            <template #prepend>
-              <el-select v-model="addressType" style="width: 80px">
-                <el-option label="IP" value="ip" />
-                <el-option label="域名" value="domain" />
-              </el-select>
+    <el-form
+      ref="formRef"
+      v-loading="loading"
+      :model="form"
+      :rules="rules"
+      label-position="top"
+      size="large"
+      class="node-form"
+    >
+      <div class="form-layout">
+        <div class="form-main">
+          <el-card class="section-card" shadow="never">
+            <template #header>
+              <div class="section-head">
+                <div>
+                  <h2 class="section-title">基础接入</h2>
+                  <p class="section-subtitle">
+                    先确定节点身份、地址与负载策略，系统会根据地址自动给出推荐名称。
+                  </p>
+                </div>
+              </div>
             </template>
-          </el-input>
-        </el-form-item>
 
-        <el-form-item label="Agent 端口" prop="port">
-          <el-input-number
-            v-model="form.port"
-            :min="1"
-            :max="65535"
-            style="width: 200px"
-          />
-          <span class="form-tip">Node Agent 监听端口</span>
-        </el-form-item>
+            <div class="form-grid">
+              <el-form-item class="field-span-2" label="节点名称" prop="name">
+                <div class="name-field">
+                  <el-input
+                    v-model="form.name"
+                    placeholder="请输入节点名称"
+                    @input="handleNameInput"
+                  />
+                  <el-button
+                    type="primary"
+                    plain
+                    class="name-field__action"
+                    :loading="suggestionLoading"
+                    @click="generateSuggestedName(true)"
+                  >
+                    自动生成
+                  </el-button>
+                </div>
+                <div :class="['suggestion-banner', suggestionTone]">
+                  <span class="suggestion-banner__label">{{
+                    suggestionHeadline
+                  }}</span>
+                  <span class="suggestion-banner__text">{{
+                    nameSuggestionMessage
+                  }}</span>
+                </div>
+              </el-form-item>
 
-        <el-form-item label="地区" prop="region">
-          <el-select
-            v-model="form.region"
-            filterable
-            allow-create
-            placeholder="选择或输入地区"
-          >
-            <el-option label="香港" value="香港" />
-            <el-option label="日本" value="日本" />
-            <el-option label="新加坡" value="新加坡" />
-            <el-option label="美国" value="美国" />
-            <el-option label="韩国" value="韩国" />
-            <el-option label="台湾" value="台湾" />
-            <el-option label="德国" value="德国" />
-            <el-option label="英国" value="英国" />
-          </el-select>
-        </el-form-item>
-
-        <el-form-item label="负载均衡权重" prop="weight">
-          <el-slider
-            v-model="form.weight"
-            :min="1"
-            :max="100"
-            show-input
-            style="width: 400px"
-          />
-          <div class="form-tip">权重越高，分配的用户越多</div>
-        </el-form-item>
-
-        <el-form-item label="最大用户数" prop="max_users">
-          <el-input-number
-            v-model="form.max_users"
-            :min="0"
-            style="width: 200px"
-          />
-          <span class="form-tip">0 表示无限制</span>
-        </el-form-item>
-
-        <el-form-item label="标签">
-          <div class="tags-input">
-            <el-tag
-              v-for="(tag, index) in form.tags"
-              :key="index"
-              closable
-              style="margin-right: 8px; margin-bottom: 8px"
-              @close="removeTag(index)"
-            >
-              {{ tag }}
-            </el-tag>
-            <el-input
-              v-if="showTagInput"
-              ref="tagInputRef"
-              v-model="newTag"
-              size="small"
-              style="width: 120px"
-              @keyup.enter="addTag"
-              @blur="addTag"
-            />
-            <el-button v-else size="small" @click="showTagInputField">
-              + 添加标签
-            </el-button>
-          </div>
-        </el-form-item>
-
-        <el-form-item label="IP 白名单">
-          <el-input
-            v-model="form.ip_whitelist_str"
-            type="textarea"
-            :rows="4"
-            placeholder="每行一个 IP 地址，留空表示不限制&#10;支持 CIDR 格式，如 192.168.1.0/24"
-          />
-          <div class="form-tip">限制可以连接到此节点的 IP 地址</div>
-        </el-form-item>
-
-        <el-divider />
-
-        <el-form-item label="所属分组">
-          <el-select
-            v-model="form.group_ids"
-            multiple
-            filterable
-            placeholder="选择分组（可多选）"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="group in groups"
-              :key="group.id"
-              :label="group.name"
-              :value="group.id"
-            >
-              <span>{{ group.name }}</span>
-              <span
-                style="color: var(--el-text-color-secondary); margin-left: 8px"
+              <el-form-item
+                class="field-span-2"
+                label="节点地址"
+                prop="address"
               >
-                {{ group.region }}
-              </span>
-            </el-option>
-          </el-select>
-          <div class="form-tip">节点可以同时属于多个分组</div>
-        </el-form-item>
+                <div class="address-field">
+                  <div class="address-field__controls">
+                    <el-radio-group
+                      v-model="addressType"
+                      class="address-type-switch"
+                    >
+                      <el-radio-button label="ip">IP</el-radio-button>
+                      <el-radio-button label="domain">域名</el-radio-button>
+                    </el-radio-group>
 
-        <el-divider />
+                    <el-input
+                      v-model="form.address"
+                      class="address-field__input"
+                      :placeholder="
+                        addressType === 'ip'
+                          ? '输入 IPv4 或 IPv6 地址'
+                          : '输入节点域名'
+                      "
+                      @blur="handleAddressBlur"
+                    />
+                  </div>
 
-        <el-form-item label="启用 TLS">
-          <el-switch
-            v-model="form.tls_enabled"
-            active-text="开启"
-            inactive-text="关闭"
-          />
-        </el-form-item>
+                  <div class="address-field__badges">
+                    <span
+                      class="address-badge"
+                      :class="{ 'is-active': addressType === 'ip' }"
+                    >
+                      IPv4 / IPv6
+                    </span>
+                    <span
+                      class="address-badge"
+                      :class="{ 'is-active': addressType === 'domain' }"
+                    >
+                      DNS 域名
+                    </span>
+                    <span class="address-badge">地区识别</span>
+                    <span class="address-badge">智能命名</span>
+                  </div>
+                </div>
+                <div class="field-tip">
+                  {{
+                    addressType === "ip"
+                      ? "支持 IPv4、IPv6。输入后会自动识别地区并回填推荐名称。"
+                      : "输入域名后会自动解析地址、识别地区并生成推荐名称。"
+                  }}
+                </div>
+              </el-form-item>
 
-        <el-form-item label="TLS 域名" prop="tls_domain">
-          <el-input v-model="form.tls_domain" placeholder="如 jp.example.com" />
-          <div class="form-tip-inline">
-            用于节点 TLS 标识、健康检查和系统证书自动匹配。
-          </div>
-        </el-form-item>
+              <el-form-item label="Agent 端口" prop="port">
+                <el-input-number
+                  v-model="form.port"
+                  class="full-width-input"
+                  :min="1"
+                  :max="65535"
+                />
+                <div class="field-tip">Node Agent 默认监听端口。</div>
+              </el-form-item>
 
-        <el-form-item label="系统证书">
-          <el-select
-            v-model="form.certificate_id"
-            filterable
-            clearable
-            :loading="certificatesLoading"
-            placeholder="自动匹配或手动选择证书"
-            style="width: 100%"
-            @change="handleCertificateChange"
-          >
-            <el-option
-              v-for="cert in certificates"
-              :key="cert.id"
-              :label="getCertificateOptionLabel(cert)"
-              :value="cert.id"
-            />
-          </el-select>
-          <div class="form-tip-inline">
-            选择后会自动回填 TLS 域名，你仍可继续手动修改。
-          </div>
-          <div v-if="selectedCertificate" class="certificate-tip">
-            当前证书：{{ selectedCertificate.domain }}
-            <span
-              v-if="
-                selectedCertificate.expireDate &&
-                selectedCertificate.expireDate !== '-'
-              "
-            >
-              ，到期 {{ selectedCertificate.expireDate }}
-            </span>
-          </div>
-        </el-form-item>
+              <el-form-item label="地区" prop="region">
+                <el-select
+                  v-model="form.region"
+                  filterable
+                  allow-create
+                  class="full-width-control"
+                  placeholder="选择或输入地区"
+                >
+                  <el-option label="香港" value="香港" />
+                  <el-option label="日本" value="日本" />
+                  <el-option label="新加坡" value="新加坡" />
+                  <el-option label="美国" value="美国" />
+                  <el-option label="韩国" value="韩国" />
+                  <el-option label="台湾" value="台湾" />
+                  <el-option label="德国" value="德国" />
+                  <el-option label="英国" value="英国" />
+                </el-select>
+                <div class="field-tip">
+                  如需固定地区标签，可手动指定，系统会优先遵循你的选择。
+                </div>
+              </el-form-item>
 
-        <!-- SSH 自动安装（仅新建时显示） -->
-        <template v-if="!isEdit">
-          <el-divider />
+              <el-form-item
+                class="field-span-2"
+                label="负载均衡权重"
+                prop="weight"
+              >
+                <div class="slider-field">
+                  <el-slider
+                    v-model="form.weight"
+                    class="slider-field__control"
+                    :min="1"
+                    :max="100"
+                  />
+                  <span class="slider-pill">权重 {{ form.weight }}</span>
+                </div>
+                <div class="field-tip">权重越高，分配到该节点的用户越多。</div>
+              </el-form-item>
 
-          <div style="margin-bottom: 16px">
-            <el-checkbox v-model="enableAutoInstall">
-              自动安装 Agent（通过 SSH 远程安装）
-            </el-checkbox>
-            <div class="form-tip" style="margin-left: 0; margin-top: 8px">
-              勾选后，系统将自动连接到服务器并安装 Agent 和 Xray
+              <el-form-item label="最大用户数" prop="max_users">
+                <el-input-number
+                  v-model="form.max_users"
+                  class="full-width-input"
+                  :min="0"
+                />
+                <div class="field-tip">0 表示无限制。</div>
+              </el-form-item>
+
+              <el-form-item label="所属分组">
+                <el-select
+                  v-model="form.group_ids"
+                  multiple
+                  filterable
+                  class="full-width-control"
+                  placeholder="选择分组（可多选）"
+                >
+                  <el-option
+                    v-for="group in groups"
+                    :key="group.id"
+                    :label="group.name"
+                    :value="group.id"
+                  >
+                    <span>{{ group.name }}</span>
+                    <span class="option-secondary">
+                      {{ group.region }}
+                    </span>
+                  </el-option>
+                </el-select>
+                <div class="field-tip">节点可以同时属于多个分组。</div>
+              </el-form-item>
+
+              <el-form-item class="field-span-2" label="标签">
+                <div class="tags-input">
+                  <el-tag
+                    v-for="(tag, index) in form.tags"
+                    :key="index"
+                    closable
+                    class="tag-chip"
+                    @close="removeTag(index)"
+                  >
+                    {{ tag }}
+                  </el-tag>
+                  <el-input
+                    v-if="showTagInput"
+                    ref="tagInputRef"
+                    v-model="newTag"
+                    size="small"
+                    class="tag-editor"
+                    @keyup.enter="addTag"
+                    @blur="addTag"
+                  />
+                  <el-button
+                    v-else
+                    size="small"
+                    plain
+                    @click="showTagInputField"
+                  >
+                    + 添加标签
+                  </el-button>
+                </div>
+              </el-form-item>
             </div>
-          </div>
+          </el-card>
 
-          <template v-if="enableAutoInstall">
-            <el-form-item label="服务器 IP">
-              <el-input v-model="form.ssh_host" placeholder="服务器 IP 地址" />
-            </el-form-item>
+          <el-card class="section-card" shadow="never">
+            <template #header>
+              <div class="section-head">
+                <div>
+                  <h2 class="section-title">接入限制与 TLS</h2>
+                  <p class="section-subtitle">
+                    配置访问范围、TLS 域名与系统证书，保持节点接入信息完整可读。
+                  </p>
+                </div>
+              </div>
+            </template>
 
-            <el-form-item label="SSH 端口">
-              <el-input-number
-                v-model="form.ssh_port"
-                :min="1"
-                :max="65535"
-                style="width: 200px"
-              />
-            </el-form-item>
+            <div class="form-grid">
+              <el-form-item class="field-span-2" label="IP 白名单">
+                <el-input
+                  v-model="form.ip_whitelist_str"
+                  type="textarea"
+                  :rows="5"
+                  placeholder="每行一个 IP 地址，留空表示不限制&#10;支持 CIDR 格式，如 192.168.1.0/24"
+                />
+                <div class="field-tip">限制可以连接到此节点的 IP 地址。</div>
+              </el-form-item>
 
-            <el-form-item label="SSH 用户名">
-              <el-input v-model="form.ssh_username" placeholder="通常为 root" />
-            </el-form-item>
+              <el-form-item label="启用 TLS">
+                <div class="switch-field">
+                  <el-switch
+                    v-model="form.tls_enabled"
+                    active-text="开启"
+                    inactive-text="关闭"
+                  />
+                  <div class="field-tip-inline">
+                    开启后建议同时配置 TLS 域名并关联系统证书。
+                  </div>
+                </div>
+              </el-form-item>
 
-            <el-form-item label="认证方式">
-              <el-radio-group v-model="form.ssh_auth_type">
-                <el-radio value="password"> 密码 </el-radio>
-                <el-radio value="key"> 私钥 </el-radio>
-              </el-radio-group>
-            </el-form-item>
+              <el-form-item label="TLS 域名" prop="tls_domain">
+                <el-input
+                  v-model="form.tls_domain"
+                  placeholder="如 jp.example.com"
+                />
+                <div class="field-tip">
+                  用于节点 TLS 标识、健康检查和证书自动匹配。
+                </div>
+              </el-form-item>
 
-            <el-form-item
-              v-if="form.ssh_auth_type === 'password'"
-              label="SSH 密码"
-            >
-              <el-input
-                v-model="form.ssh_password"
-                type="password"
-                placeholder="SSH 登录密码"
-                show-password
-              />
-            </el-form-item>
+              <el-form-item class="field-span-2" label="系统证书">
+                <el-select
+                  v-model="form.certificate_id"
+                  filterable
+                  clearable
+                  class="full-width-control"
+                  :loading="certificatesLoading"
+                  placeholder="自动匹配或手动选择证书"
+                  @change="handleCertificateChange"
+                >
+                  <el-option
+                    v-for="cert in certificates"
+                    :key="cert.id"
+                    :label="getCertificateOptionLabel(cert)"
+                    :value="cert.id"
+                  />
+                </el-select>
+                <div class="field-tip">
+                  选择证书后会自动回填 TLS 域名，你仍可继续手动修改。
+                </div>
+                <div v-if="selectedCertificate" class="certificate-tip">
+                  当前证书：{{ selectedCertificate.domain }}
+                  <span
+                    v-if="
+                      selectedCertificate.expireDate &&
+                      selectedCertificate.expireDate !== '-'
+                    "
+                  >
+                    ，到期 {{ selectedCertificate.expireDate }}
+                  </span>
+                </div>
+              </el-form-item>
+            </div>
+          </el-card>
 
-            <el-form-item v-if="form.ssh_auth_type === 'key'" label="SSH 私钥">
-              <el-input
-                v-model="form.ssh_private_key"
-                type="textarea"
-                :rows="6"
-                placeholder="粘贴 SSH 私钥内容"
-              />
-            </el-form-item>
+          <el-card v-if="!isEdit" class="section-card" shadow="never">
+            <template #header>
+              <div class="section-head section-head--split">
+                <div>
+                  <h2 class="section-title">自动部署</h2>
+                  <p class="section-subtitle">
+                    通过 SSH 自动安装 Agent 与 Xray，适合新节点首次接入。
+                  </p>
+                </div>
+                <el-switch
+                  v-model="enableAutoInstall"
+                  active-text="开启"
+                  inactive-text="关闭"
+                />
+              </div>
+            </template>
 
-            <el-form-item>
-              <el-button
-                :loading="testingConnection"
-                @click="testSSHConnection"
+            <div class="section-note">
+              {{
+                enableAutoInstall
+                  ? "已开启自动部署，请继续补充 SSH 信息。"
+                  : "关闭时仅保存节点配置，不执行远程安装。"
+              }}
+            </div>
+
+            <div v-if="enableAutoInstall" class="form-grid">
+              <el-form-item label="服务器 IP">
+                <el-input
+                  v-model="form.ssh_host"
+                  placeholder="服务器 IP 地址"
+                />
+              </el-form-item>
+
+              <el-form-item label="SSH 端口">
+                <el-input-number
+                  v-model="form.ssh_port"
+                  class="full-width-input"
+                  :min="1"
+                  :max="65535"
+                />
+              </el-form-item>
+
+              <el-form-item label="SSH 用户名">
+                <el-input
+                  v-model="form.ssh_username"
+                  placeholder="通常为 root"
+                />
+              </el-form-item>
+
+              <el-form-item label="认证方式">
+                <el-radio-group v-model="form.ssh_auth_type">
+                  <el-radio value="password"> 密码 </el-radio>
+                  <el-radio value="key"> 私钥 </el-radio>
+                </el-radio-group>
+              </el-form-item>
+
+              <el-form-item
+                v-if="form.ssh_auth_type === 'password'"
+                class="field-span-2"
+                label="SSH 密码"
               >
-                测试 SSH 连接
-              </el-button>
-            </el-form-item>
-          </template>
-        </template>
+                <el-input
+                  v-model="form.ssh_password"
+                  type="password"
+                  placeholder="SSH 登录密码"
+                  show-password
+                />
+              </el-form-item>
 
-        <el-form-item>
-          <el-button type="primary" :loading="submitting" @click="submitForm">
-            {{
-              isEdit
-                ? "保存修改"
-                : enableAutoInstall
-                  ? "创建并安装"
-                  : "创建节点"
-            }}
-          </el-button>
-          <el-button @click="goBack"> 取消 </el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+              <el-form-item
+                v-if="form.ssh_auth_type === 'key'"
+                class="field-span-2"
+                label="SSH 私钥"
+              >
+                <el-input
+                  v-model="form.ssh_private_key"
+                  type="textarea"
+                  :rows="6"
+                  placeholder="粘贴 SSH 私钥内容"
+                />
+              </el-form-item>
+
+              <div class="field-span-2 section-actions">
+                <el-button
+                  plain
+                  :loading="testingConnection"
+                  @click="testSSHConnection"
+                >
+                  测试 SSH 连接
+                </el-button>
+              </div>
+            </div>
+          </el-card>
+        </div>
+
+        <div class="form-side">
+          <el-card class="summary-card" shadow="never">
+            <div class="summary-card__head">
+              <span class="summary-card__eyebrow">智能概览</span>
+              <strong class="summary-card__title">{{
+                suggestedNameDisplay
+              }}</strong>
+              <p class="summary-card__description">
+                {{ summaryDescription }}
+              </p>
+            </div>
+
+            <div class="summary-list">
+              <div
+                v-for="item in summaryItems"
+                :key="item.label"
+                class="summary-list__item"
+              >
+                <span>{{ item.label }}</span>
+                <strong>{{ item.value }}</strong>
+              </div>
+            </div>
+
+            <div class="summary-highlight">
+              <span>提交前检查</span>
+              <p>{{ summaryChecklist }}</p>
+            </div>
+          </el-card>
+
+          <el-card class="summary-card action-card" shadow="never">
+            <div class="action-card__title">保存节点</div>
+            <p class="action-card__text">
+              {{
+                isEdit
+                  ? "更新后会保留现有节点身份、流量与监控记录。"
+                  : "创建成功后可继续进行部署、分组和订阅配置。"
+              }}
+            </p>
+            <el-button
+              type="primary"
+              size="large"
+              class="action-card__primary"
+              :loading="submitting"
+              @click="submitForm"
+            >
+              {{ pageActionText }}
+            </el-button>
+            <el-button
+              size="large"
+              class="action-card__secondary"
+              @click="goBack"
+            >
+              取消
+            </el-button>
+          </el-card>
+        </div>
+      </div>
+    </el-form>
 
     <!-- 创建成功后显示 Token -->
     <el-dialog
@@ -357,6 +545,12 @@ const router = useRouter();
 const nodeStore = useNodeStore();
 
 const isEdit = computed(() => !!route.params.id);
+const pageTitle = computed(() => (isEdit.value ? "编辑节点" : "添加节点"));
+const pageDescription = computed(() =>
+  isEdit.value
+    ? "调整节点接入、TLS、分组与部署参数，保持线上节点配置整洁一致。"
+    : "把节点基础接入、智能命名、TLS 与部署配置集中在一个工作区里完成。",
+);
 const loading = ref(false);
 const submitting = ref(false);
 const formRef = ref(null);
@@ -405,6 +599,14 @@ const form = reactive({
   ssh_private_key: "",
 });
 
+const pageActionText = computed(() =>
+  isEdit.value
+    ? "保存修改"
+    : enableAutoInstall.value
+      ? "创建并安装"
+      : "创建节点",
+);
+
 const rules = {
   name: [
     { required: true, message: "请输入节点名称", trigger: "blur" },
@@ -425,6 +627,116 @@ const rules = {
 
 const normalizeText = (value) =>
   typeof value === "string" ? value.trim() : "";
+
+const namingModeLabel = computed(() => {
+  if (suggestionLoading.value) return "识别中";
+  if (isNameManuallyEdited.value) return "手动优先";
+  if (lastSuggestedName.value) return "自动命名";
+  return "等待输入";
+});
+
+const deploymentModeLabel = computed(() => {
+  if (isEdit.value) return "配置维护";
+  return enableAutoInstall.value ? "SSH 自动安装" : "手动接入";
+});
+
+const suggestedNameDisplay = computed(
+  () => normalizeText(form.name) || lastSuggestedName.value || "等待地址识别",
+);
+
+const summaryDescription = computed(() =>
+  normalizeText(form.address)
+    ? nameSuggestionMessage.value
+    : "填写节点地址后，这里会展示智能命名和关键配置摘要。",
+);
+
+const summaryItems = computed(() => [
+  {
+    label: "地址类型",
+    value: addressType.value === "ip" ? "IP 地址" : "域名",
+  },
+  {
+    label: "节点地址",
+    value: normalizeText(form.address) || "未填写",
+  },
+  {
+    label: "Agent 端口",
+    value: String(form.port || "-"),
+  },
+  {
+    label: "TLS 状态",
+    value: form.tls_enabled
+      ? normalizeText(form.tls_domain)
+        ? `已开启 · ${normalizeText(form.tls_domain)}`
+        : "已开启"
+      : "未开启",
+  },
+  {
+    label: "所属分组",
+    value: form.group_ids.length ? `${form.group_ids.length} 个` : "未选择",
+  },
+  {
+    label: "自动部署",
+    value: isEdit.value
+      ? "编辑模式"
+      : enableAutoInstall.value
+        ? "已开启"
+        : "未开启",
+  },
+]);
+
+const summaryChecklist = computed(() => {
+  if (!normalizeText(form.address)) {
+    return "先填写节点地址，系统会自动生成推荐名称并识别地区。";
+  }
+  if (!normalizeText(form.name)) {
+    return "请确认节点名称，或点击“自动生成”回填推荐名称。";
+  }
+  if (form.tls_enabled && !normalizeText(form.tls_domain)) {
+    return "已开启 TLS，建议补充 TLS 域名并确认系统证书。";
+  }
+  if (
+    !isEdit.value &&
+    enableAutoInstall.value &&
+    !normalizeText(form.ssh_host)
+  ) {
+    return "自动部署已开启，请继续填写服务器 SSH 信息。";
+  }
+  return "基础信息已完整，可以继续保存或直接创建节点。";
+});
+
+const isManualNamingState = computed(
+  () =>
+    isNameManuallyEdited.value &&
+    normalizeText(form.name) !== lastSuggestedName.value,
+);
+
+const suggestionTone = computed(() => {
+  if (suggestionLoading.value) return "is-neutral";
+  if (nameSuggestionMessage.value.includes("失败")) return "is-danger";
+  if (isManualNamingState.value) {
+    return "is-warning";
+  }
+  if (normalizeText(form.address) && normalizeText(form.name)) {
+    return "is-success";
+  }
+  return "is-neutral";
+});
+
+const suggestionHeadline = computed(() => {
+  if (suggestionLoading.value) return "智能识别中";
+  if (suggestionTone.value === "is-danger") return "命名识别异常";
+  if (suggestionTone.value === "is-warning") return "已切换手动命名";
+  if (normalizeText(form.address) && normalizeText(form.name))
+    return "命名建议";
+  return "等待地址输入";
+});
+
+const clearFieldValidation = (fields) => {
+  nextTick(() => {
+    formRef.value?.clearValidate(fields);
+  });
+};
 
 const isValidIPv4Address = (value) => /^(\d{1,3}\.){3}\d{1,3}$/.test(value);
 
@@ -561,6 +873,7 @@ const applySuggestedName = (result, force = false) => {
     form.name = lastSuggestedName.value;
     isApplyingSuggestedName.value = false;
     isNameManuallyEdited.value = false;
+    clearFieldValidation(["name", "region"]);
     setNameSuggestionMessage(
       detail
         ? `已识别 ${detail}，节点名称已自动生成。`
@@ -640,10 +953,14 @@ const handleNameInput = () => {
 
   if (normalizeText(form.name) === lastSuggestedName.value) {
     isNameManuallyEdited.value = false;
+    clearFieldValidation(["name"]);
     return;
   }
 
   isNameManuallyEdited.value = true;
+  if (normalizeText(form.name)) {
+    clearFieldValidation(["name"]);
+  }
   setNameSuggestionMessage("已切换为手动命名，点击“自动生成”可重新回填。");
 };
 
@@ -771,7 +1088,14 @@ const removeTag = (index) => {
 };
 
 const submitForm = async () => {
-  await formRef.value.validate();
+  const isFormValid = await formRef.value
+    .validate()
+    .then(() => true)
+    .catch(() => false);
+
+  if (!isFormValid) {
+    return;
+  }
 
   if (form.tls_enabled && !normalizeText(form.tls_domain)) {
     ElMessage.error("启用 TLS 时请输入 TLS 域名");
@@ -944,26 +1268,239 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .node-form-page {
-  padding: 20px;
+  --node-ink: #182033;
+  --node-muted: #68748c;
+  --node-line: rgba(129, 145, 178, 0.18);
+  --node-surface: rgba(255, 255, 255, 0.92);
+  --node-accent: #2a66df;
+  --node-accent-soft: rgba(42, 102, 223, 0.1);
+  min-height: 100%;
+  padding: 24px;
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(42, 102, 223, 0.09),
+      transparent 24%
+    ),
+    radial-gradient(
+      circle at top right,
+      rgba(245, 158, 11, 0.08),
+      transparent 20%
+    ),
+    linear-gradient(180deg, #f4f7fb 0%, #eef3f9 100%);
 }
 
-.page-header {
+.hero-panel {
+  max-width: 1360px;
+  margin: 0 auto 24px;
+  padding: 28px 32px;
+  border-radius: 30px;
+  border: 1px solid var(--node-line);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.98),
+    rgba(245, 248, 255, 0.94)
+  );
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
+  gap: 24px;
+  flex-wrap: wrap;
 }
 
-.header-left {
+.hero-panel__nav {
   display: flex;
-  align-items: center;
-  gap: 16px;
+  align-items: flex-start;
+  gap: 24px;
+  flex: 1 1 720px;
+}
+
+.back-link {
+  padding: 10px 0;
+  color: var(--node-muted);
+}
+
+.hero-panel__copy {
+  display: grid;
+  gap: 10px;
+}
+
+.hero-panel__eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--node-muted);
 }
 
 .page-title {
-  font-size: 24px;
-  font-weight: 600;
   margin: 0;
+  font-size: clamp(36px, 5vw, 56px);
+  line-height: 1;
+  color: var(--node-ink);
+  font-weight: 700;
+  font-family: "Bahnschrift", "Avenir Next", "PingFang SC", sans-serif;
+}
+
+.page-subtitle {
+  margin: 0;
+  max-width: 760px;
+  color: var(--node-muted);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.hero-panel__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  min-width: min(100%, 360px);
+  flex: 1 1 340px;
+}
+
+.hero-stat {
+  padding: 16px 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(129, 145, 178, 0.16);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(10px);
+  display: grid;
+  gap: 8px;
+}
+
+.hero-stat__label {
+  font-size: 12px;
+  color: var(--node-muted);
+}
+
+.hero-stat__value {
+  font-size: 18px;
+  line-height: 1.2;
+  color: var(--node-ink);
+}
+
+.node-form {
+  max-width: 1360px;
+  margin: 0 auto;
+}
+
+.form-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 24px;
+  align-items: start;
+}
+
+.form-main {
+  display: grid;
+  gap: 20px;
+}
+
+.form-side {
+  position: sticky;
+  top: 24px;
+  display: grid;
+  gap: 20px;
+}
+
+.section-card,
+.summary-card {
+  border-radius: 28px;
+  border: 1px solid var(--node-line);
+  background: var(--node-surface);
+  box-shadow: 0 16px 42px rgba(15, 23, 42, 0.06);
+}
+
+.section-card :deep(.el-card__header),
+.summary-card :deep(.el-card__header) {
+  border-bottom: none;
+}
+
+.section-card :deep(.el-card__header) {
+  padding: 24px 26px 0;
+}
+
+.section-card :deep(.el-card__body) {
+  padding: 24px 26px 28px;
+}
+
+.summary-card :deep(.el-card__body) {
+  padding: 24px;
+}
+
+.section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.section-head--split {
+  align-items: center;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 22px;
+  color: var(--node-ink);
+  font-weight: 700;
+}
+
+.section-subtitle {
+  margin: 8px 0 0;
+  color: var(--node-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 18px;
+}
+
+.field-span-2 {
+  grid-column: 1 / -1;
+}
+
+.node-form :deep(.el-form-item) {
+  margin-bottom: 0;
+}
+
+.node-form :deep(.el-form-item__label) {
+  padding-bottom: 8px;
+  color: var(--node-ink);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.node-form :deep(.el-form-item__content) {
+  display: block;
+}
+
+.node-form :deep(.el-form-item__error) {
+  position: static;
+  margin-top: 8px;
+  line-height: 1.5;
+}
+
+.node-form :deep(.el-input__wrapper),
+.node-form :deep(.el-select__wrapper),
+.node-form :deep(.el-textarea__inner),
+.node-form :deep(.el-input-number),
+.node-form :deep(.el-input-number .el-input__wrapper) {
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 0 0 1px rgba(129, 145, 178, 0.18) inset;
+}
+
+.node-form :deep(.el-input__wrapper.is-focus),
+.node-form :deep(.el-select__wrapper.is-focused),
+.node-form :deep(.el-textarea__inner:focus),
+.node-form :deep(.el-input-number:focus-within) {
+  box-shadow:
+    0 0 0 1px rgba(42, 102, 223, 0.38),
+    0 10px 24px rgba(42, 102, 223, 0.12);
 }
 
 .name-field {
@@ -977,36 +1514,342 @@ onBeforeUnmount(() => {
   flex: 1;
 }
 
-.form-tip {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  margin-left: 12px;
+.name-field__action {
+  min-width: 132px;
+  height: 50px;
+  border-radius: 18px;
 }
 
-.form-tip-inline {
+.address-field {
+  display: grid;
+  gap: 12px;
+}
+
+.address-field__controls {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.address-type-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 6px;
+  border-radius: 22px;
+  background: rgba(244, 247, 251, 0.92);
+  box-shadow: 0 0 0 1px rgba(129, 145, 178, 0.16) inset;
+}
+
+.address-type-switch :deep(.el-radio-button) {
+  width: 100%;
+}
+
+.address-type-switch :deep(.el-radio-button__original-radio) {
+  pointer-events: none;
+}
+
+.address-type-switch :deep(.el-radio-button__inner) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50px;
+  border: none;
+  border-radius: 16px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--node-muted);
+  font-weight: 700;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.address-type-switch
+  :deep(.el-radio-button:first-child .el-radio-button__inner),
+.address-type-switch
+  :deep(.el-radio-button:last-child .el-radio-button__inner) {
+  border-radius: 16px;
+}
+
+.address-type-switch
+  :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
+  background: linear-gradient(135deg, #2a66df, #1f8ce6);
+  color: #fff;
+  box-shadow: 0 10px 20px rgba(42, 102, 223, 0.22);
+}
+
+.address-field__input :deep(.el-input__wrapper) {
+  min-height: 62px;
+  padding-inline: 18px;
+}
+
+.address-field__input :deep(.el-input__inner) {
+  font-size: 17px;
+}
+
+.address-field__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.address-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(129, 145, 178, 0.1);
+  color: var(--node-muted);
   font-size: 12px;
+  font-weight: 600;
+}
+
+.address-badge.is-active {
+  background: rgba(42, 102, 223, 0.12);
+  color: var(--node-accent);
+}
+
+.suggestion-banner {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid transparent;
+  display: grid;
+  gap: 6px;
+}
+
+.suggestion-banner__label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.suggestion-banner__text {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.suggestion-banner.is-success {
+  background: rgba(42, 102, 223, 0.1);
+  border-color: rgba(42, 102, 223, 0.16);
+  color: #315ea6;
+}
+
+.suggestion-banner.is-warning {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.18);
+  color: #925d05;
+}
+
+.suggestion-banner.is-danger {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.16);
+  color: #b42318;
+}
+
+.suggestion-banner.is-neutral {
+  background: rgba(100, 116, 139, 0.08);
+  border-color: rgba(100, 116, 139, 0.14);
+  color: #5b6477;
+}
+
+.field-tip,
+.field-tip-inline {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--node-muted);
+}
+
+.full-width-input,
+.full-width-control {
+  width: 100%;
+}
+
+.slider-field {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.slider-field__control {
+  flex: 1;
+}
+
+.slider-pill {
+  flex: none;
+  min-width: 92px;
+  padding: 11px 14px;
+  border-radius: 999px;
+  background: var(--node-accent-soft);
+  color: var(--node-accent);
+  font-weight: 700;
+  text-align: center;
+}
+
+.option-secondary {
+  margin-left: 8px;
   color: var(--el-text-color-secondary);
-  margin-top: 6px;
-  line-height: 1.5;
 }
 
 .certificate-tip {
   margin-top: 8px;
   font-size: 12px;
-  color: var(--el-color-primary);
+  line-height: 1.5;
+  color: var(--node-accent);
 }
 
 .tags-input {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.tag-chip {
+  margin: 0;
+}
+
+.tag-editor {
+  width: 140px;
+}
+
+.switch-field {
+  display: grid;
+  gap: 10px;
+}
+
+.section-note {
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(42, 102, 223, 0.06);
+  color: var(--node-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.section-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.summary-card__head {
+  display: grid;
+  gap: 10px;
+}
+
+.summary-card__eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--node-muted);
+}
+
+.summary-card__title {
+  font-size: 28px;
+  line-height: 1.15;
+  color: var(--node-ink);
+}
+
+.summary-card__description {
+  margin: 0;
+  color: var(--node-muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.summary-list {
+  margin-top: 20px;
+  display: grid;
+}
+
+.summary-list__item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(129, 145, 178, 0.14);
+  font-size: 13px;
+  color: var(--node-muted);
+}
+
+.summary-list__item strong {
+  color: var(--node-ink);
+  text-align: right;
+  line-height: 1.5;
+}
+
+.summary-highlight {
+  margin-top: 20px;
+  padding: 16px;
+  border-radius: 20px;
+  background: linear-gradient(
+    135deg,
+    rgba(42, 102, 223, 0.08),
+    rgba(245, 158, 11, 0.08)
+  );
+}
+
+.summary-highlight span {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--node-ink);
+}
+
+.summary-highlight p {
+  margin: 0;
+  color: var(--node-muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.action-card {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96),
+    rgba(248, 250, 255, 0.94)
+  );
+}
+
+.action-card__title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--node-ink);
+}
+
+.action-card__text {
+  margin: 10px 0 20px;
+  color: var(--node-muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.action-card__primary,
+.action-card__secondary {
+  width: 100%;
+  height: 48px;
+  border-radius: 18px;
+}
+
+.action-card__secondary {
+  margin-top: 10px;
 }
 
 .token-display {
   margin-top: 20px;
   padding: 16px;
   background: var(--el-fill-color-light);
-  border-radius: 8px;
+  border-radius: 14px;
 }
 
 .token-label {
@@ -1044,11 +1887,21 @@ onBeforeUnmount(() => {
 .config-code {
   padding: 12px;
   background: var(--el-fill-color-darker);
-  border-radius: 4px;
+  border-radius: 10px;
   font-family: monospace;
   font-size: 12px;
   overflow-x: auto;
   white-space: pre;
+}
+
+@media (max-width: 1180px) {
+  .form-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .form-side {
+    position: static;
+  }
 }
 
 @media (max-width: 768px) {
@@ -1056,52 +1909,56 @@ onBeforeUnmount(() => {
     padding: var(--vp-page-padding);
   }
 
-  .page-header {
-    margin-bottom: 16px;
+  .hero-panel {
+    padding: 22px 20px;
+    border-radius: 24px;
   }
 
-  .header-left {
-    align-items: flex-start;
-    flex-wrap: wrap;
-    gap: 12px;
+  .hero-panel__nav {
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .hero-panel__stats {
+    grid-template-columns: 1fr;
+    width: 100%;
   }
 
   .page-title {
-    font-size: var(--vp-title-size);
+    font-size: clamp(32px, 12vw, 42px);
   }
 
-  .form-tip {
-    display: block;
-    width: 100%;
-    margin-left: 0;
-    margin-top: 8px;
+  .form-grid {
+    grid-template-columns: 1fr;
   }
 
-  .name-field {
+  .field-span-2 {
+    grid-column: auto;
+  }
+
+  .name-field,
+  .slider-field {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .tags-input {
+  .slider-pill {
     width: 100%;
   }
 
-  :deep(.el-form) {
-    max-width: 100% !important;
+  .section-card :deep(.el-card__header),
+  .section-card :deep(.el-card__body),
+  .summary-card :deep(.el-card__body) {
+    padding-left: 18px;
+    padding-right: 18px;
   }
 
-  :deep(.el-input-number),
-  :deep(.el-slider) {
-    width: 100% !important;
-    max-width: 100%;
+  .address-field__controls {
+    grid-template-columns: 1fr;
   }
 
-  :deep(.el-input-group__prepend .el-select) {
-    width: 72px !important;
-  }
-
-  .tags-input :deep(.el-input) {
-    width: 100% !important;
+  .address-type-switch {
+    width: 100%;
   }
 }
 </style>

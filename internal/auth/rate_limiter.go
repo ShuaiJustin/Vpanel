@@ -11,8 +11,9 @@ import (
 
 // RateLimiterConfig holds rate limiter configuration.
 type RateLimiterConfig struct {
-	MaxAttempts int           // Maximum attempts allowed within the window
-	Window      time.Duration // Time window for rate limiting
+	MaxAttempts     int           // Maximum attempts allowed within the window
+	Window          time.Duration // Time window for counting attempts
+	BlockDuration   time.Duration // How long the IP remains blocked after exceeding the limit
 	CleanupInterval time.Duration // Interval for cleaning up expired entries
 }
 
@@ -22,13 +23,14 @@ func DefaultRateLimiterConfig() RateLimiterConfig {
 	return RateLimiterConfig{
 		MaxAttempts:     5,
 		Window:          time.Minute,
+		BlockDuration:   time.Minute,
 		CleanupInterval: 5 * time.Minute,
 	}
 }
 
 // loginAttempt tracks login attempts for an IP.
 type loginAttempt struct {
-	attempts  int
+	attempts     int
 	firstAttempt time.Time
 	lastAttempt  time.Time
 	blocked      bool
@@ -50,6 +52,9 @@ func NewRateLimiter(config RateLimiterConfig) *RateLimiter {
 	}
 	if config.Window <= 0 {
 		config.Window = time.Minute
+	}
+	if config.BlockDuration <= 0 {
+		config.BlockDuration = config.Window
 	}
 	if config.CleanupInterval <= 0 {
 		config.CleanupInterval = 5 * time.Minute
@@ -105,7 +110,6 @@ func (rl *RateLimiter) cleanupExpired() {
 func (rl *RateLimiter) Stop() {
 	close(rl.stopCh)
 }
-
 
 // CheckRateLimit checks if the IP is rate limited.
 // Returns true if the request is allowed, false if rate limited.
@@ -179,7 +183,7 @@ func (rl *RateLimiter) RecordLoginAttempt(ctx context.Context, ip string, succes
 	// Block if max attempts exceeded
 	if attempt.attempts >= rl.config.MaxAttempts {
 		attempt.blocked = true
-		attempt.blockedUntil = now.Add(rl.config.Window)
+		attempt.blockedUntil = now.Add(rl.config.BlockDuration)
 	}
 
 	return nil

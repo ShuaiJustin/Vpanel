@@ -94,23 +94,23 @@ const handleLogin = async () => {
   display: flex;
   justify-content: center;
   align-items: center;
-  background-color: #f5f7fa;
-  background-image: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  background-color: var(--color-bg-page);
+  background-image: linear-gradient(135deg, var(--color-bg-page) 0%, var(--color-border-light) 100%);
 }
 
 .login-box {
   width: 350px;
   padding: 30px 20px;
-  background-color: var(--el-bg-color, #fff);
+  background-color: var(--color-bg-card);
   border-radius: 8px;
-  box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.1);
-  border: 1px solid var(--el-border-color, transparent);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--color-border);
   position: relative;
 }
 
 .title {
   font-size: 24px;
-  color: #409EFF;
+  color: var(--color-primary);
   text-align: center;
   margin-bottom: 30px;
   font-weight: bold;
@@ -121,15 +121,15 @@ const handleLogin = async () => {
   bottom: 10px;
   right: 10px;
   font-size: 12px;
-  color: #999;
+  color: var(--color-text-secondary);
 }
 
 :deep(.el-input__wrapper) {
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1) inset;
+  box-shadow: 0 0 0 1px var(--color-border) inset;
 }
 
 :deep(.el-input__wrapper:hover) {
-  box-shadow: 0 0 0 1px #409EFF inset;
+  box-shadow: 0 0 0 1px var(--color-primary) inset;
 }
 
 :deep(.el-button) {

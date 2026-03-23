@@ -17,9 +17,9 @@ import (
 
 // OrderHandler handles order-related requests.
 type OrderHandler struct {
-	orderService *order.Service
+	orderService  *order.Service
 	refundService *refund.Service
-	logger       logger.Logger
+	logger        logger.Logger
 }
 
 // NewOrderHandler creates a new OrderHandler.
@@ -251,7 +251,7 @@ func (h *OrderHandler) ListAllOrders(c *gin.Context) {
 	filter.PaymentMethod = strings.TrimSpace(c.Query("payment_method"))
 
 	if startDate := strings.TrimSpace(c.Query("start_date")); startDate != "" {
-		parsed, err := parseOrderFilterTime(startDate)
+		parsed, err := parseOrderFilterTime(startDate, false)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid start date"})
 			return
@@ -260,7 +260,7 @@ func (h *OrderHandler) ListAllOrders(c *gin.Context) {
 	}
 
 	if endDate := strings.TrimSpace(c.Query("end_date")); endDate != "" {
-		parsed, err := parseOrderFilterTime(endDate)
+		parsed, err := parseOrderFilterTime(endDate, true)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid end date"})
 			return
@@ -362,17 +362,25 @@ func (h *OrderHandler) RefundOrder(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"refund": result, "message": "Refund processed"})
 }
 
-func parseOrderFilterTime(value string) (time.Time, error) {
-	layouts := []string{
-		time.RFC3339,
-		"2006-01-02 15:04:05",
-		"2006-01-02",
+func parseOrderFilterTime(value string, inclusiveEnd bool) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, errors.New("invalid time format")
 	}
 
-	for _, layout := range layouts {
-		if parsed, err := time.Parse(layout, value); err == nil {
-			return parsed, nil
+	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+		return parsed, nil
+	}
+
+	if parsed, err := time.ParseInLocation("2006-01-02 15:04:05", value, time.Local); err == nil {
+		return parsed, nil
+	}
+
+	if parsed, err := time.ParseInLocation("2006-01-02", value, time.Local); err == nil {
+		if inclusiveEnd {
+			return parsed.Add(24*time.Hour - time.Nanosecond), nil
 		}
+		return parsed, nil
 	}
 
 	return time.Time{}, errors.New("invalid time format")

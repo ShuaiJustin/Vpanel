@@ -59,15 +59,15 @@
             </div>
             <div class="stat-info">
               <div class="stat-value">
-                {{ formatBytes(dashboardStats.total_traffic) }}
+                {{ formatBytes(periodTrafficStats.total) }}
               </div>
               <div class="stat-label">
-                总流量
+                {{ trafficPeriodLabel }}流量
               </div>
             </div>
           </div>
           <div class="stat-footer">
-            <span>↑ {{ formatBytes(dashboardStats.upload_traffic) }} / ↓ {{ formatBytes(dashboardStats.download_traffic) }}</span>
+            <span>↑ {{ formatBytes(periodTrafficStats.upload) }} / ↓ {{ formatBytes(periodTrafficStats.download) }}</span>
           </div>
         </el-card>
       </el-col>
@@ -299,6 +299,12 @@ const trafficChartRef = ref(null)
 let protocolChart = null
 let trafficChart = null
 
+const trafficPeriodLabel = computed(() => {
+  if (trafficPeriod.value === 'week') return '本周'
+  if (trafficPeriod.value === 'month') return '本月'
+  return '今日'
+})
+
 const dashboardStats = ref({
   total_users: 0,
   active_users: 0,
@@ -308,6 +314,12 @@ const dashboardStats = ref({
   upload_traffic: 0,
   download_traffic: 0,
   online_count: 0
+})
+
+const periodTrafficStats = ref({
+  total: 0,
+  upload: 0,
+  download: 0
 })
 
 const protocolStats = ref([])
@@ -525,10 +537,20 @@ const loadTrafficStats = async () => {
   try {
     const response = await statsApi.getDetailedStats({ period: trafficPeriod.value })
     if (response.code === 200 && response.data) {
+      periodTrafficStats.value = {
+        total: response.data.total_traffic || 0,
+        upload: response.data.upload || 0,
+        download: response.data.download || 0
+      }
       updateTrafficChart(response.data.timeline || [])
     }
   } catch (error) {
     console.error('加载流量统计失败:', error)
+    periodTrafficStats.value = {
+      total: 0,
+      upload: 0,
+      download: 0
+    }
   }
 }
 

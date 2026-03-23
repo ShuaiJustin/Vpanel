@@ -17,6 +17,14 @@ type SystemSettings struct {
 	DefaultTrafficLimit int64  `json:"default_traffic_limit"`
 	DefaultExpiryDays   int    `json:"default_expiry_days"`
 
+	// Security settings
+	SessionTimeout    int    `json:"session_timeout"`
+	EnableIPWhitelist bool   `json:"enable_ip_whitelist"`
+	IPWhitelist       string `json:"ip_whitelist"`
+	EnableLoginLock   bool   `json:"enable_login_lock"`
+	MaxLoginAttempts  int    `json:"max_login_attempts"`
+	LockDuration      int    `json:"lock_duration"`
+
 	// Panel settings
 	PanelAccessIP  string `json:"panel_access_ip"`  // 面板访问 IP
 	PanelPort      int    `json:"panel_port"`       // 面板监听端口
@@ -71,6 +79,11 @@ func DefaultSettings() *SystemSettings {
 		AllowRegistration:   false,
 		DefaultTrafficLimit: 0, // Unlimited
 		DefaultExpiryDays:   30,
+		SessionTimeout:      1440,
+		EnableIPWhitelist:   false,
+		EnableLoginLock:     false,
+		MaxLoginAttempts:    5,
+		LockDuration:        10,
 		PanelPort:           10086, // 默认面板端口
 		SMTPPort:            587,
 		RateLimitEnabled:    true,
@@ -181,6 +194,33 @@ func (s *Service) GetSystemSettings(ctx context.Context) (*SystemSettings, error
 		var days int
 		if json.Unmarshal([]byte(v), &days) == nil {
 			settings.DefaultExpiryDays = days
+		}
+	}
+	if v, ok := allSettings["session_timeout"]; ok && v != "" {
+		var timeout int
+		if json.Unmarshal([]byte(v), &timeout) == nil {
+			settings.SessionTimeout = timeout
+		}
+	}
+	if v, ok := allSettings["enable_ip_whitelist"]; ok {
+		settings.EnableIPWhitelist = v == "true"
+	}
+	if v, ok := allSettings["ip_whitelist"]; ok {
+		settings.IPWhitelist = v
+	}
+	if v, ok := allSettings["enable_login_lock"]; ok {
+		settings.EnableLoginLock = v == "true"
+	}
+	if v, ok := allSettings["max_login_attempts"]; ok && v != "" {
+		var attempts int
+		if json.Unmarshal([]byte(v), &attempts) == nil {
+			settings.MaxLoginAttempts = attempts
+		}
+	}
+	if v, ok := allSettings["lock_duration"]; ok && v != "" {
+		var duration int
+		if json.Unmarshal([]byte(v), &duration) == nil {
+			settings.LockDuration = duration
 		}
 	}
 	// Panel settings
@@ -311,6 +351,18 @@ func (s *Service) UpdateSystemSettings(ctx context.Context, settings *SystemSett
 	}
 	if data, err := json.Marshal(settings.DefaultExpiryDays); err == nil {
 		updates["default_expiry_days"] = string(data)
+	}
+	if data, err := json.Marshal(settings.SessionTimeout); err == nil {
+		updates["session_timeout"] = string(data)
+	}
+	updates["enable_ip_whitelist"] = boolToString(settings.EnableIPWhitelist)
+	updates["ip_whitelist"] = settings.IPWhitelist
+	updates["enable_login_lock"] = boolToString(settings.EnableLoginLock)
+	if data, err := json.Marshal(settings.MaxLoginAttempts); err == nil {
+		updates["max_login_attempts"] = string(data)
+	}
+	if data, err := json.Marshal(settings.LockDuration); err == nil {
+		updates["lock_duration"] = string(data)
 	}
 
 	// Panel settings

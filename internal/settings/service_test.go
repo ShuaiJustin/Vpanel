@@ -220,6 +220,11 @@ func TestSettingsService_DefaultSettings(t *testing.T) {
 	assert.Equal(t, "V Panel", settings.SiteName)
 	assert.Equal(t, false, settings.AllowRegistration)
 	assert.Equal(t, 30, settings.DefaultExpiryDays)
+	assert.Equal(t, 1440, settings.SessionTimeout)
+	assert.False(t, settings.EnableIPWhitelist)
+	assert.False(t, settings.EnableLoginLock)
+	assert.Equal(t, 5, settings.MaxLoginAttempts)
+	assert.Equal(t, 10, settings.LockDuration)
 	assert.Equal(t, true, settings.RateLimitEnabled)
 }
 
@@ -293,6 +298,34 @@ func TestSettingsService_PaymentSettingsPersistence(t *testing.T) {
 	assert.True(t, readSettings.PaymentWeChatAPIKeyConfigured)
 	assert.Equal(t, "https://panel.example.com/api/payments/callback/wechat", readSettings.PaymentWeChatNotifyURL)
 	assert.True(t, readSettings.PaymentWeChatSandbox)
+}
+
+func TestSettingsService_SecuritySettingsPersistence(t *testing.T) {
+	repo := newMockSettingsRepository()
+	service := NewService(repo)
+	ctx := context.Background()
+
+	newSettings := &SystemSettings{
+		SessionTimeout:    180,
+		EnableIPWhitelist: true,
+		IPWhitelist:       "192.168.1.10\n10.0.0.0/24",
+		EnableLoginLock:   true,
+		MaxLoginAttempts:  4,
+		LockDuration:      15,
+	}
+
+	err := service.UpdateSystemSettings(ctx, newSettings)
+	require.NoError(t, err)
+
+	readSettings, err := service.GetSystemSettings(ctx)
+	require.NoError(t, err)
+
+	assert.Equal(t, 180, readSettings.SessionTimeout)
+	assert.True(t, readSettings.EnableIPWhitelist)
+	assert.Equal(t, "192.168.1.10\n10.0.0.0/24", readSettings.IPWhitelist)
+	assert.True(t, readSettings.EnableLoginLock)
+	assert.Equal(t, 4, readSettings.MaxLoginAttempts)
+	assert.Equal(t, 15, readSettings.LockDuration)
 }
 
 func TestSettingsService_SMTPSettingsPersistence(t *testing.T) {

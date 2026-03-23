@@ -679,6 +679,7 @@
           <el-form-item>
             <el-button
               type="primary"
+              :loading="securityState.saving"
               @click="saveSecuritySettings"
             >
               保存安全设置
@@ -1406,12 +1407,17 @@ const adminForm = reactive({
 })
 
 const securityForm = reactive({
-  sessionTimeout: 30,
+  sessionTimeout: 1440,
   enableIpWhitelist: false,
   ipWhitelist: '',
-  enableLoginLock: true,
+  enableLoginLock: false,
   maxLoginAttempts: 5,
   lockDuration: 10
+})
+
+const securityState = reactive({
+  loading: false,
+  saving: false
 })
 
 // 协议设置
@@ -1765,6 +1771,7 @@ onMounted(async () => {
     // 加载Xray版本和支付设置
     await Promise.allSettled([
       refreshXrayVersions(),
+      loadSecuritySettings(),
       loadEmailSettings(),
       loadPaymentSettings()
     ]);
@@ -2278,8 +2285,10 @@ const changeAdminPassword = async () => {
   )
   .then(async () => {
     try {
-      // 在实际项目中应调用API修改密码
-      // await api.changeAdminPassword(adminForm)
+      await api.put('/auth/password', {
+        old_password: adminForm.currentPassword,
+        new_password: adminForm.newPassword
+      })
       ElMessage.success('密码修改成功，请重新登录')
       
       // 清空表单
@@ -2313,9 +2322,7 @@ const resetAdminPassword = () => {
   )
   .then(async () => {
     try {
-      // 在实际项目中应调用API重置密码
-      // await api.resetAdminPassword()
-      ElMessage.success('密码重置成功，默认密码为：admin')
+      ElMessage.warning('固定默认密码重置未开放，请在用户管理中执行密码重置。')
     } catch (error) {
       ElMessage.error('重置失败：' + error.message)
     }
@@ -2325,13 +2332,48 @@ const resetAdminPassword = () => {
   })
 }
 
-const saveSecuritySettings = async () => {
+const applySecuritySettings = (settings) => {
+  securityForm.sessionTimeout = settings?.session_timeout || 1440
+  securityForm.enableIpWhitelist = settings?.enable_ip_whitelist ?? false
+  securityForm.ipWhitelist = settings?.ip_whitelist || ''
+  securityForm.enableLoginLock = settings?.enable_login_lock ?? false
+  securityForm.maxLoginAttempts = settings?.max_login_attempts || 5
+  securityForm.lockDuration = settings?.lock_duration || 10
+}
+
+const loadSecuritySettings = async () => {
+  securityState.loading = true
   try {
-    // 在实际项目中应调用API保存配置
-    // await api.saveSecuritySettings(securityForm)
+    const response = await api.get('/settings')
+    applySecuritySettings(response?.data || {})
+  } catch (error) {
+    console.error('Failed to load security settings:', error)
+    ElMessage.error('加载安全设置失败')
+  } finally {
+    securityState.loading = false
+  }
+}
+
+const saveSecuritySettings = async () => {
+  securityState.saving = true
+  try {
+    const payload = {
+      session_timeout: securityForm.sessionTimeout,
+      enable_ip_whitelist: securityForm.enableIpWhitelist,
+      ip_whitelist: securityForm.ipWhitelist.trim(),
+      enable_login_lock: securityForm.enableLoginLock,
+      max_login_attempts: securityForm.maxLoginAttempts,
+      lock_duration: securityForm.lockDuration
+    }
+
+    const response = await api.put('/settings', payload)
+    applySecuritySettings(response?.data || {})
     ElMessage.success('安全设置保存成功')
   } catch (error) {
-    ElMessage.error('保存失败：' + error.message)
+    console.error('Failed to save security settings:', error)
+    ElMessage.error(error.message || '保存安全设置失败')
+  } finally {
+    securityState.saving = false
   }
 }
 

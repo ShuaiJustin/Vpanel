@@ -24,6 +24,13 @@ type AsyncWriter struct {
 
 // NewAsyncWriter creates a new async writer.
 func NewAsyncWriter(repo repository.LogRepository, log logger.Logger, bufferSize, batchSize int, flushInterval time.Duration) *AsyncWriter {
+	if batchSize <= 0 {
+		batchSize = bufferSize
+	}
+	if bufferSize > 0 && batchSize > bufferSize {
+		batchSize = bufferSize
+	}
+
 	w := &AsyncWriter{
 		repo:          repo,
 		logger:        log,
@@ -45,8 +52,13 @@ func (w *AsyncWriter) Write(log *repository.Log) error {
 	defer w.mu.Unlock()
 
 	w.buffer = append(w.buffer, log)
+	if w.bufferSize > 0 && len(w.buffer) > w.bufferSize {
+		dropped := len(w.buffer) - w.bufferSize
+		w.buffer = append([]*repository.Log(nil), w.buffer[dropped:]...)
+		w.logger.Error("log buffer full, dropping oldest buffered entries", logger.F("dropped", dropped))
+	}
 
-	if len(w.buffer) >= w.bufferSize {
+	if len(w.buffer) >= w.batchSize {
 		return w.flushLocked()
 	}
 
@@ -84,8 +96,7 @@ func (w *AsyncWriter) flushLocked() error {
 		return nil
 	}
 
-	logs := w.buffer
-	w.buffer = make([]*repository.Log, 0, w.bufferSize)
+	logs := append([]*repository.Log(nil), w.buffer...)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -95,6 +106,7 @@ func (w *AsyncWriter) flushLocked() error {
 		return err
 	}
 
+	w.buffer = make([]*repository.Log, 0, w.bufferSize)
 	return nil
 }
 

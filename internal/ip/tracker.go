@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"v/internal/database/repository"
+
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -104,7 +106,6 @@ func (t *Tracker) IsIPActive(ctx context.Context, userID uint, ip string) (bool,
 	return count > 0, err
 }
 
-
 // CleanupInactiveIPs removes IPs that have been inactive for longer than the timeout.
 func (t *Tracker) CleanupInactiveIPs(ctx context.Context, timeout time.Duration) (int, error) {
 	cutoff := time.Now().Add(-timeout)
@@ -166,6 +167,107 @@ func (t *Tracker) GetIPHistory(ctx context.Context, userID uint, filter *IPHisto
 
 	err := query.Order("created_at DESC").Find(&records).Error
 	return records, err
+}
+
+// GetAggregatedIPHistory returns grouped IP history suitable for the user portal device view.
+func (t *Tracker) GetAggregatedIPHistory(ctx context.Context, userID uint, limit, offset int) ([]IPHistorySummary, int64, error) {
+	dialect := t.db.Dialector.Name()
+
+	var total int64
+	if err := t.db.WithContext(ctx).
+		Model(&IPHistory{}).
+		Where("user_id = ?", userID).
+		Distinct("ip").
+		Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var summaries []IPHistorySummary
+	if dialect == "sqlite" {
+		type sqliteIPHistorySummary struct {
+			IP          string `gorm:"column:ip"`
+			FirstSeen   string `gorm:"column:first_seen"`
+			LastSeen    string `gorm:"column:last_seen"`
+			AccessCount int64  `gorm:"column:access_count"`
+		}
+
+		var rows []sqliteIPHistorySummary
+		query := t.db.WithContext(ctx).
+			Model(&IPHistory{}).
+			Select("ip, MIN(created_at) AS first_seen, MAX(created_at) AS last_seen, COUNT(*) AS access_count").
+			Where("user_id = ?", userID).
+			Group("ip").
+			Order("MAX(created_at) DESC")
+
+		if limit > 0 {
+			query = query.Limit(limit)
+		}
+		if offset > 0 {
+			query = query.Offset(offset)
+		}
+
+		if err := query.Scan(&rows).Error; err != nil {
+			return nil, 0, err
+		}
+
+		summaries = make([]IPHistorySummary, 0, len(rows))
+		for _, row := range rows {
+			firstSeen, err := repository.ParseAggregatedTime(dialect, row.FirstSeen, time.Local)
+			if err != nil {
+				return nil, 0, err
+			}
+			lastSeen, err := repository.ParseAggregatedTime(dialect, row.LastSeen, time.Local)
+			if err != nil {
+				return nil, 0, err
+			}
+
+			summary := IPHistorySummary{
+				IP:          row.IP,
+				AccessCount: row.AccessCount,
+			}
+			if firstSeen != nil {
+				summary.FirstSeen = *firstSeen
+			}
+			if lastSeen != nil {
+				summary.LastSeen = *lastSeen
+			}
+
+			summaries = append(summaries, summary)
+		}
+	} else {
+		query := t.db.WithContext(ctx).
+			Model(&IPHistory{}).
+			Select("ip, MIN(created_at) AS first_seen, MAX(created_at) AS last_seen, COUNT(*) AS access_count").
+			Where("user_id = ?", userID).
+			Group("ip").
+			Order("MAX(created_at) DESC")
+
+		if limit > 0 {
+			query = query.Limit(limit)
+		}
+		if offset > 0 {
+			query = query.Offset(offset)
+		}
+
+		if err := query.Scan(&summaries).Error; err != nil {
+			return nil, 0, err
+		}
+	}
+
+	for i := range summaries {
+		var latest IPHistory
+		if err := t.db.WithContext(ctx).
+			Select("country, city").
+			Where("user_id = ? AND ip = ?", userID, summaries[i].IP).
+			Order("created_at DESC").
+			Limit(1).
+			Take(&latest).Error; err == nil {
+			summaries[i].Country = latest.Country
+			summaries[i].City = latest.City
+		}
+	}
+
+	return summaries, total, nil
 }
 
 // GetUniqueIPCount returns the count of unique IPs for a user within a time range.
@@ -235,7 +337,6 @@ func (t *Tracker) GetRecentCountries(ctx context.Context, userID uint, minutes i
 
 	return countries, err
 }
-
 
 // GetDB returns the database connection.
 func (t *Tracker) GetDB() *gorm.DB {

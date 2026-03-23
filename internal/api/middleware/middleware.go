@@ -4,6 +4,7 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"path"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -133,7 +134,7 @@ func LoggerWithService(log logger.Logger, logService *logservice.Service) gin.Ha
 		}
 
 		// Log to database if service is available
-		if logService != nil {
+		if logService != nil && shouldPersistHTTPRequestLog(c.Request.Method, path, status) {
 			// Get user ID from context if available
 			var userID *int64
 			if uid, exists := c.Get("user_id"); exists {
@@ -152,7 +153,6 @@ func LoggerWithService(log logger.Logger, logService *logservice.Service) gin.Ha
 			if query != "" {
 				extraFields["query"] = query
 			}
-
 
 			if len(c.Errors) > 0 {
 				extraFields["errors"] = c.Errors.String()
@@ -175,6 +175,41 @@ func LoggerWithService(log logger.Logger, logService *logservice.Service) gin.Ha
 
 		}
 	}
+}
+
+func shouldPersistHTTPRequestLog(method, requestPath string, status int) bool {
+	if status >= 400 {
+		return true
+	}
+
+	normalizedPath := strings.TrimSpace(requestPath)
+	if normalizedPath == "" {
+		return false
+	}
+
+	if normalizedPath == "/health" {
+		return false
+	}
+	if normalizedPath == "/favicon.ico" || normalizedPath == "/favicon.svg" {
+		return false
+	}
+	if strings.HasPrefix(normalizedPath, "/assets/") {
+		return false
+	}
+	if strings.HasPrefix(normalizedPath, "/api/sse/") {
+		return false
+	}
+	if normalizedPath == "/api/node/heartbeat" || normalizedPath == "/api/node/register" {
+		return false
+	}
+
+	ext := strings.ToLower(path.Ext(normalizedPath))
+	switch ext {
+	case ".js", ".css", ".map", ".png", ".jpg", ".jpeg", ".svg", ".ico", ".webp", ".woff", ".woff2", ".ttf":
+		return false
+	}
+
+	return true
 }
 
 // CORS returns a middleware that handles CORS.

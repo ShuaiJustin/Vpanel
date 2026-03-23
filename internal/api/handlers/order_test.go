@@ -304,6 +304,68 @@ func TestListAllOrders_AppliesSearchAndDateFilter(t *testing.T) {
 	}
 }
 
+func TestListAllOrders_DateOnlyEndDateIncludesWholeDay(t *testing.T) {
+	db := setupOrderTestDB(t)
+	router, orderService := setupOrderTestRouter(db)
+
+	testPlan := createOrderTestPlan(db, "Date Filter Plan", 3000, 30)
+	firstUser := createOrderTestUser(db, "datefilteruserone")
+	secondUser := createOrderTestUser(db, "datefilterusertwo")
+
+	firstOrder, err := orderService.Create(context.Background(), &order.CreateOrderRequest{
+		UserID: int64(firstUser.ID),
+		PlanID: int64(testPlan.ID),
+	})
+	if err != nil {
+		t.Fatalf("Failed to create first order: %v", err)
+	}
+	secondOrder, err := orderService.Create(context.Background(), &order.CreateOrderRequest{
+		UserID: int64(secondUser.ID),
+		PlanID: int64(testPlan.ID),
+	})
+	if err != nil {
+		t.Fatalf("Failed to create second order: %v", err)
+	}
+
+	loc := time.Local
+	firstCreatedAt := time.Date(2026, 3, 23, 10, 30, 0, 0, loc)
+	secondCreatedAt := time.Date(2026, 3, 24, 9, 0, 0, 0, loc)
+
+	if err := db.Model(&database.Order{}).Where("id = ?", firstOrder.ID).Update("created_at", firstCreatedAt).Error; err != nil {
+		t.Fatalf("Failed to update first order created_at: %v", err)
+	}
+	if err := db.Model(&database.Order{}).Where("id = ?", secondOrder.ID).Update("created_at", secondCreatedAt).Error; err != nil {
+		t.Fatalf("Failed to update second order created_at: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/orders?end_date=2026-03-23", nil)
+	req.Header.Set("X-User-ID", "1")
+	req.Header.Set("X-User-Role", "admin")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var response struct {
+		Orders []map[string]interface{} `json:"orders"`
+		Total  int64                    `json:"total"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.Total != 1 || len(response.Orders) != 1 {
+		t.Fatalf("Expected exactly 1 order on end_date boundary, got total=%d len=%d body=%s", response.Total, len(response.Orders), w.Body.String())
+	}
+
+	if response.Orders[0]["order_no"] != firstOrder.OrderNo {
+		t.Fatalf("Expected order %s to remain inside the day range, got %v", firstOrder.OrderNo, response.Orders[0]["order_no"])
+	}
+}
+
 // TestOrderFlow_Property tests the complete order flow property.
 // *For any* valid plan and user, creating an order should result in a pending order
 // with correct amount and expiration time.

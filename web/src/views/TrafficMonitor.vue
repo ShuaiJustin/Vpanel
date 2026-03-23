@@ -159,9 +159,9 @@ const historyPeriod = ref('week')
 
 const realtimeWindowLabel = computed(() => {
   if (!realtimeTimestamp.value) {
-    return '最近 5 分钟节点流量'
+    return '5 分钟'
   }
-  return `最近 ${realtimeWindow.value} 节点流量`
+  return realtimeWindow.value || '5m'
 })
 
 const unwrapApiData = (response) => {
@@ -286,7 +286,7 @@ const updateCharts = () => {
   // 更新实时流量图表
   realtimeChart.setOption({
     title: {
-      text: realtimeTimestamp.value ? `最近 ${realtimeWindow.value} 节点流量` : '最近 5 分钟节点流量'
+      text: `最近 ${realtimeWindowLabel.value} 节点流量`
     },
     xAxis: {
       data: realtimeData.map(item => item.label)

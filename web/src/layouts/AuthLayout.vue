@@ -71,25 +71,17 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { computed } from 'vue'
 import { Sunny, Moon } from '@element-plus/icons-vue'
+import { useTheme } from '@/composables/useTheme'
 
-const isDarkMode = ref(false)
+const { isDark, toggleDarkMode } = useTheme()
+const isDarkMode = isDark
 const currentYear = computed(() => new Date().getFullYear())
 
 const toggleTheme = () => {
-  isDarkMode.value = !isDarkMode.value
-  localStorage.setItem('userTheme', isDarkMode.value ? 'dark' : 'light')
-  document.documentElement.classList.toggle('dark', isDarkMode.value)
+  toggleDarkMode()
 }
-
-onMounted(() => {
-  const savedTheme = localStorage.getItem('userTheme')
-  if (savedTheme === 'dark') {
-    isDarkMode.value = true
-    document.documentElement.classList.add('dark')
-  }
-})
 </script>
 
 <style scoped>

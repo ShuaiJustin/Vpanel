@@ -57,7 +57,6 @@ func (b *IPBlacklist) IsExpired() bool {
 	return time.Now().After(*b.ExpiresAt)
 }
 
-
 // ActiveIP represents a currently active IP address for a user.
 type ActiveIP struct {
 	ID         uint      `json:"id" gorm:"primaryKey"`
@@ -97,6 +96,16 @@ type IPHistory struct {
 // TableName returns the table name for IPHistory.
 func (IPHistory) TableName() string {
 	return "ip_history"
+}
+
+// IPHistorySummary represents aggregated portal-facing IP history grouped by IP.
+type IPHistorySummary struct {
+	IP          string    `json:"ip" gorm:"column:ip"`
+	Country     string    `json:"country" gorm:"column:country"`
+	City        string    `json:"city" gorm:"column:city"`
+	FirstSeen   time.Time `json:"first_seen" gorm:"column:first_seen"`
+	LastSeen    time.Time `json:"last_seen" gorm:"column:last_seen"`
+	AccessCount int64     `json:"access_count" gorm:"column:access_count"`
 }
 
 // SubscriptionIPAccess tracks unique IPs that have accessed a subscription link.
@@ -151,7 +160,6 @@ type FailedAttempt struct {
 func (FailedAttempt) TableName() string {
 	return "failed_attempts"
 }
-
 
 // IPRestrictionSettings holds the configuration for IP restriction features.
 type IPRestrictionSettings struct {

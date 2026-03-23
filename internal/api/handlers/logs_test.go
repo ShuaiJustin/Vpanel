@@ -531,6 +531,93 @@ func TestLogHandler_ExportCSVEmptyResult(t *testing.T) {
 	require.Len(t, records, 1)
 }
 
+func TestLogHandler_ExportHonorsAllSupportedFilters(t *testing.T) {
+	db := setupLogHandlerTestDB(t)
+	handler := createTestLogHandler(t, db)
+	repo := repository.NewLogRepository(db)
+
+	userID1 := int64(1001)
+	userID2 := int64(1002)
+	now := time.Now()
+	logs := []*repository.Log{
+		{
+			Level:     "warn",
+			Message:   "alpha match",
+			Source:    "export-filter-test",
+			UserID:    &userID1,
+			RequestID: "req-match",
+			CreatedAt: now,
+		},
+		{
+			Level:     "info",
+			Message:   "alpha low level",
+			Source:    "export-filter-test",
+			UserID:    &userID1,
+			RequestID: "req-low",
+			CreatedAt: now,
+		},
+		{
+			Level:     "error",
+			Message:   "beta wrong keyword",
+			Source:    "export-filter-test",
+			UserID:    &userID1,
+			RequestID: "req-beta",
+			CreatedAt: now,
+		},
+		{
+			Level:     "error",
+			Message:   "alpha wrong user",
+			Source:    "export-filter-test",
+			UserID:    &userID2,
+			RequestID: "req-other-user",
+			CreatedAt: now,
+		},
+	}
+	require.NoError(t, repo.CreateBatch(context.Background(), logs))
+
+	router := gin.New()
+	router.GET("/api/logs/export", handler.ExportLogs)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/logs/export?format=json&source=export-filter-test&min_level=warn&keyword=alpha&user_id=1001&request_id=req-match",
+		nil,
+	)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var exportedLogs []*repository.Log
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &exportedLogs))
+	require.Len(t, exportedLogs, 1)
+	require.Equal(t, "alpha match", exportedLogs[0].Message)
+	require.Equal(t, "req-match", exportedLogs[0].RequestID)
+	require.Equal(t, "warn", exportedLogs[0].Level)
+	require.NotNil(t, exportedLogs[0].UserID)
+	require.EqualValues(t, userID1, *exportedLogs[0].UserID)
+}
+
+func TestLogHandler_ExportIncludesRecordsBeyondTenThousand(t *testing.T) {
+	db := setupLogHandlerTestDB(t)
+	handler := createTestLogHandler(t, db)
+
+	createTestLogs(t, db, 10005, "info", "large-export-test")
+
+	router := gin.New()
+	router.GET("/api/logs/export", handler.ExportLogs)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/logs/export?format=json&source=large-export-test", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var exportedLogs []*repository.Log
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &exportedLogs))
+	require.Len(t, exportedLogs, 10005)
+}
+
 func TestLogHandler_ListLogsDefaultPagination(t *testing.T) {
 	db := setupLogHandlerTestDB(t)
 	handler := createTestLogHandler(t, db)
@@ -659,6 +746,54 @@ func TestLogHandler_CleanupUsesJSONRetentionDays(t *testing.T) {
 	remaining, err := repo.Count(context.Background(), nil)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, remaining)
+}
+
+func TestLogHandler_DeleteLogsUsesJSONFilters(t *testing.T) {
+	db := setupLogHandlerTestDB(t)
+	handler := createTestLogHandler(t, db)
+	repo := repository.NewLogRepository(db)
+
+	logs := []*repository.Log{
+		{
+			Level:     "info",
+			Message:   "alpha remove me",
+			Source:    "delete-filter-test",
+			CreatedAt: time.Now(),
+		},
+		{
+			Level:     "info",
+			Message:   "beta keep me",
+			Source:    "delete-filter-test",
+			CreatedAt: time.Now(),
+		},
+	}
+	require.NoError(t, repo.CreateBatch(context.Background(), logs))
+
+	router := gin.New()
+	router.DELETE("/api/logs", handler.DeleteLogs)
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/logs",
+		bytes.NewBufferString(`{"source":"delete-filter-test","keyword":"alpha"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var response struct {
+		Deleted int64 `json:"deleted"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.EqualValues(t, 1, response.Deleted)
+
+	remaining, err := repo.List(context.Background(), &repository.LogFilter{Source: "delete-filter-test"}, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, remaining, 1)
+	require.Equal(t, "beta keep me", remaining[0].Message)
 }
 
 func TestLogHandler_CleanupRejectsInvalidRetentionDays(t *testing.T) {

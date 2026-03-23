@@ -34,11 +34,11 @@ func newTestLogger() *testLogger {
 	return &testLogger{output: &bytes.Buffer{}, level: logger.DebugLevel}
 }
 
-func (l *testLogger) Debug(msg string, fields ...logger.Field) { l.log("debug", msg, fields...) }
-func (l *testLogger) Info(msg string, fields ...logger.Field)  { l.log("info", msg, fields...) }
-func (l *testLogger) Warn(msg string, fields ...logger.Field)  { l.log("warn", msg, fields...) }
-func (l *testLogger) Error(msg string, fields ...logger.Field) { l.log("error", msg, fields...) }
-func (l *testLogger) Fatal(msg string, fields ...logger.Field) { l.log("fatal", msg, fields...) }
+func (l *testLogger) Debug(msg string, fields ...logger.Field)  { l.log("debug", msg, fields...) }
+func (l *testLogger) Info(msg string, fields ...logger.Field)   { l.log("info", msg, fields...) }
+func (l *testLogger) Warn(msg string, fields ...logger.Field)   { l.log("warn", msg, fields...) }
+func (l *testLogger) Error(msg string, fields ...logger.Field)  { l.log("error", msg, fields...) }
+func (l *testLogger) Fatal(msg string, fields ...logger.Field)  { l.log("fatal", msg, fields...) }
 func (l *testLogger) With(fields ...logger.Field) logger.Logger { return l }
 func (l *testLogger) SetLevel(level logger.Level)               { l.level = level }
 func (l *testLogger) GetLevel() logger.Level                    { return l.level }
@@ -58,7 +58,6 @@ func (l *testLogger) log(level, msg string, fields ...logger.Field) {
 }
 
 func (l *testLogger) getOutput() string { return l.output.String() }
-
 
 func TestErrorLoggingWithRequestContext(t *testing.T) {
 	properties := gopter.NewProperties(gopter.DefaultTestParameters())
@@ -280,6 +279,34 @@ func TestErrorLoggingWithRequestContext_LogLevelBasedOnStatus(t *testing.T) {
 	properties.TestingRun(t)
 }
 
+func TestShouldPersistHTTPRequestLog(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		status int
+		want   bool
+	}{
+		{name: "health is skipped", method: "HEAD", path: "/health", status: http.StatusOK, want: false},
+		{name: "heartbeat is skipped", method: "POST", path: "/api/node/heartbeat", status: http.StatusOK, want: false},
+		{name: "node register is skipped", method: "POST", path: "/api/node/register", status: http.StatusOK, want: false},
+		{name: "sse is skipped", method: "GET", path: "/api/sse/xray-events", status: http.StatusOK, want: false},
+		{name: "assets are skipped", method: "GET", path: "/assets/js/index.js", status: http.StatusOK, want: false},
+		{name: "favicon is skipped", method: "GET", path: "/favicon.svg", status: http.StatusOK, want: false},
+		{name: "api list is kept", method: "GET", path: "/api/logs", status: http.StatusOK, want: true},
+		{name: "admin api is kept", method: "GET", path: "/api/admin/nodes", status: http.StatusOK, want: true},
+		{name: "errors are always kept", method: "GET", path: "/assets/js/index.js", status: http.StatusInternalServerError, want: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := shouldPersistHTTPRequestLog(tc.method, tc.path, tc.status)
+			if got != tc.want {
+				t.Fatalf("shouldPersistHTTPRequestLog(%q, %q, %d) = %v, want %v", tc.method, tc.path, tc.status, got, tc.want)
+			}
+		})
+	}
+}
 
 // Property 28: Correlation ID Propagation
 // For any API request, a unique correlation ID SHALL be generated and included

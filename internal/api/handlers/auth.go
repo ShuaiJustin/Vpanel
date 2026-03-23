@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -15,6 +16,7 @@ import (
 	"v/internal/auth"
 	"v/internal/database/repository"
 	"v/internal/logger"
+	"v/internal/settings"
 	"v/pkg/errors"
 )
 
@@ -28,10 +30,14 @@ func isValidEmail(email string) bool {
 
 // AuthHandler handles authentication-related requests.
 type AuthHandler struct {
-	authService      *auth.Service
-	userRepo         repository.UserRepository
-	loginHistoryRepo repository.LoginHistoryRepository
-	logger           logger.Logger
+	authService              *auth.Service
+	userRepo                 repository.UserRepository
+	loginHistoryRepo         repository.LoginHistoryRepository
+	logger                   logger.Logger
+	settingsService          *settings.Service
+	loginRateLimiter         *auth.RateLimiter
+	loginRateLimiterConfig   auth.RateLimiterConfig
+	loginRateLimiterConfigMu sync.Mutex
 }
 
 // NewAuthHandler creates a new AuthHandler.
@@ -42,6 +48,12 @@ func NewAuthHandler(authService *auth.Service, userRepo repository.UserRepositor
 		loginHistoryRepo: loginHistoryRepo,
 		logger:           log,
 	}
+}
+
+// WithSecuritySettings enables login security controls driven by persisted settings.
+func (h *AuthHandler) WithSecuritySettings(settingsService *settings.Service) *AuthHandler {
+	h.settingsService = settingsService
+	return h
 }
 
 // LoginRequest represents a login request.
@@ -162,6 +174,98 @@ func (h *AuthHandler) updateLastLogin(ctx context.Context, user *repository.User
 	}
 }
 
+type authSecurityPolicy struct {
+	tokenExpiry       time.Duration
+	enableIPWhitelist bool
+	ipWhitelist       string
+	enableLoginLock   bool
+	maxLoginAttempts  int
+	lockDuration      time.Duration
+}
+
+func (h *AuthHandler) loadSecurityPolicy(ctx context.Context) authSecurityPolicy {
+	policy := authSecurityPolicy{
+		tokenExpiry:      h.authService.TokenExpiry(),
+		enableLoginLock:  false,
+		maxLoginAttempts: 5,
+		lockDuration:     10 * time.Minute,
+	}
+
+	if h.settingsService == nil {
+		return policy
+	}
+
+	systemSettings, err := h.settingsService.GetSystemSettings(ctx)
+	if err != nil {
+		h.logger.Warn("failed to load auth security settings", logger.Err(err))
+		return policy
+	}
+
+	if systemSettings.SessionTimeout > 0 {
+		policy.tokenExpiry = time.Duration(systemSettings.SessionTimeout) * time.Minute
+	}
+	policy.enableIPWhitelist = systemSettings.EnableIPWhitelist
+	policy.ipWhitelist = systemSettings.IPWhitelist
+	policy.enableLoginLock = systemSettings.EnableLoginLock
+	if systemSettings.MaxLoginAttempts > 0 {
+		policy.maxLoginAttempts = systemSettings.MaxLoginAttempts
+	}
+	if systemSettings.LockDuration > 0 {
+		policy.lockDuration = time.Duration(systemSettings.LockDuration) * time.Minute
+	}
+
+	return policy
+}
+
+func (h *AuthHandler) getLoginRateLimiter(policy authSecurityPolicy) *auth.RateLimiter {
+	h.loginRateLimiterConfigMu.Lock()
+	defer h.loginRateLimiterConfigMu.Unlock()
+
+	if !policy.enableLoginLock {
+		if h.loginRateLimiter != nil {
+			h.loginRateLimiter.Stop()
+			h.loginRateLimiter = nil
+			h.loginRateLimiterConfig = auth.RateLimiterConfig{}
+		}
+		return nil
+	}
+
+	config := auth.RateLimiterConfig{
+		MaxAttempts:     policy.maxLoginAttempts,
+		Window:          time.Minute,
+		BlockDuration:   policy.lockDuration,
+		CleanupInterval: maxDuration(5*time.Minute, policy.lockDuration),
+	}
+
+	if h.loginRateLimiter == nil || h.loginRateLimiterConfig != config {
+		if h.loginRateLimiter != nil {
+			h.loginRateLimiter.Stop()
+		}
+		h.loginRateLimiter = auth.NewRateLimiter(config)
+		h.loginRateLimiterConfig = config
+	}
+
+	return h.loginRateLimiter
+}
+
+func (h *AuthHandler) recordRateLimitedLoginAttempt(ctx context.Context, limiter *auth.RateLimiter, ip string, success bool) {
+	if limiter == nil {
+		return
+	}
+	if err := limiter.RecordLoginAttempt(ctx, ip, success); err != nil {
+		h.logger.Warn("failed to record login rate limit attempt", logger.F("ip", ip), logger.Err(err))
+	}
+}
+
+func (h *AuthHandler) issueAccessToken(user *repository.User, expiry time.Duration) (string, int64, error) {
+	token, err := h.authService.GenerateTokenWithExpiry(user.ID, user.Username, user.Role, expiry)
+	if err != nil {
+		return "", 0, err
+	}
+
+	return token, int64(expiry.Seconds()), nil
+}
+
 // Login handles user login.
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req LoginRequest
@@ -173,10 +277,34 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	// Get client info for login history
 	clientIP := c.ClientIP()
 	userAgent := c.Request.UserAgent()
+	policy := h.loadSecurityPolicy(c.Request.Context())
+
+	if policy.enableIPWhitelist && !isIPAllowedByWhitelist(clientIP, policy.ipWhitelist) {
+		h.logger.Warn("login rejected by IP whitelist", logger.F("ip", clientIP), logger.F("username", req.Username))
+		middleware.HandleForbidden(c, "当前 IP 不在管理后台白名单中")
+		return
+	}
+
+	loginRateLimiter := h.getLoginRateLimiter(policy)
+	if loginRateLimiter != nil {
+		allowed, err := loginRateLimiter.CheckRateLimit(c.Request.Context(), clientIP)
+		if err != nil {
+			h.logger.Warn("login rejected by rate limiter", logger.F("ip", clientIP), logger.F("username", req.Username), logger.Err(err))
+			middleware.HandleError(c, err)
+			return
+		}
+		if !allowed {
+			rateLimitErr := errors.NewRateLimitError("登录尝试次数过多，请稍后再试")
+			h.logger.Warn("login rejected by rate limiter", logger.F("ip", clientIP), logger.F("username", req.Username))
+			middleware.HandleError(c, rateLimitErr)
+			return
+		}
+	}
 
 	// Authenticate user
 	user, err := h.userRepo.GetByUsername(c.Request.Context(), req.Username)
 	if err != nil {
+		h.recordRateLimitedLoginAttempt(c.Request.Context(), loginRateLimiter, clientIP, false)
 		h.logger.Warn("login failed: user not found", logger.F("username", req.Username))
 		middleware.HandleUnauthorized(c, errors.MsgInvalidCredentials)
 		return
@@ -199,6 +327,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	// Check if user is enabled
 	if !user.Enabled {
+		h.recordRateLimitedLoginAttempt(c.Request.Context(), loginRateLimiter, clientIP, false)
 		h.logger.Warn("login failed: user disabled", logger.F("username", req.Username))
 		recordLogin(false)
 		middleware.HandleForbidden(c, errors.MsgUserDisabled)
@@ -206,6 +335,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	if !h.authService.VerifyPassword(req.Password, user.PasswordHash) {
+		h.recordRateLimitedLoginAttempt(c.Request.Context(), loginRateLimiter, clientIP, false)
 		h.logger.Warn("login failed: invalid password", logger.F("username", req.Username))
 		recordLogin(false)
 		middleware.HandleUnauthorized(c, errors.MsgInvalidCredentials)
@@ -213,7 +343,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	// Generate tokens
-	token, err := h.authService.GenerateToken(user.ID, user.Username, user.Role)
+	token, expiresIn, err := h.issueAccessToken(user, policy.tokenExpiry)
 	if err != nil {
 		h.logger.Error("failed to generate token", logger.F("error", err))
 		middleware.HandleInternalError(c, "登录失败，请稍后重试", err)
@@ -228,6 +358,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	// Record successful login
+	h.recordRateLimitedLoginAttempt(c.Request.Context(), loginRateLimiter, clientIP, true)
 	recordLogin(true)
 	h.updateLastLogin(c.Request.Context(), user, clientIP)
 
@@ -236,7 +367,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, LoginResponse{
 		Token:        token,
 		RefreshToken: refreshToken,
-		ExpiresIn:    3600, // 1 hour
+		ExpiresIn:    expiresIn,
 		User:         func() *UserResponse { resp := buildUserResponse(user); return &resp }(),
 	})
 }
@@ -251,6 +382,13 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	var req RefreshTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		middleware.HandleBadRequest(c, errors.MsgInvalidRequest)
+		return
+	}
+
+	policy := h.loadSecurityPolicy(c.Request.Context())
+	if policy.enableIPWhitelist && !isIPAllowedByWhitelist(c.ClientIP(), policy.ipWhitelist) {
+		h.logger.Warn("refresh token rejected by IP whitelist", logger.F("ip", c.ClientIP()))
+		middleware.HandleForbidden(c, "当前 IP 不在管理后台白名单中")
 		return
 	}
 
@@ -269,7 +407,7 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	}
 
 	// Generate new tokens
-	token, err := h.authService.GenerateToken(user.ID, user.Username, user.Role)
+	token, expiresIn, err := h.issueAccessToken(user, policy.tokenExpiry)
 	if err != nil {
 		middleware.HandleInternalError(c, "刷新令牌失败，请重新登录", err)
 		return
@@ -284,9 +422,19 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	c.JSON(http.StatusOK, LoginResponse{
 		Token:        token,
 		RefreshToken: refreshToken,
-		ExpiresIn:    3600,
+		ExpiresIn:    expiresIn,
 		User:         func() *UserResponse { resp := buildUserResponse(user); return &resp }(),
 	})
+}
+
+func maxDuration(values ...time.Duration) time.Duration {
+	var max time.Duration
+	for _, value := range values {
+		if value > max {
+			max = value
+		}
+	}
+	return max
 }
 
 // Logout handles user logout.

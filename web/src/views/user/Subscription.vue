@@ -491,7 +491,7 @@ onMounted(() => {
 
 .days-hint {
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-secondary);
   margin-left: 8px;
 }
 
@@ -532,7 +532,7 @@ onMounted(() => {
 
 .selector-label {
   font-size: 14px;
-  color: #606266;
+  color: var(--color-text-regular);
 }
 
 .subscription-url {
@@ -546,13 +546,15 @@ onMounted(() => {
   align-items: center;
   gap: 16px;
   padding: 20px;
-  background: #fafafa;
+  background: var(--color-border-light);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
 }
 
 .qrcode-wrapper {
   padding: 16px;
   background: #fff;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
@@ -580,7 +582,8 @@ onMounted(() => {
   display: flex;
   align-items: center;
   padding: 16px;
-  border: 1px solid #ebeef5;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.3s;
@@ -588,7 +591,7 @@ onMounted(() => {
 
 .client-item:hover {
   border-color: #409eff;
-  background: #f5f7fa;
+  background: var(--color-border-light);
 }
 
 .client-icon {
@@ -597,7 +600,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #ecf5ff;
+  background: rgba(64, 158, 255, 0.12);
   border-radius: 8px;
   color: #409eff;
   font-size: 20px;
@@ -611,17 +614,17 @@ onMounted(() => {
 .client-name {
   font-size: 15px;
   font-weight: 500;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 4px 0;
 }
 
 .client-platform {
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 .client-arrow {
-  color: #c0c4cc;
+  color: var(--color-text-placeholder);
 }
 
 /* 响应式 */

@@ -2,7 +2,7 @@
  * 主题管理 Composable
  * 支持浅色、深色和跟随系统三种模式
  */
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 // 主题模式
 const THEME_MODES = {
@@ -20,6 +20,9 @@ const isDark = ref(false)
 
 // 系统偏好
 let mediaQuery = null
+let systemThemeHandler = null
+let hasInitialized = false
+let stopThemeWatcher = null
 
 /**
  * 获取系统主题偏好
@@ -37,42 +40,32 @@ function applyTheme(dark) {
   
   if (typeof window === 'undefined') return
   
-  if (dark) {
-    document.documentElement.classList.add('dark')
-    document.documentElement.setAttribute('data-theme', 'dark')
-  } else {
-    document.documentElement.classList.remove('dark')
-    document.documentElement.setAttribute('data-theme', 'light')
-  }
-  
-  console.log('[Theme] Applied:', dark ? 'dark' : 'light')
+  document.documentElement.classList.toggle('dark', dark)
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+  document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
 }
 
 /**
  * 更新主题
  */
 function updateTheme() {
-  console.log('[Theme] updateTheme called, mode:', themeMode.value)
   if (themeMode.value === THEME_MODES.AUTO) {
-    const systemDark = getSystemPreference()
-    console.log('[Theme] Auto mode, system preference:', systemDark)
-    applyTheme(systemDark)
-  } else {
-    const shouldBeDark = themeMode.value === THEME_MODES.DARK
-    console.log('[Theme] Manual mode, should be dark:', shouldBeDark)
-    applyTheme(shouldBeDark)
+    applyTheme(getSystemPreference())
+    return
   }
+
+  applyTheme(themeMode.value === THEME_MODES.DARK)
 }
 
 /**
  * 监听系统主题变化
  */
 function setupSystemThemeListener() {
-  if (typeof window === 'undefined') return
+  if (typeof window === 'undefined' || systemThemeHandler) return
   
   mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
   
-  const handler = (e) => {
+  systemThemeHandler = (e) => {
     if (themeMode.value === THEME_MODES.AUTO) {
       applyTheme(e.matches)
     }
@@ -80,41 +73,42 @@ function setupSystemThemeListener() {
   
   // 兼容旧版浏览器
   if (mediaQuery.addEventListener) {
-    mediaQuery.addEventListener('change', handler)
+    mediaQuery.addEventListener('change', systemThemeHandler)
   } else {
-    mediaQuery.addListener(handler)
+    mediaQuery.addListener(systemThemeHandler)
   }
+}
+
+function ensureThemeWatcher() {
+  if (stopThemeWatcher) return
+
+  stopThemeWatcher = watch(themeMode, (newMode) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, newMode)
+    }
+    updateTheme()
+  })
+}
+
+function initializeTheme() {
+  if (typeof window === 'undefined' || hasInitialized) return
+
+  const savedTheme = localStorage.getItem(STORAGE_KEY)
+  if (savedTheme && Object.values(THEME_MODES).includes(savedTheme)) {
+    themeMode.value = savedTheme
+  }
+
+  updateTheme()
+  setupSystemThemeListener()
+  ensureThemeWatcher()
+  hasInitialized = true
 }
 
 /**
  * 主题管理 Hook
  */
 export function useTheme() {
-  // 从本地存储加载主题设置
-  if (typeof window !== 'undefined') {
-    const savedTheme = localStorage.getItem(STORAGE_KEY)
-    if (savedTheme && Object.values(THEME_MODES).includes(savedTheme)) {
-      themeMode.value = savedTheme
-    }
-    
-    // 立即应用主题
-    updateTheme()
-    
-    // 监听系统主题变化
-    setupSystemThemeListener()
-  }
-  
-  // 初始化
-  onMounted(() => {
-    // 确保主题已应用
-    updateTheme()
-  })
-  
-  // 监听主题模式变化
-  watch(themeMode, (newMode) => {
-    localStorage.setItem(STORAGE_KEY, newMode)
-    updateTheme()
-  })
+  initializeTheme()
   
   // 计算属性
   const themeModeText = computed(() => {
@@ -144,13 +138,11 @@ export function useTheme() {
   }
   
   function toggleDarkMode() {
-    console.log('[Theme] Toggle dark mode, current isDark:', isDark.value)
     if (isDark.value) {
       themeMode.value = THEME_MODES.LIGHT
     } else {
       themeMode.value = THEME_MODES.DARK
     }
-    console.log('[Theme] New theme mode:', themeMode.value)
   }
   
   return {

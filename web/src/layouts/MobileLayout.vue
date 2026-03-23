@@ -1,5 +1,8 @@
 <template>
-  <div class="mobile-layout">
+  <div
+    class="mobile-layout"
+    :class="{ 'dark-mode': isDarkMode }"
+  >
     <!-- 顶部导航栏 -->
     <header class="mobile-header">
       <div class="header-left">
@@ -30,6 +33,14 @@
             <el-icon><Bell /></el-icon>
           </el-button>
         </el-badge>
+        <el-button
+          link
+          class="header-btn"
+          aria-label="切换主题"
+          @click="toggleTheme"
+        >
+          <el-icon><Sunny v-if="isDarkMode" /><Moon v-else /></el-icon>
+        </el-button>
         <el-dropdown
           trigger="click"
           placement="bottom-end"
@@ -108,15 +119,20 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   ArrowLeft, Bell, MoreFilled, Setting, QuestionFilled,
   SwitchButton, HomeFilled, Connection, Link, Download,
+  Sunny, Moon,
   ChatDotRound, Monitor
 } from '@element-plus/icons-vue'
 import { usePortalAnnouncementsStore } from '@/stores/portalAnnouncements'
 import { useUserPortalStore } from '@/stores/userPortal'
+import { useTheme } from '@/composables/useTheme'
 
 const router = useRouter()
 const route = useRoute()
 const announcementsStore = usePortalAnnouncementsStore()
 const userStore = useUserPortalStore()
+const { isDark, toggleDarkMode } = useTheme()
+
+const isDarkMode = isDark
 
 // 底部导航项
 const tabItems = [
@@ -181,6 +197,10 @@ function goToAnnouncements() {
   router.push('/user/announcements')
 }
 
+function toggleTheme() {
+  toggleDarkMode()
+}
+
 function goToSettings() {
   router.push('/user/settings')
 }
@@ -226,7 +246,9 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--color-bg-page);
+  color: var(--color-text-primary);
+  transition: background-color var(--transition-normal), color var(--transition-normal);
 }
 
 /* 顶部导航栏 */
@@ -240,8 +262,9 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 0 12px;
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  background: var(--color-bg-card);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
   z-index: 100;
 }
 
@@ -254,13 +277,13 @@ onMounted(() => {
 .back-btn {
   padding: 8px;
   font-size: 18px;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .header-title {
   font-size: 17px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .header-right {
@@ -272,13 +295,14 @@ onMounted(() => {
 .header-btn {
   padding: 8px;
   font-size: 20px;
-  color: #606266;
+  color: var(--color-text-regular);
 }
 
 /* 主内容区 */
 .mobile-main {
   flex: 1;
   padding: 50px 0 16px;
+  background: transparent;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -295,8 +319,9 @@ onMounted(() => {
   right: 0;
   height: 60px;
   display: flex;
-  background: #fff;
-  box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.08);
+  background: var(--color-bg-card);
+  border-top: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
   z-index: 100;
   padding-bottom: env(safe-area-inset-bottom);
 }
@@ -308,14 +333,14 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  color: #909399;
+  color: var(--color-text-secondary);
   transition: color 0.3s;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
 .tab-item.active {
-  color: #409eff;
+  color: var(--color-primary);
 }
 
 .tab-icon {
@@ -324,6 +349,11 @@ onMounted(() => {
 
 .tab-label {
   font-size: 11px;
+}
+
+.mobile-layout.dark-mode .mobile-header,
+.mobile-layout.dark-mode .mobile-tabbar {
+  backdrop-filter: blur(18px);
 }
 
 /* 页面切换动画 */

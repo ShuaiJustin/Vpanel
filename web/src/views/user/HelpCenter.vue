@@ -414,7 +414,7 @@ onMounted(() => {
 .results-header h2 {
   font-size: 18px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0;
 }
 
@@ -422,7 +422,7 @@ onMounted(() => {
 .loading-state {
   text-align: center;
   padding: 40px 0;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 .loading-icon {
@@ -444,28 +444,29 @@ onMounted(() => {
 
 .article-item {
   padding: 16px 20px;
-  background: #fff;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
   transition: all 0.3s;
 }
 
 .article-item:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-md);
   transform: translateX(4px);
 }
 
 .article-title {
   font-size: 16px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 8px 0;
 }
 
 .article-summary {
   font-size: 14px;
-  color: #606266;
+  color: var(--color-text-regular);
   margin: 0 0 12px 0;
   line-height: 1.5;
   display: -webkit-box;
@@ -486,7 +487,7 @@ onMounted(() => {
   align-items: center;
   gap: 4px;
   font-size: 13px;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 /* 精选文章 */
@@ -500,7 +501,7 @@ onMounted(() => {
   gap: 8px;
   font-size: 18px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 16px 0;
 }
 
@@ -512,28 +513,29 @@ onMounted(() => {
 
 .featured-card {
   padding: 20px;
-  background: #fff;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
   transition: all 0.3s;
 }
 
 .featured-card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-md);
   transform: translateY(-2px);
 }
 
 .card-title {
   font-size: 15px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 8px 0;
 }
 
 .card-summary {
   font-size: 13px;
-  color: #909399;
+  color: var(--color-text-secondary);
   margin: 0;
   line-height: 1.5;
   display: -webkit-box;
@@ -554,15 +556,16 @@ onMounted(() => {
   display: flex;
   align-items: center;
   padding: 20px;
-  background: #fff;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
   transition: all 0.3s;
 }
 
 .category-card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-md);
   transform: translateX(4px);
 }
 
@@ -570,7 +573,7 @@ onMounted(() => {
   width: 48px;
   height: 48px;
   border-radius: 12px;
-  background: #ecf5ff;
+  background: rgba(64, 158, 255, 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -586,17 +589,17 @@ onMounted(() => {
 .category-name {
   font-size: 16px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 4px 0;
 }
 
 .category-count {
   font-size: 13px;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 .category-arrow {
-  color: #c0c4cc;
+  color: var(--color-text-placeholder);
 }
 
 /* 分类文章 */
@@ -614,7 +617,7 @@ onMounted(() => {
 .category-header h2 {
   font-size: 18px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0;
 }
 
@@ -624,9 +627,10 @@ onMounted(() => {
 }
 
 .popular-list {
-  background: #fff;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
 
@@ -634,7 +638,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   padding: 16px 20px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--color-border);
   cursor: pointer;
   transition: background 0.3s;
 }
@@ -644,20 +648,20 @@ onMounted(() => {
 }
 
 .popular-item:hover {
-  background: #f5f7fa;
+  background: var(--color-border-light);
 }
 
 .popular-rank {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: #f5f7fa;
+  background: var(--color-border-light);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 12px;
   font-weight: 600;
-  color: #909399;
+  color: var(--color-text-secondary);
   margin-right: 12px;
 }
 
@@ -679,13 +683,13 @@ onMounted(() => {
 .popular-title {
   flex: 1;
   font-size: 14px;
-  color: #303133;
+  color: var(--color-text-primary);
   min-width: 0;
 }
 
 .popular-views {
   font-size: 13px;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 /* 联系支持 */
@@ -702,13 +706,13 @@ onMounted(() => {
 .support-info h3 {
   font-size: 16px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 4px 0;
 }
 
 .support-info p {
   font-size: 14px;
-  color: #909399;
+  color: var(--color-text-secondary);
   margin: 0;
 }
 

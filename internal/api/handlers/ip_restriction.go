@@ -22,6 +22,11 @@ type IPRestrictionHandler struct {
 	ipService *ip.Service
 }
 
+type ipCountryStat struct {
+	Country string `json:"country" gorm:"column:country"`
+	Count   int64  `json:"count" gorm:"column:count"`
+}
+
 // NewIPRestrictionHandler creates a new IPRestrictionHandler.
 func NewIPRestrictionHandler(log logger.Logger, ipService *ip.Service) *IPRestrictionHandler {
 	return &IPRestrictionHandler{
@@ -150,6 +155,9 @@ func (h *IPRestrictionHandler) GetStats(c *gin.Context) {
 	var totalActiveIPs int64
 	var totalBlacklisted int64
 	var totalWhitelisted int64
+	var blockedToday int64
+	var suspiciousCount int64
+	countryStats := make([]ipCountryStat, 0)
 
 	db := tracker.GetDB()
 	if db == nil {
@@ -160,6 +168,19 @@ func (h *IPRestrictionHandler) GetStats(c *gin.Context) {
 			"error":   "Database connection failed",
 		})
 		return
+	}
+
+	timeout := time.Duration(h.ipService.GetSettings().InactiveTimeout) * time.Minute
+	if timeout > 0 {
+		if _, err := tracker.CleanupInactiveIPs(ctx, timeout); err != nil {
+			h.logger.Warn("Failed to cleanup inactive IPs before stats", logger.Err(err))
+		}
+	}
+
+	if validator := h.ipService.Validator(); validator != nil {
+		if _, err := validator.CleanupExpiredBlacklist(ctx); err != nil {
+			h.logger.Warn("Failed to cleanup expired blacklist entries before stats", logger.Err(err))
+		}
 	}
 
 	if err := db.WithContext(ctx).Model(&ip.ActiveIP{}).Count(&totalActiveIPs).Error; err != nil {
@@ -192,6 +213,36 @@ func (h *IPRestrictionHandler) GetStats(c *gin.Context) {
 		activeUsers = 0
 	}
 
+	startOfDay := time.Now().In(time.Local)
+	startOfDay = time.Date(startOfDay.Year(), startOfDay.Month(), startOfDay.Day(), 0, 0, 0, 0, startOfDay.Location())
+
+	if err := db.WithContext(ctx).
+		Model(&ip.FailedAttempt{}).
+		Where("created_at >= ?", startOfDay).
+		Count(&blockedToday).Error; err != nil {
+		h.logger.Error("Failed to count blocked attempts", logger.Err(err))
+		blockedToday = 0
+	}
+
+	if err := db.WithContext(ctx).
+		Model(&ip.IPHistory{}).
+		Where("is_suspicious = ?", true).
+		Count(&suspiciousCount).Error; err != nil {
+		h.logger.Error("Failed to count suspicious activities", logger.Err(err))
+		suspiciousCount = 0
+	}
+
+	if err := db.WithContext(ctx).
+		Model(&ip.ActiveIP{}).
+		Select("country, COUNT(*) AS count").
+		Where("country <> ''").
+		Group("country").
+		Order("COUNT(*) DESC").
+		Scan(&countryStats).Error; err != nil {
+		h.logger.Error("Failed to aggregate active IP countries", logger.Err(err))
+		countryStats = make([]ipCountryStat, 0)
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "success",
@@ -200,9 +251,9 @@ func (h *IPRestrictionHandler) GetStats(c *gin.Context) {
 			"total_blacklisted": totalBlacklisted,
 			"total_whitelisted": totalWhitelisted,
 			"active_users":      activeUsers,
-			"blocked_today":     0,               // TODO: 实现今日拦截统计
-			"suspicious_count":  0,               // TODO: 实现可疑活动统计
-			"country_stats":     []interface{}{}, // TODO: 实现国家统计
+			"blocked_today":     blockedToday,
+			"suspicious_count":  suspiciousCount,
+			"country_stats":     countryStats,
 			"settings":          h.ipService.GetSettings(),
 		},
 	})
@@ -242,6 +293,13 @@ func (h *IPRestrictionHandler) GetAllOnlineIPs(c *gin.Context) {
 			"message": "Database service is not available",
 		})
 		return
+	}
+
+	timeout := time.Duration(h.ipService.GetSettings().InactiveTimeout) * time.Minute
+	if timeout > 0 {
+		if _, err := tracker.CleanupInactiveIPs(ctx, timeout); err != nil {
+			h.logger.Warn("Failed to cleanup inactive IPs before listing online IPs", logger.Err(err))
+		}
 	}
 
 	var activeIPs []ip.ActiveIP
@@ -774,6 +832,21 @@ func (h *IPRestrictionHandler) GetUserDevices(c *gin.Context) {
 		return
 	}
 
+	currentIP := c.ClientIP()
+	devices := make([]gin.H, len(onlineIPs))
+	for i, onlineIP := range onlineIPs {
+		devices[i] = gin.H{
+			"ip":          onlineIP.IP,
+			"user_agent":  onlineIP.UserAgent,
+			"device_type": onlineIP.DeviceType,
+			"country":     onlineIP.Country,
+			"city":        onlineIP.City,
+			"last_active": onlineIP.LastActive,
+			"created_at":  onlineIP.CreatedAt,
+			"is_current":  onlineIP.IP == currentIP,
+		}
+	}
+
 	maxDevices := h.resolveUserMaxConcurrentIPsWithContext(ctx, userID)
 	if maxDevices < 0 {
 		maxDevices = h.ipService.GetSettings().DefaultMaxConcurrentIPs
@@ -790,9 +863,10 @@ func (h *IPRestrictionHandler) GetUserDevices(c *gin.Context) {
 		"code":    200,
 		"message": "success",
 		"data": gin.H{
-			"devices":         onlineIPs,
+			"devices":         devices,
 			"max_devices":     maxDevices,
 			"current_count":   len(onlineIPs),
+			"current_ip":      currentIP,
 			"remaining_slots": remainingSlots,
 		},
 	})
@@ -828,6 +902,10 @@ func (h *IPRestrictionHandler) KickUserDevice(c *gin.Context) {
 	ipAddr := c.Param("ip")
 	if ipAddr == "" {
 		middleware.RespondWithError(c, errors.NewValidationError("IP address is required", nil))
+		return
+	}
+	if ipAddr == c.ClientIP() {
+		middleware.RespondWithError(c, errors.NewValidationError("current device cannot be kicked", nil))
 		return
 	}
 
@@ -931,7 +1009,7 @@ func (h *IPRestrictionHandler) GetUserIPHistory(c *gin.Context) {
 		Offset: offset,
 	}
 
-	history, err := h.ipService.Tracker().GetIPHistory(ctx, uint(userID), filter)
+	history, total, err := h.ipService.Tracker().GetAggregatedIPHistory(ctx, uint(userID), filter.Limit, filter.Offset)
 	if err != nil {
 		h.logger.Error("Failed to get IP history", logger.F("error", err), logger.F("user_id", userID))
 		middleware.RespondWithError(c, errors.NewDatabaseError("get IP history", err))
@@ -941,7 +1019,10 @@ func (h *IPRestrictionHandler) GetUserIPHistory(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "success",
-		"data":    history,
+		"data": gin.H{
+			"list":  history,
+			"total": total,
+		},
 	})
 }
 

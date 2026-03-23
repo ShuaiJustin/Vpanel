@@ -58,12 +58,21 @@ func NewService(cfg Config) *Service {
 
 // GenerateToken generates a JWT token for a user.
 func (s *Service) GenerateToken(userID int64, username, role string) (string, error) {
+	return s.GenerateTokenWithExpiry(userID, username, role, s.config.TokenExpiry)
+}
+
+// GenerateTokenWithExpiry generates a JWT token for a user with a custom expiry.
+func (s *Service) GenerateTokenWithExpiry(userID int64, username, role string, expiry time.Duration) (string, error) {
+	if expiry <= 0 {
+		expiry = s.config.TokenExpiry
+	}
+
 	claims := &Claims{
 		UserID:   userID,
 		Username: username,
 		Role:     role,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(s.config.TokenExpiry)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(expiry)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			Subject:   username,
 		},
@@ -71,6 +80,11 @@ func (s *Service) GenerateToken(userID int64, username, role string) (string, er
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(s.config.JWTSecret))
+}
+
+// TokenExpiry returns the configured access token expiry duration.
+func (s *Service) TokenExpiry() time.Duration {
+	return s.config.TokenExpiry
 }
 
 // GenerateRefreshToken generates a refresh token for a user.

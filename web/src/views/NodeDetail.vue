@@ -506,12 +506,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Refresh, View, Hide, CopyDocument } from '@element-plus/icons-vue'
 import { useNodeStore } from '@/stores/node'
-import { nodeGroupsApi } from '@/api'
+import { nodeGroupsApi, usersApi } from '@/api'
 import { useViewport } from '@/composables/useViewport'
 
 const route = useRoute()
@@ -632,6 +632,56 @@ const parseTags = (tags) => {
   return []
 }
 
+const normalizeTrafficStats = (response) => {
+  const stats = response?.stats || response?.data?.stats || response?.data || response || {}
+  return {
+    upload: Number(stats.upload) || 0,
+    download: Number(stats.download) || 0
+  }
+}
+
+const normalizeTopUsers = (response) => {
+  const rows = response?.top_users || response?.data?.top_users || response?.users || response?.data?.users || []
+  if (!Array.isArray(rows)) return []
+
+  return rows.map((row) => ({
+    user_id: row.user_id,
+    username: row.username || '',
+    upload: Number(row.upload) || 0,
+    download: Number(row.download) || 0
+  }))
+}
+
+const fillTopUsernames = async (rows) => {
+  const userIds = [...new Set(
+    rows
+      .filter((row) => row.user_id && !row.username)
+      .map((row) => row.user_id)
+  )]
+
+  if (!userIds.length) {
+    return rows.map((row) => ({
+      ...row,
+      username: row.username || `用户 #${row.user_id}`
+    }))
+  }
+
+  const usernames = new Map()
+  await Promise.all(userIds.map(async (userId) => {
+    try {
+      const user = await usersApi.get(userId)
+      usernames.set(userId, user?.username || `用户 #${userId}`)
+    } catch {
+      usernames.set(userId, `用户 #${userId}`)
+    }
+  }))
+
+  return rows.map((row) => ({
+    ...row,
+    username: row.username || usernames.get(row.user_id) || `用户 #${row.user_id}`
+  }))
+}
+
 const getTimeRange = () => {
   const now = new Date()
   let start
@@ -661,9 +711,10 @@ const fetchTraffic = async () => {
   try {
     const { start, end } = getTimeRange()
     const res = await nodeStore.getNodeTraffic(node.value.id, { start, end })
-    trafficStats.value = res || { upload: 0, download: 0 }
+    trafficStats.value = normalizeTrafficStats(res)
   } catch (e) {
     console.error('获取流量统计失败:', e)
+    trafficStats.value = { upload: 0, download: 0 }
   }
 }
 
@@ -672,9 +723,10 @@ const fetchTopUsers = async () => {
   try {
     const { start, end } = getTimeRange()
     const res = await nodeStore.getTopUsers(node.value.id, { limit: 10, start, end })
-    topUsers.value = res?.users || []
+    topUsers.value = await fillTopUsernames(normalizeTopUsers(res))
   } catch (e) {
     console.error('获取 Top 用户失败:', e)
+    topUsers.value = []
   }
 }
 
@@ -832,9 +884,22 @@ const copyToken = async () => {
 }
 
 onMounted(async () => {
-  await fetchNode()
-  await Promise.all([fetchTraffic(), fetchTopUsers(), fetchNodeGroups()])
+  await refreshData()
 })
+
+watch(
+  () => route.params.id,
+  async (newId, oldId) => {
+    if (!newId || newId === oldId) return
+    currentToken.value = ''
+    newToken.value = ''
+    showToken.value = false
+    trafficStats.value = { upload: 0, download: 0 }
+    topUsers.value = []
+    nodeGroups.value = []
+    await refreshData()
+  }
+)
 </script>
 
 <style scoped>

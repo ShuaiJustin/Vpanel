@@ -189,6 +189,8 @@ const handleCommand = async (command) => {
 <style scoped>
 .layout-container {
   height: 100vh;
+  background: var(--color-bg-page);
+  color: var(--color-text-primary);
 }
 
 .aside {
@@ -218,8 +220,8 @@ const handleCommand = async (command) => {
 }
 
 .header {
-  background-color: #fff;
-  border-bottom: 1px solid #dcdfe6;
+  background-color: var(--color-bg-card);
+  border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -235,7 +237,7 @@ const handleCommand = async (command) => {
   display: flex;
   align-items: center;
   cursor: pointer;
-  color: #606266;
+  color: var(--color-text-regular);
 }
 
 .user-dropdown .el-icon {
@@ -243,7 +245,7 @@ const handleCommand = async (command) => {
 }
 
 .el-main {
-  background-color: #f0f2f5;
+  background-color: var(--color-bg-page);
   padding: 20px;
 }
 </style> 

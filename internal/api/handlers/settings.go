@@ -76,6 +76,12 @@ type UpdateSettingsRequest struct {
 	AllowRegistration   *bool   `json:"allow_registration"`
 	DefaultTrafficLimit *int64  `json:"default_traffic_limit"`
 	DefaultExpiryDays   *int    `json:"default_expiry_days"`
+	SessionTimeout      *int    `json:"session_timeout"`
+	EnableIPWhitelist   *bool   `json:"enable_ip_whitelist"`
+	IPWhitelist         *string `json:"ip_whitelist"`
+	EnableLoginLock     *bool   `json:"enable_login_lock"`
+	MaxLoginAttempts    *int    `json:"max_login_attempts"`
+	LockDuration        *int    `json:"lock_duration"`
 
 	// Panel settings
 	PanelAccessIP  *string `json:"panel_access_ip"`
@@ -155,6 +161,24 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 	}
 	if req.DefaultExpiryDays != nil {
 		currentSettings.DefaultExpiryDays = *req.DefaultExpiryDays
+	}
+	if req.SessionTimeout != nil {
+		currentSettings.SessionTimeout = *req.SessionTimeout
+	}
+	if req.EnableIPWhitelist != nil {
+		currentSettings.EnableIPWhitelist = *req.EnableIPWhitelist
+	}
+	if req.IPWhitelist != nil {
+		currentSettings.IPWhitelist = strings.TrimSpace(*req.IPWhitelist)
+	}
+	if req.EnableLoginLock != nil {
+		currentSettings.EnableLoginLock = *req.EnableLoginLock
+	}
+	if req.MaxLoginAttempts != nil {
+		currentSettings.MaxLoginAttempts = *req.MaxLoginAttempts
+	}
+	if req.LockDuration != nil {
+		currentSettings.LockDuration = *req.LockDuration
 	}
 	// Panel settings
 	if req.PanelAccessIP != nil {
@@ -251,6 +275,42 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 	currentSettings.SMTPPasswordConfigured = strings.TrimSpace(currentSettings.SMTPPassword) != ""
 	currentSettings.PaymentAlipayPrivateKeyConfigured = strings.TrimSpace(currentSettings.PaymentAlipayPrivateKey) != ""
 	currentSettings.PaymentWeChatAPIKeyConfigured = strings.TrimSpace(currentSettings.PaymentWeChatAPIKey) != ""
+
+	if currentSettings.SessionTimeout <= 0 {
+		middleware.RespondWithError(c, errors.NewValidationError("invalid settings", map[string]interface{}{
+			"session_timeout": "session timeout must be greater than 0 minutes",
+		}))
+		return
+	}
+
+	if err := validateIPWhitelist(currentSettings.IPWhitelist); err != nil {
+		middleware.RespondWithError(c, errors.NewValidationError("invalid settings", map[string]interface{}{
+			"ip_whitelist": err.Error(),
+		}))
+		return
+	}
+
+	if currentSettings.EnableIPWhitelist && len(splitIPWhitelist(currentSettings.IPWhitelist)) == 0 {
+		middleware.RespondWithError(c, errors.NewValidationError("invalid settings", map[string]interface{}{
+			"ip_whitelist": "at least one IP or CIDR entry is required when IP whitelist is enabled",
+		}))
+		return
+	}
+
+	if currentSettings.EnableLoginLock {
+		if currentSettings.MaxLoginAttempts <= 0 {
+			middleware.RespondWithError(c, errors.NewValidationError("invalid settings", map[string]interface{}{
+				"max_login_attempts": "max login attempts must be greater than 0",
+			}))
+			return
+		}
+		if currentSettings.LockDuration <= 0 {
+			middleware.RespondWithError(c, errors.NewValidationError("invalid settings", map[string]interface{}{
+				"lock_duration": "lock duration must be greater than 0 minutes",
+			}))
+			return
+		}
+	}
 
 	if h.validateHook != nil {
 		if err := h.validateHook(ctx, currentSettings); err != nil {

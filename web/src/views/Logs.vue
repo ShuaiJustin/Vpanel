@@ -27,7 +27,7 @@
           @click="showCleanupDialog"
         >
           <el-icon><Delete /></el-icon>
-          清理
+          清理过期
         </el-button>
       </div>
     </div>
@@ -299,7 +299,7 @@
     <!-- 清理对话框 -->
     <el-dialog
       v-model="cleanupDialogVisible"
-      title="清理日志"
+      title="清理过期日志"
       :width="compactDialogWidth"
     >
       <el-form
@@ -314,13 +314,16 @@
           />
           <span style="margin-left: 10px; color: #909399;">天</span>
         </el-form-item>
+        <div class="cleanup-note">
+          仅删除早于该保留天数的旧日志，不会清空最近产生的访问记录。
+        </div>
         <el-alert
           type="warning"
           :closable="false"
           show-icon
           style="margin-top: 10px"
         >
-          此操作将删除 {{ cleanupForm.retentionDays }} 天前的所有日志，不可恢复！
+          此操作将删除 {{ cleanupForm.retentionDays }} 天前的所有日志，不可恢复。清理完成后，日志页面仍会继续显示新产生的访问和操作记录。
         </el-alert>
       </el-form>
       <template #footer>
@@ -558,7 +561,7 @@ const handleCleanup = async () => {
 
     const deletedCount = Number(response.deleted_count ?? response.deleted ?? 0)
 
-    ElMessage.success(`清理完成，共删除 ${deletedCount} 条日志`)
+    ElMessage.success(`清理完成，已删除 ${cleanupForm.retentionDays} 天前的 ${deletedCount} 条旧日志。页面仍会显示新产生的日志记录。`)
     cleanupDialogVisible.value = false
     await fetchLogs()
   } catch (error) {
@@ -739,6 +742,12 @@ const formatDateTime = (dateStr) => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.cleanup-note {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #909399;
 }
 
 .log-detail-text {

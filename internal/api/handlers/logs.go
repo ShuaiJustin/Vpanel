@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/csv"
 	"errors"
 	"fmt"
@@ -28,6 +29,17 @@ type cleanupLogsRequest struct {
 	Days          *int `json:"days"`
 }
 
+type logFilterRequest struct {
+	Level     string `json:"level"`
+	MinLevel  string `json:"min_level"`
+	Source    string `json:"source"`
+	UserID    *int64 `json:"user_id"`
+	StartTime string `json:"start_time"`
+	EndTime   string `json:"end_time"`
+	Keyword   string `json:"keyword"`
+	RequestID string `json:"request_id"`
+}
+
 // NewLogHandler creates a new log handler.
 func NewLogHandler(service *log.Service, log logger.Logger) *LogHandler {
 	return &LogHandler{
@@ -39,38 +51,7 @@ func NewLogHandler(service *log.Service, log logger.Logger) *LogHandler {
 // ListLogs retrieves logs with filtering and pagination.
 // GET /api/logs
 func (h *LogHandler) ListLogs(c *gin.Context) {
-	filter := &repository.LogFilter{}
-
-	if level := c.Query("level"); level != "" {
-		filter.Level = level
-	}
-	if minLevel := c.Query("min_level"); minLevel != "" {
-		filter.MinLevel = minLevel
-	}
-	if source := c.Query("source"); source != "" {
-		filter.Source = source
-	}
-	if userID := c.Query("user_id"); userID != "" {
-		if id, err := strconv.ParseInt(userID, 10, 64); err == nil {
-			filter.UserID = &id
-		}
-	}
-	if startTime := c.Query("start_time"); startTime != "" {
-		if t, err := time.Parse(time.RFC3339, startTime); err == nil {
-			filter.StartTime = &t
-		}
-	}
-	if endTime := c.Query("end_time"); endTime != "" {
-		if t, err := time.Parse(time.RFC3339, endTime); err == nil {
-			filter.EndTime = &t
-		}
-	}
-	if keyword := c.Query("keyword"); keyword != "" {
-		filter.Keyword = keyword
-	}
-	if requestID := c.Query("request_id"); requestID != "" {
-		filter.RequestID = requestID
-	}
+	filter := buildLogFilter(c, nil)
 
 	// Support both page/page_size and limit/offset
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -141,24 +122,13 @@ func (h *LogHandler) GetLog(c *gin.Context) {
 // DeleteLogs deletes logs matching the filter.
 // DELETE /api/logs
 func (h *LogHandler) DeleteLogs(c *gin.Context) {
-	filter := &repository.LogFilter{}
+	var req logFilterRequest
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid log filter"})
+		return
+	}
 
-	if level := c.Query("level"); level != "" {
-		filter.Level = level
-	}
-	if source := c.Query("source"); source != "" {
-		filter.Source = source
-	}
-	if startTime := c.Query("start_time"); startTime != "" {
-		if t, err := time.Parse(time.RFC3339, startTime); err == nil {
-			filter.StartTime = &t
-		}
-	}
-	if endTime := c.Query("end_time"); endTime != "" {
-		if t, err := time.Parse(time.RFC3339, endTime); err == nil {
-			filter.EndTime = &t
-		}
-	}
+	filter := buildLogFilter(c, &req)
 
 	deleted, err := h.service.Delete(c.Request.Context(), filter)
 	if err != nil {
@@ -204,29 +174,10 @@ func (h *LogHandler) Cleanup(c *gin.Context) {
 // ExportLogs exports logs in JSON or CSV format.
 // GET /api/logs/export
 func (h *LogHandler) ExportLogs(c *gin.Context) {
-	filter := &repository.LogFilter{}
-
-	if level := c.Query("level"); level != "" {
-		filter.Level = level
-	}
-	if source := c.Query("source"); source != "" {
-		filter.Source = source
-	}
-	if startTime := c.Query("start_time"); startTime != "" {
-		if t, err := time.Parse(time.RFC3339, startTime); err == nil {
-			filter.StartTime = &t
-		}
-	}
-	if endTime := c.Query("end_time"); endTime != "" {
-		if t, err := time.Parse(time.RFC3339, endTime); err == nil {
-			filter.EndTime = &t
-		}
-	}
+	filter := buildLogFilter(c, nil)
 
 	format := c.DefaultQuery("format", "json")
-	limit := 10000
-
-	logs, _, err := h.service.Query(c.Request.Context(), filter, limit, 0)
+	logs, err := h.loadLogsForExport(c.Request.Context(), filter)
 	if err != nil {
 		h.logger.Error("failed to export logs", logger.F("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to export logs"})
@@ -318,4 +269,95 @@ func validateCleanupRetentionDays(days int) (int, error) {
 	}
 
 	return days, nil
+}
+
+func buildLogFilter(c *gin.Context, req *logFilterRequest) *repository.LogFilter {
+	filter := &repository.LogFilter{}
+
+	if level := resolveFilterString(c.Query("level"), reqValue(req, func(v *logFilterRequest) string { return v.Level })); level != "" {
+		filter.Level = level
+	}
+	if minLevel := resolveFilterString(c.Query("min_level"), reqValue(req, func(v *logFilterRequest) string { return v.MinLevel })); minLevel != "" {
+		filter.MinLevel = minLevel
+	}
+	if source := resolveFilterString(c.Query("source"), reqValue(req, func(v *logFilterRequest) string { return v.Source })); source != "" {
+		filter.Source = source
+	}
+	if keyword := resolveFilterString(c.Query("keyword"), reqValue(req, func(v *logFilterRequest) string { return v.Keyword })); keyword != "" {
+		filter.Keyword = keyword
+	}
+	if requestID := resolveFilterString(c.Query("request_id"), reqValue(req, func(v *logFilterRequest) string { return v.RequestID })); requestID != "" {
+		filter.RequestID = requestID
+	}
+	if userID := reqUserID(req); userID != nil {
+		filter.UserID = userID
+	} else if userID := strings.TrimSpace(c.Query("user_id")); userID != "" {
+		if id, err := strconv.ParseInt(userID, 10, 64); err == nil {
+			filter.UserID = &id
+		}
+	}
+	if startTime := resolveFilterString(c.Query("start_time"), reqValue(req, func(v *logFilterRequest) string { return v.StartTime })); startTime != "" {
+		if t, err := time.Parse(time.RFC3339, startTime); err == nil {
+			filter.StartTime = &t
+		}
+	}
+	if endTime := resolveFilterString(c.Query("end_time"), reqValue(req, func(v *logFilterRequest) string { return v.EndTime })); endTime != "" {
+		if t, err := time.Parse(time.RFC3339, endTime); err == nil {
+			filter.EndTime = &t
+		}
+	}
+
+	return filter
+}
+
+func resolveFilterString(queryValue, requestValue string) string {
+	if value := strings.TrimSpace(requestValue); value != "" {
+		return value
+	}
+	return strings.TrimSpace(queryValue)
+}
+
+func reqValue(req *logFilterRequest, getter func(*logFilterRequest) string) string {
+	if req == nil {
+		return ""
+	}
+	return getter(req)
+}
+
+func reqUserID(req *logFilterRequest) *int64 {
+	if req == nil || req.UserID == nil {
+		return nil
+	}
+	return req.UserID
+}
+
+func (h *LogHandler) loadLogsForExport(ctx context.Context, filter *repository.LogFilter) ([]*repository.Log, error) {
+	const exportBatchSize = 2000
+
+	logs, total, err := h.service.Query(ctx, filter, exportBatchSize, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	if total <= int64(len(logs)) {
+		return logs, nil
+	}
+
+	allLogs := make([]*repository.Log, 0, total)
+	allLogs = append(allLogs, logs...)
+
+	for offset := len(allLogs); int64(offset) < total; {
+		batch, _, err := h.service.Query(ctx, filter, exportBatchSize, offset)
+		if err != nil {
+			return nil, err
+		}
+		if len(batch) == 0 {
+			break
+		}
+
+		allLogs = append(allLogs, batch...)
+		offset += len(batch)
+	}
+
+	return allLogs, nil
 }
