@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"v/internal/database/repository"
+	proxylib "v/internal/proxy"
 )
 
 // FormatGenerator defines the interface for subscription format generators.
@@ -75,13 +76,7 @@ func ExtractProxyInfo(proxy *repository.Proxy) *ProxyInfo {
 		name = proxy.Remark
 	}
 
-	server := proxy.Host
-	if server == "" {
-		// Try to get from settings
-		if s, ok := proxy.Settings["server"].(string); ok {
-			server = s
-		}
-	}
+	server := proxylib.ResolveServerAddress(proxy.Host, proxy.Settings)
 
 	return &ProxyInfo{
 		Name:     name,
@@ -149,12 +144,12 @@ func settingAliases(key string) []string {
 // MakeUniqueNames ensures all proxy names are unique by appending suffixes if needed.
 func MakeUniqueNames(proxies []*ProxyInfo) {
 	nameCount := make(map[string]int)
-	
+
 	// First pass: count occurrences
 	for _, p := range proxies {
 		nameCount[p.Name]++
 	}
-	
+
 	// Second pass: rename duplicates
 	nameIndex := make(map[string]int)
 	for _, p := range proxies {

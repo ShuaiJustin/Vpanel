@@ -89,7 +89,7 @@ function handleClick(action) {
 }
 
 .action-item:hover {
-  background: #f5f7fa;
+  background: var(--color-bg-page);
 }
 
 .action-item.disabled {

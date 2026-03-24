@@ -1181,7 +1181,7 @@ onUnmounted(() => {
 }
 
 .metric-card {
-  background: #fff;
+  background: var(--color-bg-card);
 }
 
 .metric-card--good {
@@ -1357,7 +1357,7 @@ onUnmounted(() => {
   padding: 18px;
   border-radius: 20px;
   border: 1px solid rgba(148, 163, 184, 0.14);
-  background: #fff;
+  background: var(--color-bg-card);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
@@ -1484,7 +1484,7 @@ onUnmounted(() => {
   padding: 16px;
   border-radius: 18px;
   border: 1px solid rgba(148, 163, 184, 0.14);
-  background: #fff;
+  background: var(--color-bg-card);
   cursor: pointer;
   transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }

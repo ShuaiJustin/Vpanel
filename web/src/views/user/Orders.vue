@@ -376,7 +376,7 @@ onMounted(() => {
 .page-title {
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 8px 0;
 }
 
@@ -404,7 +404,7 @@ onMounted(() => {
 
 .price {
   font-weight: 500;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .discount {

@@ -411,7 +411,7 @@ onUnmounted(() => {
 .page-title {
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 8px;
 }
 
@@ -452,7 +452,7 @@ onUnmounted(() => {
   padding: 18px 14px;
   border: 1px solid #dbe3f0;
   border-radius: 14px;
-  background: #fff;
+  background: var(--color-bg-card);
   cursor: pointer;
   transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
@@ -502,7 +502,7 @@ onUnmounted(() => {
 .qr-code {
   display: inline-flex;
   padding: 16px;
-  background: #fff;
+  background: var(--color-bg-card);
   border-radius: 16px;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 }

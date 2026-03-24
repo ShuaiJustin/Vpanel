@@ -206,7 +206,7 @@ const acceptAndClose = () => {
   max-width: 900px;
   margin: 0 auto;
   padding: 40px 20px;
-  background: #fff;
+  background: var(--color-bg-card);
   min-height: 100vh;
   box-sizing: border-box;
 }
@@ -215,23 +215,23 @@ const acceptAndClose = () => {
   text-align: center;
   margin-bottom: 40px;
   padding-bottom: 20px;
-  border-bottom: 2px solid #e0e0e0;
+  border-bottom: 2px solid var(--color-border);
 }
 
 .privacy-header h1 {
   font-size: 32px;
-  color: #333;
+  color: var(--color-text-primary);
   margin-bottom: 10px;
 }
 
 .update-time {
-  color: #666;
+  color: var(--color-text-secondary);
   font-size: 14px;
 }
 
 .privacy-content {
   line-height: 1.8;
-  color: #333;
+  color: var(--color-text-primary);
   overflow-wrap: anywhere;
   word-break: break-word;
 }
@@ -242,15 +242,15 @@ const acceptAndClose = () => {
 
 .privacy-content h2 {
   font-size: 24px;
-  color: #333;
+  color: var(--color-text-primary);
   margin-bottom: 15px;
   padding-bottom: 10px;
-  border-bottom: 1px solid #e0e0e0;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .privacy-content h3 {
   font-size: 18px;
-  color: #555;
+  color: var(--color-text-regular);
   margin: 20px 0 10px;
 }
 
@@ -270,7 +270,7 @@ const acceptAndClose = () => {
 }
 
 .privacy-content .highlight {
-  background: #fff3e0;
+  background: rgba(230, 162, 60, 0.12);
   padding: 20px;
   border-left: 4px solid #ff9800;
   border-radius: 4px;
@@ -285,7 +285,7 @@ const acceptAndClose = () => {
 .privacy-footer {
   margin-top: 40px;
   padding-top: 20px;
-  border-top: 2px solid #e0e0e0;
+  border-top: 2px solid var(--color-border);
   display: flex;
   justify-content: center;
   gap: 12px;

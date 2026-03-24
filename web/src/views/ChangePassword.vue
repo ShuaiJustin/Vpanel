@@ -307,7 +307,7 @@ const resetForm = () => {
 .page-title {
   font-size: 24px;
   margin: 0 0 8px;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .page-subtitle {

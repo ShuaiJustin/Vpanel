@@ -389,7 +389,7 @@ const loadRealConfig = () => {
 <style scoped>
 .test-page-container {
   padding: 20px;
-  background-color: #f5f7fa;
+  background-color: var(--color-bg-page);
   min-height: 100vh;
 }
 
@@ -400,7 +400,7 @@ const loadRealConfig = () => {
 .title {
   font-size: 22px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .test-card {

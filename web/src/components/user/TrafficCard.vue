@@ -169,7 +169,7 @@ function formatDate(dateStr) {
 .progress-value {
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .progress-label {
@@ -199,7 +199,7 @@ function formatDate(dateStr) {
 
 .detail-value {
   font-weight: 500;
-  color: #303133;
+  color: var(--color-text-primary);
   font-size: 14px;
 }
 

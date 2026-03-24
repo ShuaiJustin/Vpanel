@@ -54,6 +54,42 @@ func TestGenerateLink_UsesTLSDomainAsServerAddress(t *testing.T) {
 	}
 }
 
+func TestGenerateLink_PrefersSNIOverIPWhenTLSEnabled(t *testing.T) {
+	protocol := New()
+	settings := &proxy.Settings{
+		Name: "test",
+		Host: "64.176.54.36",
+		Port: 443,
+		Settings: map[string]any{
+			"uuid":        "12345678-1234-1234-1234-123456789012",
+			"security":    "tls",
+			"server":      "64.176.54.36",
+			"server_name": "vpn.example.com",
+			"tls_domain":  "vpn.example.com",
+		},
+	}
+
+	link, err := protocol.GenerateLink(settings)
+	if err != nil {
+		t.Fatalf("GenerateLink returned error: %v", err)
+	}
+
+	encoded := link[len("vmess://"):]
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		t.Fatalf("failed to decode vmess link: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(decoded, &payload); err != nil {
+		t.Fatalf("failed to parse vmess payload: %v", err)
+	}
+
+	if payload["add"] != "vpn.example.com" {
+		t.Fatalf("expected add to prefer sni vpn.example.com, got %v", payload["add"])
+	}
+}
+
 func TestParseLink_AcceptsStringPortAndAid(t *testing.T) {
 	protocol := New()
 	payload := map[string]any{

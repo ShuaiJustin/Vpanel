@@ -330,7 +330,7 @@ onMounted(() => {
 .status-info h4 {
   margin: 0 0 4px 0;
   font-size: 16px;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .status-info p {
@@ -344,7 +344,7 @@ onMounted(() => {
   flex-wrap: wrap;
   gap: 16px;
   padding: 12px 16px;
-  background: #f5f7fa;
+  background: var(--color-bg-page);
   border-radius: 8px;
 }
 
@@ -363,7 +363,7 @@ onMounted(() => {
 .detail-item .value {
   font-size: 14px;
   font-weight: 500;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .traffic-progress {
@@ -375,7 +375,7 @@ onMounted(() => {
   flex-direction: column;
   gap: 8px;
   padding: 12px 16px;
-  background: #f5f7fa;
+  background: var(--color-bg-page);
   border-radius: 8px;
 }
 

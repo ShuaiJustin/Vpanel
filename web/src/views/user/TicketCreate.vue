@@ -271,7 +271,7 @@ async function submitTicket() {
 .card-title {
   font-size: 18px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0;
 }
 

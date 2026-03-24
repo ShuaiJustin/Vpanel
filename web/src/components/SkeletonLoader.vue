@@ -233,7 +233,7 @@ const getRandomWidth = () => {
 
 /* 卡片骨架 */
 .skeleton-card {
-  background: #fff;
+  background: var(--color-bg-card);
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 16px;
@@ -256,7 +256,7 @@ const getRandomWidth = () => {
   width: 100%;
   border-radius: 8px;
   overflow: hidden;
-  background: #fff;
+  background: var(--color-bg-card);
 }
 
 .skeleton-table-header {
@@ -299,7 +299,7 @@ const getRandomWidth = () => {
   align-items: center;
   gap: 16px;
   padding: 20px;
-  background: #fff;
+  background: var(--color-bg-card);
   border-radius: 8px;
   margin-bottom: 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
@@ -315,7 +315,7 @@ const getRandomWidth = () => {
 
 /* 图表骨架 */
 .skeleton-chart {
-  background: #fff;
+  background: var(--color-bg-card);
   border-radius: 8px;
   padding: 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);

@@ -464,7 +464,7 @@ const loadRealConfig = () => {
 .page-title {
   text-align: center;
   margin-bottom: 24px;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .config-card,

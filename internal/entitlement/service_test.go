@@ -331,6 +331,35 @@ func TestGetAccessibleProxies_DoesNotShareAutoProvisionedUserProxy(t *testing.T)
 	}
 }
 
+func TestGetAccessibleProxies_AutoProvisionedTLSDefaultsToVLESSWhenNodeProtocolsEmpty(t *testing.T) {
+	service, db := setupTestService(t)
+	user := createTestUser(t, db, "tls-default-vless-user")
+	node := createTestNode(t, db, "tls-default-vless-node")
+	node.Protocols = "[]"
+	node.TLSEnabled = true
+	node.TLSDomain = "panel.example.com"
+	if err := db.Save(node).Error; err != nil {
+		t.Fatalf("failed to update node tls settings: %v", err)
+	}
+
+	proxies, _, err := service.GetAccessibleProxies(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("expected tls auto provisioned proxy, got error: %v", err)
+	}
+	if len(proxies) != 1 {
+		t.Fatalf("expected one tls auto provisioned proxy, got %d", len(proxies))
+	}
+	if proxies[0].Protocol != "vless" {
+		t.Fatalf("expected vless proxy for tls-enabled node without explicit protocol preference, got %s", proxies[0].Protocol)
+	}
+	if got := proxies[0].Settings["security"]; got != "tls" {
+		t.Fatalf("expected tls security, got %#v", got)
+	}
+	if got := proxies[0].Settings["server_name"]; got != "panel.example.com" {
+		t.Fatalf("expected server_name to inherit tls domain, got %#v", got)
+	}
+}
+
 func TestGetAccessibleProxies_AutoProvisionedProxyInheritsNodeTLS(t *testing.T) {
 	service, db := setupTestService(t)
 	user := createTestUser(t, db, "tls-auto-provision-user")

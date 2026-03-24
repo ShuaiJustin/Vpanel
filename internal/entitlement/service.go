@@ -133,6 +133,8 @@ func (s *Service) EvaluateAccess(ctx context.Context, userID int64) (*AccessStat
 				state.EffectiveExpiresAt = &expireAt
 				if cfg := s.trialConfig(); cfg != nil && cfg.TrafficLimit > 0 {
 					state.EffectiveTrafficLimit = cfg.TrafficLimit
+					// 试用期应使用 trial.TrafficUsed 而非用户历史总流量
+					state.EffectiveTrafficUsed = repoTrial.TrafficUsed
 				}
 			}
 		}
@@ -559,7 +561,7 @@ func preferredAutoProvisionProtocols(raw string) []string {
 		}
 	}
 
-	for _, protocolName := range []string{"vmess", "vless", "trojan", "shadowsocks"} {
+	for _, protocolName := range []string{"vless", "vmess", "trojan", "shadowsocks"} {
 		appendProtocol(protocolName)
 	}
 

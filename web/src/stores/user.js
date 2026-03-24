@@ -34,11 +34,10 @@ export const useUserStore = defineStore('user', () => {
     user.value = null
     loading.value = false
     error.value = null
+    // 只清除管理后台的认证信息，不影响用户门户的 userToken
     for (const storage of [localStorage, sessionStorage]) {
       storage.removeItem('token')
       storage.removeItem('userRole')
-      storage.removeItem('userToken')
-      storage.removeItem('userInfo')
     }
   }
 

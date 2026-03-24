@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"net"
 	"net/url"
 	"strings"
 )
@@ -111,13 +112,25 @@ func ResolveServerAddress(host string, settings map[string]any) string {
 		host,
 	}
 
+	resolved := ""
 	for _, candidate := range candidates {
 		if normalized := NormalizeShareHost(candidate); normalized != "" {
-			return normalized
+			resolved = normalized
+			break
 		}
 	}
 
-	return ""
+	if resolved == "" {
+		return ""
+	}
+
+	if HasTLSSettings(settings) && net.ParseIP(resolved) != nil {
+		if sni := NormalizeShareHost(ResolveSNI(settings)); sni != "" {
+			return sni
+		}
+	}
+
+	return resolved
 }
 
 func getSettingString(settings map[string]any, key string) string {

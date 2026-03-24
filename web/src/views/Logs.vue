@@ -725,7 +725,7 @@ const formatDateTime = (dateStr) => {
 }
 
 .log-fields {
-  background-color: #f5f7fa;
+  background-color: var(--color-bg-page);
   padding: 12px;
   border-radius: 8px;
   margin: 0;

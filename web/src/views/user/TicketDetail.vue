@@ -422,7 +422,7 @@ onMounted(() => {
 .ticket-subject {
   font-size: 20px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 12px 0;
 }
 
@@ -464,7 +464,7 @@ onMounted(() => {
 .message-content {
   flex: 1;
   max-width: 80%;
-  background: #fff;
+  background: var(--color-bg-card);
   border-radius: 8px;
   padding: 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
@@ -483,7 +483,7 @@ onMounted(() => {
 
 .message-author {
   font-weight: 500;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .message-time {
@@ -511,7 +511,7 @@ onMounted(() => {
   align-items: center;
   gap: 4px;
   padding: 4px 8px;
-  background: #f5f7fa;
+  background: var(--color-bg-page);
   border-radius: 4px;
   font-size: 13px;
   color: #409eff;
@@ -530,7 +530,7 @@ onMounted(() => {
 .reply-title {
   font-size: 16px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 16px 0;
 }
 

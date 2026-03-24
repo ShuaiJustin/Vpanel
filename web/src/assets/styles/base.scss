@@ -16,14 +16,8 @@ body {
   font-family: 'Arial', sans-serif;
   font-size: calc(14px * var(--vp-scale, 1));
   line-height: 1.5;
-  color: #333;
-  background-color: #f5f5f5;
-}
-
-/* 暗黑模式适配 */
-html.dark body {
-  background-color: #121212;
-  color: #f0f0f0;
+  color: var(--color-text-primary, #333);
+  background-color: var(--color-bg-page, #f5f5f5);
 }
 
 /* 通用容器 */

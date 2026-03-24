@@ -633,7 +633,7 @@ onMounted(() => {
 .card-value {
   font-size: 16px;
   font-weight: 500;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .days-hint {
@@ -678,7 +678,7 @@ onMounted(() => {
 .progress-value {
   font-size: 28px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .progress-label {
@@ -707,7 +707,7 @@ onMounted(() => {
 
 .item-value {
   font-weight: 500;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 /* 快捷操作 */
@@ -728,7 +728,7 @@ onMounted(() => {
 }
 
 .action-item:hover {
-  background: #f5f7fa;
+  background: var(--color-bg-page);
 }
 
 .action-icon {
@@ -772,7 +772,7 @@ onMounted(() => {
 }
 
 .announcement-item:hover {
-  background: #f5f7fa;
+  background: var(--color-bg-page);
   margin: 0 -20px;
   padding: 12px 20px;
 }
@@ -784,7 +784,7 @@ onMounted(() => {
 
 .announcement-title {
   flex: 1;
-  color: #303133;
+  color: var(--color-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

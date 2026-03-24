@@ -331,7 +331,7 @@ onUnmounted(() => {
 <style scoped>
 .connections-container {
   padding: 20px;
-  background-color: #f5f7fa;
+  background-color: var(--color-bg-page);
   min-height: 100vh;
 }
 
@@ -345,7 +345,7 @@ onUnmounted(() => {
 .title {
   font-size: 22px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .stats-cards {

@@ -376,14 +376,16 @@ const handleMobileUserCommand = (command) => {
 
 // 确认退出登录
 const confirmLogout = () => {
-  ElMessageBox.confirm('确定要退出登录吗?', '提示', {
+  ElMessageBox.confirm('确定要退出管理后台吗?', '提示', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
-    type: 'warning'
+    type: 'warning',
+    customStyle: { maxWidth: '420px' }
   }).then(async () => {
     await userStore.logout()
     closeMobileMenu()
-    router.replace({ name: 'UserLogin' })
+    // 退出管理后台后跳转到用户门户
+    router.replace('/user/dashboard')
   }).catch(() => {})
 }
 
@@ -575,7 +577,7 @@ watch(isMobile, mobile => {
 
 .header {
   height: 60px;
-  background-color: #fff;
+  background-color: var(--color-bg-card);
   border-bottom: 1px solid #e6e6e6;
   display: flex;
   align-items: center;
@@ -622,7 +624,7 @@ watch(isMobile, mobile => {
   align-items: center;
   cursor: pointer;
   font-size: 14px;
-  color: #333;
+  color: var(--color-text-primary);
   height: 40px;
   padding: 0 10px;
   border-radius: 4px;
@@ -631,8 +633,8 @@ watch(isMobile, mobile => {
 }
 
 .dropdown-link:hover {
-  background-color: #f5f7fa;
-  border-color: #e6e6e6;
+  background-color: var(--color-bg-page);
+  border-color: var(--color-border);
 }
 
 .content {
@@ -641,7 +643,7 @@ watch(isMobile, mobile => {
   min-height: 0;
   padding: var(--vp-page-padding);
   overflow: auto;
-  background-color: #f0f2f5;
+  background-color: var(--color-bg-page);
 }
 
 :deep(.el-dropdown-menu) {
@@ -659,13 +661,13 @@ watch(isMobile, mobile => {
 }
 
 :deep(.el-dropdown-menu__item:not(.is-disabled):hover) {
-  background-color: #f5f7fa;
+  background-color: var(--color-bg-page);
   color: #409EFF;
 }
 
 :deep(.el-dropdown-menu__item--divided) {
   margin-top: 6px;
-  border-top: 1px solid #ebeef5;
+  border-top: 1px solid var(--color-border);
 }
 
 :deep(.el-dropdown-menu__item--divided:before) {
@@ -699,7 +701,7 @@ watch(isMobile, mobile => {
 }
 
 .theme-toggle-btn:hover {
-  background-color: #f5f7fa;
+  background-color: var(--color-bg-page);
 }
 
 .user-avatar {

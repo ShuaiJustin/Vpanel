@@ -116,7 +116,7 @@ const toggleTheme = () => {
 .bg-shape-1 {
   width: 600px;
   height: 600px;
-  background: #fff;
+  background: var(--color-bg-card);
   top: -200px;
   right: -100px;
 }
@@ -124,7 +124,7 @@ const toggleTheme = () => {
 .bg-shape-2 {
   width: 400px;
   height: 400px;
-  background: #fff;
+  background: var(--color-bg-card);
   bottom: -100px;
   left: -100px;
 }
@@ -132,7 +132,7 @@ const toggleTheme = () => {
 .bg-shape-3 {
   width: 200px;
   height: 200px;
-  background: #fff;
+  background: var(--color-bg-card);
   top: 50%;
   left: 10%;
 }
@@ -162,7 +162,7 @@ const toggleTheme = () => {
 .logo-icon {
   width: 48px;
   height: 48px;
-  background: #fff;
+  background: var(--color-bg-card);
   border-radius: 12px;
   display: flex;
   align-items: center;
@@ -192,7 +192,7 @@ const toggleTheme = () => {
 
 /* 卡片 */
 .auth-card {
-  background: #fff;
+  background: var(--color-bg-card);
   border-radius: 16px;
   padding: 32px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);

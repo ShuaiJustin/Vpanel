@@ -221,14 +221,14 @@ const acceptPrivacy = () => {
 <style scoped>
 .legal-page {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--color-bg-page);
   padding: 40px 20px;
 }
 
 .legal-container {
   max-width: 900px;
   margin: 0 auto;
-  background: white;
+  background: var(--color-bg-card);
   border-radius: 8px;
   padding: 40px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
@@ -237,7 +237,7 @@ const acceptPrivacy = () => {
 .legal-title {
   font-size: 32px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin-bottom: 16px;
   text-align: center;
 }
@@ -265,7 +265,7 @@ const acceptPrivacy = () => {
 .legal-content h2 {
   font-size: 20px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin-bottom: 16px;
 }
 
@@ -291,7 +291,7 @@ const acceptPrivacy = () => {
 }
 
 .legal-content strong {
-  color: #303133;
+  color: var(--color-text-primary);
   font-weight: 600;
 }
 

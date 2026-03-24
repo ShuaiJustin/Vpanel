@@ -386,7 +386,7 @@ onMounted(async () => {
 .page-title {
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 8px 0;
 }
 
@@ -453,7 +453,7 @@ onMounted(async () => {
 .stat-value {
   font-size: 28px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .stat-label {

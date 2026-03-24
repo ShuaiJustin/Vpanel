@@ -262,7 +262,7 @@ const displayDescription = computed(() => props.description || preset.value.desc
 .empty-state-title {
   font-size: 16px;
   font-weight: 500;
-  color: #303133;
+  color: var(--color-text-primary);
   margin-bottom: 8px;
 }
 

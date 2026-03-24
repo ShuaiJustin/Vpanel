@@ -144,7 +144,7 @@
         >
           <el-table-column
             label="节点对象"
-            min-width="320"
+            min-width="280"
           >
             <template #default="{ row }">
               <div class="entity-cell">
@@ -192,7 +192,7 @@
 
           <el-table-column
             label="TLS 与接入"
-            min-width="250"
+            min-width="200"
           >
             <template #default="{ row }">
               <div class="stack-cell">
@@ -219,7 +219,7 @@
 
           <el-table-column
             label="负载与同步"
-            min-width="250"
+            min-width="200"
           >
             <template #default="{ row }">
               <div class="stack-cell">
@@ -252,7 +252,7 @@
 
           <el-table-column
             label="最近活动"
-            min-width="220"
+            min-width="180"
           >
             <template #default="{ row }">
               <div class="stack-cell">
@@ -270,7 +270,7 @@
 
           <el-table-column
             label="操作"
-            width="280"
+            width="220"
             fixed="right"
             align="right"
           >
@@ -291,13 +291,6 @@
                 >
                   详情
                 </el-button>
-                <el-button
-                  size="small"
-                  class="row-action row-action--success"
-                  @click="showDeployDialog(row)"
-                >
-                  部署
-                </el-button>
                 <el-dropdown
                   trigger="click"
                   @command="(command) => handleNodeCommand(command, row)"
@@ -312,6 +305,9 @@
                   </el-button>
                   <template #dropdown>
                     <el-dropdown-menu>
+                      <el-dropdown-item command="deploy">
+                        远程部署
+                      </el-dropdown-item>
                       <el-dropdown-item command="operations">
                         进入运维
                       </el-dropdown-item>
@@ -1862,6 +1858,11 @@ const showTokenDialog = (node) => {
 };
 
 const handleNodeCommand = (command, node) => {
+  if (command === "deploy") {
+    showDeployDialog(node);
+    return;
+  }
+
   if (command === "operations") {
     openNodeOperations(node);
     return;

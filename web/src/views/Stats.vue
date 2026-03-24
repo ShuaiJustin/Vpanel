@@ -654,7 +654,7 @@ onUnmounted(() => {
 .stat-value {
   font-size: 28px;
   font-weight: bold;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .stat-label {

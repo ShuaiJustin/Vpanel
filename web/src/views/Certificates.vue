@@ -1901,7 +1901,7 @@ const getExpireStatusType = (row) => {
 }
 
 .result-details {
-  background-color: #f5f7fa;
+  background-color: var(--color-bg-page);
   padding: 15px;
   border-radius: 4px;
 }

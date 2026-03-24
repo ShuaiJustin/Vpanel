@@ -110,7 +110,7 @@ const handleCommand = (command) => {
 .app-layout {
   display: flex;
   height: 100vh;
-  background-color: #f5f7fa;
+  background-color: var(--color-bg-page);
 }
 
 .sidebar {

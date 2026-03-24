@@ -653,7 +653,7 @@ onMounted(fetchUsers)
   margin-top: 4px;
   padding: 8px 10px;
   border-radius: 10px;
-  background: #f5f7fa;
+  background: var(--color-bg-page);
   color: #111827;
   font-size: 14px;
 }

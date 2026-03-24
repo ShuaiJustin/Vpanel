@@ -256,6 +256,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { useTheme } from '@/composables/useTheme'
 import { Close, Refresh } from '@element-plus/icons-vue'
 import * as echarts from 'echarts/core'
 import { MapChart, ScatterChart, EffectScatterChart } from 'echarts/charts'
@@ -269,6 +270,7 @@ echarts.registerMap('WORLD', worldGeoJson)
 
 const router = useRouter()
 const nodeStore = useNodeStore()
+const { isDark } = useTheme()
 
 const loading = ref(false)
 const selectedNode = ref(null)
@@ -478,7 +480,7 @@ const updateChart = () => {
   const textColor = getThemeColor('--admin-title', '#0f172a')
   const mutedColor = getThemeColor('--admin-text-muted', '#64748b')
   const borderColor = getThemeColor('--admin-border', 'rgba(148, 163, 184, 0.22)')
-  const mapAreaColor = document.querySelector('.app-container.dark-mode')
+  const mapAreaColor = isDark.value
     ? 'rgba(71, 85, 105, 0.34)'
     : 'rgba(203, 213, 225, 0.34)'
   const mapCenter = selectedRegion.value
@@ -666,7 +668,7 @@ const fetchNodes = async () => {
 }
 
 watch(
-  () => [nodeStore.nodes, selectedRegion.value, selectedNode.value?.id],
+  () => [nodeStore.nodes, selectedRegion.value, selectedNode.value?.id, isDark.value],
   () => {
     if (selectedNode.value && selectedRegion.value && selectedNode.value.region !== selectedRegion.value) {
       selectedNode.value = null
@@ -761,6 +763,22 @@ onBeforeUnmount(() => {
   bottom: -90px;
   left: -60px;
   background: rgba(14, 165, 233, 0.2);
+}
+
+:global(html.dark) .map-stage {
+  border-color: rgba(96, 165, 250, 0.18);
+  background:
+    radial-gradient(circle at 10% 10%, rgba(56, 189, 248, 0.12), transparent 18%),
+    radial-gradient(circle at 90% 20%, rgba(59, 130, 246, 0.14), transparent 20%),
+    linear-gradient(180deg, #111827 0%, #0f172a 100%);
+}
+
+:global(html.dark) .map-stage__glow--top {
+  background: rgba(59, 130, 246, 0.2);
+}
+
+:global(html.dark) .map-stage__glow--bottom {
+  background: rgba(14, 165, 233, 0.16);
 }
 
 .map-legend {

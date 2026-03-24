@@ -428,7 +428,7 @@ onMounted(() => {
 .page-title {
   font-size: 28px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 8px 0;
 }
 
@@ -459,7 +459,7 @@ onMounted(() => {
 .current-plan-info .plan-name {
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin-bottom: 12px;
 }
 
@@ -486,7 +486,7 @@ onMounted(() => {
 .section-title {
   font-size: 18px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 16px 0;
 }
 
@@ -499,7 +499,7 @@ onMounted(() => {
 
 .plan-card {
   position: relative;
-  background: #fff;
+  background: var(--color-bg-card);
   border: 2px solid #ebeef5;
   border-radius: 12px;
   padding: 24px 16px;
@@ -544,7 +544,7 @@ onMounted(() => {
 .plan-card .plan-name {
   font-size: 16px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0;
 }
 
@@ -555,13 +555,13 @@ onMounted(() => {
 .plan-card .price-currency {
   font-size: 14px;
   font-weight: 500;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .plan-card .price-amount {
   font-size: 28px;
   font-weight: 700;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .plan-card .price-period {
@@ -601,7 +601,7 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   padding: 12px 0;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid var(--color-border);
   font-size: 14px;
   color: #606266;
 }
@@ -612,7 +612,7 @@ onMounted(() => {
 
 .result-row.highlight {
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .result-row .price {

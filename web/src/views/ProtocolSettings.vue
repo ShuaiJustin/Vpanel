@@ -731,7 +731,7 @@ const resetAllSettings = () => {
 <style scoped>
 .protocol-settings-container {
   padding: 20px;
-  background-color: #f5f7fa;
+  background-color: var(--color-bg-page);
   min-height: 100vh;
 }
 
@@ -825,7 +825,7 @@ const resetAllSettings = () => {
 .protocol-label {
   font-size: 16px;
   font-weight: 500;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .protocol-description {

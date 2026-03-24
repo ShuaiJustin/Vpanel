@@ -515,7 +515,7 @@ export default {
   text-align: center;
   padding: 10px;
   border-radius: 5px;
-  background-color: #f5f7fa;
+  background-color: var(--color-bg-page);
   width: 45%;
 }
 

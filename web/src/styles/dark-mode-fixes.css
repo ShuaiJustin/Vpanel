@@ -390,3 +390,120 @@
 .dark .el-statistic__content {
   color: var(--color-text-primary) !important;
 }
+
+
+/* 后台概览与统计页补充修复 */
+.dark .page-header,
+.dark .overview-card,
+.dark .toolbar-card,
+.dark .hero-card,
+.dark .highlight-chip,
+.dark .hero-side,
+.dark .status-stat,
+.dark .focus-stat,
+.dark .traffic-pill {
+  border-color: var(--admin-border, var(--color-border)) !important;
+  background: var(--admin-surface, var(--color-bg-card)) !important;
+  box-shadow: var(--admin-shadow-soft, var(--shadow-sm)) !important;
+}
+
+.dark .hero-card {
+  background:
+    radial-gradient(circle at top right, rgba(96, 165, 250, 0.12), transparent 32%),
+    linear-gradient(135deg, var(--admin-surface-strong, var(--color-bg-card)) 0%, var(--admin-surface-soft, var(--color-border-light)) 100%) !important;
+}
+
+.dark .metric-card--good,
+.dark .traffic-pill--total {
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.18), var(--admin-surface-strong, var(--color-bg-card))) !important;
+}
+
+.dark .metric-card--latency {
+  background: linear-gradient(180deg, rgba(96, 165, 250, 0.18), var(--admin-surface-strong, var(--color-bg-card))) !important;
+}
+
+.dark .focus-node--issue {
+  background: linear-gradient(180deg, var(--admin-surface-strong, var(--color-bg-card)), rgba(245, 158, 11, 0.12)) !important;
+}
+
+.dark .alert-card--warning {
+  background: rgba(245, 158, 11, 0.12) !important;
+  border-color: rgba(245, 158, 11, 0.24) !important;
+}
+
+.dark .alert-card--error {
+  background: rgba(239, 68, 68, 0.12) !important;
+  border-color: rgba(239, 68, 68, 0.24) !important;
+}
+
+.dark .page-eyebrow,
+.dark .page-subtitle,
+.dark .hero-kicker,
+.dark .hero-note,
+.dark .chip-label,
+.dark .hero-percent-label,
+.dark .metric-label,
+.dark .metric-foot,
+.dark .card-subtitle,
+.dark .status-stat-head,
+.dark .status-stat-meta,
+.dark .focus-node-meta,
+.dark .metric-row,
+.dark .focus-stat-label,
+.dark .group-meta,
+.dark .group-card-foot,
+.dark .alert-meta,
+.dark .traffic-label,
+.dark .traffic-foot,
+.dark .update-time {
+  color: var(--admin-text-muted, var(--color-text-secondary)) !important;
+}
+
+.dark .page-title,
+.dark .hero-title,
+.dark .hero-percent,
+.dark .metric-value,
+.dark .card-title,
+.dark .status-stat-value,
+.dark .metric-row strong,
+.dark .focus-stat-value,
+.dark .group-name,
+.dark .alert-title,
+.dark .traffic-pill strong,
+.dark .terms-header h1,
+.dark .terms-content,
+.dark .terms-content h2,
+.dark .terms-content h3,
+.dark .privacy-header h1,
+.dark .privacy-content,
+.dark .privacy-content h2,
+.dark .privacy-content h3,
+.dark .dropdown-link {
+  color: var(--admin-text, var(--color-text-primary)) !important;
+}
+
+.dark .terms-header,
+.dark .terms-content h2,
+.dark .terms-footer,
+.dark .privacy-header,
+.dark .privacy-content h2,
+.dark .privacy-footer,
+.dark .result-row,
+.dark .plan-features li,
+.dark .history-item,
+.dark .transaction-item,
+.dark .dropdown-link:hover,
+.dark .el-dropdown-menu__item--divided {
+  border-color: var(--color-border) !important;
+}
+
+.dark .privacy-content .highlight {
+  background: rgba(230, 162, 60, 0.12) !important;
+  border-left-color: #e6a23c !important;
+}
+
+.dark .content,
+.dark .status-track,
+.dark .traffic-stack {
+  background: var(--color-bg-page) !important;
+}

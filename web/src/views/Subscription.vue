@@ -323,7 +323,7 @@ onMounted(() => {
 .subscription-header h2 {
   font-size: 24px;
   margin: 0 0 8px;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .subscription-header p {
@@ -409,7 +409,7 @@ onMounted(() => {
 
 .format-item:hover {
   border-color: #409eff;
-  background-color: #f5f7fa;
+  background-color: var(--color-bg-page);
 }
 
 .format-icon {
@@ -430,7 +430,7 @@ onMounted(() => {
 .format-name {
   font-size: 14px;
   font-weight: 500;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .format-desc {
@@ -448,14 +448,14 @@ onMounted(() => {
 .stat-item {
   text-align: center;
   padding: 16px;
-  background-color: #f5f7fa;
+  background-color: var(--color-bg-page);
   border-radius: 8px;
 }
 
 .stat-value {
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .stat-label {

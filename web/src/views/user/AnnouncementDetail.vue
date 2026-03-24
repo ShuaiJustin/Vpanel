@@ -258,7 +258,7 @@ onMounted(() => {
 .announcement-title {
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0;
   line-height: 1.4;
 }
@@ -273,7 +273,7 @@ onMounted(() => {
 .announcement-content :deep(h1),
 .announcement-content :deep(h2),
 .announcement-content :deep(h3) {
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 24px 0 12px 0;
 }
 
@@ -301,14 +301,14 @@ onMounted(() => {
 }
 
 .announcement-content :deep(code) {
-  background: #f5f7fa;
+  background: var(--color-bg-page);
   padding: 2px 6px;
   border-radius: 4px;
   font-family: monospace;
 }
 
 .announcement-content :deep(pre) {
-  background: #f5f7fa;
+  background: var(--color-bg-page);
   padding: 16px;
   border-radius: 8px;
   overflow-x: auto;

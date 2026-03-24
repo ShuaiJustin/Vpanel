@@ -195,7 +195,7 @@ onMounted(async () => {
 .page-title {
   font-size: 28px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 8px 0;
   text-align: left;
 }
@@ -261,7 +261,7 @@ onMounted(async () => {
 .plan-name {
   font-size: 20px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 8px 0;
 }
 
@@ -278,14 +278,14 @@ onMounted(async () => {
 .price-currency {
   font-size: 20px;
   font-weight: 500;
-  color: #303133;
+  color: var(--color-text-primary);
   vertical-align: top;
 }
 
 .price-amount {
   font-size: 48px;
   font-weight: 700;
-  color: #303133;
+  color: var(--color-text-primary);
   line-height: 1;
 }
 
@@ -314,7 +314,7 @@ onMounted(async () => {
   padding: 8px 0;
   font-size: 14px;
   color: #606266;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .plan-features li:last-child {

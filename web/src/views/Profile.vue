@@ -1,12 +1,19 @@
 <template>
   <div class="profile-container">
     <div class="profile-header">
-      <h2>个人资料</h2>
-      <p>管理当前管理员账号的基础信息</p>
+      <h2 class="profile-title">
+        个人资料
+      </h2>
+      <p class="profile-subtitle">
+        管理当前管理员账号的基础信息
+      </p>
     </div>
 
     <div class="profile-content">
-      <el-card class="profile-card">
+      <el-card
+        shadow="never"
+        class="profile-card"
+      >
         <div class="avatar-section">
           <el-avatar
             :size="88"
@@ -23,7 +30,8 @@
           ref="profileForm"
           :model="userForm"
           :rules="rules"
-          label-width="100px"
+          :label-width="formLabelWidth"
+          :label-position="formLabelPosition"
           class="profile-form"
         >
           <el-form-item label="用户名">
@@ -52,11 +60,11 @@
           </el-form-item>
 
           <el-form-item label="上次登录">
-            <div>{{ formatDate(userForm.lastLogin) }}</div>
+            <span class="readonly-value">{{ formatDate(userForm.lastLogin) }}</span>
           </el-form-item>
 
           <el-form-item label="注册时间">
-            <div>{{ formatDate(userForm.createdAt) }}</div>
+            <span class="readonly-value">{{ formatDate(userForm.createdAt) }}</span>
           </el-form-item>
 
           <el-form-item>
@@ -84,10 +92,16 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import { useViewport } from '@/composables/useViewport'
 
 const userStore = useUserStore()
+const { isMobile } = useViewport()
 const profileForm = ref(null)
 const saving = ref(false)
+
+const formLabelWidth = computed(() => isMobile.value ? undefined : '100px')
+const formLabelPosition = computed(() => isMobile.value ? 'top' : 'right')
+
 const initialForm = ref({
   username: '',
   email: '',
@@ -178,22 +192,25 @@ onMounted(async () => {
 
 <style scoped>
 .profile-container {
+  max-width: 800px;
+  margin: 0 auto;
   padding: 20px;
 }
 
 .profile-header {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
-.profile-header h2 {
+.profile-title {
   margin: 0 0 8px;
   font-size: 24px;
-  color: #303133;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
 }
 
-.profile-header p {
+.profile-subtitle {
   margin: 0;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 14px;
 }
 
@@ -204,7 +221,7 @@ onMounted(async () => {
 
 .profile-card {
   width: 100%;
-  max-width: 720px;
+  border-radius: 12px;
 }
 
 .avatar-section {
@@ -223,7 +240,7 @@ onMounted(async () => {
 
 .avatar-hint {
   margin: 0;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 13px;
 }
 
@@ -232,13 +249,18 @@ onMounted(async () => {
   margin: 0 auto;
 }
 
+.readonly-value {
+  color: var(--el-text-color-regular);
+  line-height: 32px;
+}
+
 @media (max-width: 768px) {
   .profile-container {
     padding: 12px;
   }
 
-  .profile-card {
-    border-radius: 16px;
+  .profile-title {
+    font-size: 20px;
   }
 
   .profile-form {

@@ -2908,7 +2908,7 @@ const openGitHubReleases = () => {
 .error-resolution h4, .error-troubleshooting h4 {
   margin-top: 0;
   margin-bottom: 10px;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .error-resolution p {

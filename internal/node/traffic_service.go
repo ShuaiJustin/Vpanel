@@ -129,6 +129,37 @@ func (s *TrafficService) RecordTrafficBatch(ctx context.Context, records []*Traf
 		return nil
 	}
 
+	// Check node traffic limits before recording
+	if s.nodeRepo != nil {
+		nodeIDs := make(map[int64]struct{})
+		for _, r := range normalized {
+			nodeIDs[r.NodeID] = struct{}{}
+		}
+		for nodeID := range nodeIDs {
+			nodeData, err := s.nodeRepo.GetByID(ctx, nodeID)
+			if err != nil {
+				continue
+			}
+			if nodeData.TrafficLimit > 0 && nodeData.TrafficTotal >= nodeData.TrafficLimit {
+				s.logger.Warn("Node traffic limit exceeded, dropping traffic records",
+					logger.F("node_id", nodeID),
+					logger.F("traffic_total", nodeData.TrafficTotal),
+					logger.F("traffic_limit", nodeData.TrafficLimit))
+				// Filter out records for this node
+				filtered := make([]*TrafficRecord, 0, len(normalized))
+				for _, r := range normalized {
+					if r.NodeID != nodeID {
+						filtered = append(filtered, r)
+					}
+				}
+				normalized = filtered
+			}
+		}
+		if len(normalized) == 0 {
+			return nil
+		}
+	}
+
 	now := time.Now()
 
 	if s.db == nil {
@@ -405,26 +436,30 @@ func (s *TrafficService) GetTrafficByGroup(ctx context.Context, groupID int64, s
 		}, nil
 	}
 
-	// Aggregate traffic for all nodes in the group
-	var totalUpload, totalDownload int64
-	for _, nodeID := range nodeIDs {
-		upload, download, err := s.nodeTrafficRepo.GetTotalByNodeInRange(ctx, nodeID, start, end)
-		if err != nil {
-			s.logger.Error("Failed to get traffic for node in group",
-				logger.Err(err),
-				logger.F("node_id", nodeID),
-				logger.F("group_id", groupID))
-			continue
-		}
-		totalUpload += upload
-		totalDownload += download
+	// Aggregate traffic for all nodes in the group in a single query
+	type result struct {
+		Upload   int64
+		Download int64
+	}
+	var res result
+	rangeArgs := repository.BuildTimeRangeArgs(s.db.Dialector.Name(), start, end)
+	err = s.db.WithContext(ctx).
+		Model(&repository.NodeTraffic{}).
+		Select("COALESCE(SUM(upload), 0) as upload, COALESCE(SUM(download), 0) as download").
+		Where("node_id IN ? AND "+repository.BuildTimeRangeCondition(s.db.Dialector.Name(), "recorded_at"), append([]any{nodeIDs}, rangeArgs...)...).
+		Scan(&res).Error
+	if err != nil {
+		s.logger.Error("Failed to get traffic for group",
+			logger.Err(err),
+			logger.F("group_id", groupID))
+		return nil, err
 	}
 
 	return &GroupTrafficStats{
 		GroupID:  groupID,
-		Upload:   totalUpload,
-		Download: totalDownload,
-		Total:    totalUpload + totalDownload,
+		Upload:   res.Upload,
+		Download: res.Download,
+		Total:    res.Upload + res.Download,
 	}, nil
 }
 
@@ -513,6 +548,35 @@ func (s *TrafficService) DeleteByNode(ctx context.Context, nodeID int64) error {
 	}
 
 	s.logger.Info("Deleted traffic records for node", logger.F("node_id", nodeID))
+	return nil
+}
+
+// ResetNodeTraffic resets a node's accumulated traffic counters to zero.
+func (s *TrafficService) ResetNodeTraffic(ctx context.Context, nodeID int64) error {
+	if s.db == nil {
+		return nil
+	}
+
+	now := time.Now()
+	err := s.db.WithContext(ctx).
+		Model(&repository.Node{}).
+		Where("id = ?", nodeID).
+		Updates(map[string]interface{}{
+			"traffic_up":       0,
+			"traffic_down":     0,
+			"traffic_total":    0,
+			"traffic_reset_at": now,
+		}).Error
+	if err != nil {
+		s.logger.Error("Failed to reset node traffic",
+			logger.Err(err),
+			logger.F("node_id", nodeID))
+		return err
+	}
+
+	s.logger.Info("Node traffic counters reset",
+		logger.F("node_id", nodeID),
+		logger.F("reset_at", now))
 	return nil
 }
 

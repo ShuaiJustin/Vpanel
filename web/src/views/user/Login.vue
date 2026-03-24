@@ -321,7 +321,7 @@ onMounted(async () => {
 .login-card {
   width: 100%;
   max-width: 400px;
-  background: #fff;
+  background: var(--color-bg-card);
   border-radius: 12px;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
   padding: 40px;
@@ -335,7 +335,7 @@ onMounted(async () => {
 .login-title {
   font-size: 28px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 8px 0;
 }
 
@@ -403,7 +403,7 @@ onMounted(async () => {
 .twofa-header h3 {
   font-size: 20px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 8px 0;
 }
 

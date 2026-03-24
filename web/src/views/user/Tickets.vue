@@ -255,7 +255,7 @@ onMounted(() => {
 .page-title {
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 8px 0;
 }
 
@@ -299,7 +299,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   padding: 20px;
-  background: #fff;
+  background: var(--color-bg-card);
   border-radius: 8px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
   cursor: pointer;
@@ -327,7 +327,7 @@ onMounted(() => {
 .ticket-subject {
   font-size: 16px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 12px 0;
   padding-right: 40px;
 }

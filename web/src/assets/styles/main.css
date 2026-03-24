@@ -1,14 +1,15 @@
 /* 全局样式 */
 :root {
-  --primary-color: #409eff;
-  --success-color: #67c23a;
-  --warning-color: #e6a23c;
-  --danger-color: #f56c6c;
-  --info-color: #909399;
-  --text-color: #303133;
-  --text-color-secondary: #606266;
-  --border-color: #dcdfe6;
-  --background-color: #f5f7fa;
+  --primary-color: var(--color-primary, #409eff);
+  --success-color: var(--color-success, #67c23a);
+  --warning-color: var(--color-warning, #e6a23c);
+  --danger-color: var(--color-danger, #f56c6c);
+  --info-color: var(--color-info, #909399);
+  --text-color: var(--color-text-primary, #303133);
+  --text-color-secondary: var(--color-text-regular, #606266);
+  --border-color: var(--color-border, #dcdfe6);
+  --background-color: var(--color-bg-page, #f5f7fa);
+  --surface-color: var(--color-bg-card, #ffffff);
 }
 
 /* 布局相关 */
@@ -34,6 +35,12 @@
 .el-card {
   margin-bottom: 20px;
   border-radius: 12px;
+}
+
+/* 确认弹窗宽度约束 */
+.el-message-box {
+  max-width: 420px;
+  width: auto;
 }
 
 .el-card__header {

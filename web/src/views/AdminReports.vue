@@ -489,7 +489,7 @@ onMounted(() => {
   gap: 16px; 
   margin-bottom: 20px;
   padding: 16px;
-  background: #f5f7fa;
+  background: var(--color-bg-page);
   border-radius: 8px;
 }
 .failed-stat-item { text-align: center; }
@@ -514,7 +514,7 @@ onMounted(() => {
   font-size: 14px; 
   font-weight: 600; 
   margin-bottom: 12px; 
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 /* Pause stats styles */
@@ -525,7 +525,7 @@ onMounted(() => {
   gap: 16px; 
   margin-bottom: 20px;
   padding: 16px;
-  background: #f5f7fa;
+  background: var(--color-bg-page);
   border-radius: 8px;
 }
 .pause-stat-item { text-align: center; }
@@ -546,7 +546,7 @@ onMounted(() => {
   font-size: 14px; 
   font-weight: 600; 
   margin-bottom: 12px; 
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 @media (max-width: 1280px) {

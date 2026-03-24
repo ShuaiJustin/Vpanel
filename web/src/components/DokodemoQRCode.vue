@@ -324,7 +324,7 @@ onMounted(() => {
 .protocol-name {
   font-size: 16px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .qrcode-display {
@@ -367,7 +367,7 @@ onMounted(() => {
 
 .item-value {
   font-family: monospace;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .share-link {

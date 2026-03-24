@@ -303,7 +303,7 @@ onMounted(() => {
 .page-title {
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0 0 8px 0;
 }
 
@@ -365,7 +365,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   padding: 16px 0;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .transaction-item:last-child {
@@ -415,7 +415,7 @@ onMounted(() => {
 .tx-title {
   font-size: 14px;
   font-weight: 500;
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .tx-desc {
