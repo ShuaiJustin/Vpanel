@@ -3,9 +3,10 @@
 .gitignore
 .gitattributes
 
-# IDE
-.vscode
-.idea
+# Local tooling
+.claude/
+.vscode/
+.idea/
 *.swp
 *.swo
 *~
@@ -19,40 +20,47 @@ Thumbs.db
 *.dll
 *.so
 *.dylib
+*.test
 bin/
-dist/
 build/
+dist/
+vpanel
+vpanel.static
+web/dist/
 
 # Dependencies
 node_modules/
+web/node_modules/
 vendor/
 
-# Logs
+# Logs and runtime data
 *.log
 logs/
-
-# Data
-data/*.db
-data/*.db-*
+data/
 *.sqlite
 *.sqlite3
 
-# Config
-*.env
-.env.local
+# Local env and secrets
+.env
+.env.*
+**/.env
+**/.env.*
+deployments/docker/certs/
+
+# Local config overrides
 configs/*.yaml
-!configs/*.example
+!configs/*.yaml.example
+configs/*.backup*
+configs/*.bak
 
-# Documentation
-*.md
-!README.md
+# Docs, reports and tests not needed for image build
 .reports/
-
-# Test
-*_test.go
-test/
 coverage.txt
-*.test
+test/
+test-results/
+web/tests/
+*_test.go
+playwright_real_user.spec.js
 
 # Temporary
 tmp/

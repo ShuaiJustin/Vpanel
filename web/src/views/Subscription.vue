@@ -53,6 +53,7 @@
               </el-input>
               <el-button
                 class="qr-button"
+                aria-label="显示二维码"
                 @click="showQRCode(link)"
               >
                 <el-icon><Grid /></el-icon>
@@ -168,9 +169,9 @@
 
     <!-- QR码对话框 -->
     <el-dialog 
-      v-model="qrDialogVisible" 
-      title="扫描二维码" 
-      width="350px"
+      v-model="qrDialogVisible"
+      title="扫描二维码"
+      width="min(350px, 90vw)"
       center
     >
       <div class="qr-container">

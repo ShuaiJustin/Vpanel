@@ -98,14 +98,14 @@ docker_menu() {
                 echo -e "${YELLOW}重新构建并启动...${NC}"
                 # 先停止服务
                 cd "$DOCKER_DIR" || { echo -e "${RED}错误: 无法进入 Docker 目录${NC}"; pause; continue; }
-                docker_compose_cmd down
+                docker_compose_cmd down --remove-orphans
                 # 清理构建缓存
                 echo -e "${CYAN}清理构建缓存...${NC}"
                 docker_compose_cmd build --no-cache
                 # 使用 start.sh 启动（包含安全检查和密码生成）
                 echo -e "${CYAN}启动服务...${NC}"
                 cd "$PROJECT_ROOT" || { echo -e "${RED}错误: 无法返回项目根目录${NC}"; pause; continue; }
-                if bash "$SCRIPT_DIR/start.sh" start; then
+                if VPANEL_SKIP_BUILD=1 bash "$SCRIPT_DIR/start.sh" start; then
                     echo -e "${GREEN}重新构建并启动完成！${NC}"
                 else
                     echo -e "${RED}启动失败${NC}"

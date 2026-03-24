@@ -493,7 +493,9 @@ router.beforeEach((to, from, next) => {
   // 阻止直接访问旧的管理员登录页面，重定向到用户登录页
   if (to.path === '/login' || to.path === '/register') {
     const redirect = to.query.redirect
-    next({ path: '/user/login', query: redirect ? { redirect } : {} })
+    // 仅允许本站相对路径作为 redirect，防止开放重定向
+    const safeRedirect = (redirect && typeof redirect === 'string' && redirect.startsWith('/') && !redirect.startsWith('//')) ? redirect : undefined
+    next({ path: '/user/login', query: safeRedirect ? { redirect: safeRedirect } : {} })
     return
   }
   
@@ -510,8 +512,9 @@ router.beforeEach((to, from, next) => {
   
   // 需要认证的管理后台页面
   if (to.meta.requiresAuth && !isAuthenticated) {
-    // 未登录访问管理后台，跳转到用户登录页
-    next({ name: 'UserLogin', query: { redirect: to.fullPath } })
+    // 未登录访问管理后台，跳转到用户登录页（仅允许本站路径）
+    const redirect = to.fullPath.startsWith('/') && !to.fullPath.startsWith('//') ? to.fullPath : undefined
+    next({ name: 'UserLogin', query: redirect ? { redirect } : {} })
     return
   }
   

@@ -377,8 +377,8 @@ onMounted(() => {
   .mobile-tabbar {
     height: calc(60px + env(safe-area-inset-bottom));
   }
-  
-  .mobile-main {
+
+  .mobile-main.with-tabbar {
     padding-bottom: calc(60px + env(safe-area-inset-bottom));
   }
 }

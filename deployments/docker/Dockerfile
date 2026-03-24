@@ -1,10 +1,11 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.7
 
 ARG ALPINE_MIRROR=mirrors.aliyun.com
-
-FROM node:20-alpine AS frontend-deps
-ARG ALPINE_MIRROR
+ARG GO_PROXY=https://goproxy.cn,direct
 ARG NPM_REGISTRY=https://registry.npmmirror.com/
+
+FROM node:20-alpine AS frontend-base
+ARG ALPINE_MIRROR
 
 RUN sed -i "s/dl-cdn.alpinelinux.org/${ALPINE_MIRROR}/g" /etc/apk/repositories
 
@@ -12,18 +13,24 @@ WORKDIR /app/web
 
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 
+FROM frontend-base AS frontend-deps
+ARG NPM_REGISTRY
+
 COPY web/package*.json ./
-RUN npm config set registry "${NPM_REGISTRY}" && \
-    npm ci --legacy-peer-deps
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --legacy-peer-deps --registry="${NPM_REGISTRY}"
 
 FROM frontend-deps AS frontend-builder
 
-COPY web/ ./
+COPY web/index.html ./
+COPY web/vite.config.js ./
+COPY web/public ./public
+COPY web/src ./src
 RUN npm run build
 
-FROM golang:1.24-alpine AS backend-deps
+FROM golang:1.24-alpine AS backend-base
 ARG ALPINE_MIRROR
-ARG GO_PROXY=https://goproxy.cn,direct
+ARG GO_PROXY
 
 RUN sed -i "s/dl-cdn.alpinelinux.org/${ALPINE_MIRROR}/g" /etc/apk/repositories && \
     apk add --no-cache git ca-certificates tzdata
@@ -34,10 +41,13 @@ ENV GOPROXY=${GO_PROXY} \
 
 WORKDIR /app
 
+FROM backend-base AS backend-deps
+
 COPY go.mod go.sum ./
-RUN go mod download || \
-    (sleep 5 && go mod download) || \
-    (sleep 10 && GOPROXY=direct go mod download)
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download || \
+    (sleep 3 && go mod download)
 
 FROM backend-deps AS backend-builder
 ARG VERSION=dev
@@ -48,11 +58,15 @@ COPY cmd ./cmd
 COPY internal ./internal
 COPY pkg ./pkg
 
-RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags="-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME} -X main.gitCommit=${GIT_COMMIT}" \
-    -o /out/v-panel ./cmd/v/main.go
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build \
+      -ldflags="-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME} -X main.gitCommit=${GIT_COMMIT}" \
+      -o /out/v-panel ./cmd/v/main.go
 
-RUN mkdir -p /out/bin && \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    mkdir -p /out/bin && \
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
       -ldflags="-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME} -X main.gitCommit=${GIT_COMMIT}" \
       -o /out/bin/vpanel-agent-amd64 ./cmd/agent/main.go && \

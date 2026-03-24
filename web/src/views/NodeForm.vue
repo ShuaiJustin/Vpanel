@@ -59,33 +59,6 @@
             </template>
 
             <div class="form-grid">
-              <el-form-item class="field-span-2" label="节点名称" prop="name">
-                <div class="name-field">
-                  <el-input
-                    v-model="form.name"
-                    placeholder="请输入节点名称"
-                    @input="handleNameInput"
-                  />
-                  <el-button
-                    type="primary"
-                    plain
-                    class="name-field__action"
-                    :loading="suggestionLoading"
-                    @click="generateSuggestedName(true)"
-                  >
-                    自动生成
-                  </el-button>
-                </div>
-                <div :class="['suggestion-banner', suggestionTone]">
-                  <span class="suggestion-banner__label">{{
-                    suggestionHeadline
-                  }}</span>
-                  <span class="suggestion-banner__text">{{
-                    nameSuggestionMessage
-                  }}</span>
-                </div>
-              </el-form-item>
-
               <el-form-item
                 class="field-span-2"
                 label="节点地址"
@@ -136,6 +109,32 @@
                       ? "支持 IPv4、IPv6。输入后会自动识别地区并回填推荐名称。"
                       : "输入域名后会自动解析地址、识别地区并生成推荐名称。"
                   }}
+                </div>
+              </el-form-item>
+              <el-form-item class="field-span-2" label="节点名称" prop="name">
+                <div class="name-field">
+                  <el-input
+                    v-model="form.name"
+                    placeholder="请输入节点名称"
+                    @input="handleNameInput"
+                  />
+                  <el-button
+                    type="primary"
+                    plain
+                    class="name-field__action"
+                    :loading="suggestionLoading"
+                    @click="generateSuggestedName(true)"
+                  >
+                    自动生成
+                  </el-button>
+                </div>
+                <div :class="['suggestion-banner', suggestionTone]">
+                  <span class="suggestion-banner__label">{{
+                    suggestionHeadline
+                  }}</span>
+                  <span class="suggestion-banner__text">{{
+                    nameSuggestionMessage
+                  }}</span>
                 </div>
               </el-form-item>
 

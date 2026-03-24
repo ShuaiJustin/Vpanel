@@ -99,7 +99,7 @@ const handleLogin = async () => {
 }
 
 .login-box {
-  width: 350px;
+  width: min(350px, calc(100vw - 32px));
   padding: 30px 20px;
   background-color: var(--color-bg-card);
   border-radius: 8px;

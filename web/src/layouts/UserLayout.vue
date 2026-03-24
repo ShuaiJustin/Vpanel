@@ -626,11 +626,16 @@ onMounted(() => {
     overflow-x: auto;
     overflow-y: hidden;
     padding-bottom: 2px;
-    scrollbar-width: none;
+    scrollbar-width: thin;
   }
 
   .desktop-nav::-webkit-scrollbar {
-    display: none;
+    height: 3px;
+  }
+
+  .desktop-nav::-webkit-scrollbar-thumb {
+    background: var(--el-border-color-lighter);
+    border-radius: 3px;
   }
 }
 

@@ -27,7 +27,8 @@
             ref="profileFormRef"
             :model="profileForm"
             :rules="profileRules"
-            label-width="100px"
+            :label-width="formLabelWidth"
+            :label-position="formLabelPosition"
           >
             <el-form-item label="用户名">
               <el-input
@@ -120,7 +121,8 @@
             ref="passwordFormRef"
             :model="passwordForm"
             :rules="passwordRules"
-            label-width="100px"
+            :label-width="formLabelWidth"
+            :label-position="formLabelPosition"
           >
             <el-form-item
               label="当前密码"
@@ -217,7 +219,10 @@
           shadow="never"
           class="settings-card"
         >
-          <el-form label-width="140px">
+          <el-form
+            :label-width="notificationLabelWidth"
+            :label-position="formLabelPosition"
+          >
             <el-form-item label="邮件通知">
               <el-switch v-model="notificationSettings.email" />
               <div class="form-tip">
@@ -289,7 +294,10 @@
           shadow="never"
           class="settings-card"
         >
-          <el-form label-width="100px">
+          <el-form
+            :label-width="formLabelWidth"
+            :label-position="formLabelPosition"
+          >
             <el-form-item label="界面主题">
               <el-radio-group v-model="preferences.theme">
                 <el-radio value="auto">
@@ -307,7 +315,7 @@
             <el-form-item label="语言">
               <el-select
                 v-model="preferences.language"
-                style="width: 200px"
+                class="language-select"
               >
                 <el-option
                   label="简体中文"
@@ -357,7 +365,7 @@
     <el-dialog
       v-model="showTwoFactorDialog"
       :title="twoFactorEnabled ? '禁用两步验证' : '启用两步验证'"
-      width="500px"
+      :width="dialogWidth"
       :close-on-click-modal="false"
     >
       <!-- 启用流程 -->
@@ -448,11 +456,18 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { User } from '@element-plus/icons-vue'
 import { useUserPortalStore } from '@/stores/userPortal'
 import { useTheme } from '@/composables/useTheme'
+import { useViewport } from '@/composables/useViewport'
 import { copyText } from '@/utils/clipboard'
 
 const router = useRouter()
 const userStore = useUserPortalStore()
 const { themeMode, setTheme } = useTheme()
+const { isMobile } = useViewport()
+
+const formLabelWidth = computed(() => isMobile.value ? undefined : '100px')
+const notificationLabelWidth = computed(() => isMobile.value ? undefined : '140px')
+const formLabelPosition = computed(() => isMobile.value ? 'top' : 'right')
+const dialogWidth = computed(() => isMobile.value ? 'calc(100vw - 24px)' : '500px')
 
 // 表单引用
 const profileFormRef = ref(null)
@@ -710,6 +725,8 @@ onMounted(() => {
 
 <style scoped>
 .settings-page {
+  max-width: 800px;
+  margin: 0 auto;
   padding: 20px;
 }
 
@@ -720,13 +737,13 @@ onMounted(() => {
 .page-title {
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
   margin: 0 0 8px 0;
 }
 
 .page-subtitle {
   font-size: 14px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin: 0;
 }
 
@@ -735,25 +752,25 @@ onMounted(() => {
 }
 
 .settings-card {
-  border-radius: 8px;
+  border-radius: 12px;
 }
 
 .section-title {
   font-size: 16px;
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
   margin: 0 0 16px 0;
 }
 
 .section-desc {
   font-size: 14px;
-  color: #606266;
+  color: var(--el-text-color-regular);
   margin: 0 0 12px 0;
 }
 
 .form-tip {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin-top: 4px;
 }
 
@@ -769,6 +786,7 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
 }
 
 .two-factor-info {
@@ -777,7 +795,7 @@ onMounted(() => {
 
 .two-factor-info p {
   font-size: 14px;
-  color: #606266;
+  color: var(--el-text-color-regular);
   margin: 0 0 8px 0;
 }
 
@@ -791,13 +809,13 @@ onMounted(() => {
 .setup-step h4 {
   font-size: 15px;
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
   margin: 0 0 8px 0;
 }
 
 .setup-step p {
   font-size: 14px;
-  color: #606266;
+  color: var(--el-text-color-regular);
   margin: 0 0 12px 0;
 }
 
@@ -805,7 +823,7 @@ onMounted(() => {
   display: flex;
   justify-content: center;
   padding: 16px;
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
   border-radius: 8px;
 }
 
@@ -815,7 +833,7 @@ onMounted(() => {
 }
 
 .secret-key code {
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
   padding: 4px 8px;
   border-radius: 4px;
   font-family: monospace;
@@ -841,11 +859,15 @@ onMounted(() => {
 .backup-codes code {
   display: block;
   padding: 8px;
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
   border-radius: 4px;
   text-align: center;
   font-family: monospace;
   font-size: 14px;
+}
+
+.language-select {
+  width: min(200px, 100%);
 }
 
 .account-actions {
@@ -857,10 +879,21 @@ onMounted(() => {
 
 /* 响应式 */
 @media (max-width: 768px) {
+  .settings-page {
+    padding: 12px;
+  }
+
+  .page-title {
+    font-size: 20px;
+  }
+
   .two-factor-section {
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
+  }
+
+  .backup-codes {
+    grid-template-columns: 1fr;
   }
 
   .account-actions .el-button {

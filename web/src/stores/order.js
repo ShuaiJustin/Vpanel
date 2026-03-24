@@ -159,6 +159,7 @@ export const useOrderStore = defineStore('order', () => {
 
   const pollPaymentStatus = async (orderNo, timeout = 300000, interval = 3000) => {
     paymentLoading.value = true
+    error.value = null
     try {
       const result = await paymentsApi.pollStatus(orderNo, timeout, interval)
       if (currentOrder.value?.order_no === orderNo && result.status) {

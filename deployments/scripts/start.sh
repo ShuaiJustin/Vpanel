@@ -145,6 +145,11 @@ fi
 echo -e "${CYAN}检查配置文件...${NC}"
 init_env_file "$DOCKER_DIR/.env"
 
+if ! remove_stale_vpanel_container; then
+    echo -e "${RED}错误: 清理遗留容器失败${NC}"
+    exit 1
+fi
+
 # 切换到 Docker 目录
 cd "$DOCKER_DIR" || {
     echo -e "${RED}错误: 无法进入 Docker 目录${NC}"
@@ -180,7 +185,21 @@ case "${1:-start}" in
         
         echo ""
         echo -e "${GREEN}启动 V Panel...${NC}"
-        if docker_compose_cmd up -d --build; then
+        if [ "${VPANEL_SKIP_BUILD:-0}" = "1" ]; then
+            if docker_compose_cmd up -d; then
+                start_success=1
+            else
+                start_success=0
+            fi
+        else
+            if docker_compose_cmd up -d --build; then
+                start_success=1
+            else
+                start_success=0
+            fi
+        fi
+
+        if [ "$start_success" -eq 1 ]; then
             # 读取实际的管理员密码
             admin_pass=$(read_env_var "V_ADMIN_PASS" ".env")
             

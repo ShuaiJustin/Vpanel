@@ -23,6 +23,35 @@ docker_compose_cmd() {
     fi
 }
 
+compose_has_vpanel_service() {
+    local current_dir
+    current_dir="$(pwd)"
+
+    cd "$DOCKER_DIR" 2>/dev/null || return 1
+    local result=1
+
+    if docker_compose_cmd ps -a --services 2>/dev/null | grep -qx "v-panel"; then
+        result=0
+    fi
+
+    cd "$current_dir" 2>/dev/null || true
+    return $result
+}
+
+remove_stale_vpanel_container() {
+    if ! docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'v-panel'; then
+        return 0
+    fi
+
+    if compose_has_vpanel_service; then
+        return 0
+    fi
+
+    echo -e "${YELLOW}检测到遗留的同名容器 v-panel，正在自动清理...${NC}"
+    docker rm -f v-panel >/dev/null 2>&1 || return 1
+    return 0
+}
+
 require_docker() {
     if ! command -v docker >/dev/null 2>&1; then
         echo -e "${RED}错误: Docker 未安装，请先安装 Docker${NC}"

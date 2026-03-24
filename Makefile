@@ -48,7 +48,7 @@ agent-all: agent-linux-amd64 agent-linux-arm64 agent-linux-arm ## 编译所有�
 build-all: build agent ## 编译 Panel 和 Agent
 
 agent-multi: ## 编译多平台 Agent
-	@./scripts/build-agent.sh
+	@./scripts/build/build-agent.sh
 
 run: build ## 运行 Panel
 	@./$(PANEL_BINARY)
@@ -94,7 +94,7 @@ migrate: ## 运行数据库迁移
 	@./$(PANEL_BINARY) migrate || (make build && ./$(PANEL_BINARY) migrate)
 
 migrate-verify: ## 验证数据库迁移
-	@./scripts/verify-migration.sh
+	@echo "迁移验证脚本已移除，请使用 make migrate 直接运行迁移"
 
 install: ## 安装开发工具
 	@echo "安装开发工具..."
@@ -123,7 +123,7 @@ docker-logs: ## 查看 Docker Compose 日志
 	@cd deployments/docker && if docker compose version > /dev/null 2>&1; then docker compose logs -f; else docker-compose logs -f; fi
 
 deploy-panel: build ## 部署 Panel
-	@./scripts/quick-deploy.sh panel
+	@./scripts/deploy/quick-deploy.sh panel
 
 deploy-agent: agent ## 部署 Agent (需要参数: PANEL_URL, NODE_TOKEN)
 	@if [ -z "$(PANEL_URL)" ] || [ -z "$(NODE_TOKEN)" ]; then \
@@ -131,17 +131,12 @@ deploy-agent: agent ## 部署 Agent (需要参数: PANEL_URL, NODE_TOKEN)
 		echo "示例: make deploy-agent PANEL_URL=https://panel.example.com NODE_TOKEN=token"; \
 		exit 1; \
 	fi
-	@./scripts/quick-deploy.sh agent $(PANEL_URL) $(NODE_TOKEN)
+	@./scripts/deploy/quick-deploy.sh agent $(PANEL_URL) $(NODE_TOKEN)
 
 api-test: ## 测试 API (需要 ADMIN_TOKEN)
-	@if [ -z "$(ADMIN_TOKEN)" ]; then \
-		echo "错误: 需要设置 ADMIN_TOKEN"; \
-		echo "示例: make api-test ADMIN_TOKEN=your-token"; \
-		exit 1; \
-	fi
-	@export ADMIN_TOKEN=$(ADMIN_TOKEN) && ./scripts/test-api.sh
+	@echo "API 测试脚本已移除，请使用 go test ./internal/... 运行集成测试"
 
 setup: deps install ## 设置开发环境
-	@./scripts/dev-setup.sh
+	@./scripts/dev/dev-setup.sh
 
 all: clean deps build agent ## 完整构建流程

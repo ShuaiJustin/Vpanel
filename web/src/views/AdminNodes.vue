@@ -148,6 +148,12 @@
           >
             <template #default="{ row }">
               <div class="entity-cell">
+                <div
+                  class="node-address"
+                  :title="`${row.address}:${row.port}`"
+                >
+                  {{ row.address }}:{{ row.port }}
+                </div>
                 <div class="entity-cell__header">
                   <span class="entity-cell__title">{{ row.name }}</span>
                   <span :class="['metric-pill', getStatusPillClass(row.status)]">
@@ -158,12 +164,6 @@
                   <span>ID：{{ row.id }}</span>
                   <span>地区：{{ row.region || '未设置' }}</span>
                   <span>权重：{{ row.weight }}</span>
-                </div>
-                <div
-                  class="node-address"
-                  :title="`${row.address}:${row.port}`"
-                >
-                  {{ row.address }}:{{ row.port }}
                 </div>
                 <div
                   v-if="parseTags(row.tags).length"
@@ -198,8 +198,11 @@
               <div class="stack-cell">
                 <div class="stack-item stack-item--inline">
                   <span class="stack-label">TLS 状态</span>
-                  <span :class="['metric-pill', row.tls_enabled ? 'is-success' : 'is-muted']">
-                    {{ row.tls_enabled ? '已启用' : '未启用' }}
+                  <span
+                    :class="['metric-pill', getTlsStatusPillClass(row)]"
+                    :title="getTlsHint(row)"
+                  >
+                    {{ getTlsStatusText(row) }}
                   </span>
                 </div>
                 <div class="stack-item">
@@ -209,9 +212,6 @@
                 <div class="stack-item">
                   <span class="stack-label">系统证书</span>
                   <span class="stack-value">{{ row.certificate_id ? getAssignedCertificateDisplay(row.certificate_id) : '未关联' }}</span>
-                </div>
-                <div class="entity-cell__hint">
-                  {{ getTlsHint(row) }}
                 </div>
               </div>
             </template>
@@ -1526,6 +1526,20 @@ const getLoadPercent = (node) => {
   return Math.min(100, Math.round((node.current_users / node.max_users) * 100));
 };
 
+const getTlsStatusText = (node) => {
+  if (!node.tls_enabled) return "未启用";
+  if (node.certificate_id) return "已就绪";
+  if (node.tls_domain) return "缺证书";
+  return "待补齐";
+};
+
+const getTlsStatusPillClass = (node) => {
+  if (!node.tls_enabled) return "is-muted";
+  if (node.certificate_id) return "is-success";
+  if (node.tls_domain) return "is-warning";
+  return "is-danger";
+};
+
 const getTlsHint = (node) => {
   if (!node.tls_enabled) {
     return "当前节点未启用 TLS，适合纯 IP 或内网场景。";
@@ -2321,20 +2335,46 @@ onUnmounted(() => {
 }
 
 .card-header {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
+  gap: 12px;
 }
 
-.table-shell :deep(.el-table__cell) {
-  vertical-align: top;
+.admin-nodes-page :deep(.nodes-table td.el-table__cell),
+.admin-nodes-page :deep(.nodes-table th.el-table__cell) {
+  vertical-align: middle !important;
 }
 
-.table-shell :deep(.el-table .cell) {
-  padding-top: 6px;
-  padding-bottom: 6px;
+.admin-nodes-page :deep(.nodes-table .el-table__header-wrapper .cell) {
+  display: flex;
+  align-items: center;
+  min-height: 52px;
 }
 
-.admin-nodes-page :deep(.operation-btns) {
+.admin-nodes-page :deep(.nodes-table .el-table__body td.el-table__cell > .cell) {
+  display: flex;
+  align-items: center;
+  min-height: 100%;
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+.admin-nodes-page :deep(.nodes-table .entity-cell),
+.admin-nodes-page :deep(.nodes-table .stack-cell),
+.admin-nodes-page :deep(.nodes-table .operation-btns) {
+  width: 100%;
+}
+
+.admin-nodes-page :deep(.nodes-table .entity-cell),
+.admin-nodes-page :deep(.nodes-table .stack-cell) {
+  justify-content: center;
+}
+
+.admin-nodes-page :deep(.nodes-table .operation-btns) {
+  align-items: center;
   gap: 8px;
+  min-height: 100%;
 }
 
 .admin-nodes-page :deep(.row-action) {
@@ -2509,6 +2549,11 @@ onUnmounted(() => {
 
   .page-actions :deep(.el-button) {
     flex: 1;
+  }
+
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 </style>

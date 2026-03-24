@@ -342,6 +342,7 @@ export const useNodeStore = defineStore('node', () => {
 
   // 统计和健康
   const fetchStatistics = async () => {
+    error.value = null
     try {
       const response = await nodesApi.getStatistics()
       statistics.value = response
@@ -353,6 +354,7 @@ export const useNodeStore = defineStore('node', () => {
   }
 
   const fetchClusterHealth = async () => {
+    error.value = null
     try {
       const response = await nodesApi.getClusterHealth()
       clusterHealth.value = response

@@ -46,41 +46,18 @@
       v-if="node"
       class="summary-grid"
     >
-      <div class="summary-card summary-card-primary">
-        <span class="summary-label">节点地址</span>
-        <strong class="summary-value summary-value-address">{{ node.address }}</strong>
-        <small class="summary-meta">端口 {{ node.port }} · {{ node.region || '未设置地区' }}</small>
-      </div>
-      <div class="summary-card">
-        <span class="summary-label">内核状态</span>
-        <strong class="summary-value">{{ node.xray_running ? '运行中' : '已停止' }}</strong>
+      <div
+        v-for="card in summaryCards"
+        :key="card.key"
+        :class="['summary-card', { 'summary-card-primary': card.primary }]"
+      >
+        <span class="summary-label">{{ card.label }}</span>
+        <strong :class="['summary-value', card.valueClass]">{{ card.value }}</strong>
         <small
           class="summary-meta"
-          :title="formatCoreVersion(node.xray_version)"
+          :title="card.metaTitle"
         >
-          {{ formatCoreVersionCompact(node.xray_version) }}
-        </small>
-      </div>
-      <div class="summary-card">
-        <span class="summary-label">同步状态</span>
-        <strong class="summary-value">{{ getSyncStatusText(node.sync_status) }}</strong>
-        <small class="summary-meta">最后同步 {{ formatTime(node.synced_at) }}</small>
-      </div>
-      <div class="summary-card">
-        <span class="summary-label">用户负载</span>
-        <strong class="summary-value">{{ currentUsersLimitDisplay }}</strong>
-        <small class="summary-meta">负载 {{ loadPercentage }}%</small>
-      </div>
-      <div class="summary-card">
-        <span class="summary-label">节点延迟</span>
-        <strong :class="['summary-value', getLatencyClass(node.latency)]">{{ node.latency || 0 }}ms</strong>
-        <small class="summary-meta">最后心跳 {{ formatTime(node.last_seen_at) }}</small>
-      </div>
-      <div class="summary-card">
-        <span class="summary-label">SSH 目标</span>
-        <strong class="summary-value summary-value-address">{{ sshEndpoint }}</strong>
-        <small class="summary-meta">
-          {{ hasSavedSSHCredentials ? '已保存 SSH 凭据' : '需要现场填写 SSH 凭据' }}
+          {{ card.meta }}
         </small>
       </div>
     </div>
@@ -99,14 +76,12 @@
         size="small"
         class="workspace-toolbar__switcher"
       >
-        <el-radio-button label="core">
-          内核管理
-        </el-radio-button>
-        <el-radio-button label="network">
-          网络优化
-        </el-radio-button>
-        <el-radio-button label="events">
-          操作记录
+        <el-radio-button
+          v-for="workspace in workspaceOptions"
+          :key="workspace.value"
+          :label="workspace.value"
+        >
+          {{ workspace.label }}
         </el-radio-button>
       </el-radio-group>
     </div>
@@ -115,23 +90,17 @@
       v-loading="loading"
       :gutter="isMobile ? 12 : 20"
     >
-      <el-col :span="mainColumnSpan">
+      <el-col :span="24">
         <el-card
           v-if="activeWorkspace === 'core'"
           shadow="never"
           class="info-card"
         >
           <template #header>
-            <div class="card-header card-header-start">
-              <div>
-                <div class="section-title">
-                  内核管理
-                </div>
-                <div class="section-subtitle">
-                  Xray 进程控制、状态刷新与配置同步
-                </div>
-              </div>
-            </div>
+            <PageSectionHeader
+              title="内核管理"
+              subtitle="Xray 进程控制、状态刷新与配置同步"
+            />
           </template>
           <div class="status-item">
             <span class="status-label">内核类型</span>
@@ -209,22 +178,17 @@
           class="info-card"
         >
           <template #header>
-            <div class="card-header card-header-start">
-              <div>
-                <div class="section-title">
-                  网络优化
-                </div>
-                <div class="section-subtitle">
-                  管理 Linux 网络栈与 Xray Sockopt 优化项
-                </div>
-              </div>
+            <PageSectionHeader
+              title="网络优化"
+              subtitle="管理 Linux 网络栈与 Xray Sockopt 优化项"
+            >
               <el-tag
                 size="small"
                 type="warning"
               >
                 BBR / fq / TFO
               </el-tag>
-            </div>
+            </PageSectionHeader>
           </template>
           <div class="profile-grid">
             <div class="profile-card">
@@ -356,29 +320,13 @@
             v-if="networkOptimizationState"
             class="optimization-state-grid"
           >
-            <div class="optimization-state-item">
-              <span class="optimization-state-label">内核</span>
-              <strong>{{ networkOptimizationState.kernel_version || '-' }}</strong>
-            </div>
-            <div class="optimization-state-item">
-              <span class="optimization-state-label">当前拥塞</span>
-              <strong>{{ networkOptimizationState.current_congestion_control || '-' }}</strong>
-            </div>
-            <div class="optimization-state-item">
-              <span class="optimization-state-label">默认队列</span>
-              <strong>{{ networkOptimizationState.default_qdisc || '-' }}</strong>
-            </div>
-            <div class="optimization-state-item">
-              <span class="optimization-state-label">TCP Fast Open</span>
-              <strong>{{ networkOptimizationState.tcp_fastopen || '-' }}</strong>
-            </div>
-            <div class="optimization-state-item">
-              <span class="optimization-state-label">BBR 可用</span>
-              <strong>{{ networkOptimizationState.bbr_available ? '是' : '否' }}</strong>
-            </div>
-            <div class="optimization-state-item">
-              <span class="optimization-state-label">备份状态</span>
-              <strong>{{ networkOptimizationState.backup_exists ? '已创建' : '未创建' }}</strong>
+            <div
+              v-for="item in optimizationStateItems"
+              :key="item.label"
+              class="optimization-state-item"
+            >
+              <span class="optimization-state-label">{{ item.label }}</span>
+              <strong>{{ item.value }}</strong>
             </div>
           </div>
           <el-empty
@@ -447,16 +395,10 @@
           class="info-card"
         >
           <template #header>
-            <div class="card-header card-header-start">
-              <div>
-                <div class="section-title">
-                  操作记录
-                </div>
-                <div class="section-subtitle">
-                  最近的恢复、同步和节点调度记录
-                </div>
-              </div>
-            </div>
+            <PageSectionHeader
+              title="操作记录"
+              subtitle="最近的恢复、同步和节点调度记录"
+            />
           </template>
           <div
             v-if="recentRecoveryEvents.length"
@@ -499,140 +441,6 @@
             :image-size="60"
           />
         </el-card>
-      </el-col>
-
-      <el-col :span="sideColumnSpan">
-        <div class="side-column__stack">
-          <el-card
-            shadow="never"
-            class="info-card"
-          >
-            <template #header>
-              <div class="card-header card-header-start">
-                <div>
-                  <div class="section-title">
-                    运维摘要
-                  </div>
-                  <div class="section-subtitle">
-                    当前节点的运维上下文和已保存优化配置
-                  </div>
-                </div>
-              </div>
-            </template>
-            <div class="status-item">
-              <span class="status-label">当前工作区</span>
-              <span class="workspace-label">{{ activeWorkspaceLabel }}</span>
-            </div>
-            <div class="workspace-shortcuts">
-              <el-button
-                :type="activeWorkspace === 'core' ? 'primary' : 'default'"
-                plain
-                @click="activeWorkspace = 'core'"
-              >
-                内核
-              </el-button>
-              <el-button
-                :type="activeWorkspace === 'network' ? 'primary' : 'default'"
-                plain
-                @click="activeWorkspace = 'network'"
-              >
-                网络
-              </el-button>
-              <el-button
-                :type="activeWorkspace === 'events' ? 'primary' : 'default'"
-                plain
-                @click="activeWorkspace = 'events'"
-              >
-                记录
-              </el-button>
-            </div>
-            <div class="status-item status-item-top">
-              <span class="status-label">SSH 目标</span>
-              <div class="network-endpoint">
-                {{ sshEndpoint }}
-              </div>
-            </div>
-            <div class="status-item status-item-top">
-              <span class="status-label">当前版本</span>
-              <div class="core-version">
-                {{ formatCoreVersion(node?.xray_version) }}
-              </div>
-            </div>
-            <div class="status-item">
-              <span class="status-label">最后心跳</span>
-              <span>{{ formatTime(node?.last_seen_at) }}</span>
-            </div>
-            <div class="status-item">
-              <span class="status-label">最后同步</span>
-              <span>{{ formatTime(node?.synced_at) }}</span>
-            </div>
-            <div class="status-item status-item-top">
-              <span class="status-label">已保存优化</span>
-              <div class="saved-optimization">
-                <template v-if="savedOptimizationTags.length">
-                  <el-tag
-                    v-for="tag in savedOptimizationTags"
-                    :key="tag"
-                    size="small"
-                    effect="plain"
-                  >
-                    {{ tag }}
-                  </el-tag>
-                </template>
-                <span
-                  v-else
-                  class="placeholder-text"
-                >
-                  尚未保存运维优化策略
-                </span>
-              </div>
-            </div>
-            <div
-              v-if="networkOptimizationMeta.backup_path"
-              class="core-tip"
-            >
-              远端备份文件：{{ networkOptimizationMeta.backup_path }}
-            </div>
-          </el-card>
-
-          <el-card
-            shadow="never"
-            class="info-card"
-          >
-            <template #header>
-              <div class="card-header card-header-start">
-                <div>
-                  <div class="section-title">
-                    快捷入口
-                  </div>
-                  <div class="section-subtitle">
-                    在详情和编辑页之间快速切换
-                  </div>
-                </div>
-              </div>
-            </template>
-            <div class="quick-actions">
-              <el-button
-                type="primary"
-                @click="goToDetail"
-              >
-                查看节点详情
-              </el-button>
-              <el-button
-                plain
-                @click="editNode"
-              >
-                编辑节点信息
-              </el-button>
-              <el-button
-                plain
-                @click="goBack"
-              >
-                返回运维列表
-              </el-button>
-            </div>
-          </el-card>
-        </div>
       </el-col>
     </el-row>
 
@@ -702,7 +510,23 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
+import PageSectionHeader from '@/components/PageSectionHeader.vue'
 import { nodesApi } from '@/api'
+import {
+  formatCoreVersion,
+  formatCoreVersionCompact,
+  formatNodeTime as formatTime,
+  formatUsersLimitDisplay,
+  getNodeStatusText as getStatusText,
+  getNodeStatusType as getStatusType,
+  getNodeSyncStatusText as getSyncStatusText,
+  getNodeSyncStatusType as getSyncStatusType,
+  getRecoveryCommandText,
+  getRecoverySourceText,
+  getRecoveryStatusColor,
+  getRecoveryStatusText,
+  getRecoveryStatusType
+} from '@/composables/useNodePresentation'
 import { useViewport } from '@/composables/useViewport'
 import { useNodeStore } from '@/stores/node'
 
@@ -760,17 +584,12 @@ const networkOptimizationForm = reactive({
 
 const node = computed(() => nodeStore.currentNode)
 const recentRecoveryEvents = computed(() => Array.isArray(node.value?.recent_recovery_events) ? node.value.recent_recovery_events : [])
-const mainColumnSpan = computed(() => (isMobile.value ? 24 : 17))
-const sideColumnSpan = computed(() => (isMobile.value ? 24 : 7))
+const workspaceOptions = Object.freeze([
+  { value: 'core', label: '内核管理' },
+  { value: 'network', label: '网络优化' },
+  { value: 'events', label: '操作记录' }
+])
 const networkDialogWidth = computed(() => (isMobile.value ? 'calc(100vw - 24px)' : '720px'))
-const activeWorkspaceLabel = computed(() => {
-  const labels = {
-    core: '内核管理',
-    network: '网络优化',
-    events: '操作记录'
-  }
-  return labels[activeWorkspace.value] || '内核管理'
-})
 const activeWorkspaceDescription = computed(() => {
   const descriptions = {
     core: '集中处理 Xray 状态、进程控制与配置同步，避免在详情页分散操作。',
@@ -779,14 +598,52 @@ const activeWorkspaceDescription = computed(() => {
   }
   return descriptions[activeWorkspace.value] || descriptions.core
 })
-const currentUsersLimitDisplay = computed(() => (
+const currentUsersLimitDisplay = computed(() => formatUsersLimitDisplay(
+  node.value?.current_users,
   node.value?.max_users
-    ? `${node.value.current_users || 0} / ${node.value.max_users}`
-    : `${node.value?.current_users || 0} / ∞`
 ))
 const loadPercentage = computed(() => {
   if (!node.value?.max_users) return 0
   return Math.round((node.value.current_users / node.value.max_users) * 100)
+})
+const summaryCards = computed(() => {
+  if (!node.value) return []
+
+  return [
+    {
+      key: 'address',
+      label: '节点地址',
+      value: node.value.address || '-',
+      valueClass: 'summary-value-address',
+      meta: `端口 ${node.value.port} · ${node.value.region || '未设置地区'}`,
+      metaTitle: '',
+      primary: true
+    },
+    {
+      key: 'core',
+      label: '内核状态',
+      value: node.value.xray_running ? '运行中' : '已停止',
+      valueClass: '',
+      meta: formatCoreVersionCompact(node.value.xray_version),
+      metaTitle: formatCoreVersion(node.value.xray_version)
+    },
+    {
+      key: 'sync',
+      label: '同步状态',
+      value: getSyncStatusText(node.value.sync_status),
+      valueClass: '',
+      meta: `最后同步 ${formatTime(node.value.synced_at)}`,
+      metaTitle: ''
+    },
+    {
+      key: 'users',
+      label: '用户负载',
+      value: currentUsersLimitDisplay.value,
+      valueClass: '',
+      meta: `负载 ${loadPercentage.value}%`,
+      metaTitle: ''
+    }
+  ]
 })
 const hasSavedSSHCredentials = computed(() => Boolean(
   networkOptimizationMeta.value?.ssh_defaults?.has_saved_password ||
@@ -827,87 +684,18 @@ const hasSavedOptimizationSettings = computed(() => Boolean(
   networkOptimizationMeta.value?.has_saved_settings &&
   savedOptimizationTags.value.length
 ))
+const optimizationStateItems = computed(() => {
+  if (!networkOptimizationState.value) return []
 
-const getStatusType = (status) => {
-  const types = { online: 'success', offline: 'info', unhealthy: 'danger' }
-  return types[status] || 'info'
-}
-
-const getStatusText = (status) => {
-  const texts = { online: '在线', offline: '离线', unhealthy: '不健康' }
-  return texts[status] || status || '未知'
-}
-
-const getSyncStatusType = (status) => {
-  const types = { synced: 'success', pending: 'warning', failed: 'danger' }
-  return types[status] || 'info'
-}
-
-const getSyncStatusText = (status) => {
-  const texts = { synced: '已同步', pending: '待同步', failed: '同步失败' }
-  return texts[status] || status || '未知'
-}
-
-const getLatencyClass = (latency) => {
-  const value = Number(latency) || 0
-  if (value <= 0) return ''
-  if (value < 100) return 'latency-good'
-  if (value < 300) return 'latency-medium'
-  return 'latency-bad'
-}
-
-const getRecoveryStatusType = (status) => {
-  const types = { success: 'success', failed: 'danger', dispatched: 'warning', queued: 'info' }
-  return types[status] || 'info'
-}
-
-const getRecoveryStatusText = (status) => {
-  const texts = { success: '已恢复', failed: '恢复失败', dispatched: '已下发', queued: '已排队' }
-  return texts[status] || status || '未知'
-}
-
-const getRecoveryStatusColor = (status) => {
-  const colors = {
-    success: 'var(--el-color-success)',
-    failed: 'var(--el-color-danger)',
-    dispatched: 'var(--el-color-warning)',
-    queued: 'var(--el-color-info)'
-  }
-  return colors[status] || 'var(--el-border-color)'
-}
-
-const getRecoverySourceText = (source) => {
-  const texts = { heartbeat: '节点心跳', health_checker: '健康检查器', admin: '管理员', portal_ping: '用户入口探测' }
-  return texts[source] || source || '系统'
-}
-
-const getRecoveryCommandText = (commandType) => {
-  const texts = {
-    xray_start: '启动 Xray',
-    xray_restart: '重启 Xray',
-    xray_status: '刷新 Xray 状态',
-    config_sync: '同步节点配置'
-  }
-  return texts[commandType] || commandType || '未知命令'
-}
-
-const formatTime = (time) => {
-  if (!time) return '-'
-  return new Date(time).toLocaleString('zh-CN')
-}
-
-const formatCoreVersion = (version) => {
-  if (!version) return '-'
-  return String(version).split('\n')[0]
-}
-
-const formatCoreVersionCompact = (version) => {
-  const normalized = formatCoreVersion(version)
-  if (normalized === '-') return normalized
-
-  const matched = normalized.match(/(Xray\s+\d+(?:\.\d+)+)/i)
-  return matched?.[1] || normalized
-}
+  return [
+    { label: '内核', value: networkOptimizationState.value.kernel_version || '-' },
+    { label: '当前拥塞', value: networkOptimizationState.value.current_congestion_control || '-' },
+    { label: '默认队列', value: networkOptimizationState.value.default_qdisc || '-' },
+    { label: 'TCP Fast Open', value: networkOptimizationState.value.tcp_fastopen || '-' },
+    { label: 'BBR 可用', value: networkOptimizationState.value.bbr_available ? '是' : '否' },
+    { label: '备份状态', value: networkOptimizationState.value.backup_exists ? '已创建' : '未创建' }
+  ]
+})
 
 const applyNetworkOptimizationForm = (settings) => {
   const source = settings || networkOptimizationMeta.value?.recommended_settings || {}
@@ -1232,7 +1020,7 @@ watch(
 
 .node-operations-page .summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 20px;
 }
@@ -1274,10 +1062,10 @@ watch(
 
 .summary-card {
   display: flex;
-  min-height: 120px;
+  min-height: 100px;
   flex-direction: column;
-  gap: 10px;
-  padding: 16px;
+  gap: 8px;
+  padding: 14px 16px;
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 16px;
   background: var(--el-bg-color);
@@ -1313,29 +1101,6 @@ watch(
 
 .info-card {
   margin-bottom: 18px;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.card-header-start {
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.section-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-
-.section-subtitle {
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
 }
 
 .status-item {
@@ -1496,51 +1261,6 @@ watch(
   font-weight: 600;
 }
 
-.saved-optimization {
-  display: flex;
-  max-width: 62%;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.placeholder-text {
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-  text-align: right;
-}
-
-.quick-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.quick-actions :deep(.el-button) {
-  width: 100%;
-}
-
-.quick-actions :deep(.el-button + .el-button) {
-  margin-left: 0;
-}
-
-.side-column__stack {
-  position: sticky;
-  top: 20px;
-}
-
-.workspace-shortcuts {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin: 12px 0 4px;
-}
-
-.workspace-label {
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-
 .recovery-events {
   display: flex;
   flex-direction: column;
@@ -1596,18 +1316,6 @@ watch(
   margin-top: 4px;
 }
 
-.latency-good {
-  color: var(--el-color-success);
-}
-
-.latency-medium {
-  color: var(--el-color-warning);
-}
-
-.latency-bad {
-  color: var(--el-color-danger);
-}
-
 @media (max-width: 1280px) {
   .node-operations-page .summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1644,19 +1352,15 @@ watch(
 
   .core-version,
   .network-endpoint,
-  .saved-optimization,
-  .placeholder-text,
   .optimization-select {
     width: 100%;
     max-width: none;
     text-align: left;
-    justify-content: flex-start;
   }
 
   .optimization-options,
   .optimization-state-grid,
-  .profile-grid,
-  .workspace-shortcuts {
+  .profile-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1667,10 +1371,6 @@ watch(
   .workspace-toolbar__switcher :deep(.el-radio-button),
   .workspace-toolbar__switcher :deep(.el-radio-button__inner) {
     width: 100%;
-  }
-
-  .side-column__stack {
-    position: static;
   }
 }
 </style>

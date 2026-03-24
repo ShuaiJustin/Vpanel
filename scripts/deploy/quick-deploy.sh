@@ -183,7 +183,7 @@ deploy_panel_local() {
 
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o "$LOCAL_PANEL_BINARY" ./cmd/v
     log_info "✓ 本地 Panel 已编译为 $LOCAL_PANEL_BINARY"
-    log_warn "本地模式不会自动重启已有进程，请按需执行 ./scripts/start.sh restart"
+    log_warn "本地模式不会自动重启已有进程，请按需执行 ./scripts/deploy/start.sh restart"
 }
 
 rollback_panel() {

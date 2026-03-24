@@ -33,8 +33,7 @@
 /* 卡片样式 */
 .el-card {
   margin-bottom: 20px;
-  border-radius: 4px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
 }
 
 .el-card__header {

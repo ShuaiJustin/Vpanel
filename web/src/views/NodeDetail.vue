@@ -41,78 +41,35 @@
 	      v-if="node"
 	      class="overview-grid"
 	    >
-	      <div class="overview-card overview-card-primary">
+	      <div
+	        v-for="card in overviewCards"
+	        :key="card.key"
+	        :class="['overview-card', { 'overview-card-primary': card.primary }]"
+	      >
 	        <div class="overview-label">
-	          节点地址
+	          {{ card.label }}
 	        </div>
-	        <div class="overview-value overview-address">
-	          {{ node.address }}
-	        </div>
-	        <div class="overview-meta">
-	          端口 {{ node.port }} · {{ node.region || '未设置地区' }}
-	        </div>
-	      </div>
-	      <div class="overview-card">
-	        <div class="overview-label">
-	          连接与同步
-	        </div>
-	        <div class="overview-tag-row">
-	          <el-tag :type="getStatusType(node.status)">
-	            {{ getStatusText(node.status) }}
-	          </el-tag>
+	        <div
+	          v-if="card.tags?.length"
+	          class="overview-tag-row"
+	        >
 	          <el-tag
-	            :type="getSyncStatusType(node.sync_status)"
-	            effect="plain"
+	            v-for="tag in card.tags"
+	            :key="`${card.key}-${tag.label}`"
+	            :type="tag.type"
+	            :effect="tag.effect || 'light'"
 	          >
-	            {{ getSyncStatusText(node.sync_status) }}
+	            {{ tag.label }}
 	          </el-tag>
 	        </div>
-	        <div class="overview-meta">
-	          最后在线 {{ formatTime(node.last_seen_at) }}
-	        </div>
-	      </div>
-	      <div class="overview-card">
-	        <div class="overview-label">
-	          用户负载
-	        </div>
-	        <div class="overview-value">
-	          {{ currentUsersLimitDisplay }}
+	        <div
+	          v-else
+	          :class="['overview-value', card.valueClass]"
+	        >
+	          {{ card.value }}
 	        </div>
 	        <div class="overview-meta">
-	          权重 {{ node.weight }} · 优先级 {{ node.priority || 0 }}
-	        </div>
-	      </div>
-	      <div class="overview-card">
-	        <div class="overview-label">
-	          {{ trafficPeriodText }}流量
-	        </div>
-	        <div class="overview-value">
-	          {{ formatBytes(trafficStats.upload + trafficStats.download) }}
-	        </div>
-	        <div class="overview-meta">
-	          上行 {{ formatBytes(trafficStats.upload) }} · 下行 {{ formatBytes(trafficStats.download) }}
-	        </div>
-	      </div>
-	      <div class="overview-card">
-	        <div class="overview-label">
-	          Xray 内核
-	        </div>
-	        <div class="overview-value">
-	          {{ node.xray_running ? '运行中' : '已停止' }}
-	        </div>
-	        <div class="overview-meta">
-	          {{ formatCoreVersion(node.xray_version) }}
-	        </div>
-	      </div>
-	      <div class="overview-card">
-	        <div class="overview-label">
-	          接入策略
-	        </div>
-	        <div class="overview-value">
-	          {{ node.tls_enabled ? 'TLS 已启用' : '未启用 TLS' }}
-	        </div>
-	        <div class="overview-meta">
-	          {{ supportedProtocolsDisplay }}
+	          {{ card.meta }}
 	        </div>
 	      </div>
 	    </div>
@@ -128,15 +85,10 @@
 	          class="info-card"
 	        >
 	          <template #header>
-	            <div class="card-header card-header-start">
-	              <div>
-	                <div class="section-title">
-	                  基本信息
-	                </div>
-	                <div class="section-subtitle">
-	                  节点识别、接入参数与容量配置
-	                </div>
-	              </div>
+	            <PageSectionHeader
+	              title="基本信息"
+	              subtitle="节点识别、接入参数与容量配置"
+	            >
 	              <el-tag
 	                v-if="node?.region"
 	                size="small"
@@ -144,71 +96,43 @@
 	              >
 	                {{ node.region }}
 	              </el-tag>
-	            </div>
+	            </PageSectionHeader>
 	          </template>
 	          <el-descriptions
 	            v-if="node"
             :column="detailColumns"
             border
           >
-            <el-descriptions-item label="ID">
-              {{ node.id }}
-            </el-descriptions-item>
-            <el-descriptions-item label="名称">
-              {{ node.name }}
-            </el-descriptions-item>
-            <el-descriptions-item label="地址">
-              {{ node.address }}
-            </el-descriptions-item>
-            <el-descriptions-item label="端口">
-              {{ node.port }}
-            </el-descriptions-item>
-            <el-descriptions-item label="地区">
-              {{ node.region || '-' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="权重">
-              {{ node.weight }}
-            </el-descriptions-item>
-            <el-descriptions-item label="最大用户数">
-              {{ node.max_users || '无限制' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="当前用户数">
-              {{ node.current_users }}
-            </el-descriptions-item>
-            <el-descriptions-item label="延迟">
-              <span :class="getLatencyClass(node.latency)">{{ node.latency }}ms</span>
-            </el-descriptions-item>
-            <el-descriptions-item label="同步状态">
-              <el-tag
-                :type="getSyncStatusType(node.sync_status)"
-                size="small"
-              >
-                {{ getSyncStatusText(node.sync_status) }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="最后在线">
-              {{ formatTime(node.last_seen_at) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="最后同步">
-              {{ formatTime(node.synced_at) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="创建时间">
-              {{ formatTime(node.created_at) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="更新时间">
-              {{ formatTime(node.updated_at) }}
-            </el-descriptions-item>
-          </el-descriptions>
-          <div
-            v-if="node?.tags && parseTags(node.tags).length"
-            class="tags-section"
-          >
-            <span class="tags-label">标签：</span>
-            <el-tag
-              v-for="tag in parseTags(node.tags)"
-              :key="tag"
-              size="small"
-              style="margin-right: 8px;"
+	            <el-descriptions-item
+	              v-for="item in basicInfoItems"
+	              :key="item.label"
+	              :label="item.label"
+	            >
+	              <el-tag
+	                v-if="item.type === 'tag'"
+	                :type="item.tagType"
+	                size="small"
+	              >
+	                {{ item.value }}
+	              </el-tag>
+	              <span
+	                v-else
+	                :class="item.valueClass"
+	              >
+	                {{ item.value }}
+	              </span>
+	            </el-descriptions-item>
+	          </el-descriptions>
+	          <div
+	            v-if="parsedTags.length"
+	            class="tags-section"
+	          >
+	            <span class="tags-label">标签：</span>
+	            <el-tag
+	              v-for="tag in parsedTags"
+	              :key="tag"
+	              size="small"
+	              style="margin-right: 8px;"
 	            >
 	              {{ tag }}
 	            </el-tag>
@@ -274,16 +198,10 @@
 	          class="info-card"
 	        >
 	          <template #header>
-	            <div class="card-header card-header-start">
-	              <div>
-	                <div class="section-title">
-	                  备注信息
-	                </div>
-	                <div class="section-subtitle">
-	                  节点说明、管理员备注与访问约束
-	                </div>
-	              </div>
-	            </div>
+	            <PageSectionHeader
+	              title="备注信息"
+	              subtitle="节点说明、管理员备注与访问约束"
+	            />
 	          </template>
 	          <div class="notes-grid">
 	            <div
@@ -335,15 +253,11 @@
 	          class="info-card"
 	        >
 	          <template #header>
-	            <div class="card-header">
-	              <div>
-	                <div class="section-title">
-	                  流量统计
-	                </div>
-	                <div class="section-subtitle">
-	                  查看节点在不同周期内的总流量消耗
-	                </div>
-	              </div>
+	            <PageSectionHeader
+	              title="流量统计"
+	              subtitle="查看节点在不同周期内的总流量消耗"
+	              align="center"
+	            >
 	              <el-radio-group
 	                v-model="trafficPeriod"
 	                size="small"
@@ -355,43 +269,27 @@
                 <el-radio-button label="week">
                   本周
                 </el-radio-button>
-                <el-radio-button label="month">
-                  本月
-                </el-radio-button>
-              </el-radio-group>
-            </div>
-          </template>
-          <el-row :gutter="isMobile ? 12 : 20">
-            <el-col :span="trafficStatSpan">
-              <div class="traffic-stat">
-                <div class="traffic-value">
-                  {{ formatBytes(trafficStats.upload) }}
-                </div>
-                <div class="traffic-label">
-                  上传流量
-                </div>
-              </div>
-            </el-col>
-            <el-col :span="trafficStatSpan">
-              <div class="traffic-stat">
-                <div class="traffic-value">
-                  {{ formatBytes(trafficStats.download) }}
-                </div>
-                <div class="traffic-label">
-                  下载流量
-                </div>
-              </div>
-            </el-col>
-            <el-col :span="trafficStatSpan">
-              <div class="traffic-stat">
-                <div class="traffic-value">
-                  {{ formatBytes(trafficStats.upload + trafficStats.download) }}
-                </div>
-                <div class="traffic-label">
-                  总流量
-                </div>
-              </div>
-            </el-col>
+	                <el-radio-button label="month">
+	                  本月
+	                </el-radio-button>
+	              </el-radio-group>
+	            </PageSectionHeader>
+	          </template>
+	          <el-row :gutter="isMobile ? 12 : 20">
+	            <el-col
+	              v-for="item in trafficSummaryCards"
+	              :key="item.key"
+	              :span="trafficStatSpan"
+	            >
+	              <div class="traffic-stat">
+	                <div class="traffic-value">
+	                  {{ item.value }}
+	                </div>
+	                <div class="traffic-label">
+	                  {{ item.label }}
+	                </div>
+	              </div>
+	            </el-col>
           </el-row>
         </el-card>
 
@@ -401,16 +299,10 @@
 	          class="info-card"
 	        >
 	          <template #header>
-	            <div class="card-header card-header-start">
-	              <div>
-	                <div class="section-title">
-	                  流量 Top 用户
-	                </div>
-	                <div class="section-subtitle">
-	                  当前周期内消耗流量最高的用户列表
-	                </div>
-	              </div>
-	            </div>
+	            <PageSectionHeader
+	              title="流量 Top 用户"
+	              subtitle="当前周期内消耗流量最高的用户列表"
+	            />
 	          </template>
 	          <div
 	            v-if="topUsers.length"
@@ -465,78 +357,66 @@
       </el-col>
 
       <!-- 右侧面板 -->
-	      <el-col
-	        :span="sideColumnSpan"
-	        class="side-column"
-	      >
-	        <el-card
-	          shadow="never"
-	          class="info-card"
+      <el-col
+        :span="sideColumnSpan"
+        class="side-column"
+      >
+        <el-card
+          shadow="never"
+          class="info-card"
 	        >
 	          <template #header>
-	            <div class="card-header card-header-start">
-	              <div>
-	                <div class="section-title">
-	                  节点运维
-	                </div>
-	                <div class="section-subtitle">
-	                  将内核管理、网络优化和运维记录集中到独立工作台
-	                </div>
-	              </div>
-	            </div>
+	            <PageSectionHeader
+	              title="节点运维"
+	              subtitle="将内核管理、网络优化和运维记录集中到独立工作台"
+	            />
 	          </template>
-	          <div class="operation-handoff">
-	            <div class="operation-handoff__meta">
-	              <el-tag
-	                :type="node?.xray_running ? 'success' : 'danger'"
-	                size="small"
-	              >
-	                {{ node?.xray_running ? '内核运行中' : '内核已停止' }}
-	              </el-tag>
-	              <el-tag
-	                :type="getSyncStatusType(node?.sync_status)"
-	                size="small"
-	                effect="plain"
-	              >
-	                {{ getSyncStatusText(node?.sync_status) }}
-	              </el-tag>
-	            </div>
-	            <div class="operation-handoff__body">
-	              节点详情页只保留查看信息。内核管理、网络优化和运维记录已经移到独立工作台，避免详情页继续堆叠。
-	            </div>
-	            <div class="quick-actions operation-handoff__actions">
-	              <el-button
-	                type="primary"
-	                @click="openOperationsPage"
-	              >
-	                进入节点运维
-	              </el-button>
-	              <el-button
-	                plain
-	                @click="editNode"
-	              >
-	                编辑节点
-	              </el-button>
-	            </div>
-	          </div>
-	        </el-card>
+          <div class="operation-handoff">
+            <div class="operation-handoff__meta">
+              <el-tag
+                :type="node?.xray_running ? 'success' : 'danger'"
+                size="small"
+              >
+                {{ node?.xray_running ? '内核运行中' : '内核已停止' }}
+              </el-tag>
+              <el-tag
+                :type="getSyncStatusType(node?.sync_status)"
+                size="small"
+                effect="plain"
+              >
+                {{ getSyncStatusText(node?.sync_status) }}
+              </el-tag>
+            </div>
+            <div class="operation-handoff__body">
+              节点详情页只保留查看信息。内核管理、网络优化和运维记录已经移到独立工作台，避免详情页继续堆叠。
+            </div>
+            <div class="quick-actions operation-handoff__actions">
+              <el-button
+                type="primary"
+                @click="openOperationsPage"
+              >
+                进入节点运维
+              </el-button>
+              <el-button
+                plain
+                @click="editNode"
+              >
+                编辑节点
+              </el-button>
+            </div>
+          </div>
+        </el-card>
 
         <!-- 所属分组 -->
-	        <el-card
-	          shadow="never"
-	          class="info-card"
+        <el-card
+          shadow="never"
+          class="info-card"
 	        >
 	          <template #header>
-	            <div class="card-header card-header-start">
-	              <div>
-	                <div class="section-title">
-	                  所属分组
-	                </div>
-	                <div class="section-subtitle">
-	                  当前节点归属的节点分组
-	                </div>
-	              </div>
-	            </div>
+	            <PageSectionHeader
+	              title="所属分组"
+	              subtitle="当前节点归属的节点分组"
+	            />
 	          </template>
           <div
             v-if="nodeGroups.length"
@@ -558,32 +438,26 @@
         </el-card>
 
         <!-- 快捷操作 -->
-	        <el-card
-	          shadow="never"
-	          class="info-card"
+        <el-card
+          shadow="never"
+          class="info-card"
 	        >
 	          <template #header>
-	            <div class="card-header card-header-start">
-	              <div>
-	                <div class="section-title">
-	                  快捷操作
-	                </div>
-	                <div class="section-subtitle">
-	                  节点 Token 与删除等高风险操作入口
-	                </div>
-	              </div>
-	            </div>
+	            <PageSectionHeader
+	              title="快捷操作"
+	              subtitle="节点 Token 与删除等高风险操作入口"
+	            />
 	          </template>
-	          <div class="quick-actions">
-	            <el-button
-	              type="primary"
-	              @click="openOperationsPage"
-	            >
-	              进入节点运维
-	            </el-button>
-	            <el-button
-	              type="warning"
-	              plain
+          <div class="quick-actions">
+            <el-button
+              type="primary"
+              @click="openOperationsPage"
+            >
+              进入节点运维
+            </el-button>
+            <el-button
+              type="warning"
+              plain
               @click="showTokenDialog"
             >
               管理 Token
@@ -601,9 +475,9 @@
     </el-row>
 
     <!-- Token 管理对话框 -->
-	    <el-dialog
-	      v-model="tokenDialogVisible"
-	      title="Token 管理"
+    <el-dialog
+      v-model="tokenDialogVisible"
+      title="Token 管理"
       :width="tokenDialogWidth"
     >
       <div class="token-dialog-content">
@@ -668,19 +542,31 @@
           <div class="new-token-text">
             {{ newToken }}
           </div>
-	        </el-alert>
-	      </div>
-	    </el-dialog>
-	  </div>
-	</template>
+        </el-alert>
+      </div>
+    </el-dialog>
+  </div>
+</template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Refresh, View, Hide, CopyDocument } from '@element-plus/icons-vue'
+import PageSectionHeader from '@/components/PageSectionHeader.vue'
 import { useNodeStore } from '@/stores/node'
 import { nodeGroupsApi, usersApi } from '@/api'
+import {
+  formatCoreVersion,
+  formatNodeTime as formatTime,
+  formatUsersLimitDisplay,
+  getNodeLatencyClass as getLatencyClass,
+  getNodeStatusText as getStatusText,
+  getNodeStatusType as getStatusType,
+  getNodeSyncStatusText as getSyncStatusText,
+  getNodeSyncStatusType as getSyncStatusType,
+  parseNodeTags as parseTags
+} from '@/composables/useNodePresentation'
 import { useViewport } from '@/composables/useViewport'
 
 const route = useRoute()
@@ -702,13 +588,13 @@ const topUsers = ref([])
 const nodeGroups = ref([])
 
 const node = computed(() => nodeStore.currentNode)
-const recentRecoveryEvents = computed(() => Array.isArray(node.value?.recent_recovery_events) ? node.value.recent_recovery_events : [])
 const supportedProtocols = computed(() => Array.isArray(node.value?.protocols) ? node.value.protocols : [])
 const supportedProtocolsDisplay = computed(() => (
   supportedProtocols.value.length
     ? supportedProtocols.value.map((protocol) => String(protocol).toUpperCase()).join(' / ')
     : '未配置协议'
 ))
+const parsedTags = computed(() => parseTags(node.value?.tags))
 const ipWhitelistEntries = computed(() => Array.isArray(node.value?.ip_whitelist) ? node.value.ip_whitelist : [])
 const hasNodeNotes = computed(() => Boolean(
   node.value?.description ||
@@ -728,68 +614,87 @@ const trafficPeriodText = computed(() => {
   }
   return map[trafficPeriod.value] || '当前周期'
 })
-const currentUsersLimitDisplay = computed(() => (
+const currentUsersLimitDisplay = computed(() => formatUsersLimitDisplay(
+  node.value?.current_users,
   node.value?.max_users
-    ? `${node.value.current_users || 0} / ${node.value.max_users}`
-    : `${node.value?.current_users || 0} / ∞`
 ))
+const overviewCards = computed(() => {
+  if (!node.value) return []
 
-const getStatusType = (status) => {
-  const types = { online: 'success', offline: 'info', unhealthy: 'danger' }
-  return types[status] || 'info'
-}
+  return [
+    {
+      key: 'address',
+      label: '节点地址',
+      value: node.value.address || '-',
+      valueClass: 'overview-address',
+      meta: `端口 ${node.value.port} · ${node.value.region || '未设置地区'}`,
+      primary: true
+    },
+    {
+      key: 'status',
+      label: '连接与同步',
+      tags: [
+        { label: getStatusText(node.value.status), type: getStatusType(node.value.status) },
+        { label: getSyncStatusText(node.value.sync_status), type: getSyncStatusType(node.value.sync_status), effect: 'plain' }
+      ],
+      meta: `最后在线 ${formatTime(node.value.last_seen_at)}`
+    },
+    {
+      key: 'users',
+      label: '用户负载',
+      value: currentUsersLimitDisplay.value,
+      meta: `权重 ${node.value.weight} · 优先级 ${node.value.priority || 0}`
+    },
+    {
+      key: 'traffic',
+      label: `${trafficPeriodText.value}流量`,
+      value: formatBytes(trafficStats.value.upload + trafficStats.value.download),
+      meta: `上行 ${formatBytes(trafficStats.value.upload)} · 下行 ${formatBytes(trafficStats.value.download)}`
+    },
+    {
+      key: 'core',
+      label: 'Xray 内核',
+      value: node.value.xray_running ? '运行中' : '已停止',
+      meta: formatCoreVersion(node.value.xray_version)
+    },
+    {
+      key: 'access',
+      label: '接入策略',
+      value: node.value.tls_enabled ? 'TLS 已启用' : '未启用 TLS',
+      meta: supportedProtocolsDisplay.value
+    }
+  ]
+})
+const basicInfoItems = computed(() => {
+  if (!node.value) return []
 
-const getStatusText = (status) => {
-  const texts = { online: '在线', offline: '离线', unhealthy: '不健康' }
-  return texts[status] || status
-}
-
-const getSyncStatusType = (status) => {
-  const types = { synced: 'success', pending: 'warning', failed: 'danger' }
-  return types[status] || 'info'
-}
-
-const getSyncStatusText = (status) => {
-  const texts = { synced: '已同步', pending: '待同步', failed: '同步失败' }
-  return texts[status] || status
-}
-
-const getLatencyClass = (latency) => {
-  if (!latency) return ''
-  if (latency < 100) return 'latency-good'
-  if (latency < 300) return 'latency-medium'
-  return 'latency-bad'
-}
-
-const getRecoveryStatusType = (status) => {
-  const types = { success: 'success', failed: 'danger', dispatched: 'warning', queued: 'info' }
-  return types[status] || 'info'
-}
-
-const getRecoveryStatusText = (status) => {
-  const texts = { success: '已恢复', failed: '恢复失败', dispatched: '已下发', queued: '已排队' }
-  return texts[status] || status || '未知'
-}
-
-const getRecoverySourceText = (source) => {
-  const texts = { heartbeat: '节点心跳', health_checker: '健康检查器', admin: '管理员', portal_ping: '用户入口探测' }
-  return texts[source] || source || '系统'
-}
-
-const getRecoveryCommandText = (commandType) => {
-  const texts = {
-    xray_start: '启动 Xray',
-    xray_restart: '重启 Xray',
-    xray_status: '刷新 Xray 状态',
-    config_sync: '同步节点配置'
-  }
-  return texts[commandType] || commandType || '未知命令'
-}
-
-const formatTime = (time) => {
-  if (!time) return '-'
-  return new Date(time).toLocaleString('zh-CN')
-}
+  return [
+    { label: 'ID', value: node.value.id },
+    { label: '名称', value: node.value.name },
+    { label: '地址', value: node.value.address },
+    { label: '端口', value: node.value.port },
+    { label: '地区', value: node.value.region || '-' },
+    { label: '权重', value: node.value.weight },
+    { label: '最大用户数', value: node.value.max_users || '无限制' },
+    { label: '当前用户数', value: node.value.current_users },
+    { label: '延迟', value: `${node.value.latency || 0}ms`, valueClass: getLatencyClass(node.value.latency) },
+    {
+      label: '同步状态',
+      value: getSyncStatusText(node.value.sync_status),
+      type: 'tag',
+      tagType: getSyncStatusType(node.value.sync_status)
+    },
+    { label: '最后在线', value: formatTime(node.value.last_seen_at) },
+    { label: '最后同步', value: formatTime(node.value.synced_at) },
+    { label: '创建时间', value: formatTime(node.value.created_at) },
+    { label: '更新时间', value: formatTime(node.value.updated_at) }
+  ]
+})
+const trafficSummaryCards = computed(() => [
+  { key: 'upload', label: '上传流量', value: formatBytes(trafficStats.value.upload) },
+  { key: 'download', label: '下载流量', value: formatBytes(trafficStats.value.download) },
+  { key: 'total', label: '总流量', value: formatBytes(trafficStats.value.upload + trafficStats.value.download) }
+])
 
 const formatBytes = (bytes) => {
   if (!bytes) return '0 B'
@@ -805,19 +710,6 @@ const formatBytes = (bytes) => {
 const formatLimitDisplay = (bytes) => (Number(bytes) > 0 ? formatBytes(Number(bytes)) : '无限制')
 
 const formatSpeedLimitDisplay = (bytes) => (Number(bytes) > 0 ? `${formatBytes(Number(bytes))}/s` : '无限制')
-
-const formatCoreVersion = (version) => {
-  if (!version) return '-'
-  return String(version).split('\n')[0]
-}
-
-const parseTags = (tags) => {
-  if (Array.isArray(tags)) return tags
-  if (typeof tags === 'string') {
-    try { return JSON.parse(tags) } catch { return [] }
-  }
-  return []
-}
 
 const normalizeTrafficStats = (response) => {
   const stats = response?.stats || response?.data?.stats || response?.data || response || {}
@@ -1181,29 +1073,6 @@ watch(
   margin-bottom: 20px;
 }
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.card-header-start {
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.section-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-
-.section-subtitle {
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-
 .tags-section {
   margin-top: 16px;
   padding-top: 16px;
@@ -1431,8 +1300,8 @@ watch(
 }
 
 .quick-actions {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 12px;
 }
 
@@ -1463,8 +1332,10 @@ watch(
   gap: 14px;
 }
 
-.operation-handoff__actions .el-button {
+.operation-handoff__actions :deep(.el-button) {
+  width: 100%;
   min-height: 50px;
+  margin-left: 0;
 }
 
 .core-actions {
@@ -1571,9 +1442,8 @@ watch(
 
 .quick-actions :deep(.el-button) {
   width: 100%;
-}
-
-.quick-actions :deep(.el-button + .el-button) {
+  min-height: 44px;
+  border-radius: 10px;
   margin-left: 0;
 }
 
@@ -1680,7 +1550,6 @@ watch(
   .page-header,
   .header-left,
   .header-actions,
-  .card-header,
   .status-item,
   .token-info,
   .token-actions,
