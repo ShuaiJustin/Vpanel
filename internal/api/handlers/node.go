@@ -122,9 +122,17 @@ type NodeResponse struct {
 }
 
 // NodeWithTokenResponse includes the token (only returned on create).
+// Token is shown only once at creation time.
 type NodeWithTokenResponse struct {
 	NodeResponse
 	Token string `json:"token"`
+}
+
+// MaskedTokenResponse includes a masked token for display after initial creation.
+type MaskedTokenResponse struct {
+	NodeResponse
+	TokenPrefix string `json:"token_prefix"`
+	TokenHint   string `json:"token_hint"`
 }
 
 // CreateNodeRequest represents a request to create a node.
@@ -434,6 +442,17 @@ func (h *NodeHandler) List(c *gin.Context) {
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 	status := c.Query("status")
 	region := c.Query("region")
+
+	// Cap limit to prevent database resource exhaustion
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	if offset < 0 {
+		offset = 0
+	}
 
 	filter := node.NodeFilter{
 		Status: status,

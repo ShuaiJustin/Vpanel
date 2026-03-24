@@ -47,7 +47,9 @@ const AdminPaymentSettings = () => import(/* webpackChunkName: "commercial-admin
 
 // 节点管理 - 按需加载
 const AdminNodes = () => import(/* webpackChunkName: "node-admin" */ '../views/AdminNodes.vue')
+const AdminNodeOperations = () => import(/* webpackChunkName: "node-admin" */ '../views/AdminNodeOperations.vue')
 const NodeDetail = () => import(/* webpackChunkName: "node-admin" */ '../views/NodeDetail.vue')
+const NodeOperations = () => import(/* webpackChunkName: "node-admin" */ '../views/NodeOperations.vue')
 
 // 法律文档 - 按需加载
 const Terms = () => import(/* webpackChunkName: "legal" */ '../views/legal/Terms.vue')
@@ -351,12 +353,32 @@ const routes = [
         }
       },
       {
+        path: 'node-operations',
+        name: 'AdminNodeOperations',
+        component: AdminNodeOperations,
+        meta: {
+          requiresAuth: true,
+          title: '节点运维',
+          roles: ['admin']
+        }
+      },
+      {
         path: 'nodes/:id',
         name: 'NodeDetail',
         component: NodeDetail,
         meta: {
           requiresAuth: true,
           title: '节点详情',
+          roles: ['admin']
+        }
+      },
+      {
+        path: 'nodes/:id/operations',
+        name: 'NodeOperations',
+        component: NodeOperations,
+        meta: {
+          requiresAuth: true,
+          title: '节点运维',
           roles: ['admin']
         }
       },
@@ -470,7 +492,8 @@ router.beforeEach((to, from, next) => {
   
   // 阻止直接访问旧的管理员登录页面，重定向到用户登录页
   if (to.path === '/login' || to.path === '/register') {
-    next('/user/login')
+    const redirect = to.query.redirect
+    next({ path: '/user/login', query: redirect ? { redirect } : {} })
     return
   }
   

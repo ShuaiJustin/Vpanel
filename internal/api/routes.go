@@ -265,7 +265,7 @@ func (r *Router) Setup() {
 	})
 
 	// Create Xray config generator for nodes
-	configGenerator := xray.NewConfigGenerator(r.repos.Proxy, r.repos.Certificate, r.logger)
+	configGenerator := xray.NewConfigGenerator(r.repos.Proxy, r.repos.Certificate, r.repos.Node, r.logger)
 	nodeConfigTestHandler := handlers.NewNodeConfigTestHandler(configGenerator, r.logger)
 	nodeAgentHandler := handlers.NewNodeAgentHandler(nodeService, nodeTrafficService, r.repos.Node, configGenerator, r.nodeRecoveryTracker, r.logger)
 
@@ -280,6 +280,7 @@ func (r *Router) Setup() {
 	nodeHealthHandler := handlers.NewNodeHealthHandler(r.nodeHealthChecker, r.repos.HealthCheck, r.repos.Node, r.logger)
 	nodeStatsHandler := handlers.NewNodeStatsHandler(nodeTrafficService, nodeService, nodeGroupService, r.logger)
 	nodeDeployHandler := handlers.NewNodeDeployHandler(nodeDeployService, nodeService, r.config, r.logger)
+	nodeNetworkOptimizationHandler := handlers.NewNodeNetworkOptimizationHandler(r.repos.Node, nodeDeployService, r.nodeRecoveryTracker, r.logger)
 	agentDownloadHandler := handlers.NewAgentDownloadHandler(r.logger)
 	if r.nodeHealthChecker != nil {
 		r.nodeHealthChecker.SetOnStatusChange(func(nodeID int64, oldStatus, newStatus string) {
@@ -765,6 +766,10 @@ func (r *Router) Setup() {
 
 				adminNodes.GET("/:id", nodeHandler.Get)
 				adminNodes.GET("/:id/install-status", nodeHandler.GetInstallStatus)
+				adminNodes.GET("/:id/network-optimization", nodeNetworkOptimizationHandler.GetProfile)
+				adminNodes.POST("/:id/network-optimization/inspect", nodeNetworkOptimizationHandler.Inspect)
+				adminNodes.POST("/:id/network-optimization/apply", nodeNetworkOptimizationHandler.Apply)
+				adminNodes.POST("/:id/network-optimization/rollback", nodeNetworkOptimizationHandler.Rollback)
 				adminNodes.PUT("/:id", nodeHandler.Update)
 				adminNodes.DELETE("/:id", nodeHandler.Delete)
 				adminNodes.PUT("/:id/status", nodeHandler.UpdateStatus)
@@ -899,8 +904,11 @@ func (r *Router) Setup() {
 		// Payment callback routes (public - no auth required)
 		api.POST("/payments/callback/:method", paymentHandler.HandleCallback)
 
-		// Node Agent routes (token-based auth, no user auth required)
+		// Node Agent routes (token-based auth, rate limited, body size limited)
+		agentRateLimiter := middleware.NewAgentRateLimiter(30) // 30 req/min per IP
 		nodeAgent := api.Group("/node")
+		nodeAgent.Use(agentRateLimiter.RateLimit())
+		nodeAgent.Use(middleware.MaxBodySize(2 * 1024 * 1024)) // 2MB max body
 		{
 			nodeAgent.POST("/register", nodeAgentHandler.Register)
 			nodeAgent.POST("/heartbeat", nodeAgentHandler.Heartbeat)

@@ -52,57 +52,75 @@
     </div>
 
     <div class="toolbar-card">
-      <div class="toolbar-filters">
-        <el-input
-          v-model="nodeStore.filters.search"
-          class="toolbar-search"
-          placeholder="搜索节点名称、地址或地区"
-          clearable
-        >
-          <template #prefix>
-            <el-icon><Search /></el-icon>
-          </template>
-        </el-input>
-        <el-select
-          v-model="nodeStore.filters.status"
-          placeholder="状态"
-          clearable
-          @change="fetchNodes"
-        >
-          <el-option
-            label="在线"
-            value="online"
-          />
-          <el-option
-            label="离线"
-            value="offline"
-          />
-          <el-option
-            label="不健康"
-            value="unhealthy"
-          />
-        </el-select>
-        <el-select
-          v-model="nodeStore.filters.region"
-          placeholder="地区"
-          clearable
-          @change="fetchNodes"
-        >
-          <el-option
-            v-for="region in regions"
-            :key="region"
-            :label="region"
-            :value="region"
-          />
-        </el-select>
-        <el-button @click="resetFilters">
-          重置
-        </el-button>
+      <div class="toolbar-main">
+        <div class="toolbar-copy">
+          <div class="toolbar-title">
+            筛选工作区
+          </div>
+          <div class="toolbar-description">
+            按关键词、状态和地区快速定位节点，再从列表直接进入部署、详情和运维动作。
+          </div>
+        </div>
+        <div class="toolbar-filters">
+          <el-input
+            v-model="nodeStore.filters.search"
+            class="toolbar-search"
+            placeholder="搜索节点名称、地址或地区"
+            clearable
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+          <el-select
+            v-model="nodeStore.filters.status"
+            placeholder="状态"
+            clearable
+            @change="fetchNodes"
+          >
+            <el-option
+              label="在线"
+              value="online"
+            />
+            <el-option
+              label="离线"
+              value="offline"
+            />
+            <el-option
+              label="不健康"
+              value="unhealthy"
+            />
+          </el-select>
+          <el-select
+            v-model="nodeStore.filters.region"
+            placeholder="地区"
+            clearable
+            @change="fetchNodes"
+          >
+            <el-option
+              v-for="region in regions"
+              :key="region"
+              :label="region"
+              :value="region"
+            />
+          </el-select>
+          <el-button @click="resetFilters">
+            重置
+          </el-button>
+        </div>
       </div>
-      <div class="toolbar-actions">
+      <div class="toolbar-side">
         <span class="toolbar-summary">
           总记录 {{ nodeStore.total }} 条，当前页 {{ nodeStore.nodeCount }} 条，筛选后 {{ filteredNodeCount }} 条
         </span>
+        <div class="toolbar-chip-row">
+          <span class="toolbar-chip">
+            {{ activeFilterCount ? `已启用 ${activeFilterCount} 个筛选` : "当前查看全部节点" }}
+          </span>
+          <span class="toolbar-chip toolbar-chip--primary">
+            在线 {{ filteredOnlineCount }}
+          </span>
+        </div>
       </div>
     </div>
 
@@ -252,12 +270,20 @@
 
           <el-table-column
             label="操作"
-            width="210"
+            width="280"
             fixed="right"
             align="right"
           >
             <template #default="{ row }">
               <div class="operation-btns">
+                <el-button
+                  size="small"
+                  type="primary"
+                  class="row-action"
+                  @click="openNodeOperations(row)"
+                >
+                  运维
+                </el-button>
                 <el-button
                   size="small"
                   class="row-action row-action--primary"
@@ -286,6 +312,9 @@
                   </el-button>
                   <template #dropdown>
                     <el-dropdown-menu>
+                      <el-dropdown-item command="operations">
+                        进入运维
+                      </el-dropdown-item>
                       <el-dropdown-item command="edit">
                         编辑节点
                       </el-dropdown-item>
@@ -1333,6 +1362,14 @@ const filteredAverageLatency = computed(() => {
       onlineWithLatency.length,
   );
 });
+const activeFilterCount = computed(
+  () =>
+    [
+      normalizeText(nodeStore.filters.search),
+      nodeStore.filters.status,
+      nodeStore.filters.region,
+    ].filter(Boolean).length,
+);
 const hasActiveFilters = computed(() =>
   Boolean(
     normalizeText(nodeStore.filters.search) ||
@@ -1653,6 +1690,10 @@ const showCreateDialog = () => {
   router.push("/admin/nodes/new");
 };
 
+const openNodeOperations = (node) => {
+  router.push(`/admin/nodes/${node.id}/operations`);
+};
+
 const editNode = (node) => {
   router.push(`/admin/nodes/${node.id}/edit`);
 };
@@ -1807,6 +1848,11 @@ const showTokenDialog = (node) => {
 };
 
 const handleNodeCommand = (command, node) => {
+  if (command === "operations") {
+    openNodeOperations(node);
+    return;
+  }
+
   if (command === "edit") {
     editNode(node);
     return;
@@ -2146,6 +2192,7 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
+  margin-bottom: 20px;
 }
 
 .pagination-container {
@@ -2159,6 +2206,97 @@ onUnmounted(() => {
   min-width: 1080px;
 }
 
+.toolbar-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 20px;
+  align-items: flex-start;
+  margin-bottom: 20px;
+  padding: 18px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 18px;
+  background: var(--el-bg-color);
+}
+
+.toolbar-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.toolbar-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toolbar-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--el-text-color-primary);
+}
+
+.toolbar-description {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+}
+
+.toolbar-filters {
+  display: grid;
+  grid-template-columns: minmax(260px, 2fr) repeat(2, minmax(150px, 1fr)) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.toolbar-search {
+  width: 100%;
+}
+
+.toolbar-filters :deep(.el-select) {
+  width: 100%;
+}
+
+.toolbar-side {
+  display: flex;
+  min-width: 260px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.toolbar-summary {
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: right;
+  color: var(--el-text-color-secondary);
+}
+
+.toolbar-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.toolbar-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--el-fill-color-light);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--el-text-color-regular);
+}
+
+.toolbar-chip--primary {
+  color: var(--el-color-primary-dark-2);
+  background: var(--el-color-primary-light-9);
+}
+
 .node-address {
   display: inline-flex;
   align-items: center;
@@ -2170,6 +2308,7 @@ onUnmounted(() => {
   font-size: 12px;
   font-weight: 700;
   line-height: 1.4;
+  word-break: break-all;
 }
 
 .page-actions {
@@ -2183,6 +2322,27 @@ onUnmounted(() => {
 
 .card-header {
   align-items: center;
+}
+
+.table-shell :deep(.el-table__cell) {
+  vertical-align: top;
+}
+
+.table-shell :deep(.el-table .cell) {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.admin-nodes-page :deep(.operation-btns) {
+  gap: 8px;
+}
+
+.admin-nodes-page :deep(.row-action) {
+  min-width: 54px;
+}
+
+.admin-nodes-page :deep(.row-action--primary) {
+  background: #eff6ff;
 }
 
 .form-tip {
@@ -2315,8 +2475,40 @@ onUnmounted(() => {
     min-width: 760px;
   }
 
+  .page-header,
+  .toolbar-card {
+    flex-direction: column;
+  }
+
+  .toolbar-card {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    padding: 14px;
+  }
+
+  .toolbar-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar-side {
+    min-width: 0;
+    align-items: flex-start;
+  }
+
+  .toolbar-summary {
+    text-align: left;
+  }
+
+  .toolbar-chip-row {
+    justify-content: flex-start;
+  }
+
   .page-actions {
     width: 100%;
+  }
+
+  .page-actions :deep(.el-button) {
+    flex: 1;
   }
 }
 </style>

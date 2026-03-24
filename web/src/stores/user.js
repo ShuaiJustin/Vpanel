@@ -32,9 +32,13 @@ export const useUserStore = defineStore('user', () => {
   const clearAuth = () => {
     token.value = ''
     user.value = null
+    loading.value = false
+    error.value = null
     for (const storage of [localStorage, sessionStorage]) {
       storage.removeItem('token')
       storage.removeItem('userRole')
+      storage.removeItem('userToken')
+      storage.removeItem('userInfo')
     }
   }
 

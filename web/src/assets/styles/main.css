@@ -63,24 +63,28 @@
   padding: 8px 20px;
 }
 
-.el-button--primary {
+.el-button--primary:not(.is-plain):not(.is-link):not(.is-text):not(.is-disabled) {
   background-color: var(--primary-color);
   border-color: var(--primary-color);
+  color: #fff;
 }
 
-.el-button--success {
+.el-button--success:not(.is-plain):not(.is-link):not(.is-text):not(.is-disabled) {
   background-color: var(--success-color);
   border-color: var(--success-color);
+  color: #fff;
 }
 
-.el-button--warning {
+.el-button--warning:not(.is-plain):not(.is-link):not(.is-text):not(.is-disabled) {
   background-color: var(--warning-color);
   border-color: var(--warning-color);
+  color: #fff;
 }
 
-.el-button--danger {
+.el-button--danger:not(.is-plain):not(.is-link):not(.is-text):not(.is-disabled) {
   background-color: var(--danger-color);
   border-color: var(--danger-color);
+  color: #fff;
 }
 
 /* 文字样式 */

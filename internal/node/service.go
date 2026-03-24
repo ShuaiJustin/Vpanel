@@ -4,6 +4,7 @@ package node
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -991,6 +992,12 @@ func (s *Service) ValidateToken(ctx context.Context, token string) (*Node, error
 	if repoNode.Token == "" {
 		s.logger.Warn("Token is revoked", logger.F("node_id", repoNode.ID))
 		return nil, ErrTokenRevoked
+	}
+
+	// Constant-time comparison to prevent timing attacks
+	if subtle.ConstantTimeCompare([]byte(repoNode.Token), []byte(token)) != 1 {
+		s.logger.Warn("Token mismatch (constant-time check)", logger.F("node_id", repoNode.ID))
+		return nil, ErrInvalidToken
 	}
 
 	s.logger.Info("Token validated successfully",

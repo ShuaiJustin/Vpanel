@@ -213,79 +213,57 @@ func (h *NodeAgentHandler) Heartbeat(c *gin.Context) {
 		return
 	}
 
-	// Update node status to online
-	if err := h.nodeService.UpdateStatus(c.Request.Context(), nodeData.ID, repository.NodeStatusOnline); err != nil {
-		h.logger.Error("Failed to update node status",
+	// Preserve unhealthy state until the health checker confirms recovery.
+	newStatus := nodeData.Status
+	if shouldPromoteNodeOnlineFromHeartbeat(nodeData.Status) {
+		newStatus = repository.NodeStatusOnline
+	} else {
+		h.logger.Debug("Skip heartbeat status promotion for unhealthy node",
 			logger.F("node_id", nodeData.ID),
-			logger.F("error", err.Error()))
+			logger.F("node_name", nodeData.Name))
 	}
 
-	// Update last seen
-	if err := h.nodeService.UpdateLastSeen(c.Request.Context(), nodeData.ID); err != nil {
-		h.logger.Error("Failed to update node last seen",
-			logger.F("node_id", nodeData.ID),
-			logger.F("error", err.Error()))
-	}
-
-	// Update metrics if provided
+	// Batch update all heartbeat fields in a single atomic query to prevent race conditions
+	var cpuUsage, memoryUsage, diskUsage float64
+	var connections int
+	var xrayRunning bool
+	var xrayVersion string
 	if req.Metrics != nil {
+		cpuUsage = req.Metrics.CPUUsage
+		memoryUsage = req.Metrics.MemoryUsage
+		diskUsage = req.Metrics.DiskUsage
+		connections = req.Metrics.Connections
+		xrayRunning = req.Metrics.XrayRunning
+		xrayVersion = req.Metrics.XrayVersion
+
 		h.logger.Info("收到节点指标数据",
 			logger.F("node_id", nodeData.ID),
-			logger.F("connections", req.Metrics.Connections),
-			logger.F("cpu_usage", req.Metrics.CPUUsage),
-			logger.F("memory_usage", req.Metrics.MemoryUsage),
-			logger.F("disk_usage", req.Metrics.DiskUsage),
-			logger.F("xray_running", req.Metrics.XrayRunning))
+			logger.F("connections", connections),
+			logger.F("cpu_usage", cpuUsage),
+			logger.F("memory_usage", memoryUsage),
+			logger.F("disk_usage", diskUsage),
+			logger.F("xray_running", xrayRunning))
+	} else {
+		h.logger.Warn("心跳请求中没有指标数据",
+			logger.F("node_id", nodeData.ID))
+	}
 
-		// 更新用户连接数
-		metrics := &node.NodeMetrics{
-			Latency:      0, // 延迟由健康检查服务计算
-			CurrentUsers: req.Metrics.Connections,
-		}
-		if err := h.nodeService.UpdateMetrics(c.Request.Context(), nodeData.ID, metrics); err != nil {
-			h.logger.Error("Failed to update node metrics",
-				logger.F("node_id", nodeData.ID),
-				logger.F("error", err.Error()))
-		}
+	if err := h.nodeRepo.UpdateHeartbeatBatch(c.Request.Context(), nodeData.ID,
+		newStatus, time.Now(), 0, connections,
+		cpuUsage, memoryUsage, diskUsage,
+		xrayRunning, xrayVersion); err != nil {
+		h.logger.Error("Failed to update heartbeat batch",
+			logger.F("node_id", nodeData.ID),
+			logger.F("error", err.Error()))
+	}
 
-		// 更新负载信息（CPU、内存、磁盘）
-		if err := h.nodeRepo.UpdateLoadMetrics(c.Request.Context(), nodeData.ID,
-			req.Metrics.CPUUsage,
-			req.Metrics.MemoryUsage,
-			req.Metrics.DiskUsage); err != nil {
-			h.logger.Error("Failed to update node load metrics",
-				logger.F("node_id", nodeData.ID),
-				logger.F("error", err.Error()))
-		} else {
-			h.logger.Info("节点负载指标已更新",
-				logger.F("node_id", nodeData.ID),
-				logger.F("cpu", req.Metrics.CPUUsage),
-				logger.F("memory", req.Metrics.MemoryUsage),
-				logger.F("disk", req.Metrics.DiskUsage))
-		}
-
-		// 更新 Xray 状态
-		if err := h.nodeRepo.UpdateXrayStatus(c.Request.Context(), nodeData.ID,
-			req.Metrics.XrayRunning,
-			req.Metrics.XrayVersion); err != nil {
-			h.logger.Error("Failed to update xray status",
-				logger.F("node_id", nodeData.ID),
-				logger.F("error", err.Error()))
-		} else {
-			h.logger.Debug("Xray 状态已更新",
-				logger.F("node_id", nodeData.ID),
-				logger.F("xray_running", req.Metrics.XrayRunning),
-				logger.F("xray_version", req.Metrics.XrayVersion))
-		}
-
+	// Handle Xray recovery
+	if req.Metrics != nil {
 		if req.Metrics.XrayRunning {
 			h.recoveryTracker.MarkCommandRecovered(nodeData.ID, commandTypeXrayStart, "节点心跳已恢复，Xray 正在运行")
 		} else {
 			h.QueueXrayRecoveryCommand(nodeData.ID, "heartbeat", "heartbeat reported xray not running")
 		}
-	} else {
-		h.logger.Warn("心跳请求中没有指标数据",
-			logger.F("node_id", nodeData.ID))
 	}
 
 	if len(req.Traffic) > 0 && h.trafficService != nil {
@@ -326,6 +304,10 @@ func (h *NodeAgentHandler) Heartbeat(c *gin.Context) {
 		Message:  "Heartbeat received",
 		Commands: commands,
 	})
+}
+
+func shouldPromoteNodeOnlineFromHeartbeat(currentStatus string) bool {
+	return currentStatus != repository.NodeStatusUnhealthy
 }
 
 // ReportCommandResult handles command result reports from nodes.

@@ -195,6 +195,45 @@ export const nodesApi = {
   getInstallStatus: (id) => api.get(`/admin/nodes/${id}/install-status`),
 
   /**
+   * 获取节点网络优化配置元数据
+   * @param {number|string} id - 节点 ID
+   * @returns {Promise<Object>}
+   */
+  getNetworkOptimizationProfile: (id) =>
+    api.get(`/admin/nodes/${id}/network-optimization`),
+
+  /**
+   * 检测节点当前网络优化状态
+   * @param {number|string} id - 节点 ID
+   * @param {Object} data - SSH 输入
+   * @returns {Promise<Object>}
+   */
+  inspectNetworkOptimization: (id, data) =>
+    api.post(`/admin/nodes/${id}/network-optimization/inspect`, data),
+
+  /**
+   * 应用节点网络优化
+   * @param {number|string} id - 节点 ID
+   * @param {Object} data - SSH 和优化设置
+   * @returns {Promise<Object>}
+   */
+  applyNetworkOptimization: (id, data) =>
+    api.post(`/admin/nodes/${id}/network-optimization/apply`, data, {
+      timeout: 300000,
+    }),
+
+  /**
+   * 回滚节点网络优化
+   * @param {number|string} id - 节点 ID
+   * @param {Object} data - SSH 输入
+   * @returns {Promise<Object>}
+   */
+  rollbackNetworkOptimization: (id, data) =>
+    api.post(`/admin/nodes/${id}/network-optimization/rollback`, data, {
+      timeout: 300000,
+    }),
+
+  /**
    * 启动节点内核
    * @param {number|string} id - 节点 ID
    * @returns {Promise<Object>} 队列结果

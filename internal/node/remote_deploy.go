@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -142,6 +143,16 @@ type DeployResult struct {
 	Logs    string       `json:"logs"`
 }
 
+const (
+	defaultRemoteCommandTimeout = 2 * time.Minute
+	systemInfoCommandTimeout    = 30 * time.Second
+	dependencyInstallTimeout    = 5 * time.Minute
+	agentInstallTimeout         = 6 * time.Minute
+	xrayInstallTimeout          = 8 * time.Minute
+	serviceCommandTimeout       = 3 * time.Minute
+	fileTransferCommandTimeout  = 45 * time.Second
+)
+
 // Deploy deploys the agent to a remote server.
 func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) (*DeployResult, error) {
 	startedAt := time.Now()
@@ -238,7 +249,7 @@ func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) 
 	stepIdx = addStep("检查系统要求")
 	logBuffer.WriteString("步骤 2/8: 检查系统要求...\n")
 
-	if err := s.checkSystemRequirements(client, &logBuffer); err != nil {
+	if err := s.checkSystemRequirements(ctx, client, &logBuffer); err != nil {
 		markFailed(stepIdx)
 		result.Message = fmt.Sprintf("系统检查失败: %v", err)
 		result.Logs = logBuffer.String()
@@ -253,7 +264,7 @@ func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) 
 	stepIdx = addStep("安装依赖")
 	logBuffer.WriteString("步骤 3/8: 安装依赖...\n")
 
-	if err := s.installDependencies(client, &logBuffer); err != nil {
+	if err := s.installDependencies(ctx, client, &logBuffer); err != nil {
 		markFailed(stepIdx)
 		result.Message = fmt.Sprintf("依赖安装失败: %v", err)
 		result.Logs = logBuffer.String()
@@ -266,7 +277,7 @@ func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) 
 
 	// Step 3.5: Stop old agent processes (before uploading new binary)
 	logBuffer.WriteString("清理旧的 Agent 进程...\n")
-	if err := s.stopOldAgentProcesses(client, &logBuffer); err != nil {
+	if err := s.stopOldAgentProcesses(ctx, client, &logBuffer); err != nil {
 		// 记录错误但继续执行（可能是首次安装）
 		s.logger.Warn("停止旧进程时出现错误（可能是首次安装）", logger.Err(err))
 		logBuffer.WriteString("⚠ 停止旧进程时出现错误（可能是首次安装）\n")
@@ -277,7 +288,7 @@ func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) 
 	stepIdx = addStep("下载并安装 Agent")
 	logBuffer.WriteString("步骤 4/8: 下载并安装 Agent...\n")
 
-	if err := s.installAgent(client, config, &logBuffer); err != nil {
+	if err := s.installAgent(ctx, client, config, &logBuffer); err != nil {
 		markFailed(stepIdx)
 		result.Message = fmt.Sprintf("Agent 安装失败: %v", err)
 		result.Logs = logBuffer.String()
@@ -292,7 +303,7 @@ func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) 
 	stepIdx = addStep("安装 Xray")
 	logBuffer.WriteString("步骤 5/8: 安装 Xray...\n")
 
-	if err := s.installXray(client, &logBuffer); err != nil {
+	if err := s.installXray(ctx, client, &logBuffer); err != nil {
 		markFailed(stepIdx)
 		result.Message = fmt.Sprintf("Xray 安装失败: %v", err)
 		result.Logs = logBuffer.String()
@@ -307,7 +318,7 @@ func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) 
 	stepIdx = addStep("配置 Agent")
 	logBuffer.WriteString("步骤 6/8: 配置 Agent...\n")
 
-	if err := s.configureAgent(client, config, &logBuffer); err != nil {
+	if err := s.configureAgent(ctx, client, config, &logBuffer); err != nil {
 		markFailed(stepIdx)
 		result.Message = fmt.Sprintf("Agent 配置失败: %v", err)
 		result.Logs = logBuffer.String()
@@ -322,7 +333,7 @@ func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) 
 	stepIdx = addStep("启动 Agent 服务")
 	logBuffer.WriteString("步骤 7/8: 启动 Agent 服务...\n")
 
-	if err := s.startAgentService(client, &logBuffer); err != nil {
+	if err := s.startAgentService(ctx, client, &logBuffer); err != nil {
 		markFailed(stepIdx)
 		result.Message = fmt.Sprintf("Agent 启动失败: %v", err)
 		result.Logs = logBuffer.String()
@@ -337,7 +348,7 @@ func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) 
 	stepIdx = addStep("验证安装")
 	logBuffer.WriteString("步骤 8/8: 验证安装...\n")
 
-	if err := s.verifyInstallation(client, &logBuffer); err != nil {
+	if err := s.verifyInstallation(ctx, client, &logBuffer); err != nil {
 		markFailed(stepIdx)
 		result.Message = fmt.Sprintf("安装验证失败: %v", err)
 		result.Logs = logBuffer.String()
@@ -460,52 +471,125 @@ func (s *RemoteDeployService) connectSSH(config *DeployConfig) (*ssh.Client, err
 	return client, nil
 }
 
-// executeCommand executes a command on the remote server.
-func (s *RemoteDeployService) executeCommand(client *ssh.Client, command string, logBuffer *bytes.Buffer) error {
+func appendRemoteCommandOutput(logBuffer *bytes.Buffer, stdout, stderr string) {
+	if logBuffer == nil {
+		return
+	}
+	if stdout != "" {
+		logBuffer.WriteString(stdout)
+		if !strings.HasSuffix(stdout, "\n") {
+			logBuffer.WriteString("\n")
+		}
+	}
+	if stderr != "" {
+		logBuffer.WriteString(stderr)
+		if !strings.HasSuffix(stderr, "\n") {
+			logBuffer.WriteString("\n")
+		}
+	}
+}
+
+func recordRemoteCommandFailure(logBuffer *bytes.Buffer, message, stdout, stderr string) {
+	if logBuffer == nil {
+		return
+	}
+	logBuffer.WriteString(message)
+	if !strings.HasSuffix(message, "\n") {
+		logBuffer.WriteString("\n")
+	}
+	if stdout != "" {
+		logBuffer.WriteString(fmt.Sprintf("输出: %s", stdout))
+		if !strings.HasSuffix(stdout, "\n") {
+			logBuffer.WriteString("\n")
+		}
+	}
+	if stderr != "" {
+		logBuffer.WriteString(fmt.Sprintf("错误: %s", stderr))
+		if !strings.HasSuffix(stderr, "\n") {
+			logBuffer.WriteString("\n")
+		}
+	}
+}
+
+func (s *RemoteDeployService) runRemoteCommand(ctx context.Context, client *ssh.Client, command string, timeout time.Duration) (string, string, error) {
+	if client == nil {
+		return "", "", fmt.Errorf("SSH client 不能为空")
+	}
+	if timeout <= 0 {
+		timeout = defaultRemoteCommandTimeout
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	session, err := client.NewSession()
 	if err != nil {
-		return fmt.Errorf("创建会话失败: %w", err)
+		return "", "", fmt.Errorf("创建会话失败: %w", err)
 	}
 	defer session.Close()
 
-	// Capture output
 	var stdout, stderr bytes.Buffer
 	session.Stdout = &stdout
 	session.Stderr = &stderr
 
 	s.logger.Debug("执行命令", logger.F("command", command))
 
-	if err := session.Run(command); err != nil {
-		// 记录详细错误信息
-		logBuffer.WriteString(fmt.Sprintf("✗ 命令执行失败\n"))
-		if stdout.Len() > 0 {
-			logBuffer.WriteString(fmt.Sprintf("输出: %s\n", stdout.String()))
-		}
-		if stderr.Len() > 0 {
-			logBuffer.WriteString(fmt.Sprintf("错误: %s\n", stderr.String()))
-		}
-		return fmt.Errorf("命令执行失败: %w", err)
+	if err := session.Start(command); err != nil {
+		return stdout.String(), stderr.String(), fmt.Errorf("启动命令失败: %w", err)
 	}
 
-	// 记录成功输出
-	if stdout.Len() > 0 {
-		logBuffer.WriteString(stdout.String())
-		if !strings.HasSuffix(stdout.String(), "\n") {
-			logBuffer.WriteString("\n")
+	cmdCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- session.Wait()
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			return stdout.String(), stderr.String(), fmt.Errorf("命令执行失败: %w", err)
 		}
+		return stdout.String(), stderr.String(), nil
+	case <-cmdCtx.Done():
+		if signalErr := session.Signal(ssh.SIGKILL); signalErr != nil {
+			s.logger.Debug("发送远程终止信号失败", logger.Err(signalErr))
+		}
+		if closeErr := session.Close(); closeErr != nil {
+			s.logger.Debug("关闭 SSH 会话失败", logger.Err(closeErr))
+		}
+
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+		}
+
+		if errors.Is(cmdCtx.Err(), context.DeadlineExceeded) {
+			return stdout.String(), stderr.String(), fmt.Errorf("命令执行超时（>%s）", timeout)
+		}
+		return stdout.String(), stderr.String(), fmt.Errorf("命令执行被取消: %w", cmdCtx.Err())
 	}
-	if stderr.Len() > 0 {
-		logBuffer.WriteString(stderr.String())
-		if !strings.HasSuffix(stderr.String(), "\n") {
-			logBuffer.WriteString("\n")
-		}
+}
+
+// executeCommand executes a command on the remote server.
+func (s *RemoteDeployService) executeCommand(client *ssh.Client, command string, logBuffer *bytes.Buffer) error {
+	return s.executeCommandWithTimeout(context.Background(), client, command, defaultRemoteCommandTimeout, logBuffer)
+}
+
+func (s *RemoteDeployService) executeCommandWithTimeout(ctx context.Context, client *ssh.Client, command string, timeout time.Duration, logBuffer *bytes.Buffer) error {
+	stdout, stderr, err := s.runRemoteCommand(ctx, client, command, timeout)
+	if err != nil {
+		recordRemoteCommandFailure(logBuffer, "✗ "+err.Error(), stdout, stderr)
+		return err
 	}
 
+	appendRemoteCommandOutput(logBuffer, stdout, stderr)
 	return nil
 }
 
 // checkSystemRequirements checks if the system meets requirements.
-func (s *RemoteDeployService) checkSystemRequirements(client *ssh.Client, logBuffer *bytes.Buffer) error {
+func (s *RemoteDeployService) checkSystemRequirements(ctx context.Context, client *ssh.Client, logBuffer *bytes.Buffer) error {
 	commands := []string{
 		"uname -a",                    // OS info
 		"cat /etc/os-release || true", // Distribution info
@@ -514,7 +598,7 @@ func (s *RemoteDeployService) checkSystemRequirements(client *ssh.Client, logBuf
 	}
 
 	for _, cmd := range commands {
-		if err := s.executeCommand(client, cmd, logBuffer); err != nil {
+		if err := s.executeCommandWithTimeout(ctx, client, cmd, systemInfoCommandTimeout, logBuffer); err != nil {
 			// Don't fail on info commands
 			s.logger.Warn("System check command failed", logger.F("command", cmd))
 		}
@@ -525,7 +609,7 @@ func (s *RemoteDeployService) checkSystemRequirements(client *ssh.Client, logBuf
 }
 
 // installDependencies installs required dependencies.
-func (s *RemoteDeployService) installDependencies(client *ssh.Client, logBuffer *bytes.Buffer) error {
+func (s *RemoteDeployService) installDependencies(ctx context.Context, client *ssh.Client, logBuffer *bytes.Buffer) error {
 	// Detect package manager and install dependencies
 	script := `
 set -e
@@ -583,7 +667,7 @@ command -v tar >/dev/null 2>&1 || echo "警告: tar 未安装"
 echo "依赖检查完成"
 `
 
-	if err := s.executeCommand(client, script, logBuffer); err != nil {
+	if err := s.executeCommandWithTimeout(ctx, client, script, dependencyInstallTimeout, logBuffer); err != nil {
 		// 不因为依赖安装失败而中断，继续尝试
 		s.logger.Warn("依赖安装有警告，但继续执行", logger.F("error", err))
 		logBuffer.WriteString("⚠ 依赖安装有警告，继续执行\n")
@@ -595,7 +679,7 @@ echo "依赖检查完成"
 }
 
 // installAgent uploads and installs the agent binary.
-func (s *RemoteDeployService) installAgent(client *ssh.Client, config *DeployConfig, logBuffer *bytes.Buffer) error {
+func (s *RemoteDeployService) installAgent(ctx context.Context, client *ssh.Client, config *DeployConfig, logBuffer *bytes.Buffer) error {
 	// 先创建目录
 	script := `
 # 创建目录
@@ -624,7 +708,7 @@ esac
 echo "检测到系统架构: $ARCH"
 `
 
-	if err := s.executeCommand(client, script, logBuffer); err != nil {
+	if err := s.executeCommandWithTimeout(ctx, client, script, systemInfoCommandTimeout, logBuffer); err != nil {
 		return err
 	}
 
@@ -648,7 +732,7 @@ exit 1
 `, config.PanelURL)
 
 		// 尝试下载，失败也不报错
-		if err := s.executeCommand(client, downloadScript, logBuffer); err == nil {
+		if err := s.executeCommandWithTimeout(ctx, client, downloadScript, agentInstallTimeout, logBuffer); err == nil {
 			logBuffer.WriteString("✓ Agent 安装完成（通过下载）\n")
 			return nil
 		}
@@ -679,7 +763,7 @@ exit 1
 	s.logger.Info("Agent 文件哈希", logger.F("sha256", localHashStr))
 
 	// 使用 SCP 协议上传文件（包含验证）
-	if err := s.uploadFileSCP(client, agentData, "/usr/local/bin/vpanel-agent", localHashStr, logBuffer); err != nil {
+	if err := s.uploadFileSCP(ctx, client, agentData, "/usr/local/bin/vpanel-agent", localHashStr, logBuffer); err != nil {
 		return fmt.Errorf("Agent 上传失败: %w", err)
 	}
 
@@ -688,24 +772,39 @@ exit 1
 }
 
 // installXray installs Xray using the official script.
-func (s *RemoteDeployService) installXray(client *ssh.Client, logBuffer *bytes.Buffer) error {
+func (s *RemoteDeployService) installXray(ctx context.Context, client *ssh.Client, logBuffer *bytes.Buffer) error {
 	script := `
+set -e
+
+download() {
+    local url="$1"
+    local output="$2"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL --connect-timeout 15 --max-time 180 --retry 2 --retry-delay 2 -o "$output" "$url"
+        return
+    fi
+    if command -v wget >/dev/null 2>&1; then
+        wget --timeout=30 --tries=2 -O "$output" "$url"
+        return
+    fi
+    echo "错误: 未找到 curl 或 wget"
+    exit 1
+}
+
 # 检查 Xray 是否已安装
 if command -v xray &> /dev/null; then
     echo "Xray 已安装，跳过"
     xray version | head -n 1
 else
     echo "正在安装 Xray..."
-    
+
     # 尝试使用官方安装脚本
-    if curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh -o /tmp/install-xray.sh 2>&1; then
+    if download "https://github.com/XTLS/Xray-install/raw/main/install-release.sh" /tmp/install-xray.sh; then
+        chmod +x /tmp/install-xray.sh
         bash /tmp/install-xray.sh install
         rm -f /tmp/install-xray.sh
     else
         echo "官方脚本下载失败，尝试手动安装..."
-        
-        # 获取最新版本
-        XRAY_VERSION=$(curl -s https://api.github.com/repos/XTLS/Xray-core/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/' || echo "v1.8.4")
         
         # 检测系统架构
         ARCH=$(uname -m)
@@ -724,24 +823,15 @@ else
                 exit 1
                 ;;
         esac
-        
-        XRAY_URL="https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/Xray-${XRAY_ARCH}.zip"
-        
-        echo "下载 Xray ${XRAY_VERSION} for ${XRAY_ARCH}..."
-        
-        # 尝试使用 wget 或 curl 下载
-        if command -v wget &> /dev/null; then
-            wget -O /tmp/xray.zip "$XRAY_URL" || exit 1
-        elif command -v curl &> /dev/null; then
-            curl -L -o /tmp/xray.zip "$XRAY_URL" || exit 1
-        else
-            echo "错误: 未找到 wget 或 curl"
-            exit 1
-        fi
-        
+
+        XRAY_URL="https://github.com/XTLS/Xray-core/releases/latest/download/Xray-${XRAY_ARCH}.zip"
+
+        echo "下载 Xray for ${XRAY_ARCH}..."
+        download "$XRAY_URL" /tmp/xray.zip
+
         echo "解压并安装..."
         mkdir -p /tmp/xray
-        unzip -o /tmp/xray.zip -d /tmp/xray
+        unzip -o /tmp/xray.zip -d /tmp/xray >/dev/null
         mv /tmp/xray/xray /usr/local/bin/
         chmod +x /usr/local/bin/xray
         rm -rf /tmp/xray /tmp/xray.zip
@@ -763,7 +853,7 @@ mkdir -p /var/log/xray
 echo "✓ Xray 目录创建完成"
 `
 
-	if err := s.executeCommand(client, script, logBuffer); err != nil {
+	if err := s.executeCommandWithTimeout(ctx, client, script, xrayInstallTimeout, logBuffer); err != nil {
 		return err
 	}
 
@@ -772,7 +862,7 @@ echo "✓ Xray 目录创建完成"
 }
 
 // stopOldAgentProcesses 停止所有旧的 Agent 进程
-func (s *RemoteDeployService) stopOldAgentProcesses(client *ssh.Client, logBuffer *bytes.Buffer) error {
+func (s *RemoteDeployService) stopOldAgentProcesses(ctx context.Context, client *ssh.Client, logBuffer *bytes.Buffer) error {
 	stopScript := `
 echo "=== 清理旧的 Agent 进程 ==="
 
@@ -812,11 +902,11 @@ fi
 
 echo "✓ 清理完成"
 `
-	return s.executeCommand(client, stopScript, logBuffer)
+	return s.executeCommandWithTimeout(ctx, client, stopScript, serviceCommandTimeout, logBuffer)
 }
 
 // configureAgent creates the agent configuration file.
-func (s *RemoteDeployService) configureAgent(client *ssh.Client, config *DeployConfig, logBuffer *bytes.Buffer) error {
+func (s *RemoteDeployService) configureAgent(ctx context.Context, client *ssh.Client, config *DeployConfig, logBuffer *bytes.Buffer) error {
 	// 验证 token 不为空
 	if config.NodeToken == "" {
 		return fmt.Errorf("节点 token 为空，无法配置 Agent")
@@ -876,7 +966,7 @@ echo "Token 前缀: ${TOKEN_VALUE:0:16}"
 echo "Token 后缀: ${TOKEN_VALUE: -8}"
 `, encoded)
 
-	if err := s.executeCommand(client, script, logBuffer); err != nil {
+	if err := s.executeCommandWithTimeout(ctx, client, script, serviceCommandTimeout, logBuffer); err != nil {
 		return fmt.Errorf("写入配置文件失败: %w", err)
 	}
 
@@ -905,7 +995,7 @@ systemctl daemon-reload
 echo "✓ systemd 服务文件已创建"
 `, serviceFile)
 
-	if err := s.executeCommand(client, script, logBuffer); err != nil {
+	if err := s.executeCommandWithTimeout(ctx, client, script, serviceCommandTimeout, logBuffer); err != nil {
 		return fmt.Errorf("创建服务文件失败: %w", err)
 	}
 
@@ -914,7 +1004,7 @@ echo "✓ systemd 服务文件已创建"
 }
 
 // startAgentService starts the agent service.
-func (s *RemoteDeployService) startAgentService(client *ssh.Client, logBuffer *bytes.Buffer) error {
+func (s *RemoteDeployService) startAgentService(ctx context.Context, client *ssh.Client, logBuffer *bytes.Buffer) error {
 	script := `
 # 重新加载 systemd
 systemctl daemon-reload
@@ -943,7 +1033,7 @@ else
 fi
 `
 
-	if err := s.executeCommand(client, script, logBuffer); err != nil {
+	if err := s.executeCommandWithTimeout(ctx, client, script, serviceCommandTimeout, logBuffer); err != nil {
 		return err
 	}
 
@@ -952,7 +1042,7 @@ fi
 }
 
 // verifyInstallation verifies the installation.
-func (s *RemoteDeployService) verifyInstallation(client *ssh.Client, logBuffer *bytes.Buffer) error {
+func (s *RemoteDeployService) verifyInstallation(ctx context.Context, client *ssh.Client, logBuffer *bytes.Buffer) error {
 	script := `
 echo "=== 验证安装 ==="
 
@@ -1048,7 +1138,7 @@ echo ""
 echo "✓ 安装验证完成"
 `
 
-	if err := s.executeCommand(client, script, logBuffer); err != nil {
+	if err := s.executeCommandWithTimeout(ctx, client, script, serviceCommandTimeout, logBuffer); err != nil {
 		return err
 	}
 
@@ -1294,23 +1384,15 @@ func (s *RemoteDeployService) TestConnection(ctx context.Context, config *Deploy
 
 	s.logger.Info("SSH 连接成功，测试执行命令")
 
-	// 执行简单命令测试
-	session, err := client.NewSession()
-	if err != nil {
-		s.logger.Error("创建 SSH 会话失败", logger.Err(err))
-		return fmt.Errorf("创建会话失败: %w", err)
-	}
-	defer session.Close()
-
 	// 执行测试命令
-	output, err := session.CombinedOutput("echo 'Connection test successful' && whoami && pwd")
+	stdout, stderr, err := s.runRemoteCommand(ctx, client, "echo 'Connection test successful' && whoami && pwd", systemInfoCommandTimeout)
 	if err != nil {
 		s.logger.Error("执行测试命令失败", logger.Err(err))
 		return fmt.Errorf("执行测试命令失败: %w", err)
 	}
 
 	s.logger.Info("SSH 连接测试成功",
-		logger.F("output", string(output)))
+		logger.F("output", strings.TrimSpace(strings.Join(filterNonEmptyStrings(stdout, stderr), "\n"))))
 
 	return nil
 }
@@ -1382,7 +1464,7 @@ func base64Encode(data []byte) string {
 }
 
 // uploadFileSCP 使用 SCP 协议上传文件
-func (s *RemoteDeployService) uploadFileSCP(client *ssh.Client, data []byte, remotePath string, expectedHash string, logBuffer *bytes.Buffer) error {
+func (s *RemoteDeployService) uploadFileSCP(ctx context.Context, client *ssh.Client, data []byte, remotePath string, expectedHash string, logBuffer *bytes.Buffer) error {
 	// 先停止可能正在运行的 Agent 进程，避免 "Text file busy" 错误
 	stopScript := `
 if systemctl is-active --quiet vpanel-agent 2>/dev/null; then
@@ -1391,7 +1473,7 @@ fi
 pkill -9 vpanel-agent 2>/dev/null || true
 sleep 1
 `
-	s.executeCommand(client, stopScript, logBuffer)
+	s.executeCommandWithTimeout(ctx, client, stopScript, serviceCommandTimeout, logBuffer)
 
 	// 创建临时文件并上传
 	tmpPath := "/tmp/vpanel-agent.tmp"
@@ -1406,7 +1488,7 @@ sleep 1
 	logBuffer.WriteString(fmt.Sprintf("开始上传文件 (共 %d 块)...\n", totalChunks))
 
 	// 清空临时文件
-	if err := s.executeCommand(client, fmt.Sprintf("rm -f %s", tmpPath), logBuffer); err != nil {
+	if err := s.executeCommandWithTimeout(ctx, client, fmt.Sprintf("rm -f %s", tmpPath), fileTransferCommandTimeout, logBuffer); err != nil {
 		return fmt.Errorf("清空临时文件失败: %w", err)
 	}
 
@@ -1426,7 +1508,7 @@ sleep 1
 		}
 
 		uploadCmd := fmt.Sprintf("echo '%s' | base64 -d >> %s", chunk, tmpPath)
-		if err := s.executeCommand(client, uploadCmd, logBuffer); err != nil {
+		if err := s.executeCommandWithTimeout(ctx, client, uploadCmd, fileTransferCommandTimeout, logBuffer); err != nil {
 			return fmt.Errorf("上传第 %d 块失败: %w", chunkNum, err)
 		}
 	}
@@ -1450,7 +1532,7 @@ REMOTE_HASH=$(sha256sum %s 2>/dev/null | awk '{print $1}' || shasum -a 256 %s 2>
 echo "远程文件哈希: ${REMOTE_HASH}"
 `, tmpPath, remotePath, remotePath, remotePath, remotePath, remotePath, remotePath)
 
-	if err := s.executeCommand(client, moveScript, logBuffer); err != nil {
+	if err := s.executeCommandWithTimeout(ctx, client, moveScript, serviceCommandTimeout, logBuffer); err != nil {
 		return fmt.Errorf("移动文件失败: %w", err)
 	}
 
@@ -1466,7 +1548,7 @@ fi
 echo "✓ 文件校验通过"
 `, remotePath, remotePath, expectedHash, expectedHash)
 
-	if err := s.executeCommand(client, verifyScript, logBuffer); err != nil {
+	if err := s.executeCommandWithTimeout(ctx, client, verifyScript, fileTransferCommandTimeout, logBuffer); err != nil {
 		return fmt.Errorf("文件完整性校验失败: %w", err)
 	}
 

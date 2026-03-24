@@ -61,6 +61,9 @@
           <el-menu-item index="/admin/nodes">
             节点列表
           </el-menu-item>
+          <el-menu-item index="/admin/node-operations">
+            节点运维
+          </el-menu-item>
           <el-menu-item index="/admin/node-groups">
             节点分组
           </el-menu-item>
@@ -303,7 +306,17 @@ const isMobile = computed(() => viewportWidth.value <= VIEWPORT_BREAKPOINTS.admi
 const isCollapse = ref(false)
 const isMobileMenuOpen = ref(false)
 const username = computed(() => userStore.user?.username || '管理员')
-const activeMenu = computed(() => route.path)
+const activeMenu = computed(() => {
+  if (route.path === '/admin/node-operations' || route.path.endsWith('/operations')) {
+    return '/admin/node-operations'
+  }
+
+  if (route.path.startsWith('/admin/nodes/')) {
+    return '/admin/nodes'
+  }
+
+  return route.path
+})
 const currentTitle = computed(() => route.meta?.title || 'V 管理面板')
 
 function getStoredItem(key) {

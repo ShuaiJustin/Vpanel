@@ -359,7 +359,12 @@
                 </div>
                 <div class="focus-stat">
                   <span class="focus-stat-label">内核</span>
-                  <span class="focus-stat-value">{{ node.xray_version || "未上报" }}</span>
+                  <span
+                    class="focus-stat-value"
+                    :title="node.xray_version || '未上报'"
+                  >
+                    {{ formatCoreVersionCompact(node.xray_version) }}
+                  </span>
                 </div>
                 <div class="focus-stat">
                   <span class="focus-stat-label">最近心跳</span>
@@ -380,80 +385,6 @@
       </div>
 
       <div class="dashboard-side">
-        <el-card
-          shadow="never"
-          class="panel-card"
-        >
-          <template #header>
-            <div class="card-header">
-              <div>
-                <div class="card-title">
-                  分组覆盖
-                </div>
-                <div class="card-subtitle">
-                  查看核心分组承载的节点与用户规模
-                </div>
-              </div>
-              <el-button
-                link
-                @click="router.push('/admin/node-groups')"
-              >
-                查看全部
-              </el-button>
-            </div>
-          </template>
-
-          <div
-            v-if="groupHighlights.length"
-            class="group-list"
-          >
-            <article
-              v-for="group in groupHighlights"
-              :key="group.id"
-              class="group-card"
-              @click="router.push('/admin/node-groups')"
-            >
-              <div class="group-card-head">
-                <div>
-                  <div class="group-name">
-                    {{ group.name }}
-                  </div>
-                  <div class="group-meta">
-                    {{ group.region || "未标记地区" }} · {{ formatStrategy(group.strategy) }}
-                  </div>
-                </div>
-                <div class="group-pill">
-                  {{ group.nodeCount }} 节点
-                </div>
-              </div>
-
-              <div class="group-metric">
-                <div class="metric-row">
-                  <span>节点覆盖</span>
-                  <strong>{{ formatPercent(totalNodes ? group.nodeCount / totalNodes : 0) }}</strong>
-                </div>
-                <el-progress
-                  :percentage="totalNodes ? Math.round((group.nodeCount / totalNodes) * 100) : 0"
-                  :show-text="false"
-                  :stroke-width="6"
-                  color="#3b82f6"
-                />
-              </div>
-
-              <div class="group-card-foot">
-                <span>健康 {{ group.healthyCount }}</span>
-                <span>用户 {{ group.userCount }}</span>
-              </div>
-            </article>
-          </div>
-
-          <el-empty
-            v-else
-            description="暂无分组数据"
-            :image-size="72"
-          />
-        </el-card>
-
         <el-card
           shadow="never"
           class="panel-card"
@@ -553,6 +484,90 @@
           <div class="traffic-foot">
             <span>上传占比 {{ uploadShare }}%</span>
             <span>下载占比 {{ downloadShare }}%</span>
+          </div>
+        </el-card>
+
+        <el-card
+          shadow="never"
+          :class="['panel-card', { 'panel-card--compact-empty': !groupHighlights.length }]"
+        >
+          <template #header>
+            <div class="card-header">
+              <div>
+                <div class="card-title">
+                  分组覆盖
+                </div>
+                <div class="card-subtitle">
+                  查看核心分组承载的节点与用户规模
+                </div>
+              </div>
+              <el-button
+                link
+                @click="router.push('/admin/node-groups')"
+              >
+                查看全部
+              </el-button>
+            </div>
+          </template>
+
+          <div
+            v-if="groupHighlights.length"
+            class="group-list"
+          >
+            <article
+              v-for="group in groupHighlights"
+              :key="group.id"
+              class="group-card"
+              @click="router.push('/admin/node-groups')"
+            >
+              <div class="group-card-head">
+                <div>
+                  <div class="group-name">
+                    {{ group.name }}
+                  </div>
+                  <div class="group-meta">
+                    {{ group.region || "未标记地区" }} · {{ formatStrategy(group.strategy) }}
+                  </div>
+                </div>
+                <div class="group-pill">
+                  {{ group.nodeCount }} 节点
+                </div>
+              </div>
+
+              <div class="group-metric">
+                <div class="metric-row">
+                  <span>节点覆盖</span>
+                  <strong>{{ formatPercent(totalNodes ? group.nodeCount / totalNodes : 0) }}</strong>
+                </div>
+                <el-progress
+                  :percentage="totalNodes ? Math.round((group.nodeCount / totalNodes) * 100) : 0"
+                  :show-text="false"
+                  :stroke-width="6"
+                  color="#3b82f6"
+                />
+              </div>
+
+              <div class="group-card-foot">
+                <span>健康 {{ group.healthyCount }}</span>
+                <span>用户 {{ group.userCount }}</span>
+              </div>
+            </article>
+          </div>
+
+          <div
+            v-else
+            class="compact-empty-state"
+          >
+            <el-empty
+              description="暂无分组数据"
+              :image-size="56"
+            />
+            <el-button
+              plain
+              @click="router.push('/admin/node-groups')"
+            >
+              前往节点分组
+            </el-button>
           </div>
         </el-card>
       </div>
@@ -872,6 +887,13 @@ function formatStrategy(strategy) {
   return texts[strategy] || strategy || "未设置";
 }
 
+function formatCoreVersionCompact(version) {
+  if (!version) return "未上报";
+  const normalized = String(version).split("\n")[0];
+  const matched = normalized.match(/(Xray\s+\d+(?:\.\d+)+)/i);
+  return matched?.[1] || normalized;
+}
+
 function formatRelativeTime(value) {
   if (!value) return "未上报";
 
@@ -900,11 +922,18 @@ async function fetchData() {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    await Promise.all([
+    const results = await Promise.allSettled([
       nodeStore.fetchNodes({ limit: 500 }),
       groupStore.fetchGroupsWithStats(),
       nodeStore.fetchClusterHealth(),
     ]);
+
+    // Log individual failures without breaking the whole dashboard
+    results.forEach((result, idx) => {
+      if (result.status === 'rejected') {
+        console.warn(`Dashboard fetch [${idx}] failed:`, result.reason);
+      }
+    });
 
     try {
       const totalTraffic = await nodeStore.getTotalTraffic({
@@ -1216,6 +1245,11 @@ onUnmounted(() => {
   margin-bottom: 20px;
 }
 
+.panel-card--compact-empty :deep(.el-card__body) {
+  padding-top: 18px;
+  padding-bottom: 18px;
+}
+
 .card-header {
   display: flex;
   justify-content: space-between;
@@ -1436,6 +1470,13 @@ onUnmounted(() => {
 .group-list {
   display: flex;
   flex-direction: column;
+  gap: 12px;
+}
+
+.compact-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 12px;
 }
 
@@ -1661,6 +1702,17 @@ onUnmounted(() => {
 }
 
 @media (max-width: 640px) {
+  .node-dashboard-page {
+    padding: 12px;
+    --panel-radius: 18px;
+  }
+
+  :deep(.hero-card .el-card__body),
+  :deep(.metric-card .el-card__body),
+  :deep(.panel-card .el-card__body) {
+    padding: 16px;
+  }
+
   .metrics-grid {
     grid-template-columns: 1fr;
   }
@@ -1669,8 +1721,155 @@ onUnmounted(() => {
     align-items: flex-start;
   }
 
+  .page-header {
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+
   .page-title {
+    font-size: 26px;
+  }
+
+  .page-subtitle {
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .node-dashboard-page .header-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .node-dashboard-page .header-actions > * {
+    min-width: 0;
+    width: 100%;
+    margin-left: 0;
+    flex: initial;
+  }
+
+  .node-dashboard-page .header-actions > :last-child {
+    grid-column: 1 / -1;
+  }
+
+  .hero-layout,
+  .hero-main {
+    gap: 16px;
+  }
+
+  .hero-status {
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .status-orb {
+    width: 60px;
+    height: 60px;
+    border-radius: 18px;
+  }
+
+  .hero-status-icon {
     font-size: 28px;
+  }
+
+  .hero-title {
+    font-size: 24px;
+  }
+
+  .hero-note {
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .hero-highlights {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .highlight-chip {
+    min-width: 0;
+    padding: 12px;
+    border-radius: 16px;
+  }
+
+  .highlight-chip strong {
+    font-size: 18px;
+  }
+
+  .hero-side {
+    padding: 16px;
+    border-radius: 18px;
+  }
+
+  .hero-percent {
+    font-size: 34px;
+  }
+
+  .metric-value,
+  .status-stat-value {
+    font-size: 26px;
+  }
+
+  .metric-icon-shell {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    font-size: 20px;
+  }
+
+  .panel-card {
+    margin-bottom: 16px;
+  }
+
+  .card-header {
+    gap: 10px;
+  }
+
+  .status-stat,
+  .focus-node,
+  .alert-card,
+  .group-card {
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  .focus-node-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .focus-node-stats .focus-stat:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .focus-stat {
+    padding: 10px 12px;
+    border-radius: 14px;
+  }
+
+  .traffic-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .traffic-pill {
+    padding: 12px 8px;
+    border-radius: 16px;
+  }
+
+  .traffic-pill strong {
+    font-size: 16px;
+  }
+
+  .traffic-foot {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .group-card-head {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 </style>

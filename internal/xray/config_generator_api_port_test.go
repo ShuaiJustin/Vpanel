@@ -9,6 +9,7 @@ import (
 
 	"v/internal/database/repository"
 	"v/internal/logger"
+	"v/internal/node"
 )
 
 func TestResolveAPIInboundPort_UsesStableHighPortPerNode(t *testing.T) {
@@ -41,7 +42,7 @@ func TestGenerateInbounds_UsesResolvedAPIPort(t *testing.T) {
 		},
 	}}
 
-	inbounds := generator.generateInbounds(context.Background(), 3, proxies)
+	inbounds := generator.generateInbounds(context.Background(), 3, proxies, node.NetworkOptimizationSettings{})
 
 	require.Len(t, inbounds, 2)
 	assert.Equal(t, "api", inbounds[0].Tag)

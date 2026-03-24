@@ -1,7 +1,7 @@
 <template>
   <div class="node-detail-page">
-    <div class="page-header">
-      <div class="header-left">
+	    <div class="page-header">
+	      <div class="header-left">
         <el-button
           link
           @click="goBack"
@@ -20,35 +20,134 @@
           {{ getStatusText(node.status) }}
         </el-tag>
       </div>
-      <div class="header-actions">
-        <el-button @click="refreshData">
-          <el-icon><Refresh /></el-icon>
-          刷新
-        </el-button>
-        <el-button
-          type="primary"
-          @click="editNode"
+	      <div class="header-actions">
+	        <el-button @click="refreshData">
+	          <el-icon><Refresh /></el-icon>
+	          刷新
+	        </el-button>
+	        <el-button @click="openOperationsPage">
+	          节点运维
+	        </el-button>
+	        <el-button
+	          type="primary"
+	          @click="editNode"
         >
           编辑
         </el-button>
-      </div>
-    </div>
+	      </div>
+	    </div>
 
-    <el-row
-      v-loading="loading"
+	    <div
+	      v-if="node"
+	      class="overview-grid"
+	    >
+	      <div class="overview-card overview-card-primary">
+	        <div class="overview-label">
+	          节点地址
+	        </div>
+	        <div class="overview-value overview-address">
+	          {{ node.address }}
+	        </div>
+	        <div class="overview-meta">
+	          端口 {{ node.port }} · {{ node.region || '未设置地区' }}
+	        </div>
+	      </div>
+	      <div class="overview-card">
+	        <div class="overview-label">
+	          连接与同步
+	        </div>
+	        <div class="overview-tag-row">
+	          <el-tag :type="getStatusType(node.status)">
+	            {{ getStatusText(node.status) }}
+	          </el-tag>
+	          <el-tag
+	            :type="getSyncStatusType(node.sync_status)"
+	            effect="plain"
+	          >
+	            {{ getSyncStatusText(node.sync_status) }}
+	          </el-tag>
+	        </div>
+	        <div class="overview-meta">
+	          最后在线 {{ formatTime(node.last_seen_at) }}
+	        </div>
+	      </div>
+	      <div class="overview-card">
+	        <div class="overview-label">
+	          用户负载
+	        </div>
+	        <div class="overview-value">
+	          {{ currentUsersLimitDisplay }}
+	        </div>
+	        <div class="overview-meta">
+	          权重 {{ node.weight }} · 优先级 {{ node.priority || 0 }}
+	        </div>
+	      </div>
+	      <div class="overview-card">
+	        <div class="overview-label">
+	          {{ trafficPeriodText }}流量
+	        </div>
+	        <div class="overview-value">
+	          {{ formatBytes(trafficStats.upload + trafficStats.download) }}
+	        </div>
+	        <div class="overview-meta">
+	          上行 {{ formatBytes(trafficStats.upload) }} · 下行 {{ formatBytes(trafficStats.download) }}
+	        </div>
+	      </div>
+	      <div class="overview-card">
+	        <div class="overview-label">
+	          Xray 内核
+	        </div>
+	        <div class="overview-value">
+	          {{ node.xray_running ? '运行中' : '已停止' }}
+	        </div>
+	        <div class="overview-meta">
+	          {{ formatCoreVersion(node.xray_version) }}
+	        </div>
+	      </div>
+	      <div class="overview-card">
+	        <div class="overview-label">
+	          接入策略
+	        </div>
+	        <div class="overview-value">
+	          {{ node.tls_enabled ? 'TLS 已启用' : '未启用 TLS' }}
+	        </div>
+	        <div class="overview-meta">
+	          {{ supportedProtocolsDisplay }}
+	        </div>
+	      </div>
+	    </div>
+
+	    <el-row
+	      v-loading="loading"
       :gutter="isMobile ? 12 : 20"
     >
       <!-- 基本信息 -->
       <el-col :span="mainColumnSpan">
-        <el-card
-          shadow="never"
-          class="info-card"
-        >
-          <template #header>
-            <span>基本信息</span>
-          </template>
-          <el-descriptions
-            v-if="node"
+	        <el-card
+	          shadow="never"
+	          class="info-card"
+	        >
+	          <template #header>
+	            <div class="card-header card-header-start">
+	              <div>
+	                <div class="section-title">
+	                  基本信息
+	                </div>
+	                <div class="section-subtitle">
+	                  节点识别、接入参数与容量配置
+	                </div>
+	              </div>
+	              <el-tag
+	                v-if="node?.region"
+	                size="small"
+	                effect="plain"
+	              >
+	                {{ node.region }}
+	              </el-tag>
+	            </div>
+	          </template>
+	          <el-descriptions
+	            v-if="node"
             :column="detailColumns"
             border
           >
@@ -110,23 +209,144 @@
               :key="tag"
               size="small"
               style="margin-right: 8px;"
-            >
-              {{ tag }}
-            </el-tag>
-          </div>
-        </el-card>
+	            >
+	              {{ tag }}
+	            </el-tag>
+	          </div>
+	          <div
+	            v-if="node"
+	            class="detail-panel-grid"
+	          >
+	            <div class="detail-panel">
+	              <span class="detail-panel-label">支持协议</span>
+	              <div class="detail-panel-content">
+	                <el-tag
+	                  v-for="protocol in supportedProtocols"
+	                  :key="protocol"
+	                  size="small"
+	                  effect="plain"
+	                >
+	                  {{ String(protocol).toUpperCase() }}
+	                </el-tag>
+	                <span
+	                  v-if="!supportedProtocols.length"
+	                  class="detail-inline-text"
+	                >
+	                  未配置
+	                </span>
+	              </div>
+	            </div>
+	            <div class="detail-panel">
+	              <span class="detail-panel-label">TLS 配置</span>
+	              <div class="detail-panel-content">
+	                <el-tag
+	                  :type="node.tls_enabled ? 'success' : 'info'"
+	                  size="small"
+	                >
+	                  {{ node.tls_enabled ? '已启用' : '未启用' }}
+	                </el-tag>
+	                <span
+	                  v-if="node.tls_domain"
+	                  class="detail-inline-text"
+	                >
+	                  {{ node.tls_domain }}
+	                </span>
+	              </div>
+	            </div>
+	            <div class="detail-panel">
+	              <span class="detail-panel-label">流量限制</span>
+	              <div class="detail-panel-content detail-panel-content-text">
+	                {{ formatLimitDisplay(node.traffic_limit) }}
+	              </div>
+	            </div>
+	            <div class="detail-panel">
+	              <span class="detail-panel-label">速率限制</span>
+	              <div class="detail-panel-content detail-panel-content-text">
+	                {{ formatSpeedLimitDisplay(node.speed_limit) }}
+	              </div>
+	            </div>
+	          </div>
+	        </el-card>
+
+	        <el-card
+	          v-if="hasNodeNotes"
+	          shadow="never"
+	          class="info-card"
+	        >
+	          <template #header>
+	            <div class="card-header card-header-start">
+	              <div>
+	                <div class="section-title">
+	                  备注信息
+	                </div>
+	                <div class="section-subtitle">
+	                  节点说明、管理员备注与访问约束
+	                </div>
+	              </div>
+	            </div>
+	          </template>
+	          <div class="notes-grid">
+	            <div
+	              v-if="node?.description"
+	              class="note-panel"
+	            >
+	              <div class="detail-panel-label">
+	                节点描述
+	              </div>
+	              <div class="note-text">
+	                {{ node.description }}
+	              </div>
+	            </div>
+	            <div
+	              v-if="node?.remarks"
+	              class="note-panel"
+	            >
+	              <div class="detail-panel-label">
+	                管理员备注
+	              </div>
+	              <div class="note-text">
+	                {{ node.remarks }}
+	              </div>
+	            </div>
+	            <div
+	              v-if="ipWhitelistEntries.length"
+	              class="note-panel note-panel-wide"
+	            >
+	              <div class="detail-panel-label">
+	                IP 白名单
+	              </div>
+	              <div class="tag-cloud">
+	                <el-tag
+	                  v-for="ip in ipWhitelistEntries"
+	                  :key="ip"
+	                  size="small"
+	                  effect="plain"
+	                >
+	                  {{ ip }}
+	                </el-tag>
+	              </div>
+	            </div>
+	          </div>
+	        </el-card>
 
         <!-- 流量统计 -->
-        <el-card
-          shadow="never"
-          class="info-card"
-        >
-          <template #header>
-            <div class="card-header">
-              <span>流量统计</span>
-              <el-radio-group
-                v-model="trafficPeriod"
-                size="small"
+	        <el-card
+	          shadow="never"
+	          class="info-card"
+	        >
+	          <template #header>
+	            <div class="card-header">
+	              <div>
+	                <div class="section-title">
+	                  流量统计
+	                </div>
+	                <div class="section-subtitle">
+	                  查看节点在不同周期内的总流量消耗
+	                </div>
+	              </div>
+	              <el-radio-group
+	                v-model="trafficPeriod"
+	                size="small"
                 @change="fetchTraffic"
               >
                 <el-radio-button label="today">
@@ -176,17 +396,29 @@
         </el-card>
 
         <!-- Top 用户 -->
-        <el-card
-          shadow="never"
-          class="info-card"
-        >
-          <template #header>
-            <span>流量 Top 用户</span>
-          </template>
-          <div class="table-shell">
-            <el-table
-              :data="topUsers"
-              size="small"
+	        <el-card
+	          shadow="never"
+	          class="info-card"
+	        >
+	          <template #header>
+	            <div class="card-header card-header-start">
+	              <div>
+	                <div class="section-title">
+	                  流量 Top 用户
+	                </div>
+	                <div class="section-subtitle">
+	                  当前周期内消耗流量最高的用户列表
+	                </div>
+	              </div>
+	            </div>
+	          </template>
+	          <div
+	            v-if="topUsers.length"
+	            class="table-shell"
+	          >
+	            <el-table
+	              :data="topUsers"
+	              size="small"
               style="width: 100%"
             >
               <el-table-column
@@ -221,169 +453,91 @@
                 <template #default="{ row }">
                   {{ formatBytes(row.upload + row.download) }}
                 </template>
-              </el-table-column>
-            </el-table>
-          </div>
-        </el-card>
+	              </el-table-column>
+	            </el-table>
+	          </div>
+	          <el-empty
+	            v-else
+	            description="当前周期暂无流量记录"
+	            :image-size="56"
+	          />
+	        </el-card>
       </el-col>
 
       <!-- 右侧面板 -->
-      <el-col :span="sideColumnSpan">
-        <!-- 实时状态 -->
-        <el-card
-          shadow="never"
-          class="info-card"
-        >
-          <template #header>
-            <span>实时状态</span>
-          </template>
-          <div class="status-item">
-            <span class="status-label">连接状态</span>
-            <el-tag
-              :type="node?.status === 'online' ? 'success' : 'danger'"
-              size="small"
-            >
-              {{ node?.status === 'online' ? '已连接' : '未连接' }}
-            </el-tag>
-          </div>
-          <div class="status-item">
-            <span class="status-label">负载</span>
-            <div class="load-progress">
-              <el-progress
-                :percentage="loadPercentage"
-                :status="loadStatus"
-                :stroke-width="8"
-              />
-            </div>
-          </div>
-          <div class="status-item">
-            <span class="status-label">延迟</span>
-            <span :class="getLatencyClass(node?.latency)">{{ node?.latency || 0 }}ms</span>
-          </div>
-        </el-card>
-
-        <!-- 内核管理 -->
-        <el-card
-          shadow="never"
-          class="info-card"
-        >
-          <template #header>
-            <span>内核管理</span>
-          </template>
-          <div class="status-item">
-            <span class="status-label">内核类型</span>
-            <el-tag size="small">
-              Xray
-            </el-tag>
-          </div>
-          <div class="status-item">
-            <span class="status-label">运行状态</span>
-            <el-tag
-              :type="node?.xray_running ? 'success' : 'danger'"
-              size="small"
-            >
-              {{ node?.xray_running ? '运行中' : '已停止' }}
-            </el-tag>
-          </div>
-          <div class="status-item status-item-top">
-            <span class="status-label">当前版本</span>
-            <div class="core-version">
-              {{ formatCoreVersion(node?.xray_version) }}
-            </div>
-          </div>
-          <div class="status-item">
-            <span class="status-label">最后心跳</span>
-            <span>{{ formatTime(node?.last_seen_at) }}</span>
-          </div>
-          <div class="core-actions">
-            <el-button
-              plain
-              @click="refreshData"
-            >
-              刷新状态
-            </el-button>
-            <el-button
-              v-if="!node?.xray_running"
-              type="success"
-              :loading="coreActionLoading === 'start'"
-              @click="startCore"
-            >
-              启动内核
-            </el-button>
-            <el-button
-              v-else
-              type="warning"
-              :loading="coreActionLoading === 'restart'"
-              @click="restartCore"
-            >
-              重启内核
-            </el-button>
-            <el-button
-              type="primary"
-              :loading="syncing"
-              @click="syncConfig"
-            >
-              同步配置
-            </el-button>
-          </div>
-          <div class="core-tip">
-            节点命令会进入队列，并在节点下一次心跳时执行。
-          </div>
-        </el-card>
-
-        <!-- 内核操作记录 -->
-        <el-card
-          shadow="never"
-          class="info-card"
-        >
-          <template #header>
-            <span>内核操作记录</span>
-          </template>
-          <div
-            v-if="recentRecoveryEvents.length"
-            class="recovery-events"
-          >
-            <div
-              v-for="event in recentRecoveryEvents"
-              :key="event.command_id"
-              class="recovery-event"
-            >
-              <div class="recovery-event-header">
-                <el-tag
-                  :type="getRecoveryStatusType(event.status)"
-                  size="small"
-                >
-                  {{ getRecoveryStatusText(event.status) }}
-                </el-tag>
-                <span class="recovery-time">{{ formatTime(event.updated_at || event.created_at) }}</span>
-              </div>
-              <div class="recovery-command">
-                {{ getRecoveryCommandText(event.command_type) }}
-              </div>
-              <div class="recovery-reason">
-                {{ event.reason || '未提供原因' }}
-              </div>
-              <div class="recovery-meta">
-                来源：{{ getRecoverySourceText(event.source) }}
-                <span v-if="event.message"> · {{ event.message }}</span>
-              </div>
-            </div>
-          </div>
-          <el-empty
-            v-else
-            description="暂无恢复记录"
-            :image-size="60"
-          />
-        </el-card>
+	      <el-col
+	        :span="sideColumnSpan"
+	        class="side-column"
+	      >
+	        <el-card
+	          shadow="never"
+	          class="info-card"
+	        >
+	          <template #header>
+	            <div class="card-header card-header-start">
+	              <div>
+	                <div class="section-title">
+	                  节点运维
+	                </div>
+	                <div class="section-subtitle">
+	                  将内核管理、网络优化和运维记录集中到独立工作台
+	                </div>
+	              </div>
+	            </div>
+	          </template>
+	          <div class="operation-handoff">
+	            <div class="operation-handoff__meta">
+	              <el-tag
+	                :type="node?.xray_running ? 'success' : 'danger'"
+	                size="small"
+	              >
+	                {{ node?.xray_running ? '内核运行中' : '内核已停止' }}
+	              </el-tag>
+	              <el-tag
+	                :type="getSyncStatusType(node?.sync_status)"
+	                size="small"
+	                effect="plain"
+	              >
+	                {{ getSyncStatusText(node?.sync_status) }}
+	              </el-tag>
+	            </div>
+	            <div class="operation-handoff__body">
+	              节点详情页只保留查看信息。内核管理、网络优化和运维记录已经移到独立工作台，避免详情页继续堆叠。
+	            </div>
+	            <div class="quick-actions operation-handoff__actions">
+	              <el-button
+	                type="primary"
+	                @click="openOperationsPage"
+	              >
+	                进入节点运维
+	              </el-button>
+	              <el-button
+	                plain
+	                @click="editNode"
+	              >
+	                编辑节点
+	              </el-button>
+	            </div>
+	          </div>
+	        </el-card>
 
         <!-- 所属分组 -->
-        <el-card
-          shadow="never"
-          class="info-card"
-        >
-          <template #header>
-            <span>所属分组</span>
-          </template>
+	        <el-card
+	          shadow="never"
+	          class="info-card"
+	        >
+	          <template #header>
+	            <div class="card-header card-header-start">
+	              <div>
+	                <div class="section-title">
+	                  所属分组
+	                </div>
+	                <div class="section-subtitle">
+	                  当前节点归属的节点分组
+	                </div>
+	              </div>
+	            </div>
+	          </template>
           <div
             v-if="nodeGroups.length"
             class="groups-list"
@@ -404,17 +558,32 @@
         </el-card>
 
         <!-- 快捷操作 -->
-        <el-card
-          shadow="never"
-          class="info-card"
-        >
-          <template #header>
-            <span>快捷操作</span>
-          </template>
-          <div class="quick-actions">
-            <el-button
-              type="warning"
-              plain
+	        <el-card
+	          shadow="never"
+	          class="info-card"
+	        >
+	          <template #header>
+	            <div class="card-header card-header-start">
+	              <div>
+	                <div class="section-title">
+	                  快捷操作
+	                </div>
+	                <div class="section-subtitle">
+	                  节点 Token 与删除等高风险操作入口
+	                </div>
+	              </div>
+	            </div>
+	          </template>
+	          <div class="quick-actions">
+	            <el-button
+	              type="primary"
+	              @click="openOperationsPage"
+	            >
+	              进入节点运维
+	            </el-button>
+	            <el-button
+	              type="warning"
+	              plain
               @click="showTokenDialog"
             >
               管理 Token
@@ -432,9 +601,9 @@
     </el-row>
 
     <!-- Token 管理对话框 -->
-    <el-dialog
-      v-model="tokenDialogVisible"
-      title="Token 管理"
+	    <el-dialog
+	      v-model="tokenDialogVisible"
+	      title="Token 管理"
       :width="tokenDialogWidth"
     >
       <div class="token-dialog-content">
@@ -499,11 +668,11 @@
           <div class="new-token-text">
             {{ newToken }}
           </div>
-        </el-alert>
-      </div>
-    </el-dialog>
-  </div>
-</template>
+	        </el-alert>
+	      </div>
+	    </el-dialog>
+	  </div>
+	</template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
@@ -534,22 +703,36 @@ const nodeGroups = ref([])
 
 const node = computed(() => nodeStore.currentNode)
 const recentRecoveryEvents = computed(() => Array.isArray(node.value?.recent_recovery_events) ? node.value.recent_recovery_events : [])
+const supportedProtocols = computed(() => Array.isArray(node.value?.protocols) ? node.value.protocols : [])
+const supportedProtocolsDisplay = computed(() => (
+  supportedProtocols.value.length
+    ? supportedProtocols.value.map((protocol) => String(protocol).toUpperCase()).join(' / ')
+    : '未配置协议'
+))
+const ipWhitelistEntries = computed(() => Array.isArray(node.value?.ip_whitelist) ? node.value.ip_whitelist : [])
+const hasNodeNotes = computed(() => Boolean(
+  node.value?.description ||
+  node.value?.remarks ||
+  ipWhitelistEntries.value.length
+))
 const mainColumnSpan = computed(() => (isMobile.value ? 24 : 16))
 const sideColumnSpan = computed(() => (isMobile.value ? 24 : 8))
 const detailColumns = computed(() => (isMobile.value ? 1 : 2))
 const trafficStatSpan = computed(() => (isMobile.value ? 24 : 8))
 const tokenDialogWidth = computed(() => (isMobile.value ? 'calc(100vw - 24px)' : '500px'))
-
-const loadPercentage = computed(() => {
-  if (!node.value?.max_users) return 0
-  return Math.round((node.value.current_users / node.value.max_users) * 100)
+const trafficPeriodText = computed(() => {
+  const map = {
+    today: '今日',
+    week: '近 7 天',
+    month: '本月'
+  }
+  return map[trafficPeriod.value] || '当前周期'
 })
-
-const loadStatus = computed(() => {
-  if (loadPercentage.value >= 90) return 'exception'
-  if (loadPercentage.value >= 70) return 'warning'
-  return 'success'
-})
+const currentUsersLimitDisplay = computed(() => (
+  node.value?.max_users
+    ? `${node.value.current_users || 0} / ${node.value.max_users}`
+    : `${node.value?.current_users || 0} / ∞`
+))
 
 const getStatusType = (status) => {
   const types = { online: 'success', offline: 'info', unhealthy: 'danger' }
@@ -618,6 +801,10 @@ const formatBytes = (bytes) => {
   }
   return `${bytes.toFixed(2)} ${units[i]}`
 }
+
+const formatLimitDisplay = (bytes) => (Number(bytes) > 0 ? formatBytes(Number(bytes)) : '无限制')
+
+const formatSpeedLimitDisplay = (bytes) => (Number(bytes) > 0 ? `${formatBytes(Number(bytes))}/s` : '无限制')
 
 const formatCoreVersion = (version) => {
   if (!version) return '-'
@@ -751,6 +938,11 @@ const refreshData = async () => {
 
 const goBack = () => {
   router.push('/admin/nodes')
+}
+
+const openOperationsPage = () => {
+  if (!node.value?.id) return
+  router.push(`/admin/nodes/${node.value.id}/operations`)
 }
 
 const editNode = () => {
@@ -931,6 +1123,60 @@ watch(
   gap: 12px;
 }
 
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.overview-card {
+  display: flex;
+  min-height: 132px;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--el-fill-color-light) 0%, var(--el-bg-color) 100%);
+}
+
+.overview-card-primary {
+  background: linear-gradient(140deg, var(--el-color-primary-light-9) 0%, var(--el-bg-color) 100%);
+}
+
+.overview-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  letter-spacing: 0.04em;
+}
+
+.overview-value {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--el-text-color-primary);
+}
+
+.overview-address {
+  font-size: 20px;
+  word-break: break-word;
+}
+
+.overview-meta {
+  margin-top: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--el-text-color-secondary);
+  word-break: break-word;
+}
+
+.overview-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .info-card {
   margin-bottom: 20px;
 }
@@ -939,6 +1185,23 @@ watch(
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.card-header-start {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.section-subtitle {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 .tags-section {
@@ -950,6 +1213,78 @@ watch(
 .tags-label {
   color: var(--el-text-color-secondary);
   margin-right: 12px;
+}
+
+.detail-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.detail-panel {
+  padding: 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  background: var(--el-fill-color-light);
+}
+
+.detail-panel-label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.detail-panel-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.detail-panel-content-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+}
+
+.detail-inline-text {
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.notes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.note-panel {
+  min-height: 118px;
+  padding: 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  background: var(--el-fill-color-light);
+}
+
+.note-panel-wide {
+  grid-column: 1 / -1;
+}
+
+.note-text {
+  color: var(--el-text-color-primary);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tag-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .traffic-stat {
@@ -993,6 +1328,96 @@ watch(
   width: 120px;
 }
 
+.side-column {
+  min-width: 0;
+}
+
+.runtime-pill-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.runtime-pill {
+  display: flex;
+  min-height: 98px;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  background: var(--el-fill-color-light);
+}
+
+.runtime-pill-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.runtime-pill small {
+  color: var(--el-text-color-secondary);
+  line-height: 1.4;
+}
+
+.metric-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.metric-row {
+  padding: 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  background: var(--el-bg-color);
+}
+
+.metric-row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.metric-row-header strong {
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+}
+
+.metric-row-meta {
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.runtime-footer {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.runtime-footer-item {
+  display: flex;
+  min-height: 74px;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--el-fill-color-light);
+}
+
+.runtime-footer-item strong {
+  color: var(--el-text-color-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
 .table-shell {
   overflow-x: auto;
 }
@@ -1009,6 +1434,37 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.operation-handoff {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.operation-handoff__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.operation-handoff__body {
+  display: flex;
+  align-items: center;
+  min-height: 132px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-primary);
+  line-height: 1.7;
+}
+
+.operation-handoff__actions {
+  gap: 14px;
+}
+
+.operation-handoff__actions .el-button {
+  min-height: 50px;
 }
 
 .core-actions {
@@ -1034,8 +1490,91 @@ watch(
   word-break: break-word;
 }
 
-.quick-actions .el-button {
+.optimization-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.optimization-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  padding: 16px 0;
+}
+
+.optimization-select {
+  width: 180px;
+}
+
+.optimization-state-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.optimization-state-item {
+  display: flex;
+  min-height: 84px;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
+  background: var(--el-fill-color-light);
+}
+
+.optimization-state-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.network-endpoint {
+  max-width: 62%;
+  color: var(--el-text-color-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: right;
+  word-break: break-word;
+}
+
+.network-endpoint-user {
+  color: var(--el-text-color-secondary);
+}
+
+.optimization-log {
+  max-height: 220px;
+  margin: 16px 0 0;
+  padding: 12px;
+  overflow: auto;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #dbeafe;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.network-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.network-dialog-form {
+  margin-top: 4px;
+}
+
+.quick-actions :deep(.el-button) {
   width: 100%;
+}
+
+.quick-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
 }
 
 .latency-good { color: var(--el-color-success); }
@@ -1163,10 +1702,29 @@ watch(
   }
 
   .load-progress,
-  .core-version {
+  .core-version,
+  .network-endpoint,
+  .optimization-select {
     width: 100%;
     max-width: none;
     text-align: left;
+  }
+
+  .optimization-options,
+  .optimization-state-grid,
+  .runtime-pill-grid,
+  .runtime-footer,
+  .detail-panel-grid,
+  .notes-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .operation-handoff {
+    gap: 16px;
+  }
+
+  .operation-handoff__body {
+    min-height: 0;
   }
 
   .token-label {

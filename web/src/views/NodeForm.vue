@@ -1061,7 +1061,8 @@ const parseTags = (tags) => {
   if (typeof tags === "string") {
     try {
       return JSON.parse(tags);
-    } catch {
+    } catch (e) {
+      console.warn("Failed to parse tags JSON:", e);
       return [];
     }
   }
@@ -1843,6 +1844,7 @@ onBeforeUnmount(() => {
 
 .action-card__secondary {
   margin-top: 10px;
+  margin-left: 0;
 }
 
 .token-display {

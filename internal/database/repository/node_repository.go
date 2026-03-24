@@ -78,6 +78,9 @@ type Node struct {
 	Description string `gorm:"type:text"` // 节点描述
 	Remarks     string `gorm:"type:text"` // 管理员备注
 
+	// 网络优化配置
+	NetworkOptimizationSettings string `gorm:"type:text"` // JSON encoded per-node optimization settings
+
 	// Xray 状态
 	XrayRunning bool   `gorm:"default:false"` // Xray 是否运行
 	XrayVersion string `gorm:"size:64"`       // Xray 版本
@@ -175,6 +178,9 @@ type NodeRepository interface {
 	Transaction(ctx context.Context, fn func(txCtx context.Context) error) error
 	DeleteInTx(ctx context.Context, id int64) error
 	GetAvailableInTx(ctx context.Context) ([]*Node, error)
+
+	// Batch update for heartbeat (atomic)
+	UpdateHeartbeatBatch(ctx context.Context, id int64, status string, lastSeen time.Time, latency int, currentUsers int, cpuUsage, memoryUsage, diskUsage float64, xrayRunning bool, xrayVersion string) error
 }
 
 // nodeRepository implements NodeRepository.
@@ -561,4 +567,27 @@ func (r *nodeRepository) getDB(ctx context.Context) *gorm.DB {
 		return tx
 	}
 	return r.db.WithContext(ctx)
+}
+
+// UpdateHeartbeatBatch atomically updates all heartbeat-related fields in a single query.
+func (r *nodeRepository) UpdateHeartbeatBatch(ctx context.Context, id int64, status string, lastSeen time.Time, latency int, currentUsers int, cpuUsage, memoryUsage, diskUsage float64, xrayRunning bool, xrayVersion string) error {
+	updates := map[string]interface{}{
+		"status":        status,
+		"last_seen_at":  lastSeen,
+		"latency":       latency,
+		"current_users": currentUsers,
+		"cpu_usage":     cpuUsage,
+		"memory_usage":  memoryUsage,
+		"disk_usage":    diskUsage,
+		"xray_running":  xrayRunning,
+		"xray_version":  xrayVersion,
+	}
+	result := r.db.WithContext(ctx).Model(&Node{}).Where("id = ?", id).Updates(updates)
+	if result.Error != nil {
+		return errors.NewDatabaseError("failed to update heartbeat batch", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return errors.NewNotFoundError("node", id)
+	}
+	return nil
 }

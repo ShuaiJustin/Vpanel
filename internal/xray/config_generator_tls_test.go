@@ -12,6 +12,7 @@ import (
 
 	"v/internal/database/repository"
 	"v/internal/logger"
+	"v/internal/node"
 	apperrors "v/pkg/errors"
 )
 
@@ -99,7 +100,7 @@ func TestGenerateStreamSettings_AutoMatchesWildcardCertificate(t *testing.T) {
 		"network":     "ws",
 		"security":    "tls",
 		"server_name": "api.example.com",
-	})
+	}, node.NetworkOptimizationSettings{})
 
 	require.NotNil(t, stream)
 	require.NotNil(t, stream.TLSSettings)
@@ -126,7 +127,7 @@ func TestGenerateStreamSettings_AutoMatchesExactWildcardCertificateSelection(t *
 		"network":     "tcp",
 		"security":    "tls",
 		"server_name": "*.example.com",
-	})
+	}, node.NetworkOptimizationSettings{})
 
 	require.NotNil(t, stream)
 	require.NotNil(t, stream.TLSSettings)
@@ -154,7 +155,7 @@ func TestGenerateStreamSettings_ManualFilesTakePrecedence(t *testing.T) {
 		"server_name": "example.com",
 		"cert_file":   "/manual/fullchain.pem",
 		"key_file":    "/manual/privkey.pem",
-	})
+	}, node.NetworkOptimizationSettings{})
 
 	require.NotNil(t, stream)
 	require.NotNil(t, stream.TLSSettings)
@@ -171,7 +172,7 @@ func TestGenerateStreamSettings_SupportsInlineCertificateContent(t *testing.T) {
 		"server_name": "example.com",
 		"certificate": "-----BEGIN CERTIFICATE-----test-----END CERTIFICATE-----",
 		"key":         "-----BEGIN PRIVATE KEY-----test-----END PRIVATE KEY-----",
-	})
+	}, node.NetworkOptimizationSettings{})
 
 	require.NotNil(t, stream)
 	require.NotNil(t, stream.TLSSettings)
@@ -197,7 +198,7 @@ func TestGenerateStreamSettings_AutoMatchesStoredCertificateContent(t *testing.T
 	stream := generator.generateStreamSettings(context.Background(), map[string]any{
 		"security":    "tls",
 		"server_name": "example.com",
-	})
+	}, node.NetworkOptimizationSettings{})
 
 	require.NotNil(t, stream)
 	require.NotNil(t, stream.TLSSettings)
@@ -212,7 +213,7 @@ func TestGenerateStreamSettings_SupportsALPNCommaSeparatedString(t *testing.T) {
 	stream := generator.generateStreamSettings(context.Background(), map[string]any{
 		"security": "tls",
 		"alpn":     "h2, http/1.1",
-	})
+	}, node.NetworkOptimizationSettings{})
 
 	require.NotNil(t, stream)
 	require.NotNil(t, stream.TLSSettings)
@@ -225,7 +226,7 @@ func TestGenerateStreamSettings_SupportsALPNInterfaceSlice(t *testing.T) {
 	stream := generator.generateStreamSettings(context.Background(), map[string]any{
 		"security": "tls",
 		"alpn":     []any{"h2", "http/1.1"},
-	})
+	}, node.NetworkOptimizationSettings{})
 
 	require.NotNil(t, stream)
 	require.NotNil(t, stream.TLSSettings)
@@ -245,7 +246,7 @@ func TestGenerateStreamSettings_SupportsRealitySettings(t *testing.T) {
 			"shortIds":    []string{"6ba85179e30d4fc2"},
 			"xver":        0,
 		},
-	})
+	}, node.NetworkOptimizationSettings{})
 
 	require.NotNil(t, stream)
 	assert.Equal(t, "reality", stream.Security)

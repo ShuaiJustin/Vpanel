@@ -11,6 +11,7 @@ import (
 
 	"v/internal/database/repository"
 	"v/internal/logger"
+	"v/internal/node"
 	apperrors "v/pkg/errors"
 )
 
@@ -23,6 +24,7 @@ const (
 type ConfigGenerator struct {
 	proxyRepo repository.ProxyRepository
 	certRepo  repository.CertificateRepository
+	nodeRepo  repository.NodeRepository
 	logger    logger.Logger
 }
 
@@ -30,11 +32,13 @@ type ConfigGenerator struct {
 func NewConfigGenerator(
 	proxyRepo repository.ProxyRepository,
 	certRepo repository.CertificateRepository,
+	nodeRepo repository.NodeRepository,
 	log logger.Logger,
 ) *ConfigGenerator {
 	return &ConfigGenerator{
 		proxyRepo: proxyRepo,
 		certRepo:  certRepo,
+		nodeRepo:  nodeRepo,
 		logger:    log,
 	}
 }
@@ -103,6 +107,7 @@ type StreamSettings struct {
 	Security        string         `json:"security,omitempty"`
 	TLSSettings     *TLSSettings   `json:"tlsSettings,omitempty"`
 	RealitySettings map[string]any `json:"realitySettings,omitempty"`
+	Sockopt         map[string]any `json:"sockopt,omitempty"`
 	TCPSettings     map[string]any `json:"tcpSettings,omitempty"`
 	WSSettings      map[string]any `json:"wsSettings,omitempty"`
 	HTTPSettings    map[string]any `json:"httpSettings,omitempty"`
@@ -159,6 +164,18 @@ func (g *ConfigGenerator) GenerateForNode(ctx context.Context, nodeID int64) (*X
 		return nil, fmt.Errorf("failed to get proxies for node: %w", err)
 	}
 
+	var optimizationSettings node.NetworkOptimizationSettings
+	if g.nodeRepo != nil {
+		nodeData, nodeErr := g.nodeRepo.GetByID(ctx, nodeID)
+		if nodeErr != nil {
+			g.logger.Warn("failed to load node optimization settings",
+				logger.F("node_id", nodeID),
+				logger.F("error", nodeErr.Error()))
+		} else if nodeData != nil {
+			optimizationSettings = node.ParseNetworkOptimizationSettings(nodeData.NetworkOptimizationSettings)
+		}
+	}
+
 	g.logger.Info("generating config for node",
 		logger.F("node_id", nodeID),
 		logger.F("proxy_count", len(allProxies)))
@@ -189,7 +206,7 @@ func (g *ConfigGenerator) GenerateForNode(ctx context.Context, nodeID int64) (*X
 				StatsOutboundDownlink: true,
 			},
 		},
-		Inbounds:  g.generateInbounds(ctx, nodeID, allProxies),
+		Inbounds:  g.generateInbounds(ctx, nodeID, allProxies, optimizationSettings),
 		Outbounds: g.generateOutbounds(),
 		Routing:   g.generateRouting(),
 	}
@@ -198,7 +215,7 @@ func (g *ConfigGenerator) GenerateForNode(ctx context.Context, nodeID int64) (*X
 }
 
 // generateInbounds generates inbound configurations from proxies.
-func (g *ConfigGenerator) generateInbounds(ctx context.Context, nodeID int64, proxies []*repository.Proxy) []InboundConfig {
+func (g *ConfigGenerator) generateInbounds(ctx context.Context, nodeID int64, proxies []*repository.Proxy, optimizationSettings node.NetworkOptimizationSettings) []InboundConfig {
 	apiPort := resolveAPIInboundPort(nodeID, proxies)
 
 	inbounds := []InboundConfig{
@@ -216,7 +233,7 @@ func (g *ConfigGenerator) generateInbounds(ctx context.Context, nodeID int64, pr
 
 	// Generate inbound for each proxy
 	for _, proxy := range proxies {
-		inbound := g.proxyToInbound(ctx, proxy)
+		inbound := g.proxyToInbound(ctx, proxy, optimizationSettings)
 		if inbound != nil {
 			inbounds = append(inbounds, *inbound)
 		}
@@ -251,7 +268,26 @@ func resolveAPIInboundPort(nodeID int64, proxies []*repository.Proxy) int {
 }
 
 // proxyToInbound converts a proxy to an Xray inbound configuration.
-func (g *ConfigGenerator) proxyToInbound(ctx context.Context, proxy *repository.Proxy) *InboundConfig {
+func (g *ConfigGenerator) proxyToInbound(ctx context.Context, proxy *repository.Proxy, optimizationSettings node.NetworkOptimizationSettings) *InboundConfig {
+	// Validate port range
+	if proxy.Port < 1 || proxy.Port > 65535 {
+		g.logger.Warn("Invalid proxy port, skipping",
+			logger.F("proxy_id", proxy.ID),
+			logger.F("port", proxy.Port))
+		return nil
+	}
+
+	// Validate protocol
+	validProtocols := map[string]bool{
+		"vless": true, "vmess": true, "trojan": true, "shadowsocks": true,
+	}
+	if !validProtocols[proxy.Protocol] {
+		g.logger.Warn("Unsupported protocol, skipping",
+			logger.F("proxy_id", proxy.ID),
+			logger.F("protocol", proxy.Protocol))
+		return nil
+	}
+
 	tag := fmt.Sprintf("inbound-%d", proxy.ID)
 
 	inbound := &InboundConfig{
@@ -274,20 +310,15 @@ func (g *ConfigGenerator) proxyToInbound(ctx context.Context, proxy *repository.
 	switch proxy.Protocol {
 	case "vless":
 		inbound.Settings = g.generateVLESSSettings(proxy, settings)
-		inbound.StreamSettings = g.generateStreamSettings(ctx, settings)
+		inbound.StreamSettings = g.generateStreamSettings(ctx, settings, optimizationSettings)
 	case "vmess":
 		inbound.Settings = g.generateVMessSettings(proxy, settings)
-		inbound.StreamSettings = g.generateStreamSettings(ctx, settings)
+		inbound.StreamSettings = g.generateStreamSettings(ctx, settings, optimizationSettings)
 	case "trojan":
 		inbound.Settings = g.generateTrojanSettings(proxy, settings)
-		inbound.StreamSettings = g.generateStreamSettings(ctx, settings)
+		inbound.StreamSettings = g.generateStreamSettings(ctx, settings, optimizationSettings)
 	case "shadowsocks":
 		inbound.Settings = g.generateShadowsocksSettings(proxy, settings)
-	default:
-		g.logger.Warn("Unsupported protocol",
-			logger.F("proxy_id", proxy.ID),
-			logger.F("protocol", proxy.Protocol))
-		return nil
 	}
 
 	return inbound
@@ -380,7 +411,7 @@ func (g *ConfigGenerator) generateShadowsocksSettings(proxy *repository.Proxy, s
 }
 
 // generateStreamSettings generates stream settings from proxy settings.
-func (g *ConfigGenerator) generateStreamSettings(ctx context.Context, settings map[string]any) *StreamSettings {
+func (g *ConfigGenerator) generateStreamSettings(ctx context.Context, settings map[string]any, optimizationSettings node.NetworkOptimizationSettings) *StreamSettings {
 	stream := &StreamSettings{
 		Network: "tcp", // default
 	}
@@ -440,7 +471,35 @@ func (g *ConfigGenerator) generateStreamSettings(ctx context.Context, settings m
 		}
 	}
 
+	if sockopt := buildStreamSockopt(stream.Network, optimizationSettings); len(sockopt) > 0 {
+		stream.Sockopt = sockopt
+	}
+
 	return stream
+}
+
+func buildStreamSockopt(network string, optimizationSettings node.NetworkOptimizationSettings) map[string]any {
+	settings := optimizationSettings.Normalize()
+	if !settings.EnableXraySockopt {
+		return nil
+	}
+
+	switch strings.ToLower(strings.TrimSpace(network)) {
+	case "quic", "kcp":
+		return nil
+	}
+
+	sockopt := make(map[string]any)
+	if settings.XrayTCPFastOpen {
+		sockopt["tcpFastOpen"] = true
+	}
+	if congestion := strings.TrimSpace(settings.XrayTCPCongestion); congestion != "" {
+		sockopt["tcpcongestion"] = congestion
+	}
+	if len(sockopt) == 0 {
+		return nil
+	}
+	return sockopt
 }
 
 func (g *ConfigGenerator) resolveTLSCertificates(ctx context.Context, settings map[string]any) []Certificate {
