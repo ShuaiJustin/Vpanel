@@ -29,7 +29,7 @@ func (g *ShadowrocketGenerator) Generate(proxies []*repository.Proxy, options *G
 
 	for _, proxy := range proxies {
 		info := ExtractProxyInfo(proxy)
-		
+
 		var link string
 		var err error
 
@@ -84,18 +84,18 @@ func (g *ShadowrocketGenerator) SupportsProtocol(protocol string) bool {
 func (g *ShadowrocketGenerator) generateVMessLink(info *ProxyInfo) (string, error) {
 	// Shadowrocket uses a different VMess format
 	// vmess://method:uuid@server:port?params#name
-	
+
 	uuid := GetSettingString(info.Settings, "uuid", "")
 	security := GetSettingString(info.Settings, "security", "auto")
-	
+
 	params := url.Values{}
-	
+
 	// Network type
 	network := GetSettingString(info.Settings, "network", "tcp")
 	if network != "tcp" {
 		params.Set("obfs", network)
 	}
-	
+
 	// WebSocket settings
 	if network == "ws" {
 		if path := GetSettingString(info.Settings, "path", ""); path != "" {
@@ -105,7 +105,7 @@ func (g *ShadowrocketGenerator) generateVMessLink(info *ProxyInfo) (string, erro
 			params.Set("obfsParam", host)
 		}
 	}
-	
+
 	// TLS settings
 	if GetSettingBool(info.Settings, "tls", false) {
 		params.Set("tls", "1")
@@ -113,7 +113,7 @@ func (g *ShadowrocketGenerator) generateVMessLink(info *ProxyInfo) (string, erro
 			params.Set("peer", sni)
 		}
 	}
-	
+
 	// Alter ID
 	alterId := GetSettingInt(info.Settings, "alterId", 0)
 	params.Set("alterId", fmt.Sprintf("%d", alterId))
@@ -137,46 +137,47 @@ func (g *ShadowrocketGenerator) generateVLESSLink(info *ProxyInfo) (string, erro
 	}
 
 	params := url.Values{}
-	
+	params.Set("encryption", "none")
+
 	// Network type
 	network := GetSettingString(info.Settings, "network", "tcp")
 	params.Set("type", network)
-	
+
 	// Security
 	security := GetSettingString(info.Settings, "security", "")
 	if security != "" {
 		params.Set("security", security)
 	}
-	
+
 	if GetSettingBool(info.Settings, "tls", false) {
 		params.Set("security", "tls")
 	}
-	
+
 	// SNI
 	if sni := GetSettingString(info.Settings, "sni", ""); sni != "" {
 		params.Set("sni", sni)
 	}
-	
+
 	// Host
 	if host := GetSettingString(info.Settings, "host", ""); host != "" {
 		params.Set("host", host)
 	}
-	
+
 	// Path
 	if path := GetSettingString(info.Settings, "path", ""); path != "" {
 		params.Set("path", path)
 	}
-	
+
 	// Flow
 	if flow := GetSettingString(info.Settings, "flow", ""); flow != "" {
 		params.Set("flow", flow)
 	}
-	
+
 	// Fingerprint
 	if fp := GetSettingString(info.Settings, "fingerprint", ""); fp != "" {
 		params.Set("fp", fp)
 	}
-	
+
 	// Reality settings
 	if pbk := GetSettingString(info.Settings, "publicKey", ""); pbk != "" {
 		params.Set("pbk", pbk)
@@ -203,27 +204,27 @@ func (g *ShadowrocketGenerator) generateTrojanLink(info *ProxyInfo) (string, err
 	}
 
 	params := url.Values{}
-	
+
 	// SNI
 	if sni := GetSettingString(info.Settings, "sni", ""); sni != "" {
 		params.Set("sni", sni)
 	}
-	
+
 	// ALPN
 	if alpn := GetSettingString(info.Settings, "alpn", ""); alpn != "" {
 		params.Set("alpn", alpn)
 	}
-	
+
 	// Fingerprint
 	if fp := GetSettingString(info.Settings, "fingerprint", ""); fp != "" {
 		params.Set("fp", fp)
 	}
-	
+
 	// Network type (for WebSocket/gRPC)
 	network := GetSettingString(info.Settings, "network", "tcp")
 	if network != "tcp" {
 		params.Set("type", network)
-		
+
 		if host := GetSettingString(info.Settings, "host", ""); host != "" {
 			params.Set("host", host)
 		}

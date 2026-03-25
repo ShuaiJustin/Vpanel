@@ -31,7 +31,7 @@ func (g *V2rayNGenerator) Generate(proxies []*repository.Proxy, options *Generat
 
 	for _, proxy := range proxies {
 		info := ExtractProxyInfo(proxy)
-		
+
 		var link string
 		var err error
 
@@ -81,7 +81,6 @@ func (g *V2rayNGenerator) SupportsProtocol(protocol string) bool {
 		return false
 	}
 }
-
 
 // vmessConfig represents the VMess configuration for V2rayN.
 type vmessConfig struct {
@@ -144,39 +143,40 @@ func (g *V2rayNGenerator) generateVLESSLink(info *ProxyInfo) (string, error) {
 
 	// Build query parameters
 	params := url.Values{}
-	
+	params.Set("encryption", "none")
+
 	if network := GetSettingString(info.Settings, "network", ""); network != "" {
 		params.Set("type", network)
 	}
-	
+
 	if security := GetSettingString(info.Settings, "security", ""); security != "" {
 		params.Set("security", security)
 	}
-	
+
 	if GetSettingBool(info.Settings, "tls", false) {
 		params.Set("security", "tls")
 	}
-	
+
 	if sni := GetSettingString(info.Settings, "sni", ""); sni != "" {
 		params.Set("sni", sni)
 	}
-	
+
 	if host := GetSettingString(info.Settings, "host", ""); host != "" {
 		params.Set("host", host)
 	}
-	
+
 	if path := GetSettingString(info.Settings, "path", ""); path != "" {
 		params.Set("path", path)
 	}
-	
+
 	if fp := GetSettingString(info.Settings, "fingerprint", ""); fp != "" {
 		params.Set("fp", fp)
 	}
-	
+
 	if alpn := GetSettingString(info.Settings, "alpn", ""); alpn != "" {
 		params.Set("alpn", alpn)
 	}
-	
+
 	if flow := GetSettingString(info.Settings, "flow", ""); flow != "" {
 		params.Set("flow", flow)
 	}
@@ -208,22 +208,22 @@ func (g *V2rayNGenerator) generateTrojanLink(info *ProxyInfo) (string, error) {
 
 	// Build query parameters
 	params := url.Values{}
-	
+
 	if sni := GetSettingString(info.Settings, "sni", ""); sni != "" {
 		params.Set("sni", sni)
 	}
-	
+
 	if alpn := GetSettingString(info.Settings, "alpn", ""); alpn != "" {
 		params.Set("alpn", alpn)
 	}
-	
+
 	if fp := GetSettingString(info.Settings, "fingerprint", ""); fp != "" {
 		params.Set("fp", fp)
 	}
-	
+
 	if network := GetSettingString(info.Settings, "network", ""); network != "" && network != "tcp" {
 		params.Set("type", network)
-		
+
 		if host := GetSettingString(info.Settings, "host", ""); host != "" {
 			params.Set("host", host)
 		}

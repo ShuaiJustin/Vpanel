@@ -507,3 +507,154 @@
 .dark .traffic-stack {
   background: var(--color-bg-page) !important;
 }
+
+
+/* Inbounds 深色模式补充 */
+.dark .inbounds-page :is(.protocol-tag.vmess, .format-icon) {
+  background-color: rgba(96, 165, 250, 0.16) !important;
+  color: #93c5fd !important;
+}
+
+.dark .inbounds-page .protocol-tag.vless {
+  background-color: rgba(34, 197, 94, 0.16) !important;
+  color: #86efac !important;
+}
+
+.dark .inbounds-page .protocol-tag.trojan {
+  background-color: rgba(245, 158, 11, 0.16) !important;
+  color: #fcd34d !important;
+}
+
+.dark .inbounds-page .protocol-tag.shadowsocks {
+  background-color: rgba(239, 68, 68, 0.16) !important;
+  color: #fda4af !important;
+}
+
+.dark .inbounds-page .protocol-tag.dokodemo-door,
+.dark .inbounds-page .status-tag.running,
+.dark .inbounds-page .status-tag.stopped,
+.dark .inbounds-page .service-cell__server,
+.dark .inbounds-page .row-action--more.el-button {
+  background: var(--admin-surface-soft, var(--color-border-light)) !important;
+  border-color: var(--admin-border, var(--color-border)) !important;
+}
+
+.dark .inbounds-page .status-tag.running {
+  color: #86efac !important;
+}
+
+.dark .inbounds-page .status-tag.stopped {
+  color: #fda4af !important;
+}
+
+.dark .inbounds-page .service-cell__server,
+.dark .inbounds-page .detail-value,
+.dark .inbounds-page .service-name {
+  color: var(--admin-text, var(--color-text-primary)) !important;
+}
+
+.dark .inbounds-page .service-cell__meta,
+.dark .inbounds-page .detail-label,
+.dark .inbounds-page .toolbar-summary {
+  color: var(--admin-text-muted, var(--color-text-secondary)) !important;
+}
+
+.dark .inbounds-page .row-action--primary.el-button {
+  color: #93c5fd !important;
+  background: rgba(96, 165, 250, 0.16) !important;
+  border-color: rgba(96, 165, 250, 0.28) !important;
+}
+
+.dark .inbounds-page .row-action--success.el-button {
+  color: #86efac !important;
+  background: rgba(34, 197, 94, 0.16) !important;
+  border-color: rgba(34, 197, 94, 0.28) !important;
+}
+
+.dark .inbounds-page .row-action--warning.el-button {
+  color: #fcd34d !important;
+  background: rgba(245, 158, 11, 0.16) !important;
+  border-color: rgba(245, 158, 11, 0.28) !important;
+}
+
+.dark .inbounds-page .el-table__header th,
+.dark .inbounds-page .el-table__body tr:hover > td,
+.dark .inbounds-page .el-table--striped .el-table__body tr.el-table__row--striped > td {
+  background: var(--admin-surface-soft, var(--color-border-light)) !important;
+  color: var(--admin-text, var(--color-text-primary)) !important;
+}
+
+
+/* 用户页细节补充 */
+.dark .payment-method,
+.dark .amount-option,
+.dark .format-item {
+  border-color: var(--color-border) !important;
+  background: var(--color-bg-card) !important;
+}
+
+.dark .payment-method--active,
+.dark .amount-option--active {
+  background: rgba(64, 158, 255, 0.12) !important;
+  border-color: var(--color-primary) !important;
+  color: var(--color-primary) !important;
+}
+
+.dark .summary-row,
+.dark .traffic-item,
+.dark .faq-item,
+.dark .article-list-item {
+  border-color: var(--color-border) !important;
+}
+
+.dark .price-highlight,
+.dark .summary-value,
+.dark .announcement-title,
+.dark .ticket-subject {
+  color: var(--color-text-primary) !important;
+}
+
+.dark .qr-tip,
+.dark .poll-tip,
+.dark .loading-state,
+.dark .publish-date,
+.dark .announcement-content,
+.dark .ticket-id,
+.dark .meta-item,
+.dark .message-time,
+.dark .message-body,
+.dark .format-desc,
+.dark .summary-row--muted {
+  color: var(--color-text-secondary) !important;
+}
+
+.dark .message-item.admin .message-content,
+.dark .step-content .tip-box,
+.dark .client-recommend-chip {
+  background: rgba(64, 158, 255, 0.12) !important;
+}
+
+.dark .announcement-content blockquote,
+.dark .step-content .tip-box strong {
+  color: var(--color-primary) !important;
+}
+
+.dark .announcement-content blockquote,
+.dark .step-content .tip-box {
+  border-left-color: var(--color-primary) !important;
+}
+
+
+/* 后台通用操作按钮补充 */
+.app-container.dark-mode .content .row-action--muted,
+.app-container.dark-mode .content .row-action--more {
+  color: var(--admin-text-muted, var(--color-text-secondary)) !important;
+  background: var(--admin-surface-soft, var(--color-border-light)) !important;
+  border-color: var(--admin-border, var(--color-border)) !important;
+}
+
+.app-container.dark-mode .content .row-action--danger {
+  color: #fca5a5 !important;
+  background: rgba(239, 68, 68, 0.14) !important;
+  border-color: rgba(239, 68, 68, 0.28) !important;
+}

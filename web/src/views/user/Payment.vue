@@ -450,7 +450,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 10px;
   padding: 18px 14px;
-  border: 1px solid #dbe3f0;
+  border: 1px solid var(--color-border);
   border-radius: 14px;
   background: var(--color-bg-card);
   cursor: pointer;
@@ -458,14 +458,14 @@ onUnmounted(() => {
 }
 
 .payment-method:hover {
-  border-color: #93c5fd;
+  border-color: var(--color-primary-light);
   transform: translateY(-1px);
 }
 
 .payment-method--active {
   border-color: #2563eb;
   box-shadow: 0 10px 24px rgba(37, 99, 235, 0.12);
-  background: rgba(239, 246, 255, 0.95);
+  background: rgba(64, 158, 255, 0.12);
 }
 
 .summary-row {
@@ -473,7 +473,7 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 16px;
   padding: 12px 0;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .summary-row:last-of-type {
@@ -481,13 +481,13 @@ onUnmounted(() => {
 }
 
 .summary-row--muted {
-  color: #64748b;
+  color: var(--color-text-secondary);
   font-size: 13px;
 }
 
 .summary-value {
   font-weight: 700;
-  color: #0f172a;
+  color: var(--color-text-primary);
 }
 
 .pay-button {
@@ -509,7 +509,7 @@ onUnmounted(() => {
 
 .qr-tip {
   margin-top: 16px;
-  color: #606266;
+  color: var(--color-text-regular);
 }
 
 .qr-amount span {
@@ -524,7 +524,7 @@ onUnmounted(() => {
 
 .poll-tip {
   margin-top: 12px;
-  color: #64748b;
+  color: var(--color-text-secondary);
 }
 
 @media (max-width: 768px) {

@@ -218,7 +218,7 @@ onMounted(() => {
 .loading-state {
   text-align: center;
   padding: 60px 0;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 .loading-icon {
@@ -252,7 +252,7 @@ onMounted(() => {
   align-items: center;
   gap: 4px;
   font-size: 14px;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 .announcement-title {
@@ -266,7 +266,7 @@ onMounted(() => {
 /* 公告内容 */
 .announcement-content {
   font-size: 15px;
-  color: #606266;
+  color: var(--color-text-regular);
   line-height: 1.8;
 }
 
@@ -318,7 +318,7 @@ onMounted(() => {
   border-left: 4px solid #409eff;
   padding-left: 16px;
   margin: 16px 0;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 /* 公告底部 */

@@ -328,7 +328,7 @@ onMounted(() => {
 
 .subscription-header p {
   margin: 0;
-  color: #909399;
+  color: var(--color-text-secondary);
   font-size: 14px;
 }
 
@@ -401,7 +401,7 @@ onMounted(() => {
   align-items: center;
   gap: 12px;
   padding: 16px;
-  border: 1px solid #e4e7ed;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.3s;
@@ -418,7 +418,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #ecf5ff;
+  background-color: rgba(64, 158, 255, 0.12);
   border-radius: 8px;
   color: #409eff;
 }
@@ -435,7 +435,7 @@ onMounted(() => {
 
 .format-desc {
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-secondary);
   margin-top: 4px;
 }
 
@@ -460,7 +460,7 @@ onMounted(() => {
 
 .stat-label {
   font-size: 14px;
-  color: #909399;
+  color: var(--color-text-secondary);
   margin-top: 8px;
 }
 

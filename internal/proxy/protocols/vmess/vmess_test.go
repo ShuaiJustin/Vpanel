@@ -54,7 +54,7 @@ func TestGenerateLink_UsesTLSDomainAsServerAddress(t *testing.T) {
 	}
 }
 
-func TestGenerateLink_PrefersSNIOverIPWhenTLSEnabled(t *testing.T) {
+func TestGenerateLink_KeepsIPWhenSNIIsSet(t *testing.T) {
 	protocol := New()
 	settings := &proxy.Settings{
 		Name: "test",
@@ -85,8 +85,11 @@ func TestGenerateLink_PrefersSNIOverIPWhenTLSEnabled(t *testing.T) {
 		t.Fatalf("failed to parse vmess payload: %v", err)
 	}
 
-	if payload["add"] != "vpn.example.com" {
-		t.Fatalf("expected add to prefer sni vpn.example.com, got %v", payload["add"])
+	if payload["add"] != "64.176.54.36" {
+		t.Fatalf("expected add to keep server ip 64.176.54.36, got %v", payload["add"])
+	}
+	if payload["sni"] != "vpn.example.com" {
+		t.Fatalf("expected sni vpn.example.com, got %v", payload["sni"])
 	}
 }
 

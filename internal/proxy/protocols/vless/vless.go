@@ -132,6 +132,7 @@ func (p *Protocol) GenerateLink(settings *proxy.Settings) (string, error) {
 
 	// Build query parameters
 	params := url.Values{}
+	params.Set("encryption", "none")
 	if flow := settings.GetString("flow"); flow != "" {
 		params.Set("flow", flow)
 	}
@@ -237,17 +238,17 @@ func (p *Protocol) ParseLink(link string) (*proxy.Settings, error) {
 		Host:     host,
 		Port:     port,
 		Settings: map[string]any{
-			"uuid":     userID,
-			"flow":     params.Get("flow"),
-			"security": params.Get("security"),
-			"network":  params.Get("type"),
-			"sni":      params.Get("sni"),
-			"alpn":     params.Get("alpn"),
-			"path":     params.Get("path"),
-			"host":     params.Get("host"),
-			"pbk":      params.Get("pbk"),
-			"sid":      params.Get("sid"),
-			"fp":       params.Get("fp"),
+			"uuid":          userID,
+			"flow":          params.Get("flow"),
+			"security":      params.Get("security"),
+			"network":       params.Get("type"),
+			"sni":           params.Get("sni"),
+			"alpn":          params.Get("alpn"),
+			"path":          params.Get("path"),
+			"host":          params.Get("host"),
+			"pbk":           params.Get("pbk"),
+			"sid":           params.Get("sid"),
+			"fp":            params.Get("fp"),
 			"allowInsecure": params.Get("allowInsecure") == "1" || strings.EqualFold(params.Get("allowInsecure"), "true"),
 		},
 		Enabled: true,

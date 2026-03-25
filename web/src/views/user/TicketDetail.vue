@@ -381,7 +381,7 @@ onMounted(() => {
 .loading-state {
   text-align: center;
   padding: 60px 0;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 .loading-icon {
@@ -415,7 +415,7 @@ onMounted(() => {
 
 .ticket-id {
   font-size: 14px;
-  color: #909399;
+  color: var(--color-text-secondary);
   font-family: monospace;
 }
 
@@ -437,7 +437,7 @@ onMounted(() => {
   align-items: center;
   gap: 4px;
   font-size: 13px;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 /* 消息列表 */
@@ -471,7 +471,7 @@ onMounted(() => {
 }
 
 .message-item.admin .message-content {
-  background: #ecf5ff;
+  background: rgba(64, 158, 255, 0.12);
 }
 
 .message-header {
@@ -488,12 +488,12 @@ onMounted(() => {
 
 .message-time {
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 .message-body {
   font-size: 14px;
-  color: #606266;
+  color: var(--color-text-regular);
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
@@ -519,7 +519,7 @@ onMounted(() => {
 }
 
 .attachment-link:hover {
-  background: #ecf5ff;
+  background: rgba(64, 158, 255, 0.12);
 }
 
 /* 回复表单 */
@@ -536,7 +536,7 @@ onMounted(() => {
 
 .upload-tip {
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-secondary);
   margin-top: 4px;
 }
 

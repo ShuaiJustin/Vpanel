@@ -2,7 +2,11 @@
   <div class="node-form-page">
     <section class="hero-panel">
       <div class="hero-panel__nav">
-        <el-button link class="back-link" @click="goBack">
+        <el-button
+          link
+          class="back-link"
+          @click="goBack"
+        >
           <el-icon><ArrowLeft /></el-icon>
           返回节点列表
         </el-button>
@@ -46,11 +50,16 @@
     >
       <div class="form-layout">
         <div class="form-main">
-          <el-card class="section-card" shadow="never">
+          <el-card
+            class="section-card"
+            shadow="never"
+          >
             <template #header>
               <div class="section-head">
                 <div>
-                  <h2 class="section-title">基础接入</h2>
+                  <h2 class="section-title">
+                    基础接入
+                  </h2>
                   <p class="section-subtitle">
                     先确定节点身份、地址与负载策略，系统会根据地址自动给出推荐名称。
                   </p>
@@ -70,8 +79,12 @@
                       v-model="addressType"
                       class="address-type-switch"
                     >
-                      <el-radio-button label="ip">IP</el-radio-button>
-                      <el-radio-button label="domain">域名</el-radio-button>
+                      <el-radio-button label="ip">
+                        IP
+                      </el-radio-button>
+                      <el-radio-button label="domain">
+                        域名
+                      </el-radio-button>
                     </el-radio-group>
 
                     <el-input
@@ -111,7 +124,11 @@
                   }}
                 </div>
               </el-form-item>
-              <el-form-item class="field-span-2" label="节点名称" prop="name">
+              <el-form-item
+                class="field-span-2"
+                label="节点名称"
+                prop="name"
+              >
                 <div class="name-field">
                   <el-input
                     v-model="form.name"
@@ -138,17 +155,25 @@
                 </div>
               </el-form-item>
 
-              <el-form-item label="Agent 端口" prop="port">
+              <el-form-item
+                label="Agent 端口"
+                prop="port"
+              >
                 <el-input-number
                   v-model="form.port"
                   class="full-width-input"
                   :min="1"
                   :max="65535"
                 />
-                <div class="field-tip">Node Agent 默认监听端口。</div>
+                <div class="field-tip">
+                  Node Agent 默认监听端口。
+                </div>
               </el-form-item>
 
-              <el-form-item label="地区" prop="region">
+              <el-form-item
+                label="地区"
+                prop="region"
+              >
                 <el-select
                   v-model="form.region"
                   filterable
@@ -156,14 +181,38 @@
                   class="full-width-control"
                   placeholder="选择或输入地区"
                 >
-                  <el-option label="香港" value="香港" />
-                  <el-option label="日本" value="日本" />
-                  <el-option label="新加坡" value="新加坡" />
-                  <el-option label="美国" value="美国" />
-                  <el-option label="韩国" value="韩国" />
-                  <el-option label="台湾" value="台湾" />
-                  <el-option label="德国" value="德国" />
-                  <el-option label="英国" value="英国" />
+                  <el-option
+                    label="香港"
+                    value="香港"
+                  />
+                  <el-option
+                    label="日本"
+                    value="日本"
+                  />
+                  <el-option
+                    label="新加坡"
+                    value="新加坡"
+                  />
+                  <el-option
+                    label="美国"
+                    value="美国"
+                  />
+                  <el-option
+                    label="韩国"
+                    value="韩国"
+                  />
+                  <el-option
+                    label="台湾"
+                    value="台湾"
+                  />
+                  <el-option
+                    label="德国"
+                    value="德国"
+                  />
+                  <el-option
+                    label="英国"
+                    value="英国"
+                  />
                 </el-select>
                 <div class="field-tip">
                   如需固定地区标签，可手动指定，系统会优先遵循你的选择。
@@ -184,16 +233,23 @@
                   />
                   <span class="slider-pill">权重 {{ form.weight }}</span>
                 </div>
-                <div class="field-tip">权重越高，分配到该节点的用户越多。</div>
+                <div class="field-tip">
+                  权重越高，分配到该节点的用户越多。
+                </div>
               </el-form-item>
 
-              <el-form-item label="最大用户数" prop="max_users">
+              <el-form-item
+                label="最大用户数"
+                prop="max_users"
+              >
                 <el-input-number
                   v-model="form.max_users"
                   class="full-width-input"
                   :min="0"
                 />
-                <div class="field-tip">0 表示无限制。</div>
+                <div class="field-tip">
+                  0 表示无限制。
+                </div>
               </el-form-item>
 
               <el-form-item label="所属分组">
@@ -216,10 +272,15 @@
                     </span>
                   </el-option>
                 </el-select>
-                <div class="field-tip">节点可以同时属于多个分组。</div>
+                <div class="field-tip">
+                  节点可以同时属于多个分组。
+                </div>
               </el-form-item>
 
-              <el-form-item class="field-span-2" label="标签">
+              <el-form-item
+                class="field-span-2"
+                label="标签"
+              >
                 <div class="tags-input">
                   <el-tag
                     v-for="(tag, index) in form.tags"
@@ -252,11 +313,16 @@
             </div>
           </el-card>
 
-          <el-card class="section-card" shadow="never">
+          <el-card
+            class="section-card"
+            shadow="never"
+          >
             <template #header>
               <div class="section-head">
                 <div>
-                  <h2 class="section-title">接入限制与 TLS</h2>
+                  <h2 class="section-title">
+                    接入限制与 TLS
+                  </h2>
                   <p class="section-subtitle">
                     配置访问范围、TLS 域名与系统证书，保持节点接入信息完整可读。
                   </p>
@@ -265,14 +331,19 @@
             </template>
 
             <div class="form-grid">
-              <el-form-item class="field-span-2" label="IP 白名单">
+              <el-form-item
+                class="field-span-2"
+                label="IP 白名单"
+              >
                 <el-input
                   v-model="form.ip_whitelist_str"
                   type="textarea"
                   :rows="5"
                   placeholder="每行一个 IP 地址，留空表示不限制&#10;支持 CIDR 格式，如 192.168.1.0/24"
                 />
-                <div class="field-tip">限制可以连接到此节点的 IP 地址。</div>
+                <div class="field-tip">
+                  限制可以连接到此节点的 IP 地址。
+                </div>
               </el-form-item>
 
               <el-form-item label="启用 TLS">
@@ -288,7 +359,10 @@
                 </div>
               </el-form-item>
 
-              <el-form-item label="TLS 域名" prop="tls_domain">
+              <el-form-item
+                label="TLS 域名"
+                prop="tls_domain"
+              >
                 <el-input
                   v-model="form.tls_domain"
                   placeholder="如 jp.example.com"
@@ -298,7 +372,10 @@
                 </div>
               </el-form-item>
 
-              <el-form-item class="field-span-2" label="系统证书">
+              <el-form-item
+                class="field-span-2"
+                label="系统证书"
+              >
                 <el-select
                   v-model="form.certificate_id"
                   filterable
@@ -318,12 +395,15 @@
                 <div class="field-tip">
                   选择证书后会自动回填 TLS 域名，你仍可继续手动修改。
                 </div>
-                <div v-if="selectedCertificate" class="certificate-tip">
+                <div
+                  v-if="selectedCertificate"
+                  class="certificate-tip"
+                >
                   当前证书：{{ selectedCertificate.domain }}
                   <span
                     v-if="
                       selectedCertificate.expireDate &&
-                      selectedCertificate.expireDate !== '-'
+                        selectedCertificate.expireDate !== '-'
                     "
                   >
                     ，到期 {{ selectedCertificate.expireDate }}
@@ -333,11 +413,17 @@
             </div>
           </el-card>
 
-          <el-card v-if="!isEdit" class="section-card" shadow="never">
+          <el-card
+            v-if="!isEdit"
+            class="section-card"
+            shadow="never"
+          >
             <template #header>
               <div class="section-head section-head--split">
                 <div>
-                  <h2 class="section-title">自动部署</h2>
+                  <h2 class="section-title">
+                    自动部署
+                  </h2>
                   <p class="section-subtitle">
                     通过 SSH 自动安装 Agent 与 Xray，适合新节点首次接入。
                   </p>
@@ -358,7 +444,10 @@
               }}
             </div>
 
-            <div v-if="enableAutoInstall" class="form-grid">
+            <div
+              v-if="enableAutoInstall"
+              class="form-grid"
+            >
               <el-form-item label="服务器 IP">
                 <el-input
                   v-model="form.ssh_host"
@@ -384,8 +473,12 @@
 
               <el-form-item label="认证方式">
                 <el-radio-group v-model="form.ssh_auth_type">
-                  <el-radio value="password"> 密码 </el-radio>
-                  <el-radio value="key"> 私钥 </el-radio>
+                  <el-radio value="password">
+                    密码
+                  </el-radio>
+                  <el-radio value="key">
+                    私钥
+                  </el-radio>
                 </el-radio-group>
               </el-form-item>
 
@@ -429,7 +522,10 @@
         </div>
 
         <div class="form-side">
-          <el-card class="summary-card" shadow="never">
+          <el-card
+            class="summary-card"
+            shadow="never"
+          >
             <div class="summary-card__head">
               <span class="summary-card__eyebrow">智能概览</span>
               <strong class="summary-card__title">{{
@@ -457,8 +553,13 @@
             </div>
           </el-card>
 
-          <el-card class="summary-card action-card" shadow="never">
-            <div class="action-card__title">保存节点</div>
+          <el-card
+            class="summary-card action-card"
+            shadow="never"
+          >
+            <div class="action-card__title">
+              保存节点
+            </div>
             <p class="action-card__text">
               {{
                 isEdit
@@ -494,26 +595,42 @@
       width="500px"
       :close-on-click-modal="false"
     >
-      <el-alert type="success" :closable="false" show-icon>
-        <template #title> 节点已创建成功！ </template>
+      <el-alert
+        type="success"
+        :closable="false"
+        show-icon
+      >
+        <template #title>
+          节点已创建成功！
+        </template>
         请保存以下 Token，用于 Node Agent 连接认证。此 Token 只显示一次。
       </el-alert>
       <div class="token-display">
-        <div class="token-label">认证 Token</div>
+        <div class="token-label">
+          认证 Token
+        </div>
         <div class="token-value">
           <code>{{ createdToken }}</code>
-          <el-button link @click="copyToken">
+          <el-button
+            link
+            @click="copyToken"
+          >
             <el-icon><CopyDocument /></el-icon>
             复制
           </el-button>
         </div>
       </div>
       <div class="agent-config">
-        <div class="config-label">Agent 配置示例</div>
+        <div class="config-label">
+          Agent 配置示例
+        </div>
         <pre class="config-code">{{ agentConfigExample }}</pre>
       </div>
       <template #footer>
-        <el-button type="primary" @click="finishCreate">
+        <el-button
+          type="primary"
+          @click="finishCreate"
+        >
           我已保存，完成
         </el-button>
       </template>

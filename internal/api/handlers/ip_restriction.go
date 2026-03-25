@@ -313,6 +313,8 @@ func (h *IPRestrictionHandler) GetAllOnlineIPs(c *gin.Context) {
 		return
 	}
 
+	h.ipService.EnrichActiveIPRecords(ctx, activeIPs)
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "success",
@@ -836,14 +838,15 @@ func (h *IPRestrictionHandler) GetUserDevices(c *gin.Context) {
 	devices := make([]gin.H, len(onlineIPs))
 	for i, onlineIP := range onlineIPs {
 		devices[i] = gin.H{
-			"ip":          onlineIP.IP,
-			"user_agent":  onlineIP.UserAgent,
-			"device_type": onlineIP.DeviceType,
-			"country":     onlineIP.Country,
-			"city":        onlineIP.City,
-			"last_active": onlineIP.LastActive,
-			"created_at":  onlineIP.CreatedAt,
-			"is_current":  onlineIP.IP == currentIP,
+			"ip":           onlineIP.IP,
+			"user_agent":   onlineIP.UserAgent,
+			"device_type":  onlineIP.DeviceType,
+			"country":      onlineIP.Country,
+			"country_code": onlineIP.CountryCode,
+			"city":         onlineIP.City,
+			"last_active":  onlineIP.LastActive,
+			"created_at":   onlineIP.CreatedAt,
+			"is_current":   onlineIP.IP == currentIP,
 		}
 	}
 
@@ -1009,7 +1012,7 @@ func (h *IPRestrictionHandler) GetUserIPHistory(c *gin.Context) {
 		Offset: offset,
 	}
 
-	history, total, err := h.ipService.Tracker().GetAggregatedIPHistory(ctx, uint(userID), filter.Limit, filter.Offset)
+	history, total, err := h.ipService.GetAggregatedIPHistory(ctx, uint(userID), filter.Limit, filter.Offset)
 	if err != nil {
 		h.logger.Error("Failed to get IP history", logger.F("error", err), logger.F("user_id", userID))
 		middleware.RespondWithError(c, errors.NewDatabaseError("get IP history", err))
@@ -1092,6 +1095,8 @@ func (h *IPRestrictionHandler) GetAllIPHistory(c *gin.Context) {
 			return
 		}
 
+		h.ipService.EnrichIPHistoryRecords(ctx, history)
+
 		c.JSON(http.StatusOK, gin.H{
 			"code":    200,
 			"message": "success",
@@ -1121,6 +1126,8 @@ func (h *IPRestrictionHandler) GetAllIPHistory(c *gin.Context) {
 		})
 		return
 	}
+
+	h.ipService.EnrichIPHistoryRecords(ctx, history)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,

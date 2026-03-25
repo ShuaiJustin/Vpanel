@@ -697,7 +697,11 @@
               prop="country"
               label="国家/地区"
               width="120"
-            />
+            >
+              <template #default="scope">
+                <span>{{ scope.row.countryFlag }} {{ scope.row.country }}</span>
+              </template>
+            </el-table-column>
             <el-table-column
               prop="city"
               label="城市"
@@ -950,6 +954,12 @@ const formatDateTime = (value) => {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString('zh-CN', { hour12: false })
+}
+
+const toCountryFlag = (countryCode) => {
+  const code = String(countryCode || '').trim().toUpperCase()
+  if (!/^[A-Z]{2}$/.test(code)) return ''
+  return String.fromCodePoint(...[...code].map((char) => char.charCodeAt(0) + 127397))
 }
 
 const parseIPOrCIDR = (value) => {
@@ -1394,7 +1404,9 @@ const fetchOnlineIPs = async () => {
       ...item,
       userId: item.user_id,
       username: getUsernameById(item.user_id),
-      countryFlag: '',
+      country: item.country || '-',
+      city: item.city || '-',
+      countryFlag: toCountryFlag(item.country_code || item.countryCode),
       lastActivity: formatDateTime(item.last_active),
       deviceInfo: item.user_agent || item.device_type || '-'
     }))
@@ -1452,6 +1464,9 @@ const fetchIPHistory = async () => {
     let normalized = items.map(item => ({
       ...item,
       username: getUsernameById(item.user_id),
+      country: item.country || '-',
+      city: item.city || '-',
+      countryFlag: toCountryFlag(item.country_code || item.countryCode),
       action: item.access_type,
       createdAt: formatDateTime(item.created_at)
     }))

@@ -1,7 +1,7 @@
 <template>
   <div class="node-detail-page">
-	    <div class="page-header">
-	      <div class="header-left">
+    <div class="page-header">
+      <div class="header-left">
         <el-button
           link
           @click="goBack"
@@ -20,247 +20,247 @@
           {{ getStatusText(node.status) }}
         </el-tag>
       </div>
-	      <div class="header-actions">
-	        <el-button @click="refreshData">
-	          <el-icon><Refresh /></el-icon>
-	          刷新
-	        </el-button>
-	        <el-button @click="openOperationsPage">
-	          节点运维
-	        </el-button>
-	        <el-button
-	          type="primary"
-	          @click="editNode"
+      <div class="header-actions">
+        <el-button @click="refreshData">
+          <el-icon><Refresh /></el-icon>
+          刷新
+        </el-button>
+        <el-button @click="openOperationsPage">
+          节点运维
+        </el-button>
+        <el-button
+          type="primary"
+          @click="editNode"
         >
           编辑
         </el-button>
-	      </div>
-	    </div>
+      </div>
+    </div>
 
-	    <div
-	      v-if="node"
-	      class="overview-grid"
-	    >
-	      <div
-	        v-for="card in overviewCards"
-	        :key="card.key"
-	        :class="['overview-card', { 'overview-card-primary': card.primary }]"
-	      >
-	        <div class="overview-label">
-	          {{ card.label }}
-	        </div>
-	        <div
-	          v-if="card.tags?.length"
-	          class="overview-tag-row"
-	        >
-	          <el-tag
-	            v-for="tag in card.tags"
-	            :key="`${card.key}-${tag.label}`"
-	            :type="tag.type"
-	            :effect="tag.effect || 'light'"
-	          >
-	            {{ tag.label }}
-	          </el-tag>
-	        </div>
-	        <div
-	          v-else
-	          :class="['overview-value', card.valueClass]"
-	        >
-	          {{ card.value }}
-	        </div>
-	        <div class="overview-meta">
-	          {{ card.meta }}
-	        </div>
-	      </div>
-	    </div>
+    <div
+      v-if="node"
+      class="overview-grid"
+    >
+      <div
+        v-for="card in overviewCards"
+        :key="card.key"
+        :class="['overview-card', { 'overview-card-primary': card.primary }]"
+      >
+        <div class="overview-label">
+          {{ card.label }}
+        </div>
+        <div
+          v-if="card.tags?.length"
+          class="overview-tag-row"
+        >
+          <el-tag
+            v-for="tag in card.tags"
+            :key="`${card.key}-${tag.label}`"
+            :type="tag.type"
+            :effect="tag.effect || 'light'"
+          >
+            {{ tag.label }}
+          </el-tag>
+        </div>
+        <div
+          v-else
+          :class="['overview-value', card.valueClass]"
+        >
+          {{ card.value }}
+        </div>
+        <div class="overview-meta">
+          {{ card.meta }}
+        </div>
+      </div>
+    </div>
 
-	    <el-row
-	      v-loading="loading"
+    <el-row
+      v-loading="loading"
       :gutter="isMobile ? 12 : 20"
     >
       <!-- 基本信息 -->
       <el-col :span="mainColumnSpan">
-	        <el-card
-	          shadow="never"
-	          class="info-card"
-	        >
-	          <template #header>
-	            <PageSectionHeader
-	              title="基本信息"
-	              subtitle="节点识别、接入参数与容量配置"
-	            >
-	              <el-tag
-	                v-if="node?.region"
-	                size="small"
-	                effect="plain"
-	              >
-	                {{ node.region }}
-	              </el-tag>
-	            </PageSectionHeader>
-	          </template>
-	          <el-descriptions
-	            v-if="node"
+        <el-card
+          shadow="never"
+          class="info-card"
+        >
+          <template #header>
+            <PageSectionHeader
+              title="基本信息"
+              subtitle="节点识别、接入参数与容量配置"
+            >
+              <el-tag
+                v-if="node?.region"
+                size="small"
+                effect="plain"
+              >
+                {{ node.region }}
+              </el-tag>
+            </PageSectionHeader>
+          </template>
+          <el-descriptions
+            v-if="node"
             :column="detailColumns"
             border
           >
-	            <el-descriptions-item
-	              v-for="item in basicInfoItems"
-	              :key="item.label"
-	              :label="item.label"
-	            >
-	              <el-tag
-	                v-if="item.type === 'tag'"
-	                :type="item.tagType"
-	                size="small"
-	              >
-	                {{ item.value }}
-	              </el-tag>
-	              <span
-	                v-else
-	                :class="item.valueClass"
-	              >
-	                {{ item.value }}
-	              </span>
-	            </el-descriptions-item>
-	          </el-descriptions>
-	          <div
-	            v-if="parsedTags.length"
-	            class="tags-section"
-	          >
-	            <span class="tags-label">标签：</span>
-	            <el-tag
-	              v-for="tag in parsedTags"
-	              :key="tag"
-	              size="small"
-	              style="margin-right: 8px;"
-	            >
-	              {{ tag }}
-	            </el-tag>
-	          </div>
-	          <div
-	            v-if="node"
-	            class="detail-panel-grid"
-	          >
-	            <div class="detail-panel">
-	              <span class="detail-panel-label">支持协议</span>
-	              <div class="detail-panel-content">
-	                <el-tag
-	                  v-for="protocol in supportedProtocols"
-	                  :key="protocol"
-	                  size="small"
-	                  effect="plain"
-	                >
-	                  {{ String(protocol).toUpperCase() }}
-	                </el-tag>
-	                <span
-	                  v-if="!supportedProtocols.length"
-	                  class="detail-inline-text"
-	                >
-	                  未配置
-	                </span>
-	              </div>
-	            </div>
-	            <div class="detail-panel">
-	              <span class="detail-panel-label">TLS 配置</span>
-	              <div class="detail-panel-content">
-	                <el-tag
-	                  :type="node.tls_enabled ? 'success' : 'info'"
-	                  size="small"
-	                >
-	                  {{ node.tls_enabled ? '已启用' : '未启用' }}
-	                </el-tag>
-	                <span
-	                  v-if="node.tls_domain"
-	                  class="detail-inline-text"
-	                >
-	                  {{ node.tls_domain }}
-	                </span>
-	              </div>
-	            </div>
-	            <div class="detail-panel">
-	              <span class="detail-panel-label">流量限制</span>
-	              <div class="detail-panel-content detail-panel-content-text">
-	                {{ formatLimitDisplay(node.traffic_limit) }}
-	              </div>
-	            </div>
-	            <div class="detail-panel">
-	              <span class="detail-panel-label">速率限制</span>
-	              <div class="detail-panel-content detail-panel-content-text">
-	                {{ formatSpeedLimitDisplay(node.speed_limit) }}
-	              </div>
-	            </div>
-	          </div>
-	        </el-card>
+            <el-descriptions-item
+              v-for="item in basicInfoItems"
+              :key="item.label"
+              :label="item.label"
+            >
+              <el-tag
+                v-if="item.type === 'tag'"
+                :type="item.tagType"
+                size="small"
+              >
+                {{ item.value }}
+              </el-tag>
+              <span
+                v-else
+                :class="item.valueClass"
+              >
+                {{ item.value }}
+              </span>
+            </el-descriptions-item>
+          </el-descriptions>
+          <div
+            v-if="parsedTags.length"
+            class="tags-section"
+          >
+            <span class="tags-label">标签：</span>
+            <el-tag
+              v-for="tag in parsedTags"
+              :key="tag"
+              size="small"
+              style="margin-right: 8px;"
+            >
+              {{ tag }}
+            </el-tag>
+          </div>
+          <div
+            v-if="node"
+            class="detail-panel-grid"
+          >
+            <div class="detail-panel">
+              <span class="detail-panel-label">支持协议</span>
+              <div class="detail-panel-content">
+                <el-tag
+                  v-for="protocol in supportedProtocols"
+                  :key="protocol"
+                  size="small"
+                  effect="plain"
+                >
+                  {{ String(protocol).toUpperCase() }}
+                </el-tag>
+                <span
+                  v-if="!supportedProtocols.length"
+                  class="detail-inline-text"
+                >
+                  未配置
+                </span>
+              </div>
+            </div>
+            <div class="detail-panel">
+              <span class="detail-panel-label">TLS 配置</span>
+              <div class="detail-panel-content">
+                <el-tag
+                  :type="node.tls_enabled ? 'success' : 'info'"
+                  size="small"
+                >
+                  {{ node.tls_enabled ? '已启用' : '未启用' }}
+                </el-tag>
+                <span
+                  v-if="node.tls_domain"
+                  class="detail-inline-text"
+                >
+                  {{ node.tls_domain }}
+                </span>
+              </div>
+            </div>
+            <div class="detail-panel">
+              <span class="detail-panel-label">流量限制</span>
+              <div class="detail-panel-content detail-panel-content-text">
+                {{ formatLimitDisplay(node.traffic_limit) }}
+              </div>
+            </div>
+            <div class="detail-panel">
+              <span class="detail-panel-label">速率限制</span>
+              <div class="detail-panel-content detail-panel-content-text">
+                {{ formatSpeedLimitDisplay(node.speed_limit) }}
+              </div>
+            </div>
+          </div>
+        </el-card>
 
-	        <el-card
-	          v-if="hasNodeNotes"
-	          shadow="never"
-	          class="info-card"
-	        >
-	          <template #header>
-	            <PageSectionHeader
-	              title="备注信息"
-	              subtitle="节点说明、管理员备注与访问约束"
-	            />
-	          </template>
-	          <div class="notes-grid">
-	            <div
-	              v-if="node?.description"
-	              class="note-panel"
-	            >
-	              <div class="detail-panel-label">
-	                节点描述
-	              </div>
-	              <div class="note-text">
-	                {{ node.description }}
-	              </div>
-	            </div>
-	            <div
-	              v-if="node?.remarks"
-	              class="note-panel"
-	            >
-	              <div class="detail-panel-label">
-	                管理员备注
-	              </div>
-	              <div class="note-text">
-	                {{ node.remarks }}
-	              </div>
-	            </div>
-	            <div
-	              v-if="ipWhitelistEntries.length"
-	              class="note-panel note-panel-wide"
-	            >
-	              <div class="detail-panel-label">
-	                IP 白名单
-	              </div>
-	              <div class="tag-cloud">
-	                <el-tag
-	                  v-for="ip in ipWhitelistEntries"
-	                  :key="ip"
-	                  size="small"
-	                  effect="plain"
-	                >
-	                  {{ ip }}
-	                </el-tag>
-	              </div>
-	            </div>
-	          </div>
-	        </el-card>
+        <el-card
+          v-if="hasNodeNotes"
+          shadow="never"
+          class="info-card"
+        >
+          <template #header>
+            <PageSectionHeader
+              title="备注信息"
+              subtitle="节点说明、管理员备注与访问约束"
+            />
+          </template>
+          <div class="notes-grid">
+            <div
+              v-if="node?.description"
+              class="note-panel"
+            >
+              <div class="detail-panel-label">
+                节点描述
+              </div>
+              <div class="note-text">
+                {{ node.description }}
+              </div>
+            </div>
+            <div
+              v-if="node?.remarks"
+              class="note-panel"
+            >
+              <div class="detail-panel-label">
+                管理员备注
+              </div>
+              <div class="note-text">
+                {{ node.remarks }}
+              </div>
+            </div>
+            <div
+              v-if="ipWhitelistEntries.length"
+              class="note-panel note-panel-wide"
+            >
+              <div class="detail-panel-label">
+                IP 白名单
+              </div>
+              <div class="tag-cloud">
+                <el-tag
+                  v-for="ip in ipWhitelistEntries"
+                  :key="ip"
+                  size="small"
+                  effect="plain"
+                >
+                  {{ ip }}
+                </el-tag>
+              </div>
+            </div>
+          </div>
+        </el-card>
 
         <!-- 流量统计 -->
-	        <el-card
-	          shadow="never"
-	          class="info-card"
-	        >
-	          <template #header>
-	            <PageSectionHeader
-	              title="流量统计"
-	              subtitle="查看节点在不同周期内的总流量消耗"
-	              align="center"
-	            >
-	              <el-radio-group
-	                v-model="trafficPeriod"
-	                size="small"
+        <el-card
+          shadow="never"
+          class="info-card"
+        >
+          <template #header>
+            <PageSectionHeader
+              title="流量统计"
+              subtitle="查看节点在不同周期内的总流量消耗"
+              align="center"
+            >
+              <el-radio-group
+                v-model="trafficPeriod"
+                size="small"
                 @change="fetchTraffic"
               >
                 <el-radio-button label="today">
@@ -269,48 +269,48 @@
                 <el-radio-button label="week">
                   本周
                 </el-radio-button>
-	                <el-radio-button label="month">
-	                  本月
-	                </el-radio-button>
-	              </el-radio-group>
-	            </PageSectionHeader>
-	          </template>
-	          <el-row :gutter="isMobile ? 12 : 20">
-	            <el-col
-	              v-for="item in trafficSummaryCards"
-	              :key="item.key"
-	              :span="trafficStatSpan"
-	            >
-	              <div class="traffic-stat">
-	                <div class="traffic-value">
-	                  {{ item.value }}
-	                </div>
-	                <div class="traffic-label">
-	                  {{ item.label }}
-	                </div>
-	              </div>
-	            </el-col>
+                <el-radio-button label="month">
+                  本月
+                </el-radio-button>
+              </el-radio-group>
+            </PageSectionHeader>
+          </template>
+          <el-row :gutter="isMobile ? 12 : 20">
+            <el-col
+              v-for="item in trafficSummaryCards"
+              :key="item.key"
+              :span="trafficStatSpan"
+            >
+              <div class="traffic-stat">
+                <div class="traffic-value">
+                  {{ item.value }}
+                </div>
+                <div class="traffic-label">
+                  {{ item.label }}
+                </div>
+              </div>
+            </el-col>
           </el-row>
         </el-card>
 
         <!-- Top 用户 -->
-	        <el-card
-	          shadow="never"
-	          class="info-card"
-	        >
-	          <template #header>
-	            <PageSectionHeader
-	              title="流量 Top 用户"
-	              subtitle="当前周期内消耗流量最高的用户列表"
-	            />
-	          </template>
-	          <div
-	            v-if="topUsers.length"
-	            class="table-shell"
-	          >
-	            <el-table
-	              :data="topUsers"
-	              size="small"
+        <el-card
+          shadow="never"
+          class="info-card"
+        >
+          <template #header>
+            <PageSectionHeader
+              title="流量 Top 用户"
+              subtitle="当前周期内消耗流量最高的用户列表"
+            />
+          </template>
+          <div
+            v-if="topUsers.length"
+            class="table-shell"
+          >
+            <el-table
+              :data="topUsers"
+              size="small"
               style="width: 100%"
             >
               <el-table-column
@@ -345,15 +345,15 @@
                 <template #default="{ row }">
                   {{ formatBytes(row.upload + row.download) }}
                 </template>
-	              </el-table-column>
-	            </el-table>
-	          </div>
-	          <el-empty
-	            v-else
-	            description="当前周期暂无流量记录"
-	            :image-size="56"
-	          />
-	        </el-card>
+              </el-table-column>
+            </el-table>
+          </div>
+          <el-empty
+            v-else
+            description="当前周期暂无流量记录"
+            :image-size="56"
+          />
+        </el-card>
       </el-col>
 
       <!-- 右侧面板 -->
@@ -364,13 +364,13 @@
         <el-card
           shadow="never"
           class="info-card"
-	        >
-	          <template #header>
-	            <PageSectionHeader
-	              title="节点运维"
-	              subtitle="将内核管理、网络优化和运维记录集中到独立工作台"
-	            />
-	          </template>
+        >
+          <template #header>
+            <PageSectionHeader
+              title="节点运维"
+              subtitle="将内核管理、网络优化和运维记录集中到独立工作台"
+            />
+          </template>
           <div class="operation-handoff">
             <div class="operation-handoff__meta">
               <el-tag
@@ -411,13 +411,13 @@
         <el-card
           shadow="never"
           class="info-card"
-	        >
-	          <template #header>
-	            <PageSectionHeader
-	              title="所属分组"
-	              subtitle="当前节点归属的节点分组"
-	            />
-	          </template>
+        >
+          <template #header>
+            <PageSectionHeader
+              title="所属分组"
+              subtitle="当前节点归属的节点分组"
+            />
+          </template>
           <div
             v-if="nodeGroups.length"
             class="groups-list"
@@ -441,13 +441,13 @@
         <el-card
           shadow="never"
           class="info-card"
-	        >
-	          <template #header>
-	            <PageSectionHeader
-	              title="快捷操作"
-	              subtitle="节点 Token 与删除等高风险操作入口"
-	            />
-	          </template>
+        >
+          <template #header>
+            <PageSectionHeader
+              title="快捷操作"
+              subtitle="节点 Token 与删除等高风险操作入口"
+            />
+          </template>
           <div class="quick-actions">
             <el-button
               type="primary"
@@ -575,8 +575,6 @@ const nodeStore = useNodeStore()
 const { isMobile } = useViewport()
 
 const loading = ref(false)
-const syncing = ref(false)
-const coreActionLoading = ref('')
 const tokenDialogVisible = ref(false)
 const tokenLoading = ref(false)
 const currentToken = ref('')
@@ -839,57 +837,6 @@ const openOperationsPage = () => {
 
 const editNode = () => {
   router.push(`/admin/nodes/${node.value.id}/edit`)
-}
-
-const syncConfig = async () => {
-  if (!node.value) return
-  syncing.value = true
-  try {
-    const response = await nodeStore.syncNodeCoreConfig(node.value.id)
-    ElMessage.success(response.message || '配置同步已加入队列')
-    await fetchNode()
-  } catch (e) {
-    ElMessage.error(e.message || '同步失败')
-  } finally {
-    syncing.value = false
-  }
-}
-
-const startCore = async () => {
-  if (!node.value) return
-  coreActionLoading.value = 'start'
-  try {
-    const response = await nodeStore.startNodeCore(node.value.id)
-    ElMessage.success(response.message || '启动命令已加入队列')
-    await fetchNode()
-  } catch (e) {
-    ElMessage.error(e.message || '启动节点内核失败')
-  } finally {
-    coreActionLoading.value = ''
-  }
-}
-
-const restartCore = async () => {
-  if (!node.value) return
-  try {
-    await ElMessageBox.confirm(
-      `确定要重启节点 "${node.value.name}" 的 Xray 内核吗？`,
-      '重启确认',
-      { type: 'warning' }
-    )
-  } catch {
-    return
-  }
-  coreActionLoading.value = 'restart'
-  try {
-    const response = await nodeStore.restartNodeCore(node.value.id)
-    ElMessage.success(response.message || '重启命令已加入队列')
-    await fetchNode()
-  } catch (e) {
-    ElMessage.error(e.message || '重启节点内核失败')
-  } finally {
-    coreActionLoading.value = ''
-  }
 }
 
 const deleteNode = async () => {

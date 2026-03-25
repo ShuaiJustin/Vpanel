@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -46,12 +47,12 @@ const (
 
 // Service provides the main IP restriction functionality.
 type Service struct {
-	db           *gorm.DB
-	validator    *Validator
-	tracker      *Tracker
-	geoService   *GeolocationService
-	settings     *IPRestrictionSettings
-	notifier     NotificationSender
+	db         *gorm.DB
+	validator  *Validator
+	tracker    *Tracker
+	geoService *GeolocationService
+	settings   *IPRestrictionSettings
+	notifier   NotificationSender
 }
 
 // ServiceConfig holds configuration for the IP restriction service.
@@ -64,7 +65,7 @@ type ServiceConfig struct {
 func NewService(db *gorm.DB, config *ServiceConfig) (*Service, error) {
 	var geoConfig *GeolocationConfig
 	var notifier NotificationSender
-	
+
 	if config != nil {
 		geoConfig = config.GeoConfig
 		notifier = config.Notifier
@@ -145,7 +146,6 @@ func (s *Service) GetSettings() *IPRestrictionSettings {
 func (s *Service) SetNotifier(notifier NotificationSender) {
 	s.notifier = notifier
 }
-
 
 // CheckAccess checks if an IP is allowed to access for a user.
 func (s *Service) CheckAccess(ctx context.Context, userID uint, ip string, accessType AccessType, maxConcurrentIPs int) (*AccessResult, error) {
@@ -385,14 +385,170 @@ func containsSubstring(s, substr string) bool {
 	return false
 }
 
-
 // GetOnlineIPs returns online IPs for a user.
 func (s *Service) GetOnlineIPs(ctx context.Context, userID uint) ([]OnlineIP, error) {
 	// Clean up inactive IPs first
 	timeout := time.Duration(s.settings.InactiveTimeout) * time.Minute
 	_, _ = s.tracker.CleanupInactiveIPsForUser(ctx, userID, timeout)
 
-	return s.tracker.GetOnlineIPs(ctx, userID)
+	onlineIPs, err := s.tracker.GetOnlineIPs(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range onlineIPs {
+		s.enrichOnlineIP(ctx, userID, &onlineIPs[i])
+	}
+
+	return onlineIPs, nil
+}
+
+// GetAggregatedIPHistory returns grouped IP history and fills missing geolocation details when available.
+func (s *Service) GetAggregatedIPHistory(ctx context.Context, userID uint, limit, offset int) ([]IPHistorySummary, int64, error) {
+	summaries, total, err := s.tracker.GetAggregatedIPHistory(ctx, userID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	for i := range summaries {
+		s.enrichIPHistorySummary(ctx, userID, &summaries[i])
+	}
+
+	return summaries, total, nil
+}
+
+func (s *Service) enrichOnlineIP(ctx context.Context, userID uint, onlineIP *OnlineIP) {
+	if onlineIP == nil {
+		return
+	}
+
+	country, city, countryCode, changed := s.resolveMissingGeo(ctx, onlineIP.IP, onlineIP.Country, onlineIP.City, onlineIP.CountryCode)
+	if !changed {
+		return
+	}
+
+	onlineIP.Country = country
+	onlineIP.City = city
+	onlineIP.CountryCode = countryCode
+
+	if strings.TrimSpace(country) == "" && strings.TrimSpace(city) == "" {
+		return
+	}
+
+	_ = s.db.WithContext(ctx).
+		Model(&ActiveIP{}).
+		Where("user_id = ? AND ip = ? AND (country = '' OR country IS NULL OR city = '' OR city IS NULL)", userID, onlineIP.IP).
+		Updates(map[string]any{
+			"country": country,
+			"city":    city,
+		}).Error
+}
+
+func (s *Service) enrichIPHistorySummary(ctx context.Context, userID uint, summary *IPHistorySummary) {
+	if summary == nil {
+		return
+	}
+
+	country, city, countryCode, changed := s.resolveMissingGeo(ctx, summary.IP, summary.Country, summary.City, summary.CountryCode)
+	if !changed {
+		return
+	}
+
+	summary.Country = country
+	summary.City = city
+	summary.CountryCode = countryCode
+
+	if strings.TrimSpace(country) == "" && strings.TrimSpace(city) == "" {
+		return
+	}
+
+	_ = s.db.WithContext(ctx).
+		Model(&IPHistory{}).
+		Where("user_id = ? AND ip = ? AND (country = '' OR country IS NULL OR city = '' OR city IS NULL)", userID, summary.IP).
+		Updates(map[string]any{
+			"country": country,
+			"city":    city,
+		}).Error
+}
+
+func (s *Service) resolveMissingGeo(ctx context.Context, ip, country, city, countryCode string) (string, string, string, bool) {
+	if s.geoService == nil || strings.TrimSpace(ip) == "" {
+		return country, city, countryCode, false
+	}
+
+	needsCountry := strings.TrimSpace(country) == ""
+	needsCity := strings.TrimSpace(city) == ""
+	needsCountryCode := strings.TrimSpace(countryCode) == ""
+	if !needsCountry && !needsCity && !needsCountryCode {
+		return country, city, countryCode, false
+	}
+
+	geoInfo, err := s.geoService.Lookup(ctx, ip)
+	if err != nil || !hasGeolocationDetails(geoInfo) {
+		return country, city, countryCode, false
+	}
+
+	changed := false
+	if needsCountry && strings.TrimSpace(geoInfo.Country) != "" {
+		country = geoInfo.Country
+		changed = true
+	}
+	if needsCity {
+		resolvedCity := strings.TrimSpace(geoInfo.City)
+		if resolvedCity == "" {
+			resolvedCity = strings.TrimSpace(geoInfo.Region)
+		}
+		if resolvedCity != "" {
+			city = resolvedCity
+			changed = true
+		}
+	}
+	if needsCountryCode && strings.TrimSpace(geoInfo.CountryCode) != "" {
+		countryCode = strings.ToUpper(strings.TrimSpace(geoInfo.CountryCode))
+		changed = true
+	}
+
+	return country, city, countryCode, changed
+}
+
+// EnrichActiveIPRecords fills missing geolocation fields for active IP records.
+func (s *Service) EnrichActiveIPRecords(ctx context.Context, records []ActiveIP) {
+	for i := range records {
+		country, city, countryCode, changed := s.resolveMissingGeo(ctx, records[i].IP, records[i].Country, records[i].City, records[i].CountryCode)
+		records[i].Country = country
+		records[i].City = city
+		records[i].CountryCode = countryCode
+		if !changed || records[i].UserID == 0 {
+			continue
+		}
+		if strings.TrimSpace(country) == "" && strings.TrimSpace(city) == "" {
+			continue
+		}
+		_ = s.db.WithContext(ctx).
+			Model(&ActiveIP{}).
+			Where("user_id = ? AND ip = ? AND (country = '' OR country IS NULL OR city = '' OR city IS NULL)", records[i].UserID, records[i].IP).
+			Updates(map[string]any{"country": country, "city": city}).Error
+	}
+}
+
+// EnrichIPHistoryRecords fills missing geolocation fields for raw IP history records.
+func (s *Service) EnrichIPHistoryRecords(ctx context.Context, records []IPHistory) {
+	for i := range records {
+		country, city, countryCode, changed := s.resolveMissingGeo(ctx, records[i].IP, records[i].Country, records[i].City, records[i].CountryCode)
+		records[i].Country = country
+		records[i].City = city
+		records[i].CountryCode = countryCode
+		if !changed {
+			continue
+		}
+		if strings.TrimSpace(country) == "" && strings.TrimSpace(city) == "" {
+			continue
+		}
+		_ = s.db.WithContext(ctx).
+			Model(&IPHistory{}).
+			Where("user_id = ? AND ip = ? AND (country = '' OR country IS NULL OR city = '' OR city IS NULL)", records[i].UserID, records[i].IP).
+			Updates(map[string]any{"country": country, "city": city}).Error
+	}
 }
 
 // KickIP removes an IP from active IPs and optionally adds to temporary blacklist.
@@ -467,7 +623,7 @@ func (s *Service) GetIPStats(ctx context.Context, userID uint, maxConcurrentIPs 
 	}
 
 	// Get recent IPs
-	recentIPs, err := s.tracker.GetOnlineIPs(ctx, userID)
+	recentIPs, err := s.GetOnlineIPs(ctx, userID)
 	if err != nil {
 		recentIPs = []OnlineIP{}
 	}

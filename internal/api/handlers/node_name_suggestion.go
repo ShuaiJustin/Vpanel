@@ -214,7 +214,7 @@ func (h *NodeNameSuggestionHandler) suggestNodeName(ctx context.Context, address
 
 func (h *NodeNameSuggestionHandler) lookupGeolocation(ctx context.Context, ipStr string) (*ip.GeoInfo, string) {
 	if h.geoService != nil {
-		info, err := h.geoService.Lookup(ctx, ipStr)
+		info, err := h.geoService.LookupLocal(ctx, ipStr)
 		if err == nil && hasGeolocationDetails(info) {
 			return info, "local"
 		}

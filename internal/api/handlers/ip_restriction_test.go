@@ -21,7 +21,7 @@ func setupIPRestrictionHandlerTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("open sqlite db: %v", err)
 	}
 
-	if err := db.AutoMigrate(&ip.ActiveIP{}, &ip.IPBlacklist{}, &ip.IPWhitelist{}, &ip.IPHistory{}, &ip.FailedAttempt{}); err != nil {
+	if err := db.AutoMigrate(&ip.ActiveIP{}, &ip.IPBlacklist{}, &ip.IPWhitelist{}, &ip.IPHistory{}, &ip.FailedAttempt{}, &ip.GeoCache{}); err != nil {
 		t.Fatalf("migrate ip restriction tables: %v", err)
 	}
 
@@ -185,5 +185,52 @@ func TestIPRestrictionHandlerGetStats_UsesLiveDataAndCleansStaleRecords(t *testi
 	}
 	if blacklistCount != 1 {
 		t.Fatalf("expected expired blacklist cleanup to leave 1 row, got %d", blacklistCount)
+	}
+}
+
+func TestIPRestrictionHandlerGetAllIPHistory_EnrichesMissingGeo(t *testing.T) {
+	db := setupIPRestrictionHandlerTestDB(t)
+	ipService, err := ip.NewService(db, &ip.ServiceConfig{GeoConfig: &ip.GeolocationConfig{DatabasePath: "", CacheTTL: 24 * time.Hour}})
+	if err != nil {
+		t.Fatalf("create ip service: %v", err)
+	}
+
+	handler := NewIPRestrictionHandler(logger.NewNopLogger(), ipService)
+	router := gin.New()
+	router.GET("/history", handler.GetAllIPHistory)
+
+	now := time.Now()
+	if err := db.Create(&ip.GeoCache{IP: "124.79.151.251", Country: "China", CountryCode: "CN", Region: "Shanghai", City: "Shanghai", CachedAt: now}).Error; err != nil {
+		t.Fatalf("seed geo cache: %v", err)
+	}
+	if err := db.Create(&ip.IPHistory{UserID: 42, IP: "124.79.151.251", UserAgent: "ua", AccessType: ip.AccessTypeProxy, CreatedAt: now}).Error; err != nil {
+		t.Fatalf("seed history: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/history?user_id=42", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var response struct {
+		Code int `json:"code"`
+		Data []struct {
+			IP          string `json:"ip"`
+			Country     string `json:"country"`
+			CountryCode string `json:"country_code"`
+			City        string `json:"city"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Code != 200 || len(response.Data) != 1 {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+	if response.Data[0].Country != "China" || response.Data[0].City != "Shanghai" || response.Data[0].CountryCode != "CN" {
+		t.Fatalf("unexpected enriched data: %+v", response.Data[0])
 	}
 }

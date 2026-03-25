@@ -500,7 +500,7 @@ onMounted(() => {
 .plan-card {
   position: relative;
   background: var(--color-bg-card);
-  border: 2px solid #ebeef5;
+  border: 2px solid var(--color-border);
   border-radius: 12px;
   padding: 24px 16px;
   text-align: center;
@@ -515,7 +515,7 @@ onMounted(() => {
 
 .plan-card--selected {
   border-color: #409eff;
-  background: #ecf5ff;
+  background: rgba(64, 158, 255, 0.12);
 }
 
 .plan-card--current {

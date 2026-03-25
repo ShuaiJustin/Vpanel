@@ -454,7 +454,7 @@ onMounted(() => {
 
 .amount-option {
   padding: 12px 24px;
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.3s;
@@ -466,7 +466,7 @@ onMounted(() => {
 
 .amount-option--active {
   border-color: #409eff;
-  background: #ecf5ff;
+  background: rgba(64, 158, 255, 0.12);
   color: #409eff;
 }
 </style>

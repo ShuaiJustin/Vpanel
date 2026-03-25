@@ -59,15 +59,16 @@ func (b *IPBlacklist) IsExpired() bool {
 
 // ActiveIP represents a currently active IP address for a user.
 type ActiveIP struct {
-	ID         uint      `json:"id" gorm:"primaryKey"`
-	UserID     uint      `json:"user_id" gorm:"index:idx_active_ip_user_ip,unique"`
-	IP         string    `json:"ip" gorm:"size:45;index:idx_active_ip_user_ip,unique"`
-	UserAgent  string    `json:"user_agent" gorm:"size:500"`
-	DeviceType string    `json:"device_type" gorm:"size:50"` // desktop, mobile, tablet
-	Country    string    `json:"country" gorm:"size:100"`
-	City       string    `json:"city" gorm:"size:100"`
-	LastActive time.Time `json:"last_active" gorm:"index"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID          uint      `json:"id" gorm:"primaryKey"`
+	UserID      uint      `json:"user_id" gorm:"index:idx_active_ip_user_ip,unique"`
+	IP          string    `json:"ip" gorm:"size:45;index:idx_active_ip_user_ip,unique"`
+	UserAgent   string    `json:"user_agent" gorm:"size:500"`
+	DeviceType  string    `json:"device_type" gorm:"size:50"` // desktop, mobile, tablet
+	Country     string    `json:"country" gorm:"size:100"`
+	CountryCode string    `json:"country_code,omitempty" gorm:"-"`
+	City        string    `json:"city" gorm:"size:100"`
+	LastActive  time.Time `json:"last_active" gorm:"index"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // TableName returns the table name for ActiveIP.
@@ -88,6 +89,7 @@ type IPHistory struct {
 	UserAgent    string     `json:"user_agent" gorm:"size:500"`
 	AccessType   AccessType `json:"access_type" gorm:"size:20"`
 	Country      string     `json:"country" gorm:"size:100"`
+	CountryCode  string     `json:"country_code,omitempty" gorm:"-"`
 	City         string     `json:"city" gorm:"size:100"`
 	IsSuspicious bool       `json:"is_suspicious"`
 	CreatedAt    time.Time  `json:"created_at" gorm:"index:idx_ip_history_user_time"`
@@ -102,6 +104,7 @@ func (IPHistory) TableName() string {
 type IPHistorySummary struct {
 	IP          string    `json:"ip" gorm:"column:ip"`
 	Country     string    `json:"country" gorm:"column:country"`
+	CountryCode string    `json:"country_code,omitempty" gorm:"-"`
 	City        string    `json:"city" gorm:"column:city"`
 	FirstSeen   time.Time `json:"first_seen" gorm:"column:first_seen"`
 	LastSeen    time.Time `json:"last_seen" gorm:"column:last_seen"`
@@ -213,13 +216,14 @@ type AccessResult struct {
 
 // OnlineIP represents an online IP with its details.
 type OnlineIP struct {
-	IP         string    `json:"ip"`
-	UserAgent  string    `json:"user_agent"`
-	DeviceType string    `json:"device_type"`
-	Country    string    `json:"country"`
-	City       string    `json:"city"`
-	LastActive time.Time `json:"last_active"`
-	CreatedAt  time.Time `json:"created_at"`
+	IP          string    `json:"ip"`
+	UserAgent   string    `json:"user_agent"`
+	DeviceType  string    `json:"device_type"`
+	Country     string    `json:"country"`
+	CountryCode string    `json:"country_code,omitempty" gorm:"-"`
+	City        string    `json:"city"`
+	LastActive  time.Time `json:"last_active"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // IPStats represents IP statistics for a user.

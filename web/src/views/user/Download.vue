@@ -1669,7 +1669,7 @@ onMounted(async () => {
   gap: 4px;
   padding: 4px 10px;
   border-radius: 999px;
-  background: #eef5ff;
+  background: rgba(64, 158, 255, 0.12);
   color: #3d7fe3;
   font-size: 12px;
   font-weight: 600;
@@ -1786,7 +1786,7 @@ onMounted(async () => {
 }
 
 .step-content :deep(.tip-box) {
-  background: #f0f9ff;
+  background: rgba(64, 158, 255, 0.1);
   border-left: 4px solid #409eff;
   padding: 12px 16px;
   margin: 16px 0;

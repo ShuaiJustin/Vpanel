@@ -186,6 +186,7 @@ func generateVLESSLink(name, server string, port int, settings map[string]interf
 	}
 
 	params := url.Values{}
+	params.Set("encryption", "none")
 	if network := getSettingString(settings, "network", ""); network != "" {
 		params.Set("type", network)
 	}

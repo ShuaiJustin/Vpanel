@@ -2917,9 +2917,9 @@ const openGitHubReleases = () => {
 
 .error-troubleshooting {
   margin-top: 15px;
-  border-left: 3px solid #409eff;
+  border-left: 3px solid var(--color-primary);
   padding: 10px;
-  background-color: #ecf5ff;
+  background-color: rgba(64, 158, 255, 0.12);
   border-radius: 4px;
 }
 

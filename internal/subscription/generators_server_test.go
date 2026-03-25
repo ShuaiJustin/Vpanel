@@ -54,7 +54,7 @@ func TestGenerateV2rayN_UsesTLSDomainWhenHostMissing(t *testing.T) {
 	}
 }
 
-func TestGenerateV2rayN_PrefersSNIOverIPForTLSVMess(t *testing.T) {
+func TestGenerateV2rayN_KeepsIPForTLSVMessWhenSNIIsSet(t *testing.T) {
 	proxies := []*repository.Proxy{
 		{
 			ID:       1,
@@ -88,8 +88,11 @@ func TestGenerateV2rayN_PrefersSNIOverIPForTLSVMess(t *testing.T) {
 		t.Fatalf("failed to decode vmess payload: %v", err)
 	}
 
-	if !strings.Contains(string(payload), `"add":"vpn.example.com"`) {
-		t.Fatalf("expected vmess payload to prefer tls domain over ip, got %s", string(payload))
+	if !strings.Contains(string(payload), `"add":"64.176.54.36"`) {
+		t.Fatalf("expected vmess payload to keep server ip, got %s", string(payload))
+	}
+	if !strings.Contains(string(payload), `"sni":"vpn.example.com"`) {
+		t.Fatalf("expected vmess payload to keep sni, got %s", string(payload))
 	}
 }
 
@@ -273,5 +276,45 @@ func TestGenerateSingbox_VMessesTLSSeparateFromCipher(t *testing.T) {
 	}
 	if tls["insecure"] != true {
 		t.Fatalf("expected tls insecure true, got %#v", tls["insecure"])
+	}
+}
+
+func TestGenerateV2rayN_VLESSIncludesEncryptionNoneAndKeepsIP(t *testing.T) {
+	proxies := []*repository.Proxy{
+		{
+			ID:       1,
+			Name:     "VLESS TLS",
+			Protocol: "vless",
+			Host:     "64.176.54.36",
+			Port:     443,
+			Settings: map[string]any{
+				"uuid":        "12345678-1234-1234-1234-123456789012",
+				"security":    "tls",
+				"server":      "64.176.54.36",
+				"server_name": "vpn.example.com",
+			},
+			Enabled: true,
+		},
+	}
+
+	result, err := generateV2rayN(proxies, nil)
+	if err != nil {
+		t.Fatalf("generateV2rayN returned error: %v", err)
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(string(result))
+	if err != nil {
+		t.Fatalf("failed to decode base64: %v", err)
+	}
+
+	link := string(decoded)
+	if !strings.Contains(link, "@64.176.54.36:443") {
+		t.Fatalf("expected vless payload to keep server ip, got %s", link)
+	}
+	if !strings.Contains(link, "encryption=none") {
+		t.Fatalf("expected vless payload to include encryption=none, got %s", link)
+	}
+	if !strings.Contains(link, "sni=vpn.example.com") {
+		t.Fatalf("expected vless payload to include sni, got %s", link)
 	}
 }
