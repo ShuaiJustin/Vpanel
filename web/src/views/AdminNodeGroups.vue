@@ -972,4 +972,9 @@ onMounted(fetchGroups)
     min-width: 560px;
   }
 }
+
+/* ── dark mode ── */
+:root.dark .group-panel__stat-value.is-success {
+  color: #4ade80;
+}
 </style>

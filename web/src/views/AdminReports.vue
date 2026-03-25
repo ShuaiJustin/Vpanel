@@ -567,4 +567,20 @@ onMounted(() => {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── dark mode ── */
+:root.dark .stat-value { color: #60a5fa; }
+:root.dark .stat-label { color: #94a3b8; }
+
+:root.dark .failed-stat-value { color: #cbd5e1; }
+:root.dark .failed-stat-value.error { color: #f87171; }
+:root.dark .failed-stat-value.warning { color: #fbbf24; }
+:root.dark .failed-stat-value.danger { color: #f87171; }
+:root.dark .failed-stat-value.success { color: #4ade80; }
+:root.dark .failed-stat-label { color: #94a3b8; }
+
+:root.dark .pause-stat-value { color: #cbd5e1; }
+:root.dark .pause-stat-value.warning { color: #fbbf24; }
+:root.dark .pause-stat-value.success { color: #4ade80; }
+:root.dark .pause-stat-label { color: #94a3b8; }
 </style>

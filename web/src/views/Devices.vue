@@ -42,7 +42,10 @@
     <el-card style="margin-top: 20px;">
       <template #header>
         <div class="card-header">
-          <span>在线设备列表</span>
+          <div class="card-header-info">
+            <span>在线设备列表</span>
+            <span class="card-header-hint">{{ deviceRefreshHint }}</span>
+          </div>
           <el-button
             size="small"
             :loading="loading"
@@ -124,7 +127,10 @@
     <el-card style="margin-top: 20px;">
       <template #header>
         <div class="card-header">
-          <span>IP 访问历史</span>
+          <div class="card-header-info">
+            <span>IP 访问历史</span>
+            <span class="card-header-hint">{{ historyRefreshHint }}</span>
+          </div>
         </div>
       </template>
       
@@ -246,6 +252,9 @@ const ipHistory = ref([])
 const historyPage = ref(1)
 const historyPageSize = ref(10)
 const historyTotal = ref(0)
+const devicesUpdatedAt = ref(null)
+const historyUpdatedAt = ref(null)
+const DEVICES_REFRESH_INTERVAL = 30 * 1000
 
 // 计算属性
 const deviceUsagePercent = computed(() => {
@@ -262,6 +271,19 @@ const deviceUsageStatus = computed(() => {
 const isNearLimit = computed(() => {
   return maxDevices.value > 0 && deviceUsagePercent.value >= 80
 })
+
+const formatRefreshHint = (value) => {
+  const baseHint = '约每 30 秒自动刷新'
+  if (!value) return baseHint
+
+  const updatedAt = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(updatedAt.getTime())) return baseHint
+
+  return `${updatedAt.toLocaleTimeString('zh-CN', { hour12: false })} 更新 · ${baseHint}`
+}
+
+const deviceRefreshHint = computed(() => formatRefreshHint(devicesUpdatedAt.value))
+const historyRefreshHint = computed(() => formatRefreshHint(historyUpdatedAt.value))
 
 const formatDateTime = (value) => {
   if (!value) return '-'
@@ -329,19 +351,28 @@ const normalizeHistoryItem = (item) => {
 }
 
 // 获取设备列表
-const fetchDevices = async () => {
-  loading.value = true
+const fetchDevices = async (options = {}) => {
+  const silent = typeof options === 'object' && options !== null && options.silent === true
+  if (!silent) {
+    loading.value = true
+  }
+
   try {
     const response = await api.get('/user/devices')
     const payload = unwrapApiPayload(response)
     const currentIP = payload.current_ip ?? payload.currentIp ?? ''
     devices.value = (payload.devices || []).map((device) => normalizeDevice(device, currentIP))
     maxDevices.value = Number(payload.max_devices ?? payload.maxDevices ?? 0)
+    devicesUpdatedAt.value = new Date()
   } catch (error) {
     console.error('Failed to fetch devices:', error)
-    ElMessage.error('获取设备列表失败')
+    if (!silent) {
+      ElMessage.error('获取设备列表失败')
+    }
   } finally {
-    loading.value = false
+    if (!silent) {
+      loading.value = false
+    }
   }
 }
 
@@ -371,8 +402,12 @@ const kickDevice = (device) => {
 }
 
 // 获取 IP 历史
-const fetchIPHistory = async () => {
-  historyLoading.value = true
+const fetchIPHistory = async (options = {}) => {
+  const silent = typeof options === 'object' && options !== null && options.silent === true
+  if (!silent) {
+    historyLoading.value = true
+  }
+
   try {
     const response = await api.get('/user/ip-history', {
       params: {
@@ -391,29 +426,49 @@ const fetchIPHistory = async () => {
 
     ipHistory.value = list.map(normalizeHistoryItem)
     historyTotal.value = Number(payload.total ?? list.length)
+    historyUpdatedAt.value = new Date()
   } catch (error) {
     console.error('Failed to fetch IP history:', error)
-    ElMessage.error('获取 IP 历史失败')
+    if (!silent) {
+      ElMessage.error('获取 IP 历史失败')
+    }
   } finally {
-    historyLoading.value = false
+    if (!silent) {
+      historyLoading.value = false
+    }
   }
 }
 
 // 自动刷新
 let refreshInterval = null
 
+const refreshPageData = ({ silent = true } = {}) => Promise.all([
+  fetchDevices({ silent }),
+  fetchIPHistory({ silent })
+])
+
+const handleVisibilityChange = () => {
+  if (document.visibilityState === 'visible') {
+    refreshPageData({ silent: true })
+  }
+}
+
 onMounted(() => {
-  fetchDevices()
-  fetchIPHistory()
-  
-  // 每30秒自动刷新设备列表
-  refreshInterval = setInterval(fetchDevices, 30000)
+  refreshPageData({ silent: false })
+
+  refreshInterval = setInterval(() => {
+    if (document.visibilityState === 'hidden') return
+    refreshPageData({ silent: true })
+  }, DEVICES_REFRESH_INTERVAL)
+
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
   if (refreshInterval) {
     clearInterval(refreshInterval)
   }
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>
 
@@ -470,6 +525,18 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.card-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.card-header-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  font-weight: 400;
 }
 
 .device-list {

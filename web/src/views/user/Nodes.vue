@@ -1,63 +1,83 @@
 <template>
   <div class="nodes-page">
-    <!-- 页面标题 -->
     <div class="page-header">
-      <h1 class="page-title">
-        节点列表
-      </h1>
-      <p class="page-subtitle">
-        选择合适的节点获取最佳连接体验
-      </p>
+      <div>
+        <h1 class="page-title">
+          节点列表
+        </h1>
+        <p class="page-subtitle">
+          优先选择在线且延迟更低的节点，连接会更稳定。
+        </p>
+      </div>
+
+      <div class="header-stats">
+        <div class="stat-chip">
+          <span class="stat-chip-label">全部节点</span>
+          <strong>{{ totalCount }}</strong>
+        </div>
+        <div class="stat-chip stat-chip-success">
+          <span class="stat-chip-label">在线节点</span>
+          <strong>{{ onlineCount }}</strong>
+        </div>
+        <div class="stat-chip">
+          <span class="stat-chip-label">当前显示</span>
+          <strong>{{ filteredNodes.length }}</strong>
+        </div>
+      </div>
     </div>
 
-    <!-- 筛选和操作栏 -->
     <div class="filter-bar">
       <div class="filter-left">
-        <el-select 
-          v-model="filters.region" 
-          placeholder="全部地区" 
+        <el-input
+          v-model="filters.keyword"
+          clearable
+          class="keyword-filter"
+          placeholder="搜索名称 / 地址 / 地区 / 协议"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+
+        <el-select
+          v-model="filters.region"
+          placeholder="全部地区"
           clearable
           style="width: 140px"
         >
-          <el-option 
-            v-for="region in regions" 
-            :key="region.value" 
-            :label="region.label" 
-            :value="region.value" 
+          <el-option
+            v-for="region in regionOptions"
+            :key="region.value"
+            :label="region.label"
+            :value="region.value"
           />
         </el-select>
 
-        <el-select 
-          v-model="filters.protocol" 
-          placeholder="全部协议" 
+        <el-select
+          v-model="filters.protocol"
+          placeholder="全部协议"
           clearable
           style="width: 140px"
         >
-          <el-option 
-            v-for="protocol in protocols" 
-            :key="protocol.value" 
-            :label="protocol.label" 
-            :value="protocol.value" 
+          <el-option
+            v-for="protocol in protocolOptions"
+            :key="protocol.value"
+            :label="protocol.label"
+            :value="protocol.value"
           />
         </el-select>
 
-        <el-select 
-          v-model="filters.status" 
-          placeholder="全部状态" 
+        <el-select
+          v-model="filters.status"
+          placeholder="全部状态"
           clearable
           style="width: 120px"
         >
           <el-option
-            label="在线"
-            value="online"
-          />
-          <el-option
-            label="离线"
-            value="offline"
-          />
-          <el-option
-            label="维护中"
-            value="maintenance"
+            v-for="status in statusOptions"
+            :key="status.value"
+            :label="status.label"
+            :value="status.value"
           />
         </el-select>
       </div>
@@ -65,7 +85,7 @@
       <div class="filter-right">
         <el-select
           v-model="sortBy"
-          style="width: 140px"
+          style="width: 150px"
         >
           <el-option
             label="默认排序"
@@ -89,14 +109,26 @@
           />
         </el-select>
 
+        <el-button
+          v-if="hasActiveFilters"
+          @click="resetFilters"
+        >
+          重置筛选
+        </el-button>
+
+        <el-button @click="refreshNodes">
+          <el-icon><RefreshRight /></el-icon>
+          刷新
+        </el-button>
+
         <el-button-group>
-          <el-button 
+          <el-button
             :type="viewMode === 'card' ? 'primary' : 'default'"
             @click="viewMode = 'card'"
           >
             <el-icon><Grid /></el-icon>
           </el-button>
-          <el-button 
+          <el-button
             :type="viewMode === 'list' ? 'primary' : 'default'"
             @click="viewMode = 'list'"
           >
@@ -107,6 +139,7 @@
         <el-button
           type="primary"
           :loading="testingAll"
+          :disabled="!hasOnlineNodes"
           @click="testAllLatency"
         >
           <el-icon><Timer /></el-icon>
@@ -115,7 +148,6 @@
       </div>
     </div>
 
-    <!-- 加载状态 -->
     <div
       v-if="loading"
       class="loading-state"
@@ -126,13 +158,11 @@
       <p>加载节点列表...</p>
     </div>
 
-    <!-- 空状态 -->
     <el-empty
       v-else-if="filteredNodes.length === 0"
       description="暂无可用节点"
     />
 
-    <!-- 卡片视图 -->
     <div
       v-else-if="viewMode === 'card'"
       class="nodes-grid"
@@ -148,20 +178,31 @@
       />
     </div>
 
-    <!-- 列表视图 -->
     <el-table
       v-else
       :data="filteredNodes"
       class="nodes-table"
+      table-layout="auto"
     >
       <el-table-column
-        label="节点名称"
-        min-width="200"
+        label="节点信息"
+        min-width="320"
       >
         <template #default="{ row }">
-          <div class="node-name-cell">
-            <span class="node-flag">{{ getRegionFlag(row.region) }}</span>
-            <span class="node-name">{{ row.name }}</span>
+          <div class="node-info-cell">
+            <div
+              class="node-endpoint"
+              :title="getNodeEndpoint(row)"
+            >
+              {{ getNodeEndpoint(row) }}
+            </div>
+            <div class="node-name-row">
+              <span class="node-flag">{{ getRegionFlag(row.region_label || row.region) }}</span>
+              <div class="node-name-meta">
+                <span class="node-name">{{ getNodeDisplayName(row) }}</span>
+                <span class="node-subtitle">{{ getNodeMetaLine(row) }}</span>
+              </div>
+            </div>
           </div>
         </template>
       </el-table-column>
@@ -169,33 +210,34 @@
       <el-table-column
         label="地区"
         prop="region"
-        width="100"
+        width="110"
       >
         <template #default="{ row }">
-          {{ getRegionLabel(row.region) }}
+          {{ row.region_label || getRegionLabel(row.region) }}
         </template>
       </el-table-column>
 
       <el-table-column
         label="协议"
         prop="protocol"
-        width="100"
+        width="120"
       >
         <template #default="{ row }">
-          <el-tag size="small">
-            {{ row.protocol }}
+          <el-tag size="small" effect="light">
+            {{ row.protocol_label || getProtocolLabel(row.protocol) }}
           </el-tag>
         </template>
       </el-table-column>
 
       <el-table-column
         label="状态"
-        width="100"
+        width="110"
       >
         <template #default="{ row }">
           <el-tag
             :type="getStatusType(row.status)"
             size="small"
+            effect="light"
           >
             {{ getStatusLabel(row.status) }}
           </el-tag>
@@ -204,22 +246,24 @@
 
       <el-table-column
         label="负载"
-        width="120"
+        width="150"
       >
         <template #default="{ row }">
-          <el-progress 
-            :percentage="row.load" 
-            :color="getLoadColor(row.load)"
-            :stroke-width="6"
-            :show-text="false"
-          />
-          <span class="load-text">{{ row.load }}%</span>
+          <div class="table-load-cell">
+            <el-progress
+              :percentage="getNormalizedLoad(row.load)"
+              :color="getLoadColor(getNormalizedLoad(row.load))"
+              :stroke-width="6"
+              :show-text="false"
+            />
+            <span class="load-text">{{ getNormalizedLoad(row.load) }}%</span>
+          </div>
         </template>
       </el-table-column>
 
       <el-table-column
         label="延迟"
-        width="100"
+        width="120"
       >
         <template #default="{ row }">
           <span
@@ -229,7 +273,7 @@
             <el-icon class="is-loading"><Loading /></el-icon>
           </span>
           <span
-            v-else-if="latencyResults[row.id]"
+            v-else-if="hasLatency(row.id)"
             :class="getLatencyClass(latencyResults[row.id])"
           >
             {{ latencyResults[row.id] }}ms
@@ -237,13 +281,15 @@
           <span
             v-else
             class="latency-unknown"
-          >-</span>
+          >
+            未测试
+          </span>
         </template>
       </el-table-column>
 
       <el-table-column
         label="操作"
-        width="150"
+        width="160"
         fixed="right"
       >
         <template #default="{ row }">
@@ -251,6 +297,7 @@
             link
             type="primary"
             :loading="testingNodes[row.id]"
+            :disabled="row.status !== 'online'"
             @click="testLatency(row)"
           >
             测速
@@ -258,6 +305,7 @@
           <el-button
             link
             type="primary"
+            :disabled="row.status !== 'online'"
             @click="copyNodeConfig(row)"
           >
             复制
@@ -271,15 +319,22 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Grid, List, Timer, Loading } from '@element-plus/icons-vue'
+import { Grid, List, Timer, Loading, Search, RefreshRight } from '@element-plus/icons-vue'
 import { usePortalNodesStore } from '@/stores/portalNodes'
 import { proxiesApi } from '@/api/modules/proxies'
 import { copyText } from '@/utils/clipboard'
 import NodeCard from '@/components/user/NodeCard.vue'
+import {
+  getNodeLatencyClass,
+  getNodeRegionFlag,
+  getNodeRegionLabel,
+  getNodeStatusText,
+  getNodeStatusType,
+  getProtocolDisplayName
+} from '@/composables/useNodePresentation'
 
 const nodesStore = usePortalNodesStore()
 
-// 状态
 const loading = ref(false)
 const viewMode = ref('card')
 const sortBy = ref('default')
@@ -287,111 +342,132 @@ const testingAll = ref(false)
 const testingNodes = reactive({})
 const latencyResults = reactive({})
 
-// 筛选条件
 const filters = reactive({
+  keyword: '',
   region: '',
   protocol: '',
   status: ''
 })
 
-// 地区选项
-const regions = [
-  { value: 'hk', label: '香港' },
-  { value: 'tw', label: '台湾' },
-  { value: 'jp', label: '日本' },
-  { value: 'sg', label: '新加坡' },
-  { value: 'us', label: '美国' },
-  { value: 'kr', label: '韩国' },
-  { value: 'de', label: '德国' },
-  { value: 'uk', label: '英国' }
+const statusOptions = [
+  { value: 'online', label: '在线' },
+  { value: 'offline', label: '离线' },
+  { value: 'unhealthy', label: '不健康' },
+  { value: 'maintenance', label: '维护中' }
 ]
 
-// 协议选项
-const protocols = [
-  { value: 'vmess', label: 'VMess' },
-  { value: 'vless', label: 'VLESS' },
-  { value: 'trojan', label: 'Trojan' },
-  { value: 'shadowsocks', label: 'Shadowsocks' }
-]
+const regionOptions = computed(() => (nodesStore.regions || []).map(region => ({
+  value: region,
+  label: getNodeRegionLabel(region)
+})))
 
-// 计算属性
+const protocolOptions = computed(() => (nodesStore.protocols || []).map(protocol => ({
+  value: protocol,
+  label: getProtocolDisplayName(protocol)
+})))
+
+const totalCount = computed(() => nodesStore.nodes.length)
+const onlineCount = computed(() => nodesStore.nodes.filter(node => node.status === 'online').length)
+const hasOnlineNodes = computed(() => filteredNodes.value.some(node => node.status === 'online'))
+const hasActiveFilters = computed(() => Boolean(
+  filters.keyword || filters.region || filters.protocol || filters.status
+))
+
+const getNodeDisplayName = (node) => node.display_name || node.name || '未命名节点'
+
+const getNodeEndpoint = (node) => {
+  if (!node.host) return '-'
+  return node.port ? `${node.host}:${node.port}` : node.host
+}
+
+const getFallbackSubtitle = (node) => [
+  node.protocol_label || getProtocolLabel(node.protocol),
+  getNodeEndpoint(node) !== '-' ? getNodeEndpoint(node) : ''
+].filter(Boolean).join(' · ')
+
+const getNodeSubtitle = (node) => {
+  const subtitle = String(node.subtitle || '').trim()
+  if (subtitle && subtitle !== getFallbackSubtitle(node)) {
+    return subtitle
+  }
+  return [node.region_label || getRegionLabel(node.region), node.protocol_label || getProtocolLabel(node.protocol)]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+const getNodeMetaLine = (node) => getNodeSubtitle(node)
+
 const filteredNodes = computed(() => {
   let nodes = [...nodesStore.nodes]
 
-  // 筛选
-  if (filters.region) {
-    nodes = nodes.filter(n => n.region === filters.region)
-  }
-  if (filters.protocol) {
-    nodes = nodes.filter(n => n.protocol === filters.protocol)
-  }
-  if (filters.status) {
-    nodes = nodes.filter(n => n.status === filters.status)
+  if (filters.keyword) {
+    const keyword = filters.keyword.trim().toLowerCase()
+    nodes = nodes.filter(node => {
+      const searchText = [
+        getNodeDisplayName(node),
+        getNodeEndpoint(node),
+        node.region_label || getRegionLabel(node.region),
+        node.protocol_label || getProtocolLabel(node.protocol),
+        node.subtitle || ''
+      ].join(' ').toLowerCase()
+      return searchText.includes(keyword)
+    })
   }
 
-  // 排序
+  if (filters.region) {
+    nodes = nodes.filter(node => node.region === filters.region)
+  }
+  if (filters.protocol) {
+    nodes = nodes.filter(node => node.protocol === filters.protocol)
+  }
+  if (filters.status) {
+    nodes = nodes.filter(node => node.status === filters.status)
+  }
+
   if (sortBy.value === 'name') {
-    nodes.sort((a, b) => a.name.localeCompare(b.name))
+    nodes.sort((a, b) => getNodeDisplayName(a).localeCompare(getNodeDisplayName(b), 'zh-CN'))
   } else if (sortBy.value === 'region') {
-    nodes.sort((a, b) => a.region.localeCompare(b.region))
+    nodes.sort((a, b) => getRegionLabel(a.region_label || a.region).localeCompare(getRegionLabel(b.region_label || b.region), 'zh-CN'))
   } else if (sortBy.value === 'latency') {
     nodes.sort((a, b) => {
-      const la = latencyResults[a.id] || 9999
-      const lb = latencyResults[b.id] || 9999
+      const la = hasLatencyValue(latencyResults[a.id]) ? latencyResults[a.id] : Number.MAX_SAFE_INTEGER
+      const lb = hasLatencyValue(latencyResults[b.id]) ? latencyResults[b.id] : Number.MAX_SAFE_INTEGER
       return la - lb
     })
   } else if (sortBy.value === 'load') {
-    nodes.sort((a, b) => a.load - b.load)
+    nodes.sort((a, b) => getNormalizedLoad(a.load) - getNormalizedLoad(b.load))
   }
 
   return nodes
 })
 
-// 方法
 function getRegionFlag(region) {
-  const flags = {
-    hk: '🇭🇰',
-    tw: '🇹🇼',
-    jp: '🇯🇵',
-    sg: '🇸🇬',
-    us: '🇺🇸',
-    kr: '🇰🇷',
-    de: '🇩🇪',
-    uk: '🇬🇧'
-  }
-  return flags[region] || '🌐'
+  return getNodeRegionFlag(region)
 }
 
 function getRegionLabel(region) {
-  const labels = {
-    hk: '香港',
-    tw: '台湾',
-    jp: '日本',
-    sg: '新加坡',
-    us: '美国',
-    kr: '韩国',
-    de: '德国',
-    uk: '英国'
-  }
-  return labels[region] || region
+  return getNodeRegionLabel(region)
+}
+
+function getProtocolLabel(protocol) {
+  return getProtocolDisplayName(protocol)
 }
 
 function getStatusType(status) {
-  const types = {
-    online: 'success',
-    offline: 'danger',
-    maintenance: 'warning'
-  }
-  return types[status] || 'info'
+  if (status === 'maintenance') return 'warning'
+  return getNodeStatusType(status)
 }
 
 function getStatusLabel(status) {
-  const labels = {
-    online: '在线',
-    offline: '离线',
-    maintenance: '维护中'
-  }
-  return labels[status] || status
+  if (status === 'maintenance') return '维护中'
+  return getNodeStatusText(status)
+}
+
+function getNormalizedLoad(load) {
+  const value = Number(load)
+  if (!Number.isFinite(value) || value < 0) return 0
+  if (value > 100) return 100
+  return Math.round(value)
 }
 
 function getLoadColor(load) {
@@ -400,10 +476,24 @@ function getLoadColor(load) {
   return '#67c23a'
 }
 
+function hasLatencyValue(value) {
+  return typeof value === 'number' && value >= 0
+}
+
+function hasLatency(nodeId) {
+  return hasLatencyValue(latencyResults[nodeId])
+}
+
 function getLatencyClass(latency) {
-  if (latency < 100) return 'latency-good'
-  if (latency < 200) return 'latency-fair'
-  return 'latency-poor'
+  return getNodeLatencyClass(latency)
+}
+
+function resetFilters() {
+  filters.keyword = ''
+  filters.region = ''
+  filters.protocol = ''
+  filters.status = ''
+  sortBy.value = 'default'
 }
 
 async function testLatency(node) {
@@ -413,7 +503,7 @@ async function testLatency(node) {
     latencyResults[node.id] = latency
   } catch (error) {
     latencyResults[node.id] = null
-    ElMessage.error(`测速失败: ${node.name}`)
+    ElMessage.error(`测速失败: ${getNodeDisplayName(node)}`)
   } finally {
     testingNodes[node.id] = false
   }
@@ -421,12 +511,12 @@ async function testLatency(node) {
 
 async function testAllLatency() {
   testingAll.value = true
-  const onlineNodes = filteredNodes.value.filter(n => n.status === 'online')
-  
+  const onlineNodes = filteredNodes.value.filter(node => node.status === 'online')
+
   for (const node of onlineNodes) {
     await testLatency(node)
   }
-  
+
   testingAll.value = false
   ElMessage.success('测速完成')
 }
@@ -436,21 +526,29 @@ async function copyNodeConfig(node) {
     const response = await proxiesApi.generateLink(node.id)
     const link = response?.link
     await copyText(link)
-    ElMessage.success(`已复制 ${node.name} 配置`)
+    ElMessage.success(`已复制 ${getNodeDisplayName(node)} 配置`)
   } catch (error) {
-    ElMessage.error(`复制失败: ${node.name}`)
+    ElMessage.error(`复制失败: ${getNodeDisplayName(node)}`)
   }
 }
 
-// 加载数据
 async function loadNodes() {
   loading.value = true
   try {
     await nodesStore.fetchNodes()
+    return true
   } catch (error) {
     ElMessage.error('加载节点列表失败')
+    return false
   } finally {
     loading.value = false
+  }
+}
+
+async function refreshNodes() {
+  const ok = await loadNodes()
+  if (ok) {
+    ElMessage.success('节点列表已刷新')
   }
 }
 
@@ -465,44 +563,92 @@ onMounted(() => {
 }
 
 .page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
   margin-bottom: 24px;
 }
 
 .page-title {
   font-size: 24px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--color-text-primary);
   margin: 0 0 8px 0;
 }
 
 .page-subtitle {
   font-size: 14px;
-  color: #909399;
+  color: var(--color-text-secondary);
   margin: 0;
+  line-height: 1.6;
 }
 
-/* 筛选栏 */
+.header-stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.stat-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 100px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--color-border-light);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-sm);
+}
+
+.stat-chip-label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  line-height: 1;
+}
+
+.stat-chip strong {
+  font-size: 20px;
+  line-height: 1.1;
+  color: var(--color-text-primary);
+}
+
+.stat-chip-success {
+  border-color: color-mix(in srgb, var(--color-success) 22%, var(--color-border-light));
+}
+
 .filter-bar {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 20px;
   flex-wrap: wrap;
   gap: 12px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--color-border-light);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-sm);
 }
 
 .filter-left,
 .filter-right {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
-/* 加载状态 */
+.keyword-filter {
+  width: 280px;
+}
+
 .loading-state {
   text-align: center;
   padding: 60px 0;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 .loading-icon {
@@ -515,73 +661,147 @@ onMounted(() => {
   to { transform: rotate(360deg); }
 }
 
-/* 卡片网格 */
 .nodes-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 18px;
+  align-items: stretch;
 }
 
-/* 表格样式 */
 .nodes-table {
-  border-radius: 8px;
+  border-radius: 16px;
+  overflow: hidden;
 }
 
-.node-name-cell {
+.node-info-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.node-endpoint {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--color-border-light);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-all;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+.node-name-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.node-name-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.node-flag {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.node-name {
+  font-weight: 600;
+  color: var(--color-text-primary);
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.node-subtitle {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.table-load-cell {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.node-flag {
-  font-size: 18px;
-}
-
-.node-name {
-  font-weight: 500;
+.table-load-cell .el-progress {
+  flex: 1;
+  min-width: 0;
 }
 
 .load-text {
   font-size: 12px;
-  color: #909399;
-  margin-left: 8px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
 }
 
 .latency-testing {
-  color: #409eff;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-primary);
 }
 
 .latency-good {
-  color: #67c23a;
-  font-weight: 500;
+  color: var(--color-success);
+  font-weight: 600;
 }
 
+.latency-medium,
 .latency-fair {
-  color: #e6a23c;
-  font-weight: 500;
+  color: var(--color-warning);
+  font-weight: 600;
 }
 
+.latency-bad,
 .latency-poor {
-  color: #f56c6c;
-  font-weight: 500;
+  color: var(--color-danger);
+  font-weight: 600;
 }
 
 .latency-unknown {
-  color: #c0c4cc;
+  color: var(--color-text-placeholder);
 }
 
-/* 响应式 */
-@media (max-width: 768px) {
-  .filter-bar {
+@media (max-width: 992px) {
+  .page-header {
     flex-direction: column;
-    align-items: stretch;
+  }
+
+  .header-stats {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .nodes-page {
+    padding: 16px;
+  }
+
+  .filter-bar {
+    padding: 14px;
   }
 
   .filter-left,
   .filter-right {
     display: grid;
     grid-template-columns: 1fr;
-    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .keyword-filter {
+    width: 100%;
   }
 
   .filter-left :deep(.el-select),

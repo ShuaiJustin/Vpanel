@@ -348,7 +348,7 @@ func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) 
 	stepIdx = addStep("验证安装")
 	logBuffer.WriteString("步骤 8/8: 验证安装...\n")
 
-	if err := s.verifyInstallation(ctx, client, &logBuffer); err != nil {
+	if err := s.verifyInstallation(ctx, client, config, &logBuffer); err != nil {
 		markFailed(stepIdx)
 		result.Message = fmt.Sprintf("安装验证失败: %v", err)
 		result.Logs = logBuffer.String()
@@ -905,12 +905,28 @@ echo "✓ 清理完成"
 	return s.executeCommandWithTimeout(ctx, client, stopScript, serviceCommandTimeout, logBuffer)
 }
 
+func (s *RemoteDeployService) resolveAgentHealthPort(ctx context.Context, config *DeployConfig) int {
+	const defaultAgentHealthPort = 18443
+	if config == nil {
+		return defaultAgentHealthPort
+	}
+	if config.NodeID > 0 && s.nodeRepo != nil {
+		nodeData, err := s.nodeRepo.GetByID(ctx, config.NodeID)
+		if err == nil && nodeData != nil && nodeData.Port > 0 {
+			return nodeData.Port
+		}
+	}
+	return defaultAgentHealthPort
+}
+
 // configureAgent creates the agent configuration file.
 func (s *RemoteDeployService) configureAgent(ctx context.Context, client *ssh.Client, config *DeployConfig, logBuffer *bytes.Buffer) error {
 	// 验证 token 不为空
 	if config.NodeToken == "" {
 		return fmt.Errorf("节点 token 为空，无法配置 Agent")
 	}
+
+	agentHealthPort := s.resolveAgentHealthPort(ctx, config)
 
 	// 记录配置信息用于调试
 	s.logger.Info("Configuring agent",
@@ -935,8 +951,8 @@ xray:
   config_path: "/usr/local/etc/xray/config.json"
 
 health:
-  port: 18443
-`, config.NodeToken, config.PanelURL)
+  port: %d
+`, config.NodeToken, config.PanelURL, agentHealthPort)
 
 	// 使用 base64 编码配置内容，避免特殊字符问题
 	encoded := base64Encode([]byte(agentConfig))
@@ -1042,8 +1058,9 @@ fi
 }
 
 // verifyInstallation verifies the installation.
-func (s *RemoteDeployService) verifyInstallation(ctx context.Context, client *ssh.Client, logBuffer *bytes.Buffer) error {
-	script := `
+func (s *RemoteDeployService) verifyInstallation(ctx context.Context, client *ssh.Client, config *DeployConfig, logBuffer *bytes.Buffer) error {
+	agentHealthPort := s.resolveAgentHealthPort(ctx, config)
+	script := fmt.Sprintf(`
 echo "=== 验证安装 ==="
 
 # 1. 检查 Agent 服务状态
@@ -1106,7 +1123,7 @@ else
 fi
 
 # 5. 检查健康检查端口
-HEALTH_PORT=18443
+HEALTH_PORT=%d
 if netstat -tuln 2>/dev/null | grep -q ":$HEALTH_PORT " || ss -tuln 2>/dev/null | grep -q ":$HEALTH_PORT "; then
     echo "✓ 健康检查端口 $HEALTH_PORT 已监听"
 else
@@ -1136,7 +1153,7 @@ journalctl -u vpanel-agent -n 10 --no-pager 2>/dev/null || echo "无法读取日
 
 echo ""
 echo "✓ 安装验证完成"
-`
+`, agentHealthPort)
 
 	if err := s.executeCommandWithTimeout(ctx, client, script, serviceCommandTimeout, logBuffer); err != nil {
 		return err
@@ -1162,7 +1179,10 @@ func (s *RemoteDeployService) UploadAgentBinary(client *ssh.Client, localPath st
 }
 
 // GetDeployScript returns the deployment script for manual installation.
-func (s *RemoteDeployService) GetDeployScript(panelURL, nodeToken string) string {
+func (s *RemoteDeployService) GetDeployScript(panelURL, nodeToken string, agentPort int) string {
+	if agentPort <= 0 {
+		agentPort = 18443
+	}
 	return fmt.Sprintf(`#!/bin/bash
 # V Panel Agent 自动部署脚本
 # 支持: Ubuntu, Debian, CentOS, AlmaLinux, Rocky Linux, Fedora
@@ -1298,7 +1318,7 @@ xray:
   config_path: "/usr/local/etc/xray/config.json"
 
 health:
-  port: 18443
+  port: %d
 
 log:
   level: "info"
@@ -1364,7 +1384,7 @@ echo "  查看日志: journalctl -u vpanel-agent -f"
 echo "  重启服务: systemctl restart vpanel-agent"
 echo "  停止服务: systemctl stop vpanel-agent"
 echo ""
-`, panelURL, nodeToken)
+`, panelURL, nodeToken, agentPort)
 }
 
 // TestConnection tests SSH connection without deploying.

@@ -217,15 +217,17 @@ deploy_panel() {
 deploy_agent() {
     local panel_url=${1:-}
     local node_token=${2:-}
+    local agent_port=${3:-${AGENT_HEALTH_PORT:-18443}}
 
     if [ -z "$panel_url" ] || [ -z "$node_token" ]; then
         log_error "错误: 需要提供 Panel URL 和 Token"
-        echo "用法: $0 agent <panel-url> <token>"
+        echo "用法: $0 agent <panel-url> <token> [agent-port]"
         exit 1
     fi
 
     log_info "部署 Agent..."
     echo "Panel URL: $panel_url"
+    echo "Agent Port: $agent_port"
 
     if [ ! -f "vpanel-agent" ]; then
         log_warn "编译 Agent..."
@@ -251,7 +253,7 @@ sync:
   backup_before_apply: true
 
 health:
-  port: 18443
+  port: $agent_port
 EOF
 
     log_warn "安装 Agent 二进制..."
@@ -298,7 +300,7 @@ show_help() {
     echo "用法:"
     echo "  $0 panel                                部署 Panel"
     echo "  $0 rollback-panel <bin-backup> [web]    回滚 Panel"
-    echo "  $0 agent <panel-url> <token>            部署 Agent"
+    echo "  $0 agent <panel-url> <token> [agent-port] 部署 Agent"
     echo "  $0 all                                  部署 Panel，并提示 Agent 命令"
     echo ""
     echo "说明:"
@@ -314,13 +316,13 @@ case "${1:-}" in
         rollback_panel "$@"
         ;;
     agent)
-        deploy_agent "${2:-}" "${3:-}"
+        deploy_agent "${2:-}" "${3:-}" "${4:-}"
         ;;
     all)
         deploy_panel
         echo ""
         log_warn "请在节点服务器执行:"
-        echo "$0 agent <panel-url> <token>"
+        echo "$0 agent <panel-url> <token> [agent-port]"
         ;;
     help|--help|-h|"")
         show_help

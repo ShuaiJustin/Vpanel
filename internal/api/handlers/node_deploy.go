@@ -175,6 +175,7 @@ func (h *NodeDeployHandler) DeployAgent(c *gin.Context) {
 
 	// Prepare deploy config
 	deployConfig := &node.DeployConfig{
+		NodeID:     nodeID,
 		Host:       req.Host,
 		Port:       req.Port,
 		Username:   req.Username,
@@ -277,7 +278,7 @@ func (h *NodeDeployHandler) GetDeployScript(c *gin.Context) {
 	}
 
 	// Generate script
-	script := h.deployService.GetDeployScript(panelURL, nodeData.Token)
+	script := h.deployService.GetDeployScript(panelURL, nodeData.Token, nodeData.Port)
 
 	c.Header("Content-Type", "text/plain")
 	c.Header("Content-Disposition", "attachment; filename=install-agent.sh")

@@ -166,7 +166,7 @@
                   :max="65535"
                 />
                 <div class="field-tip">
-                  Node Agent 默认监听端口。
+                  Node Agent 默认监听端口；修改后需与面板记录和防火墙放行保持一致。
                 </div>
               </el-form-item>
 

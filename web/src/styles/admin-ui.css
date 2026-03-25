@@ -184,6 +184,34 @@
   color: #64748b;
 }
 
+.app-container.dark-mode .content .overview-value.is-success {
+  color: #4ade80;
+}
+
+.app-container.dark-mode .content .overview-value.is-warning {
+  color: #fbbf24;
+}
+
+.app-container.dark-mode .content .overview-value.is-danger {
+  color: #f87171;
+}
+
+.app-container.dark-mode .content .overview-value.is-muted {
+  color: #94a3b8;
+}
+
+.app-container.dark-mode .content .stack-value.is-success {
+  color: #4ade80;
+}
+
+.app-container.dark-mode .content .stack-value.is-warning {
+  color: #fbbf24;
+}
+
+.app-container.dark-mode .content .stack-value.is-danger {
+  color: #f87171;
+}
+
 .app-container .content .toolbar-card {
   display: flex;
   justify-content: space-between;
@@ -772,6 +800,24 @@
   background: rgba(148, 163, 184, 0.12);
 }
 
+.app-container.dark-mode .content .metric-pill.is-success {
+  color: #86efac;
+}
+
+.app-container.dark-mode .content .metric-pill.is-warning {
+  color: #fcd34d;
+}
+
+.app-container.dark-mode .content .metric-pill.is-danger {
+  color: #fca5a5;
+}
+
+.app-container.dark-mode .content .metric-pill.is-muted,
+.app-container.dark-mode .content .metric-pill.is-info {
+  color: #94a3b8;
+  background: rgba(148, 163, 184, 0.16);
+}
+
 .app-container .content .mono-code {
   display: inline-flex;
   align-items: center;
@@ -855,6 +901,24 @@
   color: #475569;
   background: #f8fafc;
   border-color: rgba(148, 163, 184, 0.2);
+}
+
+.app-container.dark-mode .content .row-action--primary {
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(59, 130, 246, 0.28);
+}
+
+.app-container.dark-mode .content .row-action--success {
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.14);
+  border-color: rgba(34, 197, 94, 0.28);
+}
+
+.app-container.dark-mode .content .row-action--warning {
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.28);
 }
 
 .app-container .content .row-action--more {
@@ -1006,6 +1070,110 @@
 .app-container.dark-mode .content .logs-table-wrap,
 .app-container.dark-mode .content .el-card {
   background: var(--admin-surface);
+}
+
+/* ── comprehensive dark-mode color fixes ── */
+
+/* entity cell text */
+.app-container.dark-mode .content .entity-cell__title {
+  color: #f1f5f9;
+}
+
+.app-container.dark-mode .content .entity-cell__meta {
+  color: #94a3b8;
+}
+
+.app-container.dark-mode .content .entity-cell__hint {
+  color: #cbd5e1;
+  background: rgba(51, 65, 85, 0.5);
+  border-color: rgba(100, 116, 139, 0.22);
+}
+
+.app-container.dark-mode .content .entity-cell__hint.is-danger {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.22);
+}
+
+/* toolbar chips */
+.app-container.dark-mode .content .toolbar-chip {
+  background: rgba(100, 116, 139, 0.18);
+  color: #94a3b8;
+}
+
+.app-container.dark-mode .content .toolbar-chip--primary {
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.16);
+}
+
+/* surface inline (hint cards inside table rows) */
+.app-container.dark-mode .content .surface-inline {
+  background: rgba(51, 65, 85, 0.5);
+  border-color: rgba(100, 116, 139, 0.22);
+  color: #cbd5e1;
+}
+
+/* mono-code in dark mode */
+.app-container.dark-mode .content .mono-code {
+  background: rgba(96, 165, 250, 0.14);
+  color: #93c5fd;
+}
+
+.app-container.dark-mode .content .gc-code,
+.app-container.dark-mode .content .code-item code,
+.app-container.dark-mode .content .success-info code {
+  background: rgba(96, 165, 250, 0.14);
+  color: #93c5fd;
+}
+
+/* code-item cards */
+.app-container.dark-mode .content .code-item {
+  border-color: rgba(100, 116, 139, 0.22);
+  background: rgba(51, 65, 85, 0.4);
+}
+
+/* discount text */
+.app-container.dark-mode .content .discount {
+  color: #4ade80;
+}
+
+/* el-button default in dark mode */
+.app-container.dark-mode .content .el-button--default {
+  color: #cbd5e1;
+}
+
+/* el-input dark box-shadow (fix the too-bright inset border) */
+.app-container.dark-mode .content .el-input__wrapper,
+.app-container.dark-mode .content .el-textarea__inner,
+.app-container.dark-mode .content .el-select__wrapper,
+.app-container.dark-mode .content .el-input-number,
+.app-container.dark-mode .content .el-date-editor.el-input__wrapper,
+.app-container.dark-mode .content .el-date-editor .el-input__wrapper {
+  box-shadow: 0 0 0 1px rgba(100, 116, 139, 0.28) inset !important;
+  background: var(--admin-surface-strong) !important;
+}
+
+/* descriptions label in dark mode */
+.app-container.dark-mode .content .el-descriptions__label.el-descriptions__cell.is-bordered-label {
+  background: rgba(51, 65, 85, 0.5);
+}
+
+/* el-tabs underline in dark */
+.app-container.dark-mode .content .el-tabs__nav-wrap::after {
+  background-color: rgba(100, 116, 139, 0.22);
+}
+
+.app-container.dark-mode .content .el-tabs__item {
+  color: #94a3b8;
+}
+
+.app-container.dark-mode .content .el-tabs__item.is-active {
+  color: #60a5fa;
+}
+
+/* el-alert border in dark */
+.app-container.dark-mode .content .el-alert {
+  border-color: rgba(100, 116, 139, 0.22);
 }
 
 @media (max-width: 1024px) {

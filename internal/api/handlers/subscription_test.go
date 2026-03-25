@@ -454,7 +454,7 @@ func TestProperty13_DisabledUserAccessDenied(t *testing.T) {
 			router := gin.New()
 			router.GET("/api/subscription/:token", handler.GetContent)
 
-			req := httptest.NewRequest(http.MethodGet, "/api/subscription/"+sub.Token, nil)
+			req := httptest.NewRequest(http.MethodGet, "http://panel.example.com/api/subscription/"+sub.Token+"?format=clash", nil)
 			w := httptest.NewRecorder()
 
 			router.ServeHTTP(w, req)
@@ -592,10 +592,14 @@ func TestProperty16_ResponseHeadersPresence(t *testing.T) {
 	log := logger.NewNopLogger()
 
 	// Create active user
+	expiresAt := time.Date(2026, time.March, 31, 12, 0, 0, 0, time.UTC)
 	user := &repository.User{
-		ID:       1,
-		Username: "testuser",
-		Enabled:  true,
+		ID:           1,
+		Username:     "testuser",
+		Enabled:      true,
+		TrafficLimit: 100 * 1024 * 1024 * 1024,
+		TrafficUsed:  25 * 1024 * 1024 * 1024,
+		ExpiresAt:    &expiresAt,
 	}
 	userRepo.users[1] = user
 
@@ -615,7 +619,7 @@ func TestProperty16_ResponseHeadersPresence(t *testing.T) {
 	router := gin.New()
 	router.GET("/api/subscription/:token", handler.GetContent)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/subscription/"+sub.Token, nil)
+	req := httptest.NewRequest(http.MethodGet, "http://panel.example.com/api/subscription/"+sub.Token+"?format=clash", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
@@ -630,12 +634,83 @@ func TestProperty16_ResponseHeadersPresence(t *testing.T) {
 		"Content-Disposition",
 		"Profile-Update-Interval",
 		"Subscription-Userinfo",
+		"Profile-Title",
+		"Profile-Web-Page-URL",
+		"Support-URL",
 	}
 
 	for _, header := range requiredHeaders {
 		if w.Header().Get(header) == "" {
 			t.Errorf("missing required header: %s", header)
 		}
+	}
+
+	expectedDisposition := "attachment; filename=panel-example-com-clash.yaml"
+	if got := w.Header().Get("Content-Disposition"); got != expectedDisposition {
+		t.Errorf("unexpected Content-Disposition header: got %q want %q", got, expectedDisposition)
+	}
+
+	expectedTitle := "panel.example.com - Clash"
+	if got := w.Header().Get("Profile-Title"); got != expectedTitle {
+		t.Errorf("unexpected Profile-Title header: got %q want %q", got, expectedTitle)
+	}
+
+	expectedProfileWebPageURL := "http://panel.example.com/user/subscription"
+	if got := w.Header().Get("Profile-Web-Page-URL"); got != expectedProfileWebPageURL {
+		t.Errorf("unexpected Profile-Web-Page-URL header: got %q want %q", got, expectedProfileWebPageURL)
+	}
+
+	expectedSupportURL := "http://panel.example.com/user/help"
+	if got := w.Header().Get("Support-URL"); got != expectedSupportURL {
+		t.Errorf("unexpected Support-URL header: got %q want %q", got, expectedSupportURL)
+	}
+
+	expectedUserinfo := "upload=0; download=26843545600; total=107374182400; expire=1774958400"
+	if got := w.Header().Get("Subscription-Userinfo"); got != expectedUserinfo {
+		t.Errorf("unexpected Subscription-Userinfo header: got %q want %q", got, expectedUserinfo)
+	}
+}
+
+func TestSubscriptionHandler_ConfiguredProfileUpdateInterval(t *testing.T) {
+	// Setup
+	subRepo := newMockSubscriptionRepo()
+	userRepo := newMockUserRepo()
+	proxyRepo := newMockProxyRepo()
+	log := logger.NewNopLogger()
+
+	user := &repository.User{
+		ID:       1,
+		Username: "testuser",
+		Enabled:  true,
+	}
+	userRepo.users[1] = user
+
+	sub := &repository.Subscription{
+		ID:        1,
+		UserID:    1,
+		Token:     "test-token-profile-interval",
+		ShortCode: "cfg12345",
+	}
+	subRepo.subscriptions[sub.Token] = sub
+	subRepo.byUserID[1] = sub
+
+	service := subscription.NewService(subRepo, userRepo, proxyRepo, log, "http://localhost:8080")
+	handler := NewSubscriptionHandler(service, log, 12)
+
+	router := gin.New()
+	router.GET("/api/subscription/:token", handler.GetContent)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/subscription/"+sub.Token, nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	if got := w.Header().Get("Profile-Update-Interval"); got != "12" {
+		t.Fatalf("unexpected Profile-Update-Interval header: got %q want %q", got, "12")
 	}
 }
 
@@ -648,10 +723,14 @@ func TestGetLink(t *testing.T) {
 	log := logger.NewNopLogger()
 
 	// Create user
+	expiresAt := time.Date(2026, time.March, 31, 12, 0, 0, 0, time.UTC)
 	user := &repository.User{
-		ID:       1,
-		Username: "testuser",
-		Enabled:  true,
+		ID:           1,
+		Username:     "testuser",
+		Enabled:      true,
+		TrafficLimit: 100 * 1024 * 1024 * 1024,
+		TrafficUsed:  25 * 1024 * 1024 * 1024,
+		ExpiresAt:    &expiresAt,
 	}
 	userRepo.users[1] = user
 

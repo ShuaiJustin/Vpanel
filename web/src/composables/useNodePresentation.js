@@ -10,6 +10,33 @@ const NODE_STATUS_TEXT = Object.freeze({
   unhealthy: '不健康'
 })
 
+const REGION_PRESENTATION = Object.freeze([
+  { aliases: ['hk', 'hong kong', 'hongkong', '香港'], label: '香港', flag: '🇭🇰' },
+  { aliases: ['tw', 'taiwan', '台湾'], label: '台湾', flag: '🇹🇼' },
+  { aliases: ['jp', 'japan', '日本'], label: '日本', flag: '🇯🇵' },
+  { aliases: ['sg', 'singapore', '新加坡'], label: '新加坡', flag: '🇸🇬' },
+  { aliases: ['us', 'usa', 'united states', '美国'], label: '美国', flag: '🇺🇸' },
+  { aliases: ['kr', 'korea', 'south korea', '韩国'], label: '韩国', flag: '🇰🇷' },
+  { aliases: ['de', 'germany', '德国'], label: '德国', flag: '🇩🇪' },
+  { aliases: ['uk', 'united kingdom', 'britain', '英国'], label: '英国', flag: '🇬🇧' },
+  { aliases: ['cn', 'china', '中国'], label: '中国', flag: '🇨🇳' }
+])
+
+const PROTOCOL_LABELS = Object.freeze({
+  vmess: 'VMess',
+  vless: 'VLESS',
+  trojan: 'Trojan',
+  shadowsocks: 'Shadowsocks',
+  ss: 'Shadowsocks'
+})
+
+const normalizeNodeRegionKey = (region) => String(region || '').trim().toLowerCase()
+
+const resolveRegionPresentation = (region) => {
+  const normalized = normalizeNodeRegionKey(region)
+  return REGION_PRESENTATION.find(item => item.aliases.includes(normalized)) || null
+}
+
 const NODE_SYNC_STATUS_TYPES = Object.freeze({
   synced: 'success',
   pending: 'warning',
@@ -118,3 +145,9 @@ export const parseNodeTags = (tags) => {
   }
   return []
 }
+
+export const getNodeRegionFlag = (region) => resolveRegionPresentation(region)?.flag || '🌐'
+
+export const getNodeRegionLabel = (region) => resolveRegionPresentation(region)?.label || String(region || '').trim() || '未知地区'
+
+export const getProtocolDisplayName = (protocol) => PROTOCOL_LABELS[String(protocol || '').trim().toLowerCase()] || String(protocol || '').trim() || '未知协议'

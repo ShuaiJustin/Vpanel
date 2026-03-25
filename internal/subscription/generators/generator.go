@@ -2,6 +2,7 @@
 package generators
 
 import (
+	"fmt"
 	"strings"
 
 	"v/internal/database/repository"
@@ -69,17 +70,69 @@ type ProxyInfo struct {
 	Settings map[string]interface{}
 }
 
-// ExtractProxyInfo extracts proxy information from a repository.Proxy.
-func ExtractProxyInfo(proxy *repository.Proxy) *ProxyInfo {
-	name := proxy.Name
-	if proxy.Remark != "" {
-		name = proxy.Remark
+func isGenericProxyRemark(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	switch normalized {
+	case "", "auto provisioned", "auto-provisioned":
+		return normalized != ""
+	default:
+		return false
+	}
+}
+
+func looksAutoProvisionName(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	return strings.HasPrefix(normalized, "node-") || isGenericProxyRemark(normalized)
+}
+
+func humanReadableProtocolName(protocol string) string {
+	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	case ProtocolVMess:
+		return "VMess"
+	case ProtocolVLESS:
+		return "VLESS"
+	case ProtocolTrojan:
+		return "Trojan"
+	case ProtocolShadowsocks, ProtocolSS:
+		return "Shadowsocks"
+	default:
+		return strings.ToUpper(strings.TrimSpace(protocol))
+	}
+}
+
+func buildSubscriptionProxyName(proxy *repository.Proxy, server string) string {
+	name := strings.TrimSpace(proxy.Name)
+	remark := strings.TrimSpace(proxy.Remark)
+
+	switch {
+	case remark != "" && !isGenericProxyRemark(remark):
+		return remark
+	case name != "" && !looksAutoProvisionName(name):
+		return name
 	}
 
-	server := proxylib.ResolveServerAddress(proxy.Host, proxy.Settings)
+	host := strings.TrimSpace(server)
+	if host == "" {
+		host = strings.TrimSpace(proxy.Host)
+	}
+	protocol := humanReadableProtocolName(proxy.Protocol)
+	if host == "" {
+		if protocol == "" {
+			return "Proxy"
+		}
+		return protocol
+	}
+	if proxy.Port > 0 {
+		return fmt.Sprintf("%s · %s:%d", protocol, host, proxy.Port)
+	}
+	return fmt.Sprintf("%s · %s", protocol, host)
+}
 
+// ExtractProxyInfo extracts proxy information from a repository.Proxy.
+func ExtractProxyInfo(proxy *repository.Proxy) *ProxyInfo {
+	server := proxylib.ResolveServerAddress(proxy.Host, proxy.Settings)
 	return &ProxyInfo{
-		Name:     name,
+		Name:     buildSubscriptionProxyName(proxy, server),
 		Protocol: proxy.Protocol,
 		Server:   server,
 		Port:     proxy.Port,

@@ -8,6 +8,9 @@
       <p class="page-subtitle">
         获取订阅链接，导入到您的客户端使用
       </p>
+      <p class="page-hint">
+        {{ subscriptionRefreshHint }}
+      </p>
     </div>
 
     <!-- 订阅状态和操作卡片 -->
@@ -250,7 +253,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { 
@@ -279,6 +282,10 @@ const selectedFormat = ref('clash')
 const showResetDialog = ref(false)
 const resetting = ref(false)
 const loading = ref(false)
+const subscriptionUpdatedAt = ref(null)
+const subscriptionRefreshInFlight = ref(false)
+const SUBSCRIPTION_REFRESH_INTERVAL = 30 * 1000
+let subscriptionRefreshTimer = null
 
 // 订阅格式
 const formats = [
@@ -326,6 +333,21 @@ const trafficUsed = computed(() => userStore.trafficUsed)
 const trafficLimit = computed(() => userStore.trafficLimit)
 const availableNodes = computed(() => userStore.availableNodes || 0)
 
+const subscriptionRefreshHint = computed(() => {
+  const baseHint = '约每 30 秒自动刷新'
+  if (!subscriptionUpdatedAt.value) return baseHint
+
+  const updatedAt = subscriptionUpdatedAt.value instanceof Date
+    ? subscriptionUpdatedAt.value
+    : new Date(subscriptionUpdatedAt.value)
+
+  if (Number.isNaN(updatedAt.getTime())) {
+    return baseHint
+  }
+
+  return `${updatedAt.toLocaleTimeString('zh-CN', { hour12: false })} 更新 · ${baseHint}`
+})
+
 // 方法
 function formatTraffic(bytes) {
   if (!bytes || bytes === 0) return '0 B'
@@ -339,22 +361,37 @@ function formatTraffic(bytes) {
   return `${size.toFixed(2)} ${units[i]}`
 }
 
-async function loadSubscription() {
-  loading.value = true
+async function loadSubscription(options = {}) {
+  if (subscriptionRefreshInFlight.value) return
+
+  const { silent = false, includePauseStatus = !silent } = options
+  if (!silent) {
+    loading.value = true
+  }
+
   try {
-    await userStore.fetchProfile()
+    subscriptionRefreshInFlight.value = true
+    await userStore.fetchProfile({ silent })
     await subscriptionStore.fetchLink()
-    try {
-      await pauseStore.fetchPauseStatus()
-    } catch (pauseError) {
-      console.warn('加载暂停状态失败:', pauseError)
+    if (includePauseStatus) {
+      try {
+        await pauseStore.fetchPauseStatus()
+      } catch (pauseError) {
+        console.warn('加载暂停状态失败:', pauseError)
+      }
     }
+    subscriptionUpdatedAt.value = new Date()
     await generateQRCode()
   } catch (error) {
     console.error('加载订阅失败:', error)
-    ElMessage.error('加载订阅信息失败')
+    if (!silent) {
+      ElMessage.error('加载订阅信息失败')
+    }
   } finally {
-    loading.value = false
+    subscriptionRefreshInFlight.value = false
+    if (!silent) {
+      loading.value = false
+    }
   }
 }
 
@@ -441,6 +478,27 @@ function openClientLink(client) {
   }
 }
 
+function startSubscriptionAutoRefresh() {
+  stopSubscriptionAutoRefresh()
+  subscriptionRefreshTimer = window.setInterval(() => {
+    if (document.visibilityState === 'hidden') return
+    loadSubscription({ silent: true, includePauseStatus: false })
+  }, SUBSCRIPTION_REFRESH_INTERVAL)
+}
+
+function stopSubscriptionAutoRefresh() {
+  if (subscriptionRefreshTimer !== null) {
+    clearInterval(subscriptionRefreshTimer)
+    subscriptionRefreshTimer = null
+  }
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    loadSubscription({ silent: true, includePauseStatus: false })
+  }
+}
+
 // 监听格式变化重新生成二维码
 watch(selectedFormat, () => {
   generateQRCode()
@@ -448,6 +506,13 @@ watch(selectedFormat, () => {
 
 onMounted(() => {
   loadSubscription()
+  startSubscriptionAutoRefresh()
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+})
+
+onBeforeUnmount(() => {
+  stopSubscriptionAutoRefresh()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>
 
@@ -471,6 +536,12 @@ onMounted(() => {
   font-size: 14px;
   color: #909399;
   margin: 0;
+}
+
+.page-hint {
+  font-size: 12px;
+  color: #909399;
+  margin: 6px 0 0;
 }
 
 /* 订阅操作区域 */

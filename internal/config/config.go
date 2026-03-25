@@ -29,19 +29,20 @@ type Config struct {
 
 // ServerConfig contains HTTP server settings.
 type ServerConfig struct {
-	Host            string        `yaml:"host" env:"V_SERVER_HOST" default:"0.0.0.0"`
-	Port            int           `yaml:"port" env:"V_SERVER_PORT" default:"8080"`
-	PublicURL       string        `yaml:"public_url" env:"V_SERVER_PUBLIC_URL" default:""`
-	Mode            string        `yaml:"mode" env:"V_SERVER_MODE" default:"debug"`
-	BaseURL         string        `yaml:"base_url" env:"V_SERVER_BASE_URL" default:""`
-	ReadTimeout     time.Duration `yaml:"read_timeout" env:"V_SERVER_READ_TIMEOUT" default:"30s"`
-	WriteTimeout    time.Duration `yaml:"write_timeout" env:"V_SERVER_WRITE_TIMEOUT" default:"10m"`
-	IdleTimeout     time.Duration `yaml:"idle_timeout" env:"V_SERVER_IDLE_TIMEOUT" default:"60s"`
-	ShutdownTimeout time.Duration `yaml:"shutdown_timeout" env:"V_SERVER_SHUTDOWN_TIMEOUT" default:"30s"`
-	TLSCert         string        `yaml:"tls_cert" env:"V_SERVER_TLS_CERT" default:""`
-	TLSKey          string        `yaml:"tls_key" env:"V_SERVER_TLS_KEY" default:""`
-	CORSOrigins     []string      `yaml:"cors_origins" env:"V_SERVER_CORS_ORIGINS"`
-	StaticPath      string        `yaml:"static_path" env:"V_SERVER_STATIC_PATH" default:"./web/dist"`
+	Host                       string        `yaml:"host" env:"V_SERVER_HOST" default:"0.0.0.0"`
+	Port                       int           `yaml:"port" env:"V_SERVER_PORT" default:"8080"`
+	PublicURL                  string        `yaml:"public_url" env:"V_SERVER_PUBLIC_URL" default:""`
+	Mode                       string        `yaml:"mode" env:"V_SERVER_MODE" default:"debug"`
+	BaseURL                    string        `yaml:"base_url" env:"V_SERVER_BASE_URL" default:""`
+	SubscriptionUpdateInterval int           `yaml:"subscription_update_interval" env:"V_SERVER_SUBSCRIPTION_UPDATE_INTERVAL" default:"24"`
+	ReadTimeout                time.Duration `yaml:"read_timeout" env:"V_SERVER_READ_TIMEOUT" default:"30s"`
+	WriteTimeout               time.Duration `yaml:"write_timeout" env:"V_SERVER_WRITE_TIMEOUT" default:"10m"`
+	IdleTimeout                time.Duration `yaml:"idle_timeout" env:"V_SERVER_IDLE_TIMEOUT" default:"60s"`
+	ShutdownTimeout            time.Duration `yaml:"shutdown_timeout" env:"V_SERVER_SHUTDOWN_TIMEOUT" default:"30s"`
+	TLSCert                    string        `yaml:"tls_cert" env:"V_SERVER_TLS_CERT" default:""`
+	TLSKey                     string        `yaml:"tls_key" env:"V_SERVER_TLS_KEY" default:""`
+	CORSOrigins                []string      `yaml:"cors_origins" env:"V_SERVER_CORS_ORIGINS"`
+	StaticPath                 string        `yaml:"static_path" env:"V_SERVER_STATIC_PATH" default:"./web/dist"`
 }
 
 // DatabaseConfig contains database connection settings.

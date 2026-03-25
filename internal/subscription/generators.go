@@ -82,15 +82,68 @@ func splitCommaValues(raw string) []string {
 	return values
 }
 
-// extractProxyInfo extracts proxy information from a repository.Proxy.
-func extractProxyInfo(proxy *repository.Proxy) (name, server string, port int, settings map[string]interface{}) {
-	name = proxy.Name
-	if proxy.Remark != "" {
-		name = proxy.Remark
+func isGenericProxyRemark(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	switch normalized {
+	case "", "auto provisioned", "auto-provisioned":
+		return normalized != ""
+	default:
+		return false
+	}
+}
+
+func looksAutoProvisionName(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	return strings.HasPrefix(normalized, "node-") || isGenericProxyRemark(normalized)
+}
+
+func humanReadableProtocolName(protocol string) string {
+	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	case "vmess":
+		return "VMess"
+	case "vless":
+		return "VLESS"
+	case "trojan":
+		return "Trojan"
+	case "shadowsocks", "ss":
+		return "Shadowsocks"
+	default:
+		return strings.ToUpper(strings.TrimSpace(protocol))
+	}
+}
+
+func buildSubscriptionProxyName(proxy *repository.Proxy, server string) string {
+	name := strings.TrimSpace(proxy.Name)
+	remark := strings.TrimSpace(proxy.Remark)
+
+	switch {
+	case remark != "" && !isGenericProxyRemark(remark):
+		return remark
+	case name != "" && !looksAutoProvisionName(name):
+		return name
 	}
 
-	server = proxylib.ResolveServerAddress(proxy.Host, proxy.Settings)
+	host := strings.TrimSpace(server)
+	if host == "" {
+		host = strings.TrimSpace(proxy.Host)
+	}
+	protocol := humanReadableProtocolName(proxy.Protocol)
+	if host == "" {
+		if protocol == "" {
+			return "Proxy"
+		}
+		return protocol
+	}
+	if proxy.Port > 0 {
+		return fmt.Sprintf("%s · %s:%d", protocol, host, proxy.Port)
+	}
+	return fmt.Sprintf("%s · %s", protocol, host)
+}
 
+// extractProxyInfo extracts proxy information from a repository.Proxy.
+func extractProxyInfo(proxy *repository.Proxy) (name, server string, port int, settings map[string]interface{}) {
+	server = proxylib.ResolveServerAddress(proxy.Host, proxy.Settings)
+	name = buildSubscriptionProxyName(proxy, server)
 	return name, server, proxy.Port, proxy.Settings
 }
 

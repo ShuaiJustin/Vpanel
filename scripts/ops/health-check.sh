@@ -11,6 +11,10 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 PANEL_URL=${PANEL_URL:-"http://localhost:8080"}
+AGENT_PORT=${AGENT_PORT:-}
+if [ -z "$AGENT_PORT" ] && [ -f "/etc/vpanel/agent.yaml" ]; then
+    AGENT_PORT=$(awk '/^[[:space:]]*port:[[:space:]]*[0-9]+[[:space:]]*$/ { print $2; exit }' /etc/vpanel/agent.yaml 2>/dev/null || true)
+fi
 AGENT_PORT=${AGENT_PORT:-18443}
 
 show_help() {
@@ -23,7 +27,7 @@ show_help() {
     echo ""
     echo "环境变量:"
     echo "  PANEL_URL             Panel 地址 (默认: http://localhost:8080)"
-    echo "  AGENT_PORT            Agent 端口 (默认: 18443)"
+    echo "  AGENT_PORT            Agent 端口（默认自动读取 /etc/vpanel/agent.yaml，回退 18443）"
     echo ""
 }
 

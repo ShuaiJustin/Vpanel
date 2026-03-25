@@ -2,10 +2,13 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/gin-gonic/gin"
 
@@ -17,15 +20,22 @@ import (
 
 // SubscriptionHandler handles subscription-related requests.
 type SubscriptionHandler struct {
-	service *subscription.Service
-	logger  logger.Logger
+	service                    *subscription.Service
+	logger                     logger.Logger
+	profileUpdateIntervalHours int
 }
 
 // NewSubscriptionHandler creates a new SubscriptionHandler.
-func NewSubscriptionHandler(service *subscription.Service, log logger.Logger) *SubscriptionHandler {
+func NewSubscriptionHandler(service *subscription.Service, log logger.Logger, profileUpdateIntervalHours ...int) *SubscriptionHandler {
+	interval := 24
+	if len(profileUpdateIntervalHours) > 0 && profileUpdateIntervalHours[0] > 0 {
+		interval = profileUpdateIntervalHours[0]
+	}
+
 	return &SubscriptionHandler{
-		service: service,
-		logger:  log,
+		service:                    service,
+		logger:                     log,
+		profileUpdateIntervalHours: interval,
 	}
 }
 
@@ -191,6 +201,96 @@ func subscriptionBaseURLFromRequest(c *gin.Context) string {
 	return fmt.Sprintf("%s://%s", scheme, host)
 }
 
+func subscriptionRequestHostname(c *gin.Context) string {
+	baseURL := subscriptionBaseURLFromRequest(c)
+	if baseURL == "" {
+		return ""
+	}
+
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return ""
+	}
+
+	return parsed.Hostname()
+}
+
+func subscriptionFormatDisplayName(format subscription.ClientFormat) string {
+	switch format {
+	case subscription.FormatClash:
+		return "Clash"
+	case subscription.FormatClashMeta:
+		return "Clash Meta"
+	case subscription.FormatShadowrocket:
+		return "Shadowrocket"
+	case subscription.FormatSurge:
+		return "Surge"
+	case subscription.FormatQuantumultX:
+		return "Quantumult X"
+	case subscription.FormatSingbox:
+		return "Sing-box"
+	case subscription.FormatV2rayN:
+		return "V2RayN"
+	default:
+		return "Subscription"
+	}
+}
+
+func sanitizeSubscriptionFilenameComponent(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	if value == "" {
+		return ""
+	}
+
+	var builder strings.Builder
+	lastDash := false
+	for _, r := range value {
+		switch {
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			builder.WriteRune(r)
+			lastDash = false
+		case r == '.' || r == '-' || r == '_' || unicode.IsSpace(r):
+			if builder.Len() > 0 && !lastDash {
+				builder.WriteByte('-')
+				lastDash = true
+			}
+		}
+	}
+
+	return strings.Trim(builder.String(), "-")
+}
+
+func buildSubscriptionPresentation(c *gin.Context, format subscription.ClientFormat, fileExt string) (string, string) {
+	hostname := subscriptionRequestHostname(c)
+	formatName := subscriptionFormatDisplayName(format)
+
+	titleBase := hostname
+	if titleBase == "" {
+		titleBase = "V Panel"
+	}
+	title := fmt.Sprintf("%s - %s", titleBase, formatName)
+
+	fileBase := sanitizeSubscriptionFilenameComponent(hostname)
+	if fileBase == "" {
+		fileBase = "v-panel"
+	}
+	formatBase := sanitizeSubscriptionFilenameComponent(string(format))
+	if formatBase == "" {
+		formatBase = "subscription"
+	}
+
+	return title, fmt.Sprintf("%s-%s.%s", fileBase, formatBase, fileExt)
+}
+
+func buildSubscriptionResourceURLs(c *gin.Context) (string, string) {
+	baseURL := subscriptionBaseURLFromRequest(c)
+	if baseURL == "" {
+		return "", ""
+	}
+
+	return baseURL + "/user/subscription", baseURL + "/user/help"
+}
+
 // GetContent returns subscription content by token.
 // GET /api/subscription/:token
 func (h *SubscriptionHandler) GetContent(c *gin.Context) {
@@ -276,7 +376,7 @@ func (h *SubscriptionHandler) serveSubscriptionContent(c *gin.Context, sub *repo
 	}
 
 	// Set response headers
-	h.setSubscriptionHeaders(c, sub, fileExt)
+	h.setSubscriptionHeaders(c, ctx, sub, format, fileExt)
 
 	// Return content
 	c.Data(http.StatusOK, contentType, content)
@@ -344,20 +444,39 @@ func (h *SubscriptionHandler) parseContentOptions(c *gin.Context) *subscription.
 }
 
 // setSubscriptionHeaders sets the standard subscription response headers.
-func (h *SubscriptionHandler) setSubscriptionHeaders(c *gin.Context, sub *repository.Subscription, fileExt string) {
+func (h *SubscriptionHandler) setSubscriptionHeaders(c *gin.Context, ctx context.Context, sub *repository.Subscription, format subscription.ClientFormat, fileExt string) {
+	title, filename := buildSubscriptionPresentation(c, format, fileExt)
+	profileWebPageURL, supportURL := buildSubscriptionResourceURLs(c)
+
 	// Content-Disposition for download
-	filename := fmt.Sprintf("subscription.%s", fileExt)
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
 
 	// Profile-Update-Interval (in hours)
-	c.Header("Profile-Update-Interval", "24")
+	c.Header("Profile-Update-Interval", strconv.Itoa(h.profileUpdateIntervalHours))
 
-	// Subscription-Userinfo header (placeholder - would need user traffic info)
-	// Format: upload=0; download=0; total=0; expire=0
-	c.Header("Subscription-Userinfo", "upload=0; download=0; total=0; expire=0")
+	userinfoHeader := "upload=0; download=0; total=0; expire=0"
+	userinfo, err := h.service.GetSubscriptionUserinfo(ctx, sub.UserID)
+	if err != nil {
+		h.logger.Warn("failed to load subscription userinfo", logger.F("error", err), logger.UserID(sub.UserID))
+	} else {
+		userinfoHeader = fmt.Sprintf(
+			"upload=%d; download=%d; total=%d; expire=%d",
+			userinfo.Upload,
+			userinfo.Download,
+			userinfo.Total,
+			userinfo.Expire,
+		)
+	}
+	c.Header("Subscription-Userinfo", userinfoHeader)
 
-	// Profile-Title
-	c.Header("Profile-Title", "V Panel Subscription")
+	// Profile metadata
+	c.Header("Profile-Title", title)
+	if profileWebPageURL != "" {
+		c.Header("Profile-Web-Page-URL", profileWebPageURL)
+	}
+	if supportURL != "" {
+		c.Header("Support-URL", supportURL)
+	}
 
 	// Cache control
 	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")

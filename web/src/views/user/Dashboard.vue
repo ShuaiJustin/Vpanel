@@ -145,7 +145,10 @@
         >
           <template #header>
             <div class="card-header">
-              <span>流量使用</span>
+              <div class="card-header-info">
+                <span>流量使用</span>
+                <span class="card-header-hint">{{ trafficRefreshHint }}</span>
+              </div>
               <el-button
                 link
                 type="primary"
@@ -161,7 +164,7 @@
             <div class="traffic-progress">
               <el-progress
                 type="dashboard"
-                :percentage="userStore.trafficPercent"
+                :percentage="trafficPercentValue"
                 :width="160"
                 :stroke-width="12"
                 :color="trafficProgressColor"
@@ -169,7 +172,7 @@
                 <template #default>
                   <div class="progress-content">
                     <div class="progress-value">
-                      {{ userStore.trafficPercent }}%
+                      {{ trafficPercentDisplay }}
                     </div>
                     <div class="progress-label">
                       已使用
@@ -351,7 +354,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { 
   User, Calendar, Monitor, Connection, Link, Download,
@@ -371,6 +374,10 @@ const announcementsStore = usePortalAnnouncementsStore()
 const onlineDevices = ref(0)
 const maxDevices = ref(0)
 const trafficResetAt = ref(null)
+const trafficUpdatedAt = ref(null)
+const trafficRefreshInFlight = ref(false)
+const TRAFFIC_REFRESH_INTERVAL = 30 * 1000
+let trafficRefreshTimer = null
 
 // 计算属性
 const greeting = computed(() => {
@@ -408,8 +415,42 @@ const remainingTraffic = computed(() => {
   return Math.max(0, userStore.trafficLimit - userStore.trafficUsed)
 })
 
+const rawTrafficPercent = computed(() => {
+  if (!userStore.trafficLimit) return 0
+  return Math.min(100, (userStore.trafficUsed / userStore.trafficLimit) * 100)
+})
+
+const trafficPercentValue = computed(() => {
+  const percent = rawTrafficPercent.value
+  if (percent > 0 && percent < 0.1) return 0.1
+  return Number(percent.toFixed(percent < 10 ? 1 : 0))
+})
+
+const trafficPercentDisplay = computed(() => {
+  const percent = rawTrafficPercent.value
+  if (percent <= 0) return '0%'
+  if (percent < 0.1) return '<0.1%'
+  return `${percent < 10 ? percent.toFixed(1) : percent.toFixed(0)}%`
+})
+
+const trafficRefreshHint = computed(() => {
+  const baseHint = '约每 30 秒自动刷新'
+  if (!trafficUpdatedAt.value) return baseHint
+
+  const updatedAt = trafficUpdatedAt.value instanceof Date
+    ? trafficUpdatedAt.value
+    : new Date(trafficUpdatedAt.value)
+
+  if (Number.isNaN(updatedAt.getTime())) {
+    return baseHint
+  }
+
+  const updatedTime = updatedAt.toLocaleTimeString('zh-CN', { hour12: false })
+  return `${updatedTime} 更新 · ${baseHint}`
+})
+
 const trafficProgressColor = computed(() => {
-  const percent = userStore.trafficPercent
+  const percent = rawTrafficPercent.value
   if (percent >= 90) return '#f56c6c'
   if (percent >= 70) return '#e6a23c'
   return '#409eff'
@@ -509,10 +550,45 @@ function viewAnnouncement(id) {
   router.push(`/user/announcements/${id}`)
 }
 
+async function refreshTrafficData({ silent = true } = {}) {
+  if (trafficRefreshInFlight.value) return
+
+  try {
+    trafficRefreshInFlight.value = true
+    await userStore.fetchProfile({ silent })
+    trafficUpdatedAt.value = new Date()
+  } catch (error) {
+    console.error('Failed to refresh traffic data:', error)
+  } finally {
+    trafficRefreshInFlight.value = false
+  }
+}
+
+function startTrafficAutoRefresh() {
+  stopTrafficAutoRefresh()
+  trafficRefreshTimer = window.setInterval(() => {
+    if (document.visibilityState === 'hidden') return
+    refreshTrafficData({ silent: true })
+  }, TRAFFIC_REFRESH_INTERVAL)
+}
+
+function stopTrafficAutoRefresh() {
+  if (trafficRefreshTimer !== null) {
+    clearInterval(trafficRefreshTimer)
+    trafficRefreshTimer = null
+  }
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    refreshTrafficData({ silent: true })
+  }
+}
+
 // 加载数据
 async function loadDashboardData() {
   try {
-    await userStore.fetchProfile()
+    await refreshTrafficData({ silent: false })
     await announcementsStore.fetchAnnouncements()
     const devicesResp = await api.get('/user/devices')
     const devicesData = devicesResp?.data ?? devicesResp ?? {}
@@ -526,6 +602,13 @@ async function loadDashboardData() {
 
 onMounted(() => {
   loadDashboardData()
+  startTrafficAutoRefresh()
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+})
+
+onBeforeUnmount(() => {
+  stopTrafficAutoRefresh()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>
 
@@ -658,6 +741,18 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.card-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.card-header-hint {
+  font-size: 12px;
+  color: #909399;
+  font-weight: 400;
 }
 
 /* 流量卡片 */

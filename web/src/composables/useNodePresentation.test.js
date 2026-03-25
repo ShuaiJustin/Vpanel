@@ -4,9 +4,12 @@ import {
   formatCoreVersionCompact,
   formatUsersLimitDisplay,
   getNodeLatencyClass,
+  getNodeRegionFlag,
+  getNodeRegionLabel,
   getNodeStatusText,
   getNodeStatusType,
   getNodeSyncStatusText,
+  getProtocolDisplayName,
   parseNodeTags
 } from './useNodePresentation'
 
@@ -39,3 +42,12 @@ describe('useNodePresentation helpers', () => {
     expect(parseNodeTags('invalid')).toEqual([])
   })
 })
+
+
+  it('maps region and protocol presentation helpers', () => {
+    expect(getNodeRegionFlag('日本')).toBe('🇯🇵')
+    expect(getNodeRegionLabel('jp')).toBe('日本')
+    expect(getNodeRegionLabel('中国')).toBe('中国')
+    expect(getProtocolDisplayName('vmess')).toBe('VMess')
+    expect(getProtocolDisplayName('shadowsocks')).toBe('Shadowsocks')
+  })

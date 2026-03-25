@@ -56,6 +56,14 @@ type SubscriptionInfo struct {
 	Formats      []FormatInfo `json:"formats"`
 }
 
+// SubscriptionUserinfo represents the traffic and expiry metadata exposed to clients.
+type SubscriptionUserinfo struct {
+	Upload   int64
+	Download int64
+	Total    int64
+	Expire   int64
+}
+
 // FormatInfo represents information about a supported format.
 type FormatInfo struct {
 	Name        string `json:"name"`
@@ -286,6 +294,49 @@ func (s *Service) buildFormatLinks(baseLink string) []FormatInfo {
 // UpdateAccessStats updates the access statistics for a subscription.
 func (s *Service) UpdateAccessStats(ctx context.Context, subscriptionID int64, ip string, userAgent string) error {
 	return s.subscriptionRepo.UpdateAccessStats(ctx, subscriptionID, ip, userAgent)
+}
+
+// GetSubscriptionUserinfo returns subscription traffic and expiry metadata for clients.
+func (s *Service) GetSubscriptionUserinfo(ctx context.Context, userID int64) (*SubscriptionUserinfo, error) {
+	if s.entitlement != nil {
+		state, err := s.entitlement.EvaluateAccess(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+
+		userinfo := &SubscriptionUserinfo{
+			Upload:   0,
+			Download: normalizeSubscriptionMetric(state.EffectiveTrafficUsed),
+			Total:    normalizeSubscriptionMetric(state.EffectiveTrafficLimit),
+		}
+		if state.EffectiveExpiresAt != nil {
+			userinfo.Expire = state.EffectiveExpiresAt.UTC().Unix()
+		}
+		return userinfo, nil
+	}
+
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	userinfo := &SubscriptionUserinfo{
+		Upload:   0,
+		Download: normalizeSubscriptionMetric(user.TrafficUsed),
+		Total:    normalizeSubscriptionMetric(user.TrafficLimit),
+	}
+	if user.ExpiresAt != nil {
+		userinfo.Expire = user.ExpiresAt.UTC().Unix()
+	}
+
+	return userinfo, nil
+}
+
+func normalizeSubscriptionMetric(value int64) int64 {
+	if value < 0 {
+		return 0
+	}
+	return value
 }
 
 // CheckUserAccess checks if a user can access their subscription.

@@ -9,6 +9,9 @@
         <p class="page-subtitle">
           查看您的流量使用情况和历史记录
         </p>
+        <p class="page-hint">
+          {{ statsRefreshHint }}
+        </p>
       </div>
       <el-button
         :loading="exporting"
@@ -308,7 +311,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, nextTick, watch, computed } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, nextTick, watch, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { 
   Download, Upload, DataLine, Connection, Loading 
@@ -348,6 +351,21 @@ const chartData = ref({ labels: [], upload: [], download: [] })
 const customRangeWidth = computed(() => (isMobile.value ? '100%' : '320px'))
 
 // 日期快捷选项
+const statsRefreshHint = computed(() => {
+  const baseHint = '约每 30 秒自动刷新'
+  if (!statsUpdatedAt.value) return baseHint
+
+  const updatedAt = statsUpdatedAt.value instanceof Date
+    ? statsUpdatedAt.value
+    : new Date(statsUpdatedAt.value)
+
+  if (Number.isNaN(updatedAt.getTime())) {
+    return baseHint
+  }
+
+  return `${updatedAt.toLocaleTimeString('zh-CN', { hour12: false })} 更新 · ${baseHint}`
+})
+
 const dateShortcuts = [
   {
     text: '最近一周',
@@ -398,9 +416,17 @@ function handleCustomRange(range) {
   }
 }
 
-async function loadStats() {
-  loading.value = true
+async function loadStats(options = {}) {
+  if (statsRefreshInFlight.value) return
+
+  const { silent = false } = options
+  if (!silent) {
+    loading.value = true
+  }
+
   try {
+    statsRefreshInFlight.value = true
+
     const params = { period: timeRange.value }
     if (timeRange.value === 'custom' && customRange.value) {
       params.start_date = customRange.value[0].toISOString().split('T')[0]
@@ -408,26 +434,31 @@ async function loadStats() {
     }
 
     const data = await statsStore.fetchStats(params)
-    
-    // 安全地提取数据
+
     stats.upload = data?.summary?.upload || 0
     stats.download = data?.summary?.download || 0
     stats.total = data?.summary?.total || 0
     stats.nodes = data?.summary?.nodes || 0
-    
+
     nodeUsage.value = Array.isArray(data?.node_usage) ? data.node_usage : []
     protocolUsage.value = Array.isArray(data?.protocol_usage) ? data.protocol_usage : []
     records.value = Array.isArray(data?.records) ? data.records : []
     chartData.value = data?.chart_data || { labels: [], upload: [], download: [] }
+    statsUpdatedAt.value = new Date()
 
     await nextTick()
     renderTrafficChart()
     renderProtocolChart()
   } catch (error) {
     console.error('加载统计数据失败:', error)
-    ElMessage.error(error?.message || '加载统计数据失败，请稍后重试')
+    if (!silent) {
+      ElMessage.error(error?.message || '加载统计数据失败，请稍后重试')
+    }
   } finally {
-    loading.value = false
+    statsRefreshInFlight.value = false
+    if (!silent) {
+      loading.value = false
+    }
   }
 }
 
@@ -551,6 +582,27 @@ async function exportData() {
   }
 }
 
+function startStatsAutoRefresh() {
+  stopStatsAutoRefresh()
+  statsRefreshTimer = window.setInterval(() => {
+    if (document.visibilityState === 'hidden') return
+    loadStats({ silent: true })
+  }, STATS_REFRESH_INTERVAL)
+}
+
+function stopStatsAutoRefresh() {
+  if (statsRefreshTimer !== null) {
+    clearInterval(statsRefreshTimer)
+    statsRefreshTimer = null
+  }
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    loadStats({ silent: true })
+  }
+}
+
 // 监听图表类型变化
 watch(chartType, () => {
   renderTrafficChart()
@@ -558,6 +610,21 @@ watch(chartType, () => {
 
 onMounted(() => {
   loadStats()
+  startStatsAutoRefresh()
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+})
+
+onBeforeUnmount(() => {
+  stopStatsAutoRefresh()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  if (trafficChartInstance) {
+    trafficChartInstance.destroy()
+    trafficChartInstance = null
+  }
+  if (protocolChartInstance) {
+    protocolChartInstance.destroy()
+    protocolChartInstance = null
+  }
 })
 </script>
 
@@ -585,6 +652,12 @@ onMounted(() => {
   font-size: 14px;
   color: #909399;
   margin: 0;
+}
+
+.page-hint {
+  font-size: 12px;
+  color: #909399;
+  margin: 6px 0 0;
 }
 
 /* 时间选择器 */

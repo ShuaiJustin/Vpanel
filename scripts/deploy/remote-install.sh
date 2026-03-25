@@ -16,6 +16,7 @@ PANEL_URL="{{PANEL_URL}}"
 NODE_TOKEN="{{NODE_TOKEN}}"
 AGENT_VERSION="{{AGENT_VERSION}}"
 AGENT_DOWNLOAD_URL="{{AGENT_DOWNLOAD_URL}}"
+AGENT_HEALTH_PORT="${AGENT_HEALTH_PORT:-18443}"
 
 # 安装路径
 INSTALL_DIR="/usr/local/bin"
@@ -284,7 +285,7 @@ sync:
   interval: 5m
 
 health:
-  port: 18443
+  port: $AGENT_HEALTH_PORT
 
 log:
   level: "info"

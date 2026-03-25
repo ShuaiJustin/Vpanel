@@ -625,7 +625,7 @@ const overviewCards = computed(() => {
       label: '节点地址',
       value: node.value.address || '-',
       valueClass: 'overview-address',
-      meta: `端口 ${node.value.port} · ${node.value.region || '未设置地区'}`,
+      meta: `Agent 端口 ${node.value.port} · ${node.value.region || '未设置地区'}`,
       primary: true
     },
     {
@@ -670,7 +670,7 @@ const basicInfoItems = computed(() => {
     { label: 'ID', value: node.value.id },
     { label: '名称', value: node.value.name },
     { label: '地址', value: node.value.address },
-    { label: '端口', value: node.value.port },
+    { label: 'Agent 端口', value: node.value.port },
     { label: '地区', value: node.value.region || '-' },
     { label: '权重', value: node.value.weight },
     { label: '最大用户数', value: node.value.max_users || '无限制' },

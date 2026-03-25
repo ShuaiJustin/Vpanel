@@ -17,6 +17,9 @@ server:
   #   - 域名: "https://panel.example.com"
   #   - 内网 IP (仅限内网部署): "http://192.168.1.100:8080"
   public_url: ""  # 留空将导致远程部署失败
+  # Subscription clients suggested update interval (hours)
+  # 对应订阅响应头: Profile-Update-Interval
+  subscription_update_interval: 24
   # Read timeout for HTTP requests
   read_timeout: "30s"
   # Write timeout for HTTP responses

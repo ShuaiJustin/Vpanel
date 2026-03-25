@@ -3,6 +3,8 @@ package node
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -36,16 +38,19 @@ func (s *Service) WithEntitlementService(entitlementService *entitlement.Service
 
 // Node represents a proxy node for the user portal.
 type Node struct {
-	ID       int64  `json:"id"`
-	Name     string `json:"name"`
-	Protocol string `json:"protocol"`
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Region   string `json:"region"`
-	Status   string `json:"status"`            // online, offline, maintenance
-	Load     int    `json:"load"`              // 0-100 percentage
-	Latency  int    `json:"latency,omitempty"` // milliseconds, -1 if not tested
-	NodeID   *int64 `json:"-"`                 // underlying deployed node ID (not exposed to portal clients)
+	ID            int64  `json:"id"`
+	Name          string `json:"name"`
+	Subtitle      string `json:"subtitle,omitempty"`
+	Protocol      string `json:"protocol"`
+	ProtocolLabel string `json:"protocol_label,omitempty"`
+	Host          string `json:"host"`
+	Port          int    `json:"port"`
+	Region        string `json:"region"`
+	RegionLabel   string `json:"region_label,omitempty"`
+	Status        string `json:"status"`            // online, offline, unhealthy
+	Load          int    `json:"load"`              // 0-100 percentage
+	Latency       int    `json:"latency,omitempty"` // milliseconds, -1 if not tested
+	NodeID        *int64 `json:"-"`                 // underlying deployed node ID (not exposed to portal clients)
 }
 
 // NodeFilter represents filter options for listing nodes.
@@ -251,6 +256,126 @@ func GetAvailableProtocols(nodes []*Node) []string {
 	return protocols
 }
 
+func isGenericPortalProxyRemark(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	switch normalized {
+	case "auto provisioned", "auto-provisioned":
+		return true
+	default:
+		return false
+	}
+}
+
+func looksGeneratedPortalProxyName(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	return strings.HasPrefix(normalized, "node-") || isGenericPortalProxyRemark(normalized)
+}
+
+func getPortalProtocolLabel(protocol string) string {
+	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	case "vmess":
+		return "VMess"
+	case "vless":
+		return "VLESS"
+	case "trojan":
+		return "Trojan"
+	case "shadowsocks", "ss":
+		return "Shadowsocks"
+	default:
+		return strings.ToUpper(strings.TrimSpace(protocol))
+	}
+}
+
+func normalizePortalRegionLabel(region string) string {
+	normalized := strings.ToLower(strings.TrimSpace(region))
+	switch normalized {
+	case "hk", "hong kong", "hongkong", "香港":
+		return "香港"
+	case "tw", "taiwan", "台湾":
+		return "台湾"
+	case "jp", "japan", "日本":
+		return "日本"
+	case "sg", "singapore", "新加坡":
+		return "新加坡"
+	case "us", "usa", "united states", "美国":
+		return "美国"
+	case "kr", "korea", "south korea", "韩国":
+		return "韩国"
+	case "de", "germany", "德国":
+		return "德国"
+	case "uk", "britain", "united kingdom", "英国":
+		return "英国"
+	case "cn", "china", "中国":
+		return "中国"
+	default:
+		return strings.TrimSpace(region)
+	}
+}
+
+func buildPortalNodeName(proxyModel *repository.Proxy, nodeModel *repository.Node, protocolLabel, resolvedHost string) string {
+	if nodeModel != nil && strings.TrimSpace(nodeModel.Name) != "" {
+		return strings.TrimSpace(nodeModel.Name)
+	}
+	if name := strings.TrimSpace(proxyModel.Name); name != "" && !looksGeneratedPortalProxyName(name) {
+		return name
+	}
+	if remark := strings.TrimSpace(proxyModel.Remark); remark != "" && !isGenericPortalProxyRemark(remark) {
+		return remark
+	}
+	if protocolLabel == "" {
+		protocolLabel = "节点"
+	}
+	if resolvedHost != "" && proxyModel.Port > 0 {
+		return fmt.Sprintf("%s · %s:%d", protocolLabel, resolvedHost, proxyModel.Port)
+	}
+	if resolvedHost != "" {
+		return fmt.Sprintf("%s · %s", protocolLabel, resolvedHost)
+	}
+	return protocolLabel
+}
+
+func buildPortalNodeSubtitle(protocolLabel, resolvedHost string, port int) string {
+	parts := make([]string, 0, 2)
+	if protocolLabel != "" {
+		parts = append(parts, protocolLabel)
+	}
+	if resolvedHost != "" {
+		if port > 0 {
+			parts = append(parts, fmt.Sprintf("%s:%d", resolvedHost, port))
+		} else {
+			parts = append(parts, resolvedHost)
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
+func resolvePortalNodeLoad(nodeModel *repository.Node) int {
+	if nodeModel == nil {
+		return 0
+	}
+	if nodeModel.CPUUsage > 0 {
+		load := int(math.Round(nodeModel.CPUUsage))
+		if load < 0 {
+			return 0
+		}
+		if load > 100 {
+			return 100
+		}
+		return load
+	}
+	if nodeModel.MaxUsers > 0 {
+		load := int(math.Round(float64(nodeModel.CurrentUsers) * 100 / float64(nodeModel.MaxUsers)))
+		if load < 0 {
+			return 0
+		}
+		if load > 100 {
+			return 100
+		}
+		return load
+	}
+	return 0
+}
+
 // proxyToNode converts a Proxy to a Node and resolves a client-connectable host.
 func (s *Service) proxyToNode(ctx context.Context, p *repository.Proxy) *Node {
 	resolvedHost := ""
@@ -259,9 +384,14 @@ func (s *Service) proxyToNode(ctx context.Context, p *repository.Proxy) *Node {
 			resolvedHost = proxylib.NormalizeShareHost(explicitServer)
 		}
 	}
-	if resolvedHost == "" && p.NodeID != nil && s.nodeRepo != nil {
+
+	var nodeModel *repository.Node
+	if p.NodeID != nil && s.nodeRepo != nil {
 		if n, err := s.nodeRepo.GetByID(ctx, *p.NodeID); err == nil {
-			resolvedHost = proxylib.NormalizeShareHost(n.Address)
+			nodeModel = n
+			if resolvedHost == "" {
+				resolvedHost = proxylib.NormalizeShareHost(n.Address)
+			}
 		}
 	}
 	if resolvedHost == "" {
@@ -271,35 +401,53 @@ func (s *Service) proxyToNode(ctx context.Context, p *repository.Proxy) *Node {
 		resolvedHost = p.Host
 	}
 
+	protocolLabel := getPortalProtocolLabel(p.Protocol)
 	node := &Node{
-		ID:       p.ID,
-		Name:     p.Name,
-		Protocol: p.Protocol,
-		Host:     resolvedHost,
-		Port:     p.Port,
-		Status:   "online", // Default to online if enabled
-		Load:     0,
-		Latency:  -1, // Not tested
-		NodeID:   p.NodeID,
+		ID:            p.ID,
+		Name:          buildPortalNodeName(p, nodeModel, protocolLabel, resolvedHost),
+		Subtitle:      buildPortalNodeSubtitle(protocolLabel, resolvedHost, p.Port),
+		Protocol:      p.Protocol,
+		ProtocolLabel: protocolLabel,
+		Host:          resolvedHost,
+		Port:          p.Port,
+		Status:        "online",
+		Load:          0,
+		Latency:       -1,
+		NodeID:        p.NodeID,
 	}
 
-	// Extract region from settings if available
+	if nodeModel != nil {
+		if strings.TrimSpace(nodeModel.Region) != "" {
+			node.Region = strings.TrimSpace(nodeModel.Region)
+		}
+		if strings.TrimSpace(nodeModel.Status) != "" {
+			node.Status = strings.TrimSpace(nodeModel.Status)
+		}
+		node.Load = resolvePortalNodeLoad(nodeModel)
+	}
+
 	if p.Settings != nil {
-		if region, ok := p.Settings["region"].(string); ok {
-			node.Region = region
+		if node.Region == "" {
+			if region, ok := p.Settings["region"].(string); ok {
+				node.Region = strings.TrimSpace(region)
+			}
 		}
-		if load, ok := p.Settings["load"].(float64); ok {
-			node.Load = int(load)
+		if node.Load == 0 {
+			if load, ok := p.Settings["load"].(float64); ok {
+				node.Load = int(load)
+			}
 		}
-		if status, ok := p.Settings["status"].(string); ok {
-			node.Status = status
+		if node.Status == "online" {
+			if status, ok := p.Settings["status"].(string); ok && strings.TrimSpace(status) != "" {
+				node.Status = strings.TrimSpace(status)
+			}
 		}
 	}
 
-	// If no region in settings, try to extract from name or remark
-	if node.Region == "" && p.Remark != "" {
-		node.Region = p.Remark
+	if node.Region == "" && p.Remark != "" && !isGenericPortalProxyRemark(p.Remark) {
+		node.Region = strings.TrimSpace(p.Remark)
 	}
+	node.RegionLabel = normalizePortalRegionLabel(node.Region)
 
 	return node
 }

@@ -615,7 +615,7 @@ const summaryCards = computed(() => {
       label: '节点地址',
       value: node.value.address || '-',
       valueClass: 'summary-value-address',
-      meta: `端口 ${node.value.port} · ${node.value.region || '未设置地区'}`,
+      meta: `Agent 端口 ${node.value.port} · ${node.value.region || '未设置地区'}`,
       metaTitle: '',
       primary: true
     },

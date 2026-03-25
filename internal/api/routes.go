@@ -176,7 +176,7 @@ func (r *Router) Setup() {
 		r.logger,
 		r.config.GetBaseURL(),
 	).WithNodeRepository(r.repos.Node)
-	subscriptionHandler := handlers.NewSubscriptionHandler(subscriptionService, r.logger)
+	subscriptionHandler := handlers.NewSubscriptionHandler(subscriptionService, r.logger, r.config.Server.SubscriptionUpdateInterval)
 
 	// Create commercial services
 	planService := plan.NewService(r.repos.Plan, r.logger)

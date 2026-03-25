@@ -181,9 +181,13 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     }
   }
 
-  async function fetchProfile() {
+  async function fetchProfile(options = {}) {
     if (!token.value) return
-    loading.value = true
+
+    const { silent = false } = options
+    if (!silent) {
+      loading.value = true
+    }
     error.value = null
     try {
       const response = await authApi.getProfile()
@@ -194,7 +198,9 @@ export const useUserPortalStore = defineStore('userPortal', () => {
       error.value = err.message || '获取用户信息失败'
       throw err
     } finally {
-      loading.value = false
+      if (!silent) {
+        loading.value = false
+      }
     }
   }
 

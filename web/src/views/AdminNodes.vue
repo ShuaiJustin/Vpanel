@@ -517,7 +517,7 @@
             :closable="false"
             style="margin-bottom: 16px"
           >
-            手动安装模式需要提供节点地址和端口，用于后续连接
+            手动安装模式需要提供节点地址和 Agent 端口，用于后续连接
           </el-alert>
 
           <el-form-item
@@ -531,7 +531,7 @@
           </el-form-item>
 
           <el-form-item
-            label="节点端口"
+            label="Agent 端口"
             prop="port"
           >
             <el-input-number
@@ -540,7 +540,7 @@
               :max="65535"
               style="width: 100%"
             />
-            <span class="form-tip">Agent 监听端口，默认 18443</span>
+            <span class="form-tip">Agent 监听端口，修改后需与面板记录和防火墙放行保持一致</span>
           </el-form-item>
         </template>
 
@@ -1751,7 +1751,7 @@ const submitForm = async () => {
     if (form.installMethod === "auto") {
       // 使用 SSH 地址作为节点地址
       data.address = form.ssh_host;
-      data.port = 18443; // Agent 默认端口
+      data.port = form.port || 18443; // Agent 默认端口
 
       // 添加 SSH 配置
       data.ssh = {
@@ -2556,5 +2556,25 @@ onUnmounted(() => {
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+/* ── dark mode ── */
+:root.dark .node-address {
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.14);
+}
+
+:root.dark .toolbar-chip {
+  background: rgba(100, 116, 139, 0.18);
+  color: #94a3b8;
+}
+
+:root.dark .toolbar-chip--primary {
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.16);
+}
+
+:root.dark .admin-nodes-page :deep(.row-action--primary) {
+  background: rgba(59, 130, 246, 0.14);
 }
 </style>

@@ -759,6 +759,60 @@ onMounted(async () => {
   color: var(--el-color-danger);
 }
 
+/* ── dark mode ── */
+:root.dark .overview-card {
+  background: rgba(30, 41, 59, 0.7);
+  border-color: rgba(100, 116, 139, 0.22);
+}
+
+:root.dark .toolbar-card {
+  background: rgba(30, 41, 59, 0.7);
+  border-color: rgba(100, 116, 139, 0.22);
+}
+
+:root.dark .toolbar-chip {
+  background: rgba(100, 116, 139, 0.18);
+  color: #94a3b8;
+}
+
+:root.dark .toolbar-chip--primary {
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.16);
+}
+
+:root.dark .status-metric-card {
+  background: rgba(51, 65, 85, 0.5);
+  border-color: rgba(100, 116, 139, 0.2);
+}
+
+:root.dark .status-metric-value {
+  color: #e2e8f0;
+}
+
+:root.dark .metric-label {
+  color: #94a3b8;
+}
+
+:root.dark .metric-value {
+  color: #cbd5e1;
+}
+
+:root.dark .entity-title {
+  color: #f1f5f9;
+}
+
+:root.dark .entity-meta {
+  color: #94a3b8;
+}
+
+:root.dark .section-title {
+  color: #f1f5f9;
+}
+
+:root.dark .section-subtitle {
+  color: #94a3b8;
+}
+
 @media (max-width: 768px) {
   .node-operations-index-page {
     padding: 12px;

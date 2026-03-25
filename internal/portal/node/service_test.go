@@ -2,6 +2,8 @@
 package node
 
 import (
+	"v/internal/database/repository"
+
 	"sort"
 	"strings"
 	"testing"
@@ -629,5 +631,33 @@ func TestGetAvailableProtocols_Sorted(t *testing.T) {
 	protocols := GetAvailableProtocols(nodes)
 	if !sort.StringsAreSorted(protocols) {
 		t.Error("Protocols should be sorted")
+	}
+}
+
+func TestBuildPortalNodeName_PrefersUnderlyingNodeName(t *testing.T) {
+	proxyModel := &repository.Proxy{
+		Name:     "node-64-176-54-36-103738-vmess",
+		Remark:   "auto provisioned",
+		Protocol: "vmess",
+		Host:     "64.176.54.36",
+		Port:     20001,
+	}
+	nodeModel := &repository.Node{
+		Name:   "日本-大阪-36",
+		Region: "日本",
+	}
+
+	got := buildPortalNodeName(proxyModel, nodeModel, "VMess", "64.176.54.36")
+	if got != "日本-大阪-36" {
+		t.Fatalf("expected underlying node name, got %q", got)
+	}
+}
+
+func TestNormalizePortalRegionLabel_SupportsLocalizedValues(t *testing.T) {
+	if got := normalizePortalRegionLabel("jp"); got != "日本" {
+		t.Fatalf("expected 日本, got %q", got)
+	}
+	if got := normalizePortalRegionLabel("中国"); got != "中国" {
+		t.Fatalf("expected 中国, got %q", got)
 	}
 }
