@@ -25,6 +25,8 @@
   /* 背景颜色 */
   --color-bg-page: #f5f7fa;
   --color-bg-card: #ffffff;
+  --color-bg-elevated: #ffffff;
+  --color-bg-elevated-hover: #f8fafc;
   --color-bg-overlay: rgba(0, 0, 0, 0.5);
   
   /* 边框颜色 */
@@ -70,6 +72,8 @@
   /* 背景颜色 - 使用更柔和的深灰色而非纯黑 */
   --color-bg-page: #1e1e1e;
   --color-bg-card: #282828;
+  --color-bg-elevated: #323842;
+  --color-bg-elevated-hover: #39424d;
   --color-bg-overlay: rgba(0, 0, 0, 0.7);
   
   /* 边框颜色 - 调整为更明显的边框 */
@@ -127,8 +131,18 @@ body {
 }
 
 .dark .el-input__wrapper {
-  background-color: var(--color-bg-card);
-  box-shadow: 0 0 0 1px var(--color-border) inset;
+  background-color: var(--color-bg-elevated);
+  box-shadow: 0 0 0 1px rgba(107, 114, 128, 0.42) inset, 0 10px 24px rgba(0, 0, 0, 0.12);
+  transition: background-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.dark .el-select__wrapper,
+.dark .el-input-number,
+.dark .el-date-editor.el-input__wrapper,
+.dark .el-date-editor .el-input__wrapper {
+  background-color: var(--color-bg-elevated);
+  box-shadow: 0 0 0 1px rgba(107, 114, 128, 0.42) inset, 0 10px 24px rgba(0, 0, 0, 0.12);
+  transition: background-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .dark .el-input__inner,
@@ -138,11 +152,29 @@ body {
 }
 
 .dark .el-input__wrapper:hover {
-  box-shadow: 0 0 0 1px var(--color-border-dark) inset;
+  background-color: var(--color-bg-elevated-hover);
+  box-shadow: 0 0 0 1px rgba(156, 163, 175, 0.5) inset, 0 12px 28px rgba(0, 0, 0, 0.16);
+}
+
+.dark .el-select__wrapper:hover,
+.dark .el-input-number:hover,
+.dark .el-date-editor.el-input__wrapper:hover,
+.dark .el-date-editor .el-input__wrapper:hover,
+.dark .el-input-number:focus-within {
+  background-color: var(--color-bg-elevated-hover);
+  box-shadow: 0 0 0 1px rgba(156, 163, 175, 0.5) inset, 0 12px 28px rgba(0, 0, 0, 0.16);
 }
 
 .dark .el-input__wrapper.is-focus {
-  box-shadow: 0 0 0 1px var(--color-primary) inset;
+  background-color: var(--color-bg-elevated-hover);
+  box-shadow: 0 0 0 1px var(--color-primary) inset, 0 0 0 3px rgba(64, 158, 255, 0.12), 0 12px 28px rgba(0, 0, 0, 0.18);
+}
+
+.dark .el-select__wrapper.is-focused,
+.dark .el-date-editor.el-input__wrapper.is-focus,
+.dark .el-date-editor .el-input__wrapper.is-focus {
+  background-color: var(--color-bg-elevated-hover);
+  box-shadow: 0 0 0 1px var(--color-primary) inset, 0 0 0 3px rgba(64, 158, 255, 0.12), 0 12px 28px rgba(0, 0, 0, 0.18);
 }
 
 .dark .el-button--default {

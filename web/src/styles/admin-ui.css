@@ -27,6 +27,9 @@
   --admin-surface: rgba(15, 23, 42, 0.78);
   --admin-surface-strong: rgba(15, 23, 42, 0.92);
   --admin-surface-soft: rgba(30, 41, 59, 0.76);
+  --admin-control-bg: rgba(51, 65, 85, 0.96);
+  --admin-control-bg-hover: rgba(71, 85, 105, 0.98);
+  --admin-control-border: rgba(148, 163, 184, 0.46);
   --admin-border: rgba(100, 116, 139, 0.28);
   --admin-border-strong: rgba(100, 116, 139, 0.36);
   --admin-shadow: 0 22px 54px rgba(2, 6, 23, 0.42);
@@ -1097,13 +1100,100 @@
 
 /* toolbar chips */
 .app-container.dark-mode .content .toolbar-chip {
+  border: 1px solid rgba(100, 116, 139, 0.22);
   background: rgba(100, 116, 139, 0.18);
   color: #94a3b8;
 }
 
 .app-container.dark-mode .content .toolbar-chip--primary {
+  border-color: rgba(59, 130, 246, 0.24);
   color: #93c5fd;
   background: rgba(59, 130, 246, 0.16);
+}
+
+.app-container.dark-mode .content .toolbar-chip--warning {
+  border-color: rgba(245, 158, 11, 0.26);
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.16);
+}
+
+.app-container.dark-mode .content .toolbar-chip--danger {
+  border-color: rgba(239, 68, 68, 0.26);
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.16);
+}
+
+.app-container.dark-mode .content .toolbar-chip--button:hover,
+.app-container.dark-mode .content .toolbar-chip--button:focus-visible {
+  filter: brightness(1.06);
+}
+
+.app-container.dark-mode .content .toolbar-card {
+  border-color: rgba(100, 116, 139, 0.3);
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.94) 0%, rgba(17, 24, 39, 0.9) 100%);
+}
+
+.app-container.dark-mode .content :is(.toolbar-card, .filter-bar, .search-card, .orders-toolbar-card) :is(.el-input__wrapper, .el-select__wrapper, .el-input-number, .el-date-editor.el-input__wrapper, .el-date-editor .el-input__wrapper) {
+  background: rgba(51, 65, 85, 0.98) !important;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.48) inset, 0 12px 28px rgba(2, 6, 23, 0.22) !important;
+}
+
+.app-container.dark-mode .content :is(.toolbar-card, .filter-bar, .search-card, .orders-toolbar-card) :is(.el-input__wrapper:hover, .el-select__wrapper:hover, .el-input-number:hover, .el-date-editor.el-input__wrapper:hover, .el-date-editor .el-input__wrapper:hover, .el-input__wrapper.is-focus, .el-select__wrapper.is-focused, .el-date-editor.el-input__wrapper.is-focus, .el-date-editor .el-input__wrapper.is-focus, .el-input-number:focus-within) {
+  background: rgba(71, 85, 105, 0.98) !important;
+  box-shadow: 0 0 0 1px rgba(191, 219, 254, 0.56) inset, 0 0 0 3px rgba(59, 130, 246, 0.12), 0 12px 28px rgba(2, 6, 23, 0.24) !important;
+}
+
+.app-container.dark-mode .content :is(.toolbar-card, .filter-bar, .search-card, .orders-toolbar-card) :is(.el-input__inner::placeholder, .el-select__placeholder) {
+  color: #cbd5e1 !important;
+}
+
+.app-container.dark-mode .content :is(.toolbar-card, .filter-bar, .search-card, .orders-toolbar-card) :is(.el-input__prefix-inner, .el-input__suffix-inner, .el-input__icon, .el-input__clear, .el-select__caret, .el-select__icon, .el-select__wrapper .el-icon) {
+  color: #cbd5e1 !important;
+}
+
+.app-container.dark-mode .content .toolbar-title,
+.app-container.dark-mode .content .section-title {
+  color: var(--admin-title);
+}
+
+.app-container.dark-mode .content .toolbar-description,
+.app-container.dark-mode .content .section-subtitle,
+.app-container.dark-mode .content .toolbar-summary {
+  color: var(--admin-text-muted);
+}
+
+.app-container.dark-mode .content .status-metric-card,
+.app-container.dark-mode .content .traffic-risk-card,
+.app-container.dark-mode .content .traffic-workspace,
+.app-container.dark-mode .content .refund-summary {
+  border-color: rgba(100, 116, 139, 0.22);
+  background: rgba(30, 41, 59, 0.62);
+  color: var(--admin-text);
+}
+
+.app-container.dark-mode .content .traffic-workspace {
+  background:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.82), rgba(15, 23, 42, 0.72));
+}
+
+.app-container.dark-mode .content .traffic-risk-card {
+  background: rgba(15, 23, 42, 0.78);
+}
+
+.app-container.dark-mode .content .refund-summary p,
+.app-container.dark-mode .content .traffic-risk-card__meta,
+.app-container.dark-mode .content .metric-subtle,
+.app-container.dark-mode .content .metric-label,
+.app-container.dark-mode .content .entity-meta {
+  color: var(--admin-text-muted);
+}
+
+.app-container.dark-mode .content .traffic-risk-card__title,
+.app-container.dark-mode .content .status-metric-value,
+.app-container.dark-mode .content .entity-title,
+.app-container.dark-mode .content .metric-value {
+  color: var(--admin-text);
 }
 
 /* surface inline (hint cards inside table rows) */
@@ -1149,12 +1239,37 @@
 .app-container.dark-mode .content .el-input-number,
 .app-container.dark-mode .content .el-date-editor.el-input__wrapper,
 .app-container.dark-mode .content .el-date-editor .el-input__wrapper {
-  box-shadow: 0 0 0 1px rgba(100, 116, 139, 0.28) inset !important;
-  background: var(--admin-surface-strong) !important;
+  color-scheme: dark;
+  box-shadow: 0 0 0 1px var(--admin-control-border) inset, 0 10px 24px rgba(2, 6, 23, 0.2) !important;
+  background: var(--admin-control-bg) !important;
+}
+
+.app-container.dark-mode .content .el-input__wrapper:hover,
+.app-container.dark-mode .content .el-textarea__inner:hover,
+.app-container.dark-mode .content .el-select__wrapper:hover,
+.app-container.dark-mode .content .el-input-number:hover,
+.app-container.dark-mode .content .el-date-editor.el-input__wrapper:hover,
+.app-container.dark-mode .content .el-date-editor .el-input__wrapper:hover,
+.app-container.dark-mode .content .el-input-number:focus-within {
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.42) inset, 0 12px 28px rgba(2, 6, 23, 0.24) !important;
+  background: var(--admin-control-bg-hover) !important;
+}
+
+.app-container.dark-mode .content .el-input__wrapper.is-focus,
+.app-container.dark-mode .content .el-select__wrapper.is-focused,
+.app-container.dark-mode .content .el-date-editor.el-input__wrapper.is-focus,
+.app-container.dark-mode .content .el-date-editor .el-input__wrapper.is-focus,
+.app-container.dark-mode .content .el-textarea__inner:focus {
+  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.72) inset, 0 0 0 3px rgba(59, 130, 246, 0.14), 0 12px 28px rgba(2, 6, 23, 0.24) !important;
+  background: var(--admin-control-bg-hover) !important;
 }
 
 .app-container.dark-mode .content .el-input__inner,
 .app-container.dark-mode .content .el-textarea__inner,
+.app-container.dark-mode .content .el-input__wrapper input,
+.app-container.dark-mode .content .el-input__wrapper textarea,
+.app-container.dark-mode .content .toolbar-search input,
+.app-container.dark-mode .content .search-input input,
 .app-container.dark-mode .content .el-input__prefix,
 .app-container.dark-mode .content .el-input__prefix-inner,
 .app-container.dark-mode .content .el-input__suffix,
@@ -1165,7 +1280,12 @@
 .app-container.dark-mode .content .el-select__input,
 .app-container.dark-mode .content .el-select__tags-text {
   background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
   color: var(--admin-text) !important;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .app-container.dark-mode .content .el-select__placeholder,
@@ -1205,7 +1325,7 @@
 .app-container.dark-mode .content .el-input__inner:-webkit-autofill:active {
   -webkit-text-fill-color: var(--admin-text) !important;
   caret-color: var(--admin-text) !important;
-  box-shadow: 0 0 0 1000px var(--admin-surface-strong) inset !important;
+  box-shadow: 0 0 0 1000px var(--admin-control-bg) inset !important;
   transition: background-color 9999s ease-out 0s;
 }
 

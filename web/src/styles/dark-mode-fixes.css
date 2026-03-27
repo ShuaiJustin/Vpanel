@@ -95,15 +95,16 @@
 }
 
 /* 输入框 */
-.dark .el-input__inner {
-  background-color: var(--color-bg-card) !important;
-  border-color: var(--color-border) !important;
+.dark .el-input__inner,
+.dark .el-select__selection,
+.dark .el-select__selected-item,
+.dark .el-select__placeholder,
+.dark .el-select__input {
+  background: transparent !important;
+  background-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
   color: var(--color-text-primary) !important;
-}
-
-/* 选择器 */
-.dark .el-select .el-input__inner {
-  background-color: var(--color-bg-card) !important;
 }
 
 /* 下拉菜单 */
@@ -407,10 +408,39 @@
   box-shadow: var(--admin-shadow-soft, var(--shadow-sm)) !important;
 }
 
+.dark .toolbar-card {
+  background:
+    linear-gradient(180deg, var(--admin-surface-strong, var(--color-bg-card)) 0%, var(--admin-surface, var(--color-bg-card)) 100%) !important;
+}
+
 .dark .hero-card {
   background:
     radial-gradient(circle at top right, rgba(96, 165, 250, 0.12), transparent 32%),
     linear-gradient(135deg, var(--admin-surface-strong, var(--color-bg-card)) 0%, var(--admin-surface-soft, var(--color-border-light)) 100%) !important;
+}
+
+/* 搜索头图与搜索输入额外提亮，避免暗黑模式下融入背景 */
+.dark .search-section .el-input__wrapper {
+  background: rgba(255, 255, 255, 0.16) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.24) inset, 0 12px 28px rgba(15, 23, 42, 0.16) !important;
+}
+
+.dark .search-section .el-input__wrapper:hover,
+.dark .search-section .el-input__wrapper.is-focus {
+  background: rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3) inset, 0 0 0 3px rgba(255, 255, 255, 0.08), 0 12px 28px rgba(15, 23, 42, 0.2) !important;
+}
+
+.dark .search-section .el-input__inner,
+.dark .search-section .el-input__prefix-inner,
+.dark .search-section .el-input__suffix-inner,
+.dark .search-section .el-input__clear,
+.dark .search-section .el-input__icon {
+  color: #fff !important;
+}
+
+.dark .search-section .el-input__inner::placeholder {
+  color: rgba(255, 255, 255, 0.74) !important;
 }
 
 .dark .metric-card--good,
@@ -1010,3 +1040,50 @@
 .dark .inbounds-page :is(.cert-input, .expiry-readonly, .fallback-item) {
   color: var(--admin-text, var(--color-text-primary)) !important;
 }
+
+/* 暗黑模式搜索/筛选控件统一背景 */
+.dark :is(.toolbar-card, .filter-bar, .orders-toolbar-card, .toolbar-filters, .filter-left, .filter-right, .orders-toolbar) :is(.el-input, .el-select, .el-date-editor, .el-input-number) {
+  --el-input-bg-color: rgba(51, 65, 85, 0.98) !important;
+  --el-fill-color-blank: rgba(51, 65, 85, 0.98) !important;
+  --el-fill-color-light: rgba(71, 85, 105, 0.96) !important;
+  --el-fill-color-lighter: rgba(71, 85, 105, 0.92) !important;
+  --el-border-color: rgba(148, 163, 184, 0.48) !important;
+  --el-border-color-hover: rgba(191, 219, 254, 0.56) !important;
+  --el-input-border-color: rgba(148, 163, 184, 0.48) !important;
+  --el-input-hover-border-color: rgba(191, 219, 254, 0.56) !important;
+  --el-input-focus-border-color: rgba(96, 165, 250, 0.88) !important;
+  --el-input-placeholder-color: #cbd5e1 !important;
+  --el-input-icon-color: #cbd5e1 !important;
+  --el-select-input-color: #cbd5e1 !important;
+  --el-text-color-placeholder: #cbd5e1 !important;
+}
+
+.dark :is(.toolbar-card, .filter-bar, .orders-toolbar-card, .toolbar-filters, .filter-left, .filter-right, .orders-toolbar) :is(.el-input__wrapper, .el-select__wrapper, .el-input-number, .el-date-editor.el-input__wrapper, .el-date-editor .el-input__wrapper) {
+  background: rgba(51, 65, 85, 0.98) !important;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.48) inset, 0 10px 24px rgba(2, 6, 23, 0.22) !important;
+}
+
+.dark :is(.toolbar-card, .filter-bar, .orders-toolbar-card, .toolbar-filters, .filter-left, .filter-right, .orders-toolbar) :is(.el-input__wrapper:hover, .el-select__wrapper:hover, .el-input-number:hover, .el-date-editor.el-input__wrapper:hover, .el-date-editor .el-input__wrapper:hover, .el-input__wrapper.is-focus, .el-select__wrapper.is-focused, .el-date-editor.el-input__wrapper.is-focus, .el-date-editor .el-input__wrapper.is-focus, .el-input-number:focus-within) {
+  background: rgba(71, 85, 105, 0.98) !important;
+  box-shadow: 0 0 0 1px rgba(191, 219, 254, 0.56) inset, 0 0 0 3px rgba(59, 130, 246, 0.12), 0 12px 28px rgba(2, 6, 23, 0.24) !important;
+}
+
+.dark :is(.toolbar-card, .filter-bar, .orders-toolbar-card, .toolbar-filters, .filter-left, .filter-right, .orders-toolbar) :is(.el-input__inner, .el-textarea__inner, .el-input__wrapper input, .el-input__wrapper textarea, .el-select__selection, .el-select__selected-item, .el-select__placeholder, .el-select__input, .el-select__tags-text) {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.dark :is(.toolbar-card, .filter-bar, .orders-toolbar-card, .toolbar-filters, .filter-left, .filter-right, .orders-toolbar) :is(.el-input__inner, .el-textarea__inner, .el-input__wrapper input, .el-input__wrapper textarea, .el-select__selected-item, .el-select__input, .el-select__tags-text) {
+  color: var(--admin-text, var(--color-text-primary)) !important;
+}
+
+.dark :is(.toolbar-card, .filter-bar, .orders-toolbar-card, .toolbar-filters, .filter-left, .filter-right, .orders-toolbar) :is(.el-input__inner::placeholder, .el-textarea__inner::placeholder, .el-select__placeholder) {
+  color: #cbd5e1 !important;
+}
+
+.dark :is(.toolbar-card, .filter-bar, .orders-toolbar-card, .toolbar-filters, .filter-left, .filter-right, .orders-toolbar) :is(.el-input__prefix-inner, .el-input__suffix-inner, .el-input__icon, .el-input__clear, .el-select__caret, .el-select__icon, .el-select__wrapper .el-icon) {
+  color: #cbd5e1 !important;
+}
+/* 暗黑模式搜索/筛选控件统一背景结束 */
