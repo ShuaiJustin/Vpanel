@@ -7,6 +7,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"time"
 
 	"v/internal/database/repository"
 	"v/internal/entitlement"
@@ -38,19 +39,23 @@ func (s *Service) WithEntitlementService(entitlementService *entitlement.Service
 
 // Node represents a proxy node for the user portal.
 type Node struct {
-	ID            int64  `json:"id"`
-	Name          string `json:"name"`
-	Subtitle      string `json:"subtitle,omitempty"`
-	Protocol      string `json:"protocol"`
-	ProtocolLabel string `json:"protocol_label,omitempty"`
-	Host          string `json:"host"`
-	Port          int    `json:"port"`
-	Region        string `json:"region"`
-	RegionLabel   string `json:"region_label,omitempty"`
-	Status        string `json:"status"`            // online, offline, unhealthy
-	Load          int    `json:"load"`              // 0-100 percentage
-	Latency       int    `json:"latency,omitempty"` // milliseconds, -1 if not tested
-	NodeID        *int64 `json:"-"`                 // underlying deployed node ID (not exposed to portal clients)
+	ID                    int64   `json:"id"`
+	Name                  string  `json:"name"`
+	Subtitle              string  `json:"subtitle,omitempty"`
+	Protocol              string  `json:"protocol"`
+	ProtocolLabel         string  `json:"protocol_label,omitempty"`
+	Host                  string  `json:"host"`
+	Port                  int     `json:"port"`
+	Region                string  `json:"region"`
+	RegionLabel           string  `json:"region_label,omitempty"`
+	Status                string  `json:"status"`            // online, offline, unhealthy
+	Load                  int     `json:"load"`              // 0-100 percentage
+	Latency               int     `json:"latency,omitempty"` // milliseconds, -1 if not tested
+	TrafficTotal          int64   `json:"traffic_total,omitempty"`
+	TrafficLimit          int64   `json:"traffic_limit,omitempty"`
+	TrafficResetAt        string  `json:"traffic_reset_at,omitempty"`
+	AlertTrafficThreshold float64 `json:"alert_traffic_threshold,omitempty"`
+	NodeID                *int64  `json:"-"` // underlying deployed node ID (not exposed to portal clients)
 }
 
 // NodeFilter represents filter options for listing nodes.
@@ -424,6 +429,12 @@ func (s *Service) proxyToNode(ctx context.Context, p *repository.Proxy) *Node {
 			node.Status = strings.TrimSpace(nodeModel.Status)
 		}
 		node.Load = resolvePortalNodeLoad(nodeModel)
+		node.TrafficTotal = nodeModel.TrafficTotal
+		node.TrafficLimit = nodeModel.TrafficLimit
+		node.AlertTrafficThreshold = nodeModel.AlertTrafficThreshold
+		if nodeModel.TrafficResetAt != nil {
+			node.TrafficResetAt = nodeModel.TrafficResetAt.UTC().Format(time.RFC3339)
+		}
 	}
 
 	if p.Settings != nil {

@@ -131,6 +131,12 @@ body {
   box-shadow: 0 0 0 1px var(--color-border) inset;
 }
 
+.dark .el-input__inner,
+.dark .el-textarea__inner {
+  background-color: transparent;
+  color: var(--color-text-primary);
+}
+
 .dark .el-input__wrapper:hover {
   box-shadow: 0 0 0 1px var(--color-border-dark) inset;
 }

@@ -135,7 +135,7 @@ func ExtractProxyInfo(proxy *repository.Proxy) *ProxyInfo {
 		Name:     buildSubscriptionProxyName(proxy, server),
 		Protocol: proxy.Protocol,
 		Server:   server,
-		Port:     proxy.Port,
+		Port:     proxylib.ResolveServerPort(proxy.Port, proxy.Settings),
 		Settings: proxy.Settings,
 	}
 }

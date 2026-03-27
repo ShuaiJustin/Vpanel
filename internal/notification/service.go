@@ -27,6 +27,7 @@ const (
 	NotificationDeviceKicked     NotificationType = "device_kicked"
 	NotificationAutoBlacklisted  NotificationType = "auto_blacklisted"
 	NotificationNodeStatusChange NotificationType = "node_status_change"
+	NotificationNodeTrafficAlert NotificationType = "node_traffic_alert"
 )
 
 // NotificationChannel represents the notification channel
@@ -80,6 +81,18 @@ type NodeStatusChangeData struct {
 	NewStatus string
 	Reason    string
 	Timestamp time.Time
+}
+
+// NodeTrafficAlertData contains data for node traffic alert notifications.
+type NodeTrafficAlertData struct {
+	NodeID           int64
+	NodeName         string
+	Level            string
+	TrafficTotal     int64
+	TrafficLimit     int64
+	UsagePercent     float64
+	ThresholdPercent float64
+	Timestamp        time.Time
 }
 
 // Service handles sending notifications
@@ -257,6 +270,42 @@ func (s *Service) NotifyNodeStatusChange(data NodeStatusChangeData) error {
 		data.OldStatus,
 		statusText,
 		data.Reason,
+		data.Timestamp.Format("2006-01-02 15:04:05"),
+	)
+
+	return s.sendToAdmin(subject, message)
+}
+
+// NotifyNodeTrafficAlert sends notification when node traffic reaches a configured threshold.
+func (s *Service) NotifyNodeTrafficAlert(data NodeTrafficAlertData) error {
+	if !s.isEnabled(NotificationNodeTrafficAlert) {
+		return nil
+	}
+
+	var emoji string
+	var levelText string
+	switch data.Level {
+	case "limit":
+		emoji = "🚫"
+		levelText = "达到硬流量上限"
+	case "threshold":
+		emoji = "⚠️"
+		levelText = "达到流量告警阈值"
+	default:
+		emoji = "ℹ️"
+		levelText = data.Level
+	}
+
+	subject := fmt.Sprintf("%s 节点流量告警: %s", emoji, data.NodeName)
+	message := fmt.Sprintf(
+		"节点流量告警\n\n节点ID: %d\n节点名称: %s\n告警级别: %s\n当前使用率: %.2f%%\n告警阈值: %.2f%%\n累计流量: %d\n流量上限: %d\n时间: %s",
+		data.NodeID,
+		data.NodeName,
+		levelText,
+		data.UsagePercent,
+		data.ThresholdPercent,
+		data.TrafficTotal,
+		data.TrafficLimit,
 		data.Timestamp.Format("2006-01-02 15:04:05"),
 	)
 

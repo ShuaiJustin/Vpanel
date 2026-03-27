@@ -2,9 +2,7 @@
   <div class="nodes-page">
     <div class="page-header">
       <div>
-        <h1 class="page-title">
-          节点列表
-        </h1>
+        <h1 class="page-title">节点列表</h1>
         <p class="page-subtitle">
           优先选择在线且延迟更低的节点，连接会更稳定。
         </p>
@@ -83,36 +81,15 @@
       </div>
 
       <div class="filter-right">
-        <el-select
-          v-model="sortBy"
-          style="width: 150px"
-        >
-          <el-option
-            label="默认排序"
-            value="default"
-          />
-          <el-option
-            label="按名称"
-            value="name"
-          />
-          <el-option
-            label="按地区"
-            value="region"
-          />
-          <el-option
-            label="按延迟"
-            value="latency"
-          />
-          <el-option
-            label="按负载"
-            value="load"
-          />
+        <el-select v-model="sortBy" style="width: 150px">
+          <el-option label="默认排序" value="default" />
+          <el-option label="按名称" value="name" />
+          <el-option label="按地区" value="region" />
+          <el-option label="按延迟" value="latency" />
+          <el-option label="按负载" value="load" />
         </el-select>
 
-        <el-button
-          v-if="hasActiveFilters"
-          @click="resetFilters"
-        >
+        <el-button v-if="hasActiveFilters" @click="resetFilters">
           重置筛选
         </el-button>
 
@@ -148,10 +125,7 @@
       </div>
     </div>
 
-    <div
-      v-if="loading"
-      class="loading-state"
-    >
+    <div v-if="loading" class="loading-state">
       <el-icon class="loading-icon">
         <Loading />
       </el-icon>
@@ -163,10 +137,7 @@
       description="暂无可用节点"
     />
 
-    <div
-      v-else-if="viewMode === 'card'"
-      class="nodes-grid"
-    >
+    <div v-else-if="viewMode === 'card'" class="nodes-grid">
       <NodeCard
         v-for="node in filteredNodes"
         :key="node.id"
@@ -184,20 +155,16 @@
       class="nodes-table"
       table-layout="auto"
     >
-      <el-table-column
-        label="节点信息"
-        min-width="320"
-      >
+      <el-table-column label="节点信息" min-width="320">
         <template #default="{ row }">
           <div class="node-info-cell">
-            <div
-              class="node-endpoint"
-              :title="getNodeEndpoint(row)"
-            >
+            <div class="node-endpoint" :title="getNodeEndpoint(row)">
               {{ getNodeEndpoint(row) }}
             </div>
             <div class="node-name-row">
-              <span class="node-flag">{{ getRegionFlag(row.region_label || row.region) }}</span>
+              <span class="node-flag">{{
+                getRegionFlag(row.region_label || row.region)
+              }}</span>
               <div class="node-name-meta">
                 <span class="node-name">{{ getNodeDisplayName(row) }}</span>
                 <span class="node-subtitle">{{ getNodeMetaLine(row) }}</span>
@@ -207,21 +174,13 @@
         </template>
       </el-table-column>
 
-      <el-table-column
-        label="地区"
-        prop="region"
-        width="110"
-      >
+      <el-table-column label="地区" prop="region" width="110">
         <template #default="{ row }">
           {{ row.region_label || getRegionLabel(row.region) }}
         </template>
       </el-table-column>
 
-      <el-table-column
-        label="协议"
-        prop="protocol"
-        width="120"
-      >
+      <el-table-column label="协议" prop="protocol" width="120">
         <template #default="{ row }">
           <el-tag size="small" effect="light">
             {{ row.protocol_label || getProtocolLabel(row.protocol) }}
@@ -229,25 +188,15 @@
         </template>
       </el-table-column>
 
-      <el-table-column
-        label="状态"
-        width="110"
-      >
+      <el-table-column label="状态" width="110">
         <template #default="{ row }">
-          <el-tag
-            :type="getStatusType(row.status)"
-            size="small"
-            effect="light"
-          >
+          <el-tag :type="getStatusType(row.status)" size="small" effect="light">
             {{ getStatusLabel(row.status) }}
           </el-tag>
         </template>
       </el-table-column>
 
-      <el-table-column
-        label="负载"
-        width="150"
-      >
+      <el-table-column label="负载" width="150">
         <template #default="{ row }">
           <div class="table-load-cell">
             <el-progress
@@ -261,15 +210,9 @@
         </template>
       </el-table-column>
 
-      <el-table-column
-        label="延迟"
-        width="120"
-      >
+      <el-table-column label="延迟" width="120">
         <template #default="{ row }">
-          <span
-            v-if="testingNodes[row.id]"
-            class="latency-testing"
-          >
+          <span v-if="testingNodes[row.id]" class="latency-testing">
             <el-icon class="is-loading"><Loading /></el-icon>
           </span>
           <span
@@ -278,20 +221,11 @@
           >
             {{ latencyResults[row.id] }}ms
           </span>
-          <span
-            v-else
-            class="latency-unknown"
-          >
-            未测试
-          </span>
+          <span v-else class="latency-unknown"> 未测试 </span>
         </template>
       </el-table-column>
 
-      <el-table-column
-        label="操作"
-        width="160"
-        fixed="right"
-      >
+      <el-table-column label="操作" width="160" fixed="right">
         <template #default="{ row }">
           <el-button
             link
@@ -317,244 +251,283 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Grid, List, Timer, Loading, Search, RefreshRight } from '@element-plus/icons-vue'
-import { usePortalNodesStore } from '@/stores/portalNodes'
-import { proxiesApi } from '@/api/modules/proxies'
-import { copyText } from '@/utils/clipboard'
-import NodeCard from '@/components/user/NodeCard.vue'
+import { ref, reactive, computed, onMounted } from "vue";
+import { ElMessage } from "element-plus";
+import {
+  Grid,
+  List,
+  Timer,
+  Loading,
+  Search,
+  RefreshRight,
+} from "@element-plus/icons-vue";
+import { usePortalNodesStore } from "@/stores/portalNodes";
+import { proxiesApi } from "@/api/modules/proxies";
+import { copyText } from "@/utils/clipboard";
+import NodeCard from "@/components/user/NodeCard.vue";
 import {
   getNodeLatencyClass,
   getNodeRegionFlag,
   getNodeRegionLabel,
   getNodeStatusText,
   getNodeStatusType,
-  getProtocolDisplayName
-} from '@/composables/useNodePresentation'
+  getProtocolDisplayName,
+} from "@/composables/useNodePresentation";
 
-const nodesStore = usePortalNodesStore()
+const nodesStore = usePortalNodesStore();
 
-const loading = ref(false)
-const viewMode = ref('card')
-const sortBy = ref('default')
-const testingAll = ref(false)
-const testingNodes = reactive({})
-const latencyResults = reactive({})
+const loading = ref(false);
+const viewMode = ref("card");
+const sortBy = ref("default");
+const testingAll = ref(false);
+const testingNodes = reactive({});
+const latencyResults = reactive({});
 
 const filters = reactive({
-  keyword: '',
-  region: '',
-  protocol: '',
-  status: ''
-})
+  keyword: "",
+  region: "",
+  protocol: "",
+  status: "",
+});
 
 const statusOptions = [
-  { value: 'online', label: '在线' },
-  { value: 'offline', label: '离线' },
-  { value: 'unhealthy', label: '不健康' },
-  { value: 'maintenance', label: '维护中' }
-]
+  { value: "online", label: "在线" },
+  { value: "offline", label: "离线" },
+  { value: "unhealthy", label: "不健康" },
+  { value: "maintenance", label: "维护中" },
+];
 
-const regionOptions = computed(() => (nodesStore.regions || []).map(region => ({
-  value: region,
-  label: getNodeRegionLabel(region)
-})))
+const regionOptions = computed(() =>
+  (nodesStore.regions || []).map((region) => ({
+    value: region,
+    label: getNodeRegionLabel(region),
+  })),
+);
 
-const protocolOptions = computed(() => (nodesStore.protocols || []).map(protocol => ({
-  value: protocol,
-  label: getProtocolDisplayName(protocol)
-})))
+const protocolOptions = computed(() =>
+  (nodesStore.protocols || []).map((protocol) => ({
+    value: protocol,
+    label: getProtocolDisplayName(protocol),
+  })),
+);
 
-const totalCount = computed(() => nodesStore.nodes.length)
-const onlineCount = computed(() => nodesStore.nodes.filter(node => node.status === 'online').length)
-const hasOnlineNodes = computed(() => filteredNodes.value.some(node => node.status === 'online'))
-const hasActiveFilters = computed(() => Boolean(
-  filters.keyword || filters.region || filters.protocol || filters.status
-))
+const totalCount = computed(() => nodesStore.nodes.length);
+const onlineCount = computed(
+  () => nodesStore.nodes.filter((node) => node.status === "online").length,
+);
+const hasOnlineNodes = computed(() =>
+  filteredNodes.value.some((node) => node.status === "online"),
+);
+const hasActiveFilters = computed(() =>
+  Boolean(
+    filters.keyword || filters.region || filters.protocol || filters.status,
+  ),
+);
 
-const getNodeDisplayName = (node) => node.display_name || node.name || '未命名节点'
+const getNodeDisplayName = (node) =>
+  node.display_name || node.name || "未命名节点";
 
 const getNodeEndpoint = (node) => {
-  if (!node.host) return '-'
-  return node.port ? `${node.host}:${node.port}` : node.host
-}
+  if (!node.host) return "-";
+  return node.port ? `${node.host}:${node.port}` : node.host;
+};
 
-const getFallbackSubtitle = (node) => [
-  node.protocol_label || getProtocolLabel(node.protocol),
-  getNodeEndpoint(node) !== '-' ? getNodeEndpoint(node) : ''
-].filter(Boolean).join(' · ')
+const getFallbackSubtitle = (node) =>
+  [
+    node.protocol_label || getProtocolLabel(node.protocol),
+    getNodeEndpoint(node) !== "-" ? getNodeEndpoint(node) : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
 const getNodeSubtitle = (node) => {
-  const subtitle = String(node.subtitle || '').trim()
+  const subtitle = String(node.subtitle || "").trim();
   if (subtitle && subtitle !== getFallbackSubtitle(node)) {
-    return subtitle
+    return subtitle;
   }
-  return [node.region_label || getRegionLabel(node.region), node.protocol_label || getProtocolLabel(node.protocol)]
+  return [
+    node.region_label || getRegionLabel(node.region),
+    node.protocol_label || getProtocolLabel(node.protocol),
+  ]
     .filter(Boolean)
-    .join(' · ')
-}
+    .join(" · ");
+};
 
-const getNodeMetaLine = (node) => getNodeSubtitle(node)
+const getNodeMetaLine = (node) => getNodeSubtitle(node);
 
 const filteredNodes = computed(() => {
-  let nodes = [...nodesStore.nodes]
+  let nodes = [...nodesStore.nodes];
 
   if (filters.keyword) {
-    const keyword = filters.keyword.trim().toLowerCase()
-    nodes = nodes.filter(node => {
+    const keyword = filters.keyword.trim().toLowerCase();
+    nodes = nodes.filter((node) => {
       const searchText = [
         getNodeDisplayName(node),
         getNodeEndpoint(node),
         node.region_label || getRegionLabel(node.region),
         node.protocol_label || getProtocolLabel(node.protocol),
-        node.subtitle || ''
-      ].join(' ').toLowerCase()
-      return searchText.includes(keyword)
-    })
+        node.subtitle || "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return searchText.includes(keyword);
+    });
   }
 
   if (filters.region) {
-    nodes = nodes.filter(node => node.region === filters.region)
+    nodes = nodes.filter((node) => node.region === filters.region);
   }
   if (filters.protocol) {
-    nodes = nodes.filter(node => node.protocol === filters.protocol)
+    nodes = nodes.filter((node) => node.protocol === filters.protocol);
   }
   if (filters.status) {
-    nodes = nodes.filter(node => node.status === filters.status)
+    nodes = nodes.filter((node) => node.status === filters.status);
   }
 
-  if (sortBy.value === 'name') {
-    nodes.sort((a, b) => getNodeDisplayName(a).localeCompare(getNodeDisplayName(b), 'zh-CN'))
-  } else if (sortBy.value === 'region') {
-    nodes.sort((a, b) => getRegionLabel(a.region_label || a.region).localeCompare(getRegionLabel(b.region_label || b.region), 'zh-CN'))
-  } else if (sortBy.value === 'latency') {
+  if (sortBy.value === "name") {
+    nodes.sort((a, b) =>
+      getNodeDisplayName(a).localeCompare(getNodeDisplayName(b), "zh-CN"),
+    );
+  } else if (sortBy.value === "region") {
+    nodes.sort((a, b) =>
+      getRegionLabel(a.region_label || a.region).localeCompare(
+        getRegionLabel(b.region_label || b.region),
+        "zh-CN",
+      ),
+    );
+  } else if (sortBy.value === "latency") {
     nodes.sort((a, b) => {
-      const la = hasLatencyValue(latencyResults[a.id]) ? latencyResults[a.id] : Number.MAX_SAFE_INTEGER
-      const lb = hasLatencyValue(latencyResults[b.id]) ? latencyResults[b.id] : Number.MAX_SAFE_INTEGER
-      return la - lb
-    })
-  } else if (sortBy.value === 'load') {
-    nodes.sort((a, b) => getNormalizedLoad(a.load) - getNormalizedLoad(b.load))
+      const la = hasLatencyValue(latencyResults[a.id])
+        ? latencyResults[a.id]
+        : Number.MAX_SAFE_INTEGER;
+      const lb = hasLatencyValue(latencyResults[b.id])
+        ? latencyResults[b.id]
+        : Number.MAX_SAFE_INTEGER;
+      return la - lb;
+    });
+  } else if (sortBy.value === "load") {
+    nodes.sort((a, b) => getNormalizedLoad(a.load) - getNormalizedLoad(b.load));
   }
 
-  return nodes
-})
+  return nodes;
+});
 
 function getRegionFlag(region) {
-  return getNodeRegionFlag(region)
+  return getNodeRegionFlag(region);
 }
 
 function getRegionLabel(region) {
-  return getNodeRegionLabel(region)
+  return getNodeRegionLabel(region);
 }
 
 function getProtocolLabel(protocol) {
-  return getProtocolDisplayName(protocol)
+  return getProtocolDisplayName(protocol);
 }
 
 function getStatusType(status) {
-  if (status === 'maintenance') return 'warning'
-  return getNodeStatusType(status)
+  if (status === "maintenance") return "warning";
+  return getNodeStatusType(status);
 }
 
 function getStatusLabel(status) {
-  if (status === 'maintenance') return '维护中'
-  return getNodeStatusText(status)
+  if (status === "maintenance") return "维护中";
+  return getNodeStatusText(status);
 }
 
 function getNormalizedLoad(load) {
-  const value = Number(load)
-  if (!Number.isFinite(value) || value < 0) return 0
-  if (value > 100) return 100
-  return Math.round(value)
+  const value = Number(load);
+  if (!Number.isFinite(value) || value < 0) return 0;
+  if (value > 100) return 100;
+  return Math.round(value);
 }
 
 function getLoadColor(load) {
-  if (load >= 80) return '#f56c6c'
-  if (load >= 60) return '#e6a23c'
-  return '#67c23a'
+  if (load >= 80) return "#f56c6c";
+  if (load >= 60) return "#e6a23c";
+  return "#67c23a";
 }
 
 function hasLatencyValue(value) {
-  return typeof value === 'number' && value >= 0
+  return typeof value === "number" && value >= 0;
 }
 
 function hasLatency(nodeId) {
-  return hasLatencyValue(latencyResults[nodeId])
+  return hasLatencyValue(latencyResults[nodeId]);
 }
 
 function getLatencyClass(latency) {
-  return getNodeLatencyClass(latency)
+  return getNodeLatencyClass(latency);
 }
 
 function resetFilters() {
-  filters.keyword = ''
-  filters.region = ''
-  filters.protocol = ''
-  filters.status = ''
-  sortBy.value = 'default'
+  filters.keyword = "";
+  filters.region = "";
+  filters.protocol = "";
+  filters.status = "";
+  sortBy.value = "default";
 }
 
 async function testLatency(node) {
-  testingNodes[node.id] = true
+  testingNodes[node.id] = true;
   try {
-    const latency = await nodesStore.testNodeLatency(node.id)
-    latencyResults[node.id] = latency
+    const latency = await nodesStore.testNodeLatency(node.id);
+    latencyResults[node.id] = latency;
   } catch (error) {
-    latencyResults[node.id] = null
-    ElMessage.error(`测速失败: ${getNodeDisplayName(node)}`)
+    latencyResults[node.id] = null;
+    ElMessage.error(`测速失败: ${getNodeDisplayName(node)}`);
   } finally {
-    testingNodes[node.id] = false
+    testingNodes[node.id] = false;
   }
 }
 
 async function testAllLatency() {
-  testingAll.value = true
-  const onlineNodes = filteredNodes.value.filter(node => node.status === 'online')
+  testingAll.value = true;
+  const onlineNodes = filteredNodes.value.filter(
+    (node) => node.status === "online",
+  );
 
   for (const node of onlineNodes) {
-    await testLatency(node)
+    await testLatency(node);
   }
 
-  testingAll.value = false
-  ElMessage.success('测速完成')
+  testingAll.value = false;
+  ElMessage.success("测速完成");
 }
 
 async function copyNodeConfig(node) {
   try {
-    const response = await proxiesApi.generateLink(node.id)
-    const link = response?.link
-    await copyText(link)
-    ElMessage.success(`已复制 ${getNodeDisplayName(node)} 配置`)
+    const response = await proxiesApi.generateLink(node.id);
+    const link = response?.link;
+    await copyText(link);
+    ElMessage.success(`已复制 ${getNodeDisplayName(node)} 配置`);
   } catch (error) {
-    ElMessage.error(`复制失败: ${getNodeDisplayName(node)}`)
+    ElMessage.error(`复制失败: ${getNodeDisplayName(node)}`);
   }
 }
 
 async function loadNodes() {
-  loading.value = true
+  loading.value = true;
   try {
-    await nodesStore.fetchNodes()
-    return true
+    await nodesStore.fetchNodes();
+    return true;
   } catch (error) {
-    ElMessage.error('加载节点列表失败')
-    return false
+    ElMessage.error("加载节点列表失败");
+    return false;
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
 async function refreshNodes() {
-  const ok = await loadNodes()
+  const ok = await loadNodes();
   if (ok) {
-    ElMessage.success('节点列表已刷新')
+    ElMessage.success("节点列表已刷新");
   }
 }
 
 onMounted(() => {
-  loadNodes()
-})
+  loadNodes();
+});
 </script>
 
 <style scoped>
@@ -616,7 +589,11 @@ onMounted(() => {
 }
 
 .stat-chip-success {
-  border-color: color-mix(in srgb, var(--color-success) 22%, var(--color-border-light));
+  border-color: color-mix(
+    in srgb,
+    var(--color-success) 22%,
+    var(--color-border-light)
+  );
 }
 
 .filter-bar {
@@ -657,8 +634,12 @@ onMounted(() => {
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .nodes-grid {

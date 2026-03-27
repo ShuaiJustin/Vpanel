@@ -3,6 +3,7 @@ package repository
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	"gorm.io/gorm"
@@ -476,7 +477,7 @@ func (r *nodeRepository) GetOnline(ctx context.Context) ([]*Node, error) {
 	return nodes, nil
 }
 
-// GetAvailable retrieves nodes that are online and not at capacity.
+// GetAvailable retrieves nodes that are online, not at capacity, and still accept new assignments.
 func (r *nodeRepository) GetAvailable(ctx context.Context) ([]*Node, error) {
 	var nodes []*Node
 	result := r.db.WithContext(ctx).
@@ -486,7 +487,7 @@ func (r *nodeRepository) GetAvailable(ctx context.Context) ([]*Node, error) {
 	if result.Error != nil {
 		return nil, errors.NewDatabaseError("failed to get available nodes", result.Error)
 	}
-	return nodes, nil
+	return filterNodesAcceptingNewAssignments(nodes), nil
 }
 
 // CountByStatus returns node counts grouped by status.
@@ -547,7 +548,7 @@ func (r *nodeRepository) DeleteInTx(ctx context.Context, id int64) error {
 	return nil
 }
 
-// GetAvailableInTx retrieves nodes that are online and not at capacity within a transaction.
+// GetAvailableInTx retrieves nodes that are online, not at capacity, and still accept new assignments within a transaction.
 func (r *nodeRepository) GetAvailableInTx(ctx context.Context) ([]*Node, error) {
 	db := r.getDB(ctx)
 	var nodes []*Node
@@ -558,7 +559,104 @@ func (r *nodeRepository) GetAvailableInTx(ctx context.Context) ([]*Node, error) 
 	if result.Error != nil {
 		return nil, errors.NewDatabaseError("failed to get available nodes in transaction", result.Error)
 	}
-	return nodes, nil
+	return filterNodesAcceptingNewAssignments(nodes), nil
+}
+
+func filterNodesAcceptingNewAssignments(nodes []*Node) []*Node {
+	filtered := make([]*Node, 0, len(nodes))
+	for _, node := range nodes {
+		if nodeAcceptsNewAssignments(node) {
+			filtered = append(filtered, node)
+		}
+	}
+	sortNodesForNewAssignments(filtered)
+	return filtered
+}
+
+func sortNodesForNewAssignments(nodes []*Node) {
+	sort.SliceStable(nodes, func(i, j int) bool {
+		return shouldPreferNodeForNewAssignments(nodes[i], nodes[j])
+	})
+}
+
+func shouldPreferNodeForNewAssignments(left, right *Node) bool {
+	if left == nil {
+		return false
+	}
+	if right == nil {
+		return true
+	}
+
+	leftTrafficPressure := nodeTrafficAssignmentPressure(left)
+	rightTrafficPressure := nodeTrafficAssignmentPressure(right)
+	if leftTrafficPressure != rightTrafficPressure {
+		return leftTrafficPressure < rightTrafficPressure
+	}
+
+	leftCapacityPressure := nodeCapacityAssignmentPressure(left)
+	rightCapacityPressure := nodeCapacityAssignmentPressure(right)
+	if leftCapacityPressure != rightCapacityPressure {
+		return leftCapacityPressure < rightCapacityPressure
+	}
+
+	if left.CurrentUsers != right.CurrentUsers {
+		return left.CurrentUsers < right.CurrentUsers
+	}
+	if left.Weight != right.Weight {
+		return left.Weight > right.Weight
+	}
+	return left.ID < right.ID
+}
+
+func nodeAcceptsNewAssignments(node *Node) bool {
+	if node == nil {
+		return false
+	}
+	if node.Status != NodeStatusOnline {
+		return false
+	}
+	if node.MaxUsers > 0 && node.CurrentUsers >= node.MaxUsers {
+		return false
+	}
+	return !nodeReachedTrafficAssignmentThreshold(node)
+}
+
+func nodeReachedTrafficAssignmentThreshold(node *Node) bool {
+	if node == nil || node.TrafficLimit <= 0 {
+		return false
+	}
+	threshold := node.AlertTrafficThreshold
+	if threshold <= 0 {
+		return false
+	}
+	if threshold > 100 {
+		threshold = 100
+	}
+	return float64(node.TrafficTotal)*100 >= float64(node.TrafficLimit)*threshold
+}
+
+func nodeTrafficAssignmentPressure(node *Node) float64 {
+	if node == nil {
+		return 1e9
+	}
+	if node.TrafficLimit <= 0 {
+		return -1
+	}
+	threshold := node.AlertTrafficThreshold
+	if threshold <= 0 || threshold > 100 {
+		threshold = 100
+	}
+	return (float64(node.TrafficTotal) * 100 / float64(node.TrafficLimit)) / threshold
+}
+
+func nodeCapacityAssignmentPressure(node *Node) float64 {
+	if node == nil {
+		return 1e9
+	}
+	if node.MaxUsers <= 0 {
+		return 0
+	}
+	return float64(node.CurrentUsers) / float64(node.MaxUsers)
 }
 
 // getDB returns the appropriate database connection (transaction or regular).

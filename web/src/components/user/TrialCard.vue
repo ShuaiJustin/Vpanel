@@ -396,19 +396,19 @@ onMounted(() => {
 }
 
 /* 深色模式适配 */
-.dark .status-info h4 {
+:global(.dark) .status-info h4 {
   color: var(--color-text-primary);
 }
 
-.dark .detail-item .value {
+:global(.dark) .detail-item .value {
   color: var(--color-text-primary);
 }
 
-.dark .trial-details {
+:global(.dark) .trial-details {
   background: var(--color-border-light);
 }
 
-.dark .trial-benefits {
+:global(.dark) .trial-benefits {
   background: var(--color-border-light);
 }
 </style>

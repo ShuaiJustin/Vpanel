@@ -3,6 +3,8 @@ package handlers
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"runtime"
@@ -215,12 +217,13 @@ func (h *NodeAgentHandler) Heartbeat(c *gin.Context) {
 
 	// Preserve unhealthy state until the health checker confirms recovery.
 	newStatus := nodeData.Status
-	if shouldPromoteNodeOnlineFromHeartbeat(nodeData.Status) {
+	if shouldPromoteNodeOnlineFromHeartbeat(nodeData.Status, req.Metrics) {
 		newStatus = repository.NodeStatusOnline
 	} else {
 		h.logger.Debug("Skip heartbeat status promotion for unhealthy node",
 			logger.F("node_id", nodeData.ID),
-			logger.F("node_name", nodeData.Name))
+			logger.F("node_name", nodeData.Name),
+			logger.F("has_metrics", req.Metrics != nil))
 	}
 
 	// Batch update all heartbeat fields in a single atomic query to prevent race conditions
@@ -306,8 +309,12 @@ func (h *NodeAgentHandler) Heartbeat(c *gin.Context) {
 	})
 }
 
-func shouldPromoteNodeOnlineFromHeartbeat(currentStatus string) bool {
-	return currentStatus != repository.NodeStatusUnhealthy
+func shouldPromoteNodeOnlineFromHeartbeat(currentStatus string, metrics *NodeMetrics) bool {
+	if currentStatus == repository.NodeStatusUnhealthy {
+		return false
+	}
+
+	return true
 }
 
 // ReportCommandResult handles command result reports from nodes.
@@ -523,10 +530,15 @@ func (h *NodeAgentHandler) GetConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success":   true,
 		"node_id":   nodeID,
-		"version":   "1.0",
+		"version":   hashConfigVersion(configJSON),
 		"timestamp": time.Now().Unix(),
 		"config":    string(configJSON),
 	})
+}
+
+func hashConfigVersion(config []byte) string {
+	digest := sha256.Sum256(config)
+	return hex.EncodeToString(digest[:])
 }
 
 // GetSystemInfo returns system information for the Panel.

@@ -378,6 +378,42 @@ func (m *mockProxyRepo) GetByNodeID(ctx context.Context, nodeID int64) ([]*repos
 // Property 12: Invalid Token Returns 404
 // For any token that does not exist in the database, accessing the subscription SHALL return HTTP 404.
 // **Validates: Requirements 4.1**
+func TestSubscriptionHandlerDetectFormatAliases(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := NewSubscriptionHandler(nil, logger.NewNopLogger())
+
+	tests := []struct {
+		name      string
+		format    string
+		userAgent string
+		expected  subscription.ClientFormat
+	}{
+		{name: "v2ray alias", format: "v2ray", userAgent: "Clash/1.0", expected: subscription.FormatV2rayN},
+		{name: "base64 alias", format: "base64", userAgent: "sing-box/1.0", expected: subscription.FormatV2rayN},
+		{name: "raw alias", format: "raw", userAgent: "Surge/5.0", expected: subscription.FormatV2rayN},
+		{name: "existing sing-box alias", format: "sing-box", userAgent: "Mozilla/5.0", expected: subscription.FormatSingbox},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			req := httptest.NewRequest(http.MethodGet, "/api/subscription/test-token", nil)
+			query := req.URL.Query()
+			query.Set("format", tt.format)
+			req.URL.RawQuery = query.Encode()
+			if tt.userAgent != "" {
+				req.Header.Set("User-Agent", tt.userAgent)
+			}
+			c.Request = req
+
+			if got := handler.detectFormat(c); got != tt.expected {
+				t.Fatalf("detectFormat() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestProperty12_InvalidTokenReturns404(t *testing.T) {
 	properties := gopter.NewProperties(gopter.DefaultTestParameters())
 

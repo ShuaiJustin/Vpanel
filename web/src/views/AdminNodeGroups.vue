@@ -974,7 +974,7 @@ onMounted(fetchGroups)
 }
 
 /* ── dark mode ── */
-:root.dark .group-panel__stat-value.is-success {
+:global(.dark) .group-panel__stat-value.is-success {
   color: #4ade80;
 }
 </style>

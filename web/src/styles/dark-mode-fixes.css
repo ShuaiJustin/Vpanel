@@ -658,3 +658,355 @@
   background: rgba(239, 68, 68, 0.14) !important;
   border-color: rgba(239, 68, 68, 0.28) !important;
 }
+
+
+/* 共享组件与统计页补充 */
+.dark .empty-state.with-border {
+  background: var(--color-border-light) !important;
+  border-color: var(--color-border-dark) !important;
+}
+
+.dark .empty-state-icon {
+  color: var(--color-text-placeholder) !important;
+}
+
+.dark .empty-state-description,
+.dark .page-hint,
+.dark .chart-loading,
+.dark .empty-data,
+.dark .stat-label,
+.dark .card-hint,
+.dark .strength-label,
+.dark .password-tips,
+.dark .password-tips li,
+.dark .overview-label,
+.dark .protocol-description,
+.dark .setting-description,
+.dark .xray-version-switcher .label {
+  color: var(--color-text-secondary) !important;
+}
+
+.dark .overview-value {
+  color: var(--color-text-primary) !important;
+}
+
+.dark .stat-footer {
+  color: var(--color-text-secondary) !important;
+  border-top-color: var(--color-border) !important;
+}
+
+.dark .strength-indicator,
+.dark .skeleton-cell {
+  background-color: var(--color-border) !important;
+}
+
+.dark .skeleton-table-header {
+  background: var(--color-border-light) !important;
+}
+
+.dark .skeleton-table-row,
+.dark .skeleton-list-item,
+.dark .xray-version-switcher .controls {
+  border-color: var(--color-border) !important;
+}
+
+
+/* 后台配置页补充 */
+.dark .change-password-container,
+.dark .protocol-settings-container {
+  background: var(--color-bg-page) !important;
+}
+
+.dark .xray-version-switcher,
+.dark .protocol-item,
+.dark .inbounds-page .page-header {
+  background: var(--admin-surface-soft, var(--color-bg-card)) !important;
+  border-color: var(--admin-border, var(--color-border)) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+.dark .inbounds-page .title,
+.dark .inbounds-page .overview-value {
+  color: var(--admin-text, var(--color-text-primary)) !important;
+}
+
+.dark .inbounds-page .page-subtitle,
+.dark .inbounds-page .overview-label {
+  color: var(--admin-text-muted, var(--color-text-secondary)) !important;
+}
+
+
+/* 帮助与内容页补充 */
+.dark .empty-state,
+.dark .view-count,
+.dark .info-item,
+.dark .tags-label,
+.dark .tx-desc,
+.dark .tx-time,
+.dark .category-count,
+.dark .popular-views,
+.dark .feedback-label {
+  color: var(--color-text-secondary) !important;
+}
+
+.dark .article-content {
+  color: var(--color-text-regular) !important;
+}
+
+.dark .related-item,
+.dark .article-content :is(th, td) {
+  border-color: var(--color-border) !important;
+}
+
+.dark .article-content :is(th, code, pre) {
+  background: var(--color-border-light) !important;
+}
+
+
+.dark .node-address {
+  color: #93c5fd !important;
+  background: rgba(59, 130, 246, 0.14) !important;
+}
+
+/* 设置页错误详情与版本提示 */
+.dark .version-tips,
+.dark .sync-info-content,
+.dark .sync-info-content p {
+  color: var(--color-text-secondary) !important;
+}
+
+.dark .error-message-content {
+  background: var(--color-border-light) !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text-primary) !important;
+}
+
+.dark .error-resolution {
+  background: rgba(230, 162, 60, 0.12) !important;
+  border-left-color: #e6a23c !important;
+  color: var(--color-text-primary) !important;
+}
+
+.dark .error-troubleshooting {
+  background: rgba(64, 158, 255, 0.12) !important;
+  border-left-color: var(--color-primary) !important;
+  color: var(--color-text-primary) !important;
+}
+
+.dark .error-troubleshooting :is(h4, ul, ol, li) {
+  color: var(--color-text-primary) !important;
+}
+
+.dark .error-troubleshooting code {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: var(--color-text-primary) !important;
+}
+
+
+/* 交互浮层与弹窗补充 */
+.dark :is(.el-popper.is-light, .el-dropdown__popper.el-popper, .el-select__popper.el-popper, .el-picker__popper.el-popper) {
+  background: var(--color-bg-card) !important;
+  border-color: var(--color-border) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+.dark :is(.el-popper.is-light, .el-dropdown__popper, .el-select__popper, .el-picker__popper) .el-popper__arrow::before {
+  background: var(--color-bg-card) !important;
+  border-color: var(--color-border) !important;
+}
+
+.dark .el-dropdown-menu__item {
+  color: var(--color-text-regular) !important;
+}
+
+.dark .el-dropdown-menu__item:not(.is-disabled):is(:hover, :focus) {
+  background: var(--color-border-light) !important;
+  color: var(--color-primary) !important;
+}
+
+.dark .el-dropdown-menu__item--divided,
+.dark .el-dropdown-menu__item--divided::before {
+  border-color: var(--color-border) !important;
+  background: var(--color-bg-card) !important;
+}
+
+.dark :is(.el-dialog__header, .el-dialog__body, .el-dialog__footer, .el-drawer__header, .el-drawer__body, .el-drawer__footer) {
+  background: var(--color-bg-card) !important;
+  border-color: var(--color-border) !important;
+}
+
+.dark .el-dialog__body,
+.dark .el-dialog__footer,
+.dark :is(.el-drawer__body, .el-message-box__content) {
+  color: var(--color-text-regular) !important;
+}
+
+.dark :is(.el-dialog__title, .el-drawer__title, .el-message-box__title) {
+  color: var(--color-text-primary) !important;
+}
+
+.dark :is(.el-dialog__headerbtn .el-dialog__close, .el-drawer__close-btn, .el-message-box__headerbtn .el-message-box__close) {
+  color: var(--color-text-secondary) !important;
+}
+
+.dark :is(.el-dialog__headerbtn:hover .el-dialog__close, .el-drawer__close-btn:hover, .el-message-box__headerbtn:hover .el-message-box__close) {
+  color: var(--color-primary) !important;
+}
+
+.dark .el-message-box__btns .el-button--default {
+  background: var(--color-bg-card) !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text-regular) !important;
+}
+
+.dark .el-message-box__btns .el-button--default:hover {
+  background: var(--color-border-light) !important;
+  border-color: var(--color-border-dark) !important;
+  color: var(--color-primary) !important;
+}
+
+.dark :is(.secret-key code, .backup-codes code, .new-token-text) {
+  background: var(--color-border-light) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text-primary) !important;
+}
+
+.dark :is(.token-label, .secret-key, .two-factor-info p) {
+  color: var(--color-text-secondary) !important;
+}
+
+
+/* 入站批量按钮与用户提示补充 */
+.dark .inbounds-page :is(.toolbar-batch-btn--success.el-button, .toolbar-batch-btn--warning.el-button, .toolbar-batch-btn--danger.el-button) {
+  box-shadow: none !important;
+}
+
+.dark .inbounds-page .toolbar-batch-btn--success.el-button {
+  color: #86efac !important;
+  background: rgba(34, 197, 94, 0.16) !important;
+  border-color: rgba(34, 197, 94, 0.28) !important;
+}
+
+.dark .inbounds-page .toolbar-batch-btn--warning.el-button {
+  color: #fcd34d !important;
+  background: rgba(245, 158, 11, 0.16) !important;
+  border-color: rgba(245, 158, 11, 0.28) !important;
+}
+
+.dark .inbounds-page .toolbar-batch-btn--danger.el-button {
+  color: #fca5a5 !important;
+  background: rgba(239, 68, 68, 0.16) !important;
+  border-color: rgba(239, 68, 68, 0.28) !important;
+}
+
+.dark :is(.tx-icon--recharge, .tx-icon--commission) {
+  background: rgba(34, 197, 94, 0.16) !important;
+  color: #86efac !important;
+}
+
+.dark .tx-icon--purchase {
+  background: rgba(239, 68, 68, 0.16) !important;
+  color: #fca5a5 !important;
+}
+
+.dark .tx-icon--refund {
+  background: rgba(245, 158, 11, 0.16) !important;
+  color: #fcd34d !important;
+}
+
+.dark .tx-icon--adjustment {
+  background: rgba(148, 163, 184, 0.16) !important;
+  color: #cbd5e1 !important;
+}
+
+.dark .redeem-desc {
+  color: var(--color-text-secondary) !important;
+}
+
+.dark .validation-result {
+  background: rgba(239, 68, 68, 0.16) !important;
+  color: #fca5a5 !important;
+}
+
+.dark .validation-result--valid {
+  background: rgba(34, 197, 94, 0.16) !important;
+  color: #86efac !important;
+}
+
+
+/* 日志错误行与礼品卡历史补充 */
+.dark :is(.log-row-error > td, .log-row-error:hover > td) {
+  background: rgba(239, 68, 68, 0.12) !important;
+  color: var(--color-text-primary) !important;
+}
+
+.dark .gc-icon {
+  background: rgba(34, 197, 94, 0.16) !important;
+  color: #86efac !important;
+}
+
+.dark .gc-time {
+  color: var(--color-text-secondary) !important;
+}
+
+
+/* 协议配置页与证书详情补充 */
+.dark .settings-tabs {
+  background: var(--admin-surface, var(--color-bg-card)) !important;
+  border-color: var(--admin-border, var(--color-border)) !important;
+  box-shadow: var(--admin-shadow-soft, var(--shadow-sm)) !important;
+}
+
+.dark .tab-header {
+  background: var(--admin-surface-soft, var(--color-border-light)) !important;
+  border-bottom-color: var(--admin-border, var(--color-border)) !important;
+}
+
+.dark .tab-item {
+  color: var(--admin-text-muted, var(--color-text-secondary)) !important;
+}
+
+.dark .tab-item:hover,
+.dark .tab-item.active {
+  color: var(--color-primary) !important;
+}
+
+.dark .tab-item.active {
+  background: var(--admin-surface-strong, var(--color-bg-card)) !important;
+  border-bottom-color: var(--color-primary) !important;
+}
+
+.dark .section-header,
+.dark .protocol-label,
+.dark .details-content,
+.dark .result-details,
+.dark .inbounds-page .expiry-readonly__value {
+  color: var(--admin-text, var(--color-text-primary)) !important;
+}
+
+.dark .protocol-desc,
+.dark .detail-item .label {
+  color: var(--admin-text-muted, var(--color-text-secondary)) !important;
+}
+
+.dark .protocol-row,
+.dark .settings-divider,
+.dark .settings-footer,
+.dark .fallback-item {
+  border-color: var(--admin-border, var(--color-border)) !important;
+}
+
+.dark .details-content,
+.dark .result-details,
+.dark .inbounds-page .cert-input,
+.dark .inbounds-page .expiry-readonly,
+.dark .fallback-item {
+  background: var(--admin-surface-soft, var(--color-border-light)) !important;
+  border-color: var(--admin-border, var(--color-border)) !important;
+}
+
+
+/* 入站页剩余表单容器补充 */
+.dark .inbounds-page :is(.cert-input, .expiry-readonly, .fallback-item) {
+  color: var(--admin-text, var(--color-text-primary)) !important;
+}

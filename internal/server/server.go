@@ -22,14 +22,14 @@ import (
 
 // Server represents the HTTP server.
 type Server struct {
-	config           *config.Config
-	logger           logger.Logger
-	httpServer       *http.Server
-	router           *api.Router
-	authService      *auth.Service
-	proxyManager     proxy.Manager
-	repos            *repository.Repositories
-	logService       *logservice.Service
+	config             *config.Config
+	logger             logger.Logger
+	httpServer         *http.Server
+	router             *api.Router
+	authService        *auth.Service
+	proxyManager       proxy.Manager
+	repos              *repository.Repositories
+	logService         *logservice.Service
 	certificateService *certificate.Service
 }
 
@@ -46,7 +46,7 @@ func New(
 	if err := os.MkdirAll(cfg.Certificate.StoragePath, 0755); err != nil {
 		log.Error("创建证书存储目录失败", logger.Err(err))
 	}
-	
+
 	// 初始化证书服务
 	certificateService := certificate.NewService(
 		repos.Certificate,
@@ -55,7 +55,7 @@ func New(
 		log,
 		cfg.Certificate.StoragePath,
 	)
-	
+
 	return &Server{
 		config:             cfg,
 		logger:             log,
@@ -87,7 +87,10 @@ func (s *Server) Start() error {
 		s.logger.Warn("健康检查服务启动失败，继续启动服务器", logger.Err(err))
 		// 不阻止服务器启动
 	}
-	
+	if err := s.router.StartNodeTrafficResetScheduler(ctx); err != nil {
+		s.logger.Warn("节点流量重置调度器启动失败，继续启动服务器", logger.Err(err))
+	}
+
 	// 启动证书自动续期服务
 	if s.config.Certificate.AutoRenewEnabled {
 		if err := s.certificateService.StartAutoRenew(ctx); err != nil {
@@ -144,8 +147,11 @@ func (s *Server) Stop(ctx context.Context) error {
 		}
 	}
 
-	// Stop health checker
+	// Stop health checker and schedulers
 	if s.router != nil {
+		if err := s.router.StopNodeTrafficResetScheduler(ctx); err != nil {
+			s.logger.Warn("节点流量重置调度器停止失败", logger.Err(err))
+		}
 		if err := s.router.StopHealthChecker(ctx); err != nil {
 			s.logger.Warn("健康检查服务停止失败", logger.Err(err))
 		}

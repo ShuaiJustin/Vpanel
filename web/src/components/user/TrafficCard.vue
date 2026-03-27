@@ -1,8 +1,5 @@
 <template>
-  <el-card
-    class="traffic-card"
-    shadow="never"
-  >
+  <el-card class="traffic-card" shadow="never">
     <template #header>
       <div class="card-header">
         <span>{{ title }}</span>
@@ -22,9 +19,7 @@
         >
           <template #default>
             <div class="progress-inner">
-              <div class="progress-value">
-                {{ percentage }}%
-              </div>
+              <div class="progress-value">{{ percentage }}%</div>
               <div class="progress-label">
                 {{ progressLabel }}
               </div>
@@ -34,10 +29,7 @@
       </div>
 
       <!-- 详情列表 -->
-      <div
-        v-if="showDetails"
-        class="traffic-details"
-      >
+      <div v-if="showDetails" class="traffic-details">
         <div class="detail-item">
           <span class="detail-label">已使用</span>
           <span class="detail-value">{{ formatTraffic(used) }}</span>
@@ -48,14 +40,9 @@
         </div>
         <div class="detail-item">
           <span class="detail-label">剩余</span>
-          <span class="detail-value remaining">{{ formatTraffic(remaining) }}</span>
-        </div>
-        <div
-          v-if="resetAt"
-          class="detail-item"
-        >
-          <span class="detail-label">重置时间</span>
-          <span class="detail-value">{{ formatDate(resetAt) }}</span>
+          <span class="detail-value remaining">{{
+            formatTraffic(remaining)
+          }}</span>
         </div>
       </div>
     </div>
@@ -63,81 +50,67 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed } from "vue";
 
 const props = defineProps({
   title: {
     type: String,
-    default: '流量使用'
+    default: "流量使用",
   },
   used: {
     type: Number,
-    default: 0
+    default: 0,
   },
   total: {
     type: Number,
-    default: 0
-  },
-  resetAt: {
-    type: String,
-    default: null
+    default: 0,
   },
   size: {
     type: Number,
-    default: 140
+    default: 140,
   },
   strokeWidth: {
     type: Number,
-    default: 10
+    default: 10,
   },
   showDetails: {
     type: Boolean,
-    default: true
+    default: true,
   },
   progressLabel: {
     type: String,
-    default: '已使用'
-  }
-})
+    default: "已使用",
+  },
+});
 
 // 计算属性
 const percentage = computed(() => {
-  if (!props.total) return 0
-  return Math.min(100, Math.round((props.used / props.total) * 100))
-})
+  if (!props.total) return 0;
+  return Math.min(100, Math.round((props.used / props.total) * 100));
+});
 
 const remaining = computed(() => {
-  return Math.max(0, props.total - props.used)
-})
+  return Math.max(0, props.total - props.used);
+});
 
 const progressColor = computed(() => {
-  const percent = percentage.value
-  if (percent >= 90) return '#f56c6c'
-  if (percent >= 70) return '#e6a23c'
-  return '#409eff'
-})
+  const percent = percentage.value;
+  if (percent >= 90) return "#f56c6c";
+  if (percent >= 70) return "#e6a23c";
+  return "#409eff";
+});
 
 // 方法
 function formatTraffic(bytes) {
-  if (!bytes || bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let i = 0
-  let size = bytes
+  if (!bytes || bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  let size = bytes;
   while (size >= 1024 && i < units.length - 1) {
-    size /= 1024
-    i++
+    size /= 1024;
+    i++;
   }
-  return `${size.toFixed(2)} ${units[i]}`
-}
-
-function formatDate(dateStr) {
-  if (!dateStr) return '-'
-  const date = new Date(dateStr)
-  return date.toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  })
+  return `${size.toFixed(2)} ${units[i]}`;
 }
 </script>
 
@@ -216,15 +189,15 @@ function formatDate(dateStr) {
 }
 
 /* 深色模式适配 */
-.dark .progress-value {
+:global(.dark) .progress-value {
   color: var(--color-text-primary);
 }
 
-.dark .detail-value {
+:global(.dark) .detail-value {
   color: var(--color-text-primary);
 }
 
-.dark .detail-item {
+:global(.dark) .detail-item {
   border-bottom: 1px solid var(--color-border);
 }
 </style>

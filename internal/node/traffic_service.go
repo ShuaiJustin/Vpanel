@@ -3,12 +3,14 @@ package node
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	"gorm.io/gorm"
 
 	"v/internal/database/repository"
 	"v/internal/logger"
+	apperrors "v/pkg/errors"
 )
 
 // TrafficStats represents aggregated traffic statistics.
@@ -78,15 +80,32 @@ type TrafficFilter struct {
 	End     time.Time
 }
 
+// NodeTrafficAlert represents a node traffic threshold or hard-limit alert.
+type NodeTrafficAlert struct {
+	NodeID           int64
+	NodeName         string
+	Level            string
+	TrafficTotal     int64
+	TrafficLimit     int64
+	UsagePercent     float64
+	ThresholdPercent float64
+	TriggeredAt      time.Time
+}
+
 // TrafficService provides traffic statistics aggregation operations.
 type TrafficService struct {
-	db              *gorm.DB
-	nodeTrafficRepo repository.NodeTrafficRepository
-	trafficRepo     repository.TrafficRepository
-	userRepo        repository.UserRepository
-	nodeRepo        repository.NodeRepository
-	groupRepo       repository.NodeGroupRepository
-	logger          logger.Logger
+	db                           *gorm.DB
+	nodeTrafficRepo              repository.NodeTrafficRepository
+	trafficRepo                  repository.TrafficRepository
+	proxyRepo                    repository.ProxyRepository
+	userRepo                     repository.UserRepository
+	nodeRepo                     repository.NodeRepository
+	groupRepo                    repository.NodeGroupRepository
+	userAccessCheck              func(context.Context, int64) error
+	accessRevokedHook            func(context.Context, int64, []int64, string)
+	nodeTrafficLimitExceededHook func(context.Context, int64, string)
+	nodeTrafficAlertHook         func(context.Context, *NodeTrafficAlert)
+	logger                       logger.Logger
 }
 
 // NewTrafficService creates a new traffic service.
@@ -94,6 +113,7 @@ func NewTrafficService(
 	db *gorm.DB,
 	nodeTrafficRepo repository.NodeTrafficRepository,
 	trafficRepo repository.TrafficRepository,
+	proxyRepo repository.ProxyRepository,
 	userRepo repository.UserRepository,
 	nodeRepo repository.NodeRepository,
 	groupRepo repository.NodeGroupRepository,
@@ -103,11 +123,36 @@ func NewTrafficService(
 		db:              db,
 		nodeTrafficRepo: nodeTrafficRepo,
 		trafficRepo:     trafficRepo,
+		proxyRepo:       proxyRepo,
 		userRepo:        userRepo,
 		nodeRepo:        nodeRepo,
 		groupRepo:       groupRepo,
 		logger:          log,
 	}
+}
+
+// WithUserAccessCheck registers a post-update access checker used to detect revoked users.
+func (s *TrafficService) WithUserAccessCheck(check func(context.Context, int64) error) *TrafficService {
+	s.userAccessCheck = check
+	return s
+}
+
+// WithAccessRevokedHook registers a callback triggered after traffic updates revoke access.
+func (s *TrafficService) WithAccessRevokedHook(hook func(context.Context, int64, []int64, string)) *TrafficService {
+	s.accessRevokedHook = hook
+	return s
+}
+
+// WithNodeTrafficLimitExceededHook registers a callback triggered when a node exceeds its traffic limit.
+func (s *TrafficService) WithNodeTrafficLimitExceededHook(hook func(context.Context, int64, string)) *TrafficService {
+	s.nodeTrafficLimitExceededHook = hook
+	return s
+}
+
+// WithNodeTrafficAlertHook registers a callback triggered when node traffic crosses an alert threshold.
+func (s *TrafficService) WithNodeTrafficAlertHook(hook func(context.Context, *NodeTrafficAlert)) *TrafficService {
+	s.nodeTrafficAlertHook = hook
+	return s
 }
 
 // RecordTraffic records a traffic entry for a node.
@@ -161,6 +206,8 @@ func (s *TrafficService) RecordTrafficBatch(ctx context.Context, records []*Traf
 	}
 
 	now := time.Now()
+	batchNodesByUser := collectBatchNodesByUser(normalized)
+	beforeNodes := s.snapshotNodesByID(ctx, collectRecordNodeIDs(normalized))
 
 	if s.db == nil {
 		traffic := make([]*repository.NodeTraffic, len(normalized))
@@ -182,10 +229,11 @@ func (s *TrafficService) RecordTrafficBatch(ctx context.Context, records []*Traf
 		return nil
 	}
 
+	userTotals := collectUserTrafficTotals(normalized)
+
 	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		nodeTrafficRecords := make([]*repository.NodeTraffic, 0, len(normalized))
 		globalTrafficRecords := make([]*repository.Traffic, 0, len(normalized))
-		userTotals := make(map[int64]int64)
 		nodeUploads := make(map[int64]int64)
 		nodeDownloads := make(map[int64]int64)
 
@@ -209,8 +257,6 @@ func (s *TrafficService) RecordTrafficBatch(ctx context.Context, records []*Traf
 				})
 			}
 
-			total := record.Upload + record.Download
-			userTotals[record.UserID] += total
 			nodeUploads[record.NodeID] += record.Upload
 			nodeDownloads[record.NodeID] += record.Download
 		}
@@ -266,7 +312,301 @@ func (s *TrafficService) RecordTrafficBatch(ctx context.Context, records []*Traf
 		return err
 	}
 
+	s.notifyNodeTrafficAlerts(ctx, beforeNodes, normalized, now)
+	s.handleExceededNodeTrafficLimits(ctx, normalized)
+	s.notifyRevokedUsers(ctx, batchNodesByUser, userTotals)
+
 	return nil
+}
+
+func collectUserTrafficTotals(records []*TrafficRecord) map[int64]int64 {
+	userTotals := make(map[int64]int64)
+	for _, record := range records {
+		if record == nil {
+			continue
+		}
+		total := record.Upload + record.Download
+		if total <= 0 {
+			continue
+		}
+		userTotals[record.UserID] += total
+	}
+	return userTotals
+}
+
+func collectBatchNodesByUser(records []*TrafficRecord) map[int64]map[int64]struct{} {
+	batchNodesByUser := make(map[int64]map[int64]struct{})
+	for _, record := range records {
+		if record == nil || record.UserID <= 0 || record.NodeID <= 0 {
+			continue
+		}
+		nodeIDs := batchNodesByUser[record.UserID]
+		if nodeIDs == nil {
+			nodeIDs = make(map[int64]struct{})
+			batchNodesByUser[record.UserID] = nodeIDs
+		}
+		nodeIDs[record.NodeID] = struct{}{}
+	}
+	return batchNodesByUser
+}
+
+func (s *TrafficService) notifyRevokedUsers(ctx context.Context, batchNodesByUser map[int64]map[int64]struct{}, userTotals map[int64]int64) {
+	if s.userAccessCheck == nil || s.accessRevokedHook == nil || len(userTotals) == 0 {
+		return
+	}
+
+	for _, userID := range sortedUserIDs(userTotals) {
+		if userTotals[userID] <= 0 {
+			continue
+		}
+
+		accessErr := s.userAccessCheck(ctx, userID)
+		if accessErr == nil {
+			continue
+		}
+		if !apperrors.IsForbidden(accessErr) {
+			s.logger.Warn("failed to verify user access after traffic update",
+				logger.Err(accessErr),
+				logger.UserID(userID),
+			)
+			continue
+		}
+
+		nodeIDs, err := s.resolveAffectedNodeIDs(ctx, userID, batchNodesByUser[userID])
+		if err != nil {
+			s.logger.Warn("failed to resolve affected nodes for revoked user",
+				logger.Err(err),
+				logger.UserID(userID),
+			)
+			continue
+		}
+		if len(nodeIDs) == 0 {
+			continue
+		}
+
+		reason := accessRevocationReason(accessErr)
+		s.logger.Info("user access revoked after traffic update",
+			logger.UserID(userID),
+			logger.F("node_ids", nodeIDs),
+			logger.F("reason", reason),
+		)
+		s.accessRevokedHook(ctx, userID, nodeIDs, reason)
+	}
+}
+
+func (s *TrafficService) resolveAffectedNodeIDs(ctx context.Context, userID int64, batchNodeIDs map[int64]struct{}) ([]int64, error) {
+	unique := make(map[int64]struct{})
+	for nodeID := range batchNodeIDs {
+		if nodeID > 0 {
+			unique[nodeID] = struct{}{}
+		}
+	}
+
+	if s.proxyRepo != nil {
+		proxies, err := s.proxyRepo.GetByUserID(ctx, userID, 10000, 0)
+		if err != nil {
+			return nil, err
+		}
+		for _, proxy := range proxies {
+			if proxy != nil && proxy.NodeID != nil && *proxy.NodeID > 0 {
+				unique[*proxy.NodeID] = struct{}{}
+			}
+		}
+	}
+
+	if len(unique) == 0 {
+		return nil, nil
+	}
+
+	nodeIDs := make([]int64, 0, len(unique))
+	for nodeID := range unique {
+		nodeIDs = append(nodeIDs, nodeID)
+	}
+	sort.Slice(nodeIDs, func(i, j int) bool { return nodeIDs[i] < nodeIDs[j] })
+	return nodeIDs, nil
+}
+
+func sortedUserIDs(userTotals map[int64]int64) []int64 {
+	userIDs := make([]int64, 0, len(userTotals))
+	for userID := range userTotals {
+		userIDs = append(userIDs, userID)
+	}
+	sort.Slice(userIDs, func(i, j int) bool { return userIDs[i] < userIDs[j] })
+	return userIDs
+}
+
+func collectRecordNodeIDs(records []*TrafficRecord) map[int64]struct{} {
+	nodeIDs := make(map[int64]struct{})
+	for _, record := range records {
+		if record == nil || record.NodeID <= 0 {
+			continue
+		}
+		nodeIDs[record.NodeID] = struct{}{}
+	}
+	return nodeIDs
+}
+
+func (s *TrafficService) snapshotNodesByID(ctx context.Context, nodeIDs map[int64]struct{}) map[int64]*repository.Node {
+	if s == nil || s.nodeRepo == nil || len(nodeIDs) == 0 {
+		return nil
+	}
+
+	snapshots := make(map[int64]*repository.Node, len(nodeIDs))
+	for _, nodeID := range sortedNodeIDs(nodeIDs) {
+		nodeData, err := s.nodeRepo.GetByID(ctx, nodeID)
+		if err != nil || nodeData == nil {
+			continue
+		}
+		snapshots[nodeID] = cloneNodeSnapshot(nodeData)
+	}
+	return snapshots
+}
+
+func cloneNodeSnapshot(nodeData *repository.Node) *repository.Node {
+	if nodeData == nil {
+		return nil
+	}
+	clone := *nodeData
+	return &clone
+}
+
+func (s *TrafficService) notifyNodeTrafficAlerts(ctx context.Context, beforeNodes map[int64]*repository.Node, records []*TrafficRecord, triggeredAt time.Time) {
+	if s == nil || s.nodeRepo == nil || s.nodeTrafficAlertHook == nil || len(records) == 0 {
+		return
+	}
+
+	nodeIDs := collectRecordNodeIDs(records)
+	for _, nodeID := range sortedNodeIDs(nodeIDs) {
+		afterNode, err := s.nodeRepo.GetByID(ctx, nodeID)
+		if err != nil || afterNode == nil {
+			continue
+		}
+		for _, alert := range buildNodeTrafficAlerts(beforeNodes[nodeID], afterNode, triggeredAt) {
+			s.nodeTrafficAlertHook(ctx, alert)
+		}
+	}
+}
+
+func buildNodeTrafficAlerts(beforeNode, afterNode *repository.Node, triggeredAt time.Time) []*NodeTrafficAlert {
+	if afterNode == nil || afterNode.TrafficLimit <= 0 {
+		return nil
+	}
+
+	alerts := make([]*NodeTrafficAlert, 0, 2)
+	beforeUsage := nodeTrafficUsagePercent(beforeNode)
+	afterUsage := nodeTrafficUsagePercent(afterNode)
+	threshold := normalizedTrafficAlertThreshold(afterNode)
+
+	if threshold > 0 && beforeUsage < threshold && afterUsage >= threshold {
+		alerts = append(alerts, newNodeTrafficAlert(afterNode, "threshold", threshold, triggeredAt))
+	}
+	if beforeUsage < 100 && afterUsage >= 100 {
+		alerts = append(alerts, newNodeTrafficAlert(afterNode, "limit", 100, triggeredAt))
+	}
+
+	return alerts
+}
+
+func normalizedTrafficAlertThreshold(nodeData *repository.Node) float64 {
+	if nodeData == nil || nodeData.TrafficLimit <= 0 {
+		return 0
+	}
+	threshold := nodeData.AlertTrafficThreshold
+	if threshold <= 0 {
+		return 0
+	}
+	if threshold > 100 {
+		threshold = 100
+	}
+	return threshold
+}
+
+func nodeTrafficUsagePercent(nodeData *repository.Node) float64 {
+	if nodeData == nil || nodeData.TrafficLimit <= 0 {
+		return 0
+	}
+	return float64(nodeData.TrafficTotal) * 100 / float64(nodeData.TrafficLimit)
+}
+
+func newNodeTrafficAlert(nodeData *repository.Node, level string, threshold float64, triggeredAt time.Time) *NodeTrafficAlert {
+	if nodeData == nil {
+		return nil
+	}
+	return &NodeTrafficAlert{
+		NodeID:           nodeData.ID,
+		NodeName:         nodeData.Name,
+		Level:            level,
+		TrafficTotal:     nodeData.TrafficTotal,
+		TrafficLimit:     nodeData.TrafficLimit,
+		UsagePercent:     nodeTrafficUsagePercent(nodeData),
+		ThresholdPercent: threshold,
+		TriggeredAt:      triggeredAt,
+	}
+}
+
+func (s *TrafficService) handleExceededNodeTrafficLimits(ctx context.Context, records []*TrafficRecord) {
+	if s == nil || s.nodeRepo == nil || len(records) == 0 {
+		return
+	}
+
+	nodeIDs := make(map[int64]struct{})
+	for _, record := range records {
+		if record == nil || record.NodeID <= 0 {
+			continue
+		}
+		nodeIDs[record.NodeID] = struct{}{}
+	}
+	if len(nodeIDs) == 0 {
+		return
+	}
+
+	for _, nodeID := range sortedNodeIDs(nodeIDs) {
+		nodeData, err := s.nodeRepo.GetByID(ctx, nodeID)
+		if err != nil || !nodeTrafficLimitExceeded(nodeData) {
+			continue
+		}
+		if nodeData.Status != repository.NodeStatusUnhealthy {
+			if err := s.nodeRepo.UpdateStatus(ctx, nodeID, repository.NodeStatusUnhealthy); err != nil {
+				s.logger.Warn("failed to mark node unhealthy after traffic limit exceeded",
+					logger.Err(err),
+					logger.F("node_id", nodeID),
+				)
+				continue
+			}
+			s.logger.Warn("node traffic limit exceeded; node marked unhealthy",
+				logger.F("node_id", nodeID),
+				logger.F("traffic_total", nodeData.TrafficTotal),
+				logger.F("traffic_limit", nodeData.TrafficLimit),
+			)
+		}
+		if s.nodeTrafficLimitExceededHook != nil {
+			reason := "node traffic limit exceeded"
+			s.nodeTrafficLimitExceededHook(ctx, nodeID, reason)
+		}
+	}
+}
+
+func sortedNodeIDs(nodeIDs map[int64]struct{}) []int64 {
+	ids := make([]int64, 0, len(nodeIDs))
+	for nodeID := range nodeIDs {
+		ids = append(ids, nodeID)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids
+}
+
+func nodeTrafficLimitExceeded(nodeData *repository.Node) bool {
+	return nodeData != nil && nodeData.TrafficLimit > 0 && nodeData.TrafficTotal >= nodeData.TrafficLimit
+}
+
+func accessRevocationReason(err error) string {
+	if err == nil {
+		return ""
+	}
+	if appErr, ok := apperrors.AsAppError(err); ok && appErr.Message != "" {
+		return appErr.Message
+	}
+	return err.Error()
 }
 
 func normalizeTrafficRecords(records []*TrafficRecord) []*TrafficRecord {
@@ -553,11 +893,17 @@ func (s *TrafficService) DeleteByNode(ctx context.Context, nodeID int64) error {
 
 // ResetNodeTraffic resets a node's accumulated traffic counters to zero.
 func (s *TrafficService) ResetNodeTraffic(ctx context.Context, nodeID int64) error {
+	return s.resetNodeTrafficAt(ctx, nodeID, time.Now())
+}
+
+func (s *TrafficService) resetNodeTrafficAt(ctx context.Context, nodeID int64, resetAt time.Time) error {
 	if s.db == nil {
 		return nil
 	}
+	if resetAt.IsZero() {
+		resetAt = time.Now()
+	}
 
-	now := time.Now()
 	err := s.db.WithContext(ctx).
 		Model(&repository.Node{}).
 		Where("id = ?", nodeID).
@@ -565,7 +911,7 @@ func (s *TrafficService) ResetNodeTraffic(ctx context.Context, nodeID int64) err
 			"traffic_up":       0,
 			"traffic_down":     0,
 			"traffic_total":    0,
-			"traffic_reset_at": now,
+			"traffic_reset_at": resetAt,
 		}).Error
 	if err != nil {
 		s.logger.Error("Failed to reset node traffic",
@@ -576,8 +922,81 @@ func (s *TrafficService) ResetNodeTraffic(ctx context.Context, nodeID int64) err
 
 	s.logger.Info("Node traffic counters reset",
 		logger.F("node_id", nodeID),
-		logger.F("reset_at", now))
+		logger.F("reset_at", resetAt))
 	return nil
+}
+
+// ProcessMonthlyTrafficResets initializes missing reset anchors and resets nodes whose monthly cycle is due.
+func (s *TrafficService) ProcessMonthlyTrafficResets(ctx context.Context, now time.Time) ([]int64, error) {
+	if s == nil || s.nodeRepo == nil {
+		return nil, nil
+	}
+
+	nodes, err := s.nodeRepo.List(ctx, &repository.NodeFilter{Limit: 10000})
+	if err != nil {
+		return nil, err
+	}
+
+	resetNodeIDs := make([]int64, 0)
+	for _, nodeData := range nodes {
+		if !nodeRequiresTrafficCycle(nodeData) {
+			continue
+		}
+		if nodeData.TrafficResetAt == nil {
+			if initErr := s.initializeNodeTrafficResetAt(ctx, nodeData.ID, now); initErr != nil {
+				s.logger.Warn("failed to initialize node traffic reset anchor",
+					logger.Err(initErr),
+					logger.F("node_id", nodeData.ID),
+				)
+			}
+			continue
+		}
+		if !nodeTrafficResetDue(nodeData, now) {
+			continue
+		}
+		if resetErr := s.resetNodeTrafficAt(ctx, nodeData.ID, now); resetErr != nil {
+			s.logger.Warn("failed to process monthly node traffic reset",
+				logger.Err(resetErr),
+				logger.F("node_id", nodeData.ID),
+			)
+			continue
+		}
+		resetNodeIDs = append(resetNodeIDs, nodeData.ID)
+	}
+
+	return resetNodeIDs, nil
+}
+
+func (s *TrafficService) initializeNodeTrafficResetAt(ctx context.Context, nodeID int64, resetAt time.Time) error {
+	if s == nil || s.db == nil || nodeID <= 0 {
+		return nil
+	}
+	if resetAt.IsZero() {
+		resetAt = time.Now()
+	}
+	if err := s.db.WithContext(ctx).
+		Model(&repository.Node{}).
+		Where("id = ? AND traffic_reset_at IS NULL", nodeID).
+		Update("traffic_reset_at", resetAt).Error; err != nil {
+		return err
+	}
+
+	s.logger.Info("initialized node traffic reset anchor",
+		logger.F("node_id", nodeID),
+		logger.F("traffic_reset_at", resetAt),
+	)
+	return nil
+}
+
+func nodeRequiresTrafficCycle(nodeData *repository.Node) bool {
+	return nodeData != nil && nodeData.ID > 0 && nodeData.TrafficLimit > 0
+}
+
+func nodeTrafficResetDue(nodeData *repository.Node, now time.Time) bool {
+	if !nodeRequiresTrafficCycle(nodeData) || nodeData.TrafficResetAt == nil {
+		return false
+	}
+	return !now.Before(nodeData.TrafficResetAt.AddDate(0, 1, 0))
 }
 
 // AggregatedTrafficStats represents comprehensive aggregated traffic statistics.

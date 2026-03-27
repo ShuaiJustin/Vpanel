@@ -133,7 +133,8 @@ type CreateNodeRequest struct {
 	IPWhitelist []string `json:"ip_whitelist"`
 
 	// 流量限制
-	TrafficLimit int64 `json:"traffic_limit"`
+	TrafficLimit   int64      `json:"traffic_limit"`
+	TrafficResetAt *time.Time `json:"traffic_reset_at"`
 
 	// 速率限制
 	SpeedLimit int64 `json:"speed_limit"`
@@ -178,7 +179,8 @@ type UpdateNodeRequest struct {
 	IPWhitelist *[]string `json:"ip_whitelist"`
 
 	// 流量限制
-	TrafficLimit *int64 `json:"traffic_limit"`
+	TrafficLimit   *int64     `json:"traffic_limit"`
+	TrafficResetAt *time.Time `json:"traffic_reset_at"`
 
 	// 速率限制
 	SpeedLimit *int64 `json:"speed_limit"`
@@ -405,6 +407,12 @@ func (s *Service) Create(ctx context.Context, req *CreateNodeRequest) (*Node, er
 		alertMemoryThreshold = 80
 	}
 
+	trafficResetAt := req.TrafficResetAt
+	if trafficResetAt == nil && req.TrafficLimit > 0 {
+		now := time.Now()
+		trafficResetAt = &now
+	}
+
 	repoNode := &repository.Node{
 		Name:        req.Name,
 		Address:     address, // 使用标准化后的地址
@@ -420,8 +428,9 @@ func (s *Service) Create(ctx context.Context, req *CreateNodeRequest) (*Node, er
 		IPWhitelist: string(ipWhitelistJSON),
 
 		// 流量和速率
-		TrafficLimit: req.TrafficLimit,
-		SpeedLimit:   req.SpeedLimit,
+		TrafficLimit:   req.TrafficLimit,
+		TrafficResetAt: trafficResetAt,
+		SpeedLimit:     req.SpeedLimit,
 
 		// 协议
 		Protocols: string(protocolsJSON),
@@ -586,7 +595,15 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdateNodeRequest) 
 		if *req.TrafficLimit < 0 {
 			return nil, fmt.Errorf("%w: 流量限制不能为负数", ErrInvalidNode)
 		}
+		previousTrafficLimit := repoNode.TrafficLimit
 		repoNode.TrafficLimit = *req.TrafficLimit
+		if *req.TrafficLimit > 0 && req.TrafficResetAt == nil && (repoNode.TrafficResetAt == nil || previousTrafficLimit <= 0) {
+			now := time.Now()
+			repoNode.TrafficResetAt = &now
+		}
+	}
+	if req.TrafficResetAt != nil {
+		repoNode.TrafficResetAt = req.TrafficResetAt
 	}
 
 	if req.SpeedLimit != nil {

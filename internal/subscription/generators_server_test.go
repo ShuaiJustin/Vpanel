@@ -318,3 +318,58 @@ func TestGenerateV2rayN_VLESSIncludesEncryptionNoneAndKeepsIP(t *testing.T) {
 		t.Fatalf("expected vless payload to include sni, got %s", link)
 	}
 }
+
+func TestExtractProxyInfo_UsesExternalPortOverride(t *testing.T) {
+	proxy := &repository.Proxy{
+		ID:       1,
+		Name:     "node-shanghai-vmess",
+		Remark:   "auto provisioned",
+		Protocol: "vmess",
+		Host:     "180.173.123.192",
+		Port:     20004,
+		Settings: map[string]any{
+			"external_port": 80,
+		},
+	}
+
+	name, server, port, _ := extractProxyInfo(proxy)
+	if server != "180.173.123.192" {
+		t.Fatalf("expected server 180.173.123.192, got %s", server)
+	}
+	if port != 80 {
+		t.Fatalf("expected port 80, got %d", port)
+	}
+	if name != "VMess · 180.173.123.192:80" {
+		t.Fatalf("expected resolved name with external port, got %s", name)
+	}
+}
+
+func TestGenerateSurge_UsesExternalPortOverride(t *testing.T) {
+	proxies := []*repository.Proxy{
+		{
+			ID:       1,
+			Name:     "中国-Shanghai-192-vmess-ws",
+			Protocol: "vmess",
+			Host:     "180.173.123.192",
+			Port:     20004,
+			Settings: map[string]any{
+				"uuid":          "a2cfd05c-1514-4bdb-9447-3aa5acab8a08",
+				"network":       "ws",
+				"host":          "180.173.123.192",
+				"path":          "/vpws-20004",
+				"external_port": 80,
+			},
+			Enabled: true,
+		},
+	}
+
+	result, err := generateSurge(proxies, nil)
+	if err != nil {
+		t.Fatalf("generateSurge returned error: %v", err)
+	}
+
+	line := string(result)
+	if !strings.Contains(line, "180.173.123.192, 80") {
+		t.Fatalf("expected surge output to use external port 80, got %s", line)
+	}
+}

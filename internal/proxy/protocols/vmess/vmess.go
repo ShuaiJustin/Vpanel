@@ -72,13 +72,64 @@ func (p *Protocol) GenerateConfig(settings *proxy.Settings) (json.RawMessage, er
 				},
 			},
 		},
-		"streamSettings": map[string]any{
-			"network":  settings.GetString("network"),
-			"security": security,
-		},
+		"streamSettings": p.buildStreamSettings(settings, security),
 	}
 
 	return json.Marshal(config)
+}
+
+func (p *Protocol) buildStreamSettings(settings *proxy.Settings, security string) map[string]any {
+	network := settings.GetString("network")
+	if network == "" {
+		network = "tcp"
+	}
+
+	streamSettings := map[string]any{
+		"network":  network,
+		"security": security,
+	}
+
+	if security == "tls" {
+		tlsSettings := map[string]any{}
+		if sni := proxy.ResolveSNI(settings.Settings); sni != "" {
+			tlsSettings["serverName"] = sni
+		}
+		if alpn := settings.GetString("alpn"); alpn != "" {
+			tlsSettings["alpn"] = strings.Split(alpn, ",")
+		}
+		if settings.GetBool("allowInsecure") {
+			tlsSettings["allowInsecure"] = true
+		}
+		streamSettings["tlsSettings"] = tlsSettings
+	}
+
+	switch network {
+	case "ws":
+		wsSettings := map[string]any{
+			"path": settings.GetString("path"),
+		}
+		if host := settings.GetString("host"); host != "" {
+			wsSettings["headers"] = map[string]any{"Host": host}
+		}
+		streamSettings["wsSettings"] = wsSettings
+	case "grpc":
+		streamSettings["grpcSettings"] = map[string]any{
+			"serviceName": settings.GetString("serviceName"),
+		}
+	case "tcp":
+		if headerType := settings.GetString("headerType"); headerType == "http" {
+			streamSettings["tcpSettings"] = map[string]any{
+				"header": map[string]any{
+					"type": "http",
+					"request": map[string]any{
+						"path": []string{settings.GetString("path")},
+					},
+				},
+			}
+		}
+	}
+
+	return streamSettings
 }
 
 // GenerateLink generates a VMess share link.
@@ -102,7 +153,7 @@ func (p *Protocol) GenerateLink(settings *proxy.Settings) (string, error) {
 		V:             "2",
 		PS:            settings.Name,
 		Add:           server,
-		Port:          strconv.Itoa(settings.Port),
+		Port:          strconv.Itoa(proxy.ResolveServerPort(settings.Port, settings.Settings)),
 		ID:            userID,
 		Aid:           strconv.Itoa(settings.GetInt("alterId")),
 		Scy:           proxy.ResolveVMessCipher(settings.Settings),

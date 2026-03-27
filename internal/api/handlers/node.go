@@ -151,8 +151,9 @@ type CreateNodeRequest struct {
 	SSH *SSHConfig `json:"ssh,omitempty"`
 
 	// 流量和速率
-	TrafficLimit int64 `json:"traffic_limit"`
-	SpeedLimit   int64 `json:"speed_limit"`
+	TrafficLimit   int64  `json:"traffic_limit"`
+	TrafficResetAt string `json:"traffic_reset_at,omitempty"`
+	SpeedLimit     int64  `json:"speed_limit"`
 
 	// 协议支持
 	Protocols []string `json:"protocols"`
@@ -205,8 +206,9 @@ type UpdateNodeRequest struct {
 	IPWhitelist *[]string `json:"ip_whitelist"`
 
 	// 流量和速率
-	TrafficLimit *int64 `json:"traffic_limit"`
-	SpeedLimit   *int64 `json:"speed_limit"`
+	TrafficLimit   *int64  `json:"traffic_limit"`
+	TrafficResetAt *string `json:"traffic_reset_at"`
+	SpeedLimit     *int64  `json:"speed_limit"`
 
 	// 协议支持
 	Protocols *[]string `json:"protocols"`
@@ -332,6 +334,18 @@ func toNodeResponse(n *node.Node) *NodeResponse {
 		resp.Protocols = []string{}
 	}
 	return resp
+}
+
+func parseOptionalRFC3339Time(value string) (*time.Time, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil, nil
+	}
+	parsed, err := time.Parse(time.RFC3339, trimmed)
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
 }
 
 func normalizeNodeGroupIDs(groupIDs []int64, fallback *int64) []int64 {
@@ -582,6 +596,12 @@ func (h *NodeHandler) Create(c *gin.Context) {
 		return
 	}
 
+	trafficResetAt, err := parseOptionalRFC3339Time(req.TrafficResetAt)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid traffic_reset_at, must be RFC3339"})
+		return
+	}
+
 	groupIDs := normalizeNodeGroupIDs(req.GroupIDs, req.GroupID)
 	var primaryGroupID *int64
 	if len(groupIDs) > 0 {
@@ -600,8 +620,9 @@ func (h *NodeHandler) Create(c *gin.Context) {
 		IPWhitelist: req.IPWhitelist,
 
 		// 流量和速率
-		TrafficLimit: req.TrafficLimit,
-		SpeedLimit:   req.SpeedLimit,
+		TrafficLimit:   req.TrafficLimit,
+		TrafficResetAt: trafficResetAt,
+		SpeedLimit:     req.SpeedLimit,
 
 		// 协议支持
 		Protocols: req.Protocols,
@@ -765,6 +786,15 @@ func (h *NodeHandler) Update(c *gin.Context) {
 		return
 	}
 
+	var trafficResetAt *time.Time
+	if req.TrafficResetAt != nil {
+		trafficResetAt, err = parseOptionalRFC3339Time(*req.TrafficResetAt)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid traffic_reset_at, must be RFC3339"})
+			return
+		}
+	}
+
 	var groupIDs []int64
 	if req.GroupIDs != nil || req.GroupID != nil {
 		if req.GroupIDs != nil {
@@ -794,8 +824,9 @@ func (h *NodeHandler) Update(c *gin.Context) {
 		IPWhitelist: req.IPWhitelist,
 
 		// 流量和速率
-		TrafficLimit: req.TrafficLimit,
-		SpeedLimit:   req.SpeedLimit,
+		TrafficLimit:   req.TrafficLimit,
+		TrafficResetAt: trafficResetAt,
+		SpeedLimit:     req.SpeedLimit,
 
 		// 协议支持
 		Protocols: req.Protocols,

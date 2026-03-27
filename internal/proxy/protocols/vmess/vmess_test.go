@@ -128,3 +128,77 @@ func TestParseLink_AcceptsStringPortAndAid(t *testing.T) {
 		t.Fatalf("expected scy auto, got %q", settings.GetString("scy"))
 	}
 }
+
+func TestGenerateLink_UsesExternalPortWhenProvided(t *testing.T) {
+	protocol := New()
+	settings := &proxy.Settings{
+		Name: "test",
+		Host: "180.173.123.192",
+		Port: 20004,
+		Settings: map[string]any{
+			"uuid":          "12345678-1234-1234-1234-123456789012",
+			"network":       "ws",
+			"path":          "/vpws-20004",
+			"external_port": 80,
+		},
+	}
+
+	link, err := protocol.GenerateLink(settings)
+	if err != nil {
+		t.Fatalf("GenerateLink returned error: %v", err)
+	}
+
+	encoded := link[len("vmess://"):]
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		t.Fatalf("failed to decode vmess link: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(decoded, &payload); err != nil {
+		t.Fatalf("failed to parse vmess payload: %v", err)
+	}
+
+	if payload["port"] != "80" {
+		t.Fatalf("expected external port 80, got %v", payload["port"])
+	}
+}
+
+func TestGenerateConfig_IncludesWSSettings(t *testing.T) {
+	protocol := New()
+	settings := &proxy.Settings{
+		ID:   24,
+		Port: 20004,
+		Settings: map[string]any{
+			"uuid":    "12345678-1234-1234-1234-123456789012",
+			"network": "ws",
+			"path":    "/vpws-20004",
+			"host":    "180.173.123.192",
+		},
+	}
+
+	raw, err := protocol.GenerateConfig(settings)
+	if err != nil {
+		t.Fatalf("GenerateConfig returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatalf("failed to parse vmess config: %v", err)
+	}
+
+	streamSettings, ok := payload["streamSettings"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected streamSettings map, got %T", payload["streamSettings"])
+	}
+	if streamSettings["network"] != "ws" {
+		t.Fatalf("expected ws network, got %v", streamSettings["network"])
+	}
+	wsSettings, ok := streamSettings["wsSettings"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected wsSettings map, got %T", streamSettings["wsSettings"])
+	}
+	if wsSettings["path"] != "/vpws-20004" {
+		t.Fatalf("expected ws path /vpws-20004, got %v", wsSettings["path"])
+	}
+}

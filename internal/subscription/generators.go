@@ -134,8 +134,9 @@ func buildSubscriptionProxyName(proxy *repository.Proxy, server string) string {
 		}
 		return protocol
 	}
-	if proxy.Port > 0 {
-		return fmt.Sprintf("%s · %s:%d", protocol, host, proxy.Port)
+	port := proxylib.ResolveServerPort(proxy.Port, proxy.Settings)
+	if port > 0 {
+		return fmt.Sprintf("%s · %s:%d", protocol, host, port)
 	}
 	return fmt.Sprintf("%s · %s", protocol, host)
 }
@@ -144,7 +145,7 @@ func buildSubscriptionProxyName(proxy *repository.Proxy, server string) string {
 func extractProxyInfo(proxy *repository.Proxy) (name, server string, port int, settings map[string]interface{}) {
 	server = proxylib.ResolveServerAddress(proxy.Host, proxy.Settings)
 	name = buildSubscriptionProxyName(proxy, server)
-	return name, server, proxy.Port, proxy.Settings
+	return name, server, proxylib.ResolveServerPort(proxy.Port, proxy.Settings), proxy.Settings
 }
 
 // generateV2rayN generates V2rayN format subscription content.

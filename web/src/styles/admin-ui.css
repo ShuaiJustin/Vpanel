@@ -1153,6 +1153,62 @@
   background: var(--admin-surface-strong) !important;
 }
 
+.app-container.dark-mode .content .el-input__inner,
+.app-container.dark-mode .content .el-textarea__inner,
+.app-container.dark-mode .content .el-input__prefix,
+.app-container.dark-mode .content .el-input__prefix-inner,
+.app-container.dark-mode .content .el-input__suffix,
+.app-container.dark-mode .content .el-input__suffix-inner,
+.app-container.dark-mode .content .el-select__selection,
+.app-container.dark-mode .content .el-select__selected-item,
+.app-container.dark-mode .content .el-select__placeholder,
+.app-container.dark-mode .content .el-select__input,
+.app-container.dark-mode .content .el-select__tags-text {
+  background: transparent !important;
+  color: var(--admin-text) !important;
+}
+
+.app-container.dark-mode .content .el-select__placeholder,
+.app-container.dark-mode .content .el-input__inner::placeholder,
+.app-container.dark-mode .content .el-textarea__inner::placeholder {
+  color: var(--admin-text-muted) !important;
+}
+
+.app-container.dark-mode .content .el-input__prefix,
+.app-container.dark-mode .content .el-input__prefix-inner,
+.app-container.dark-mode .content .el-input__suffix,
+.app-container.dark-mode .content .el-input__suffix-inner,
+.app-container.dark-mode .content .el-input__icon,
+.app-container.dark-mode .content .el-input__clear,
+.app-container.dark-mode .content .el-select__caret,
+.app-container.dark-mode .content .el-select__icon,
+.app-container.dark-mode .content .el-select__wrapper .el-icon {
+  color: var(--admin-text-muted) !important;
+}
+
+.app-container.dark-mode .content .el-input-group__append,
+.app-container.dark-mode .content .el-input-group__prepend {
+  background: var(--admin-surface-soft) !important;
+  border-color: rgba(100, 116, 139, 0.28) !important;
+  color: var(--admin-text) !important;
+  box-shadow: none !important;
+}
+
+.app-container.dark-mode .content .el-input-group__append > *,
+.app-container.dark-mode .content .el-input-group__prepend > * {
+  color: inherit !important;
+}
+
+.app-container.dark-mode .content .el-input__inner:-webkit-autofill,
+.app-container.dark-mode .content .el-input__inner:-webkit-autofill:hover,
+.app-container.dark-mode .content .el-input__inner:-webkit-autofill:focus,
+.app-container.dark-mode .content .el-input__inner:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--admin-text) !important;
+  caret-color: var(--admin-text) !important;
+  box-shadow: 0 0 0 1000px var(--admin-surface-strong) inset !important;
+  transition: background-color 9999s ease-out 0s;
+}
+
 /* descriptions label in dark mode */
 .app-container.dark-mode .content .el-descriptions__label.el-descriptions__cell.is-bordered-label {
   background: rgba(51, 65, 85, 0.5);

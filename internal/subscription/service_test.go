@@ -12,8 +12,15 @@ import (
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 
+	trialsvc "v/internal/commercial/trial"
 	"v/internal/database/repository"
+	"v/internal/entitlement"
 	"v/internal/logger"
+	"v/internal/proxy"
+	"v/internal/proxy/protocols/shadowsocks"
+	"v/internal/proxy/protocols/trojan"
+	"v/internal/proxy/protocols/vless"
+	"v/internal/proxy/protocols/vmess"
 )
 
 // setupTestDB creates an in-memory SQLite database for testing.
@@ -797,5 +804,61 @@ func TestGetUserEnabledProxies_UsesTLSDomainAsServer(t *testing.T) {
 	server, ok := proxies[0].Settings["server"].(string)
 	if !ok || server != "vpn.example.com" {
 		t.Fatalf("Expected resolved server vpn.example.com, got %#v", proxies[0].Settings["server"])
+	}
+}
+
+func TestGetUserEnabledProxies_WithEntitlementIncludesMultipleNodes(t *testing.T) {
+	db := setupTestDB(t)
+	if err := db.AutoMigrate(&repository.Node{}, &repository.Trial{}, &repository.UserNodeAssignment{}); err != nil {
+		t.Fatalf("Failed to migrate entitlement models: %v", err)
+	}
+
+	subscriptionRepo := repository.NewSubscriptionRepository(db)
+	userRepo := repository.NewUserRepository(db)
+	proxyRepo := repository.NewProxyRepository(db)
+	nodeRepo := repository.NewNodeRepository(db)
+	trialRepo := repository.NewTrialRepository(db)
+	assignmentRepo := repository.NewUserNodeAssignmentRepository(db)
+	log := logger.NewNopLogger()
+
+	trialService := trialsvc.NewService(trialRepo, userRepo, log, nil)
+	proxyManager := proxy.NewManager(proxyRepo)
+	proxyManager.RegisterProtocol(vmess.New())
+	proxyManager.RegisterProtocol(vless.New())
+	proxyManager.RegisterProtocol(trojan.New())
+	proxyManager.RegisterProtocol(shadowsocks.New())
+
+	entitlementService := entitlement.NewService(
+		userRepo,
+		trialRepo,
+		proxyRepo,
+		nodeRepo,
+		assignmentRepo,
+		trialService,
+		log,
+	).WithProxyManager(proxyManager)
+
+	service := NewService(subscriptionRepo, userRepo, proxyRepo, log, "http://localhost:8080").
+		WithNodeRepository(nodeRepo).
+		WithEntitlementService(entitlementService)
+
+	ctx := context.Background()
+	userID := createTestUser(t, db, "entitled-subscription-user")
+
+	nodeOne := &repository.Node{Name: "sub-node-1", Address: "sub-node-1.example.com", Token: "sub-node-1-token", Status: repository.NodeStatusOnline, Protocols: `["vmess"]`}
+	nodeTwo := &repository.Node{Name: "sub-node-2", Address: "sub-node-2.example.com", Token: "sub-node-2-token", Status: repository.NodeStatusOnline, Protocols: `["vmess"]`}
+	if err := db.Create(nodeOne).Error; err != nil {
+		t.Fatalf("Failed to create node one: %v", err)
+	}
+	if err := db.Create(nodeTwo).Error; err != nil {
+		t.Fatalf("Failed to create node two: %v", err)
+	}
+
+	proxies, err := service.GetUserEnabledProxies(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserEnabledProxies returned error: %v", err)
+	}
+	if len(proxies) != 2 {
+		t.Fatalf("Expected 2 proxies from entitlement-backed subscription, got %d", len(proxies))
 	}
 }

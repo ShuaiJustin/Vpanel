@@ -79,22 +79,22 @@ func (h *ProxyHandler) queueNodeConfigSync(nodeID *int64, source, reason string)
 }
 
 type ProxyResponse struct {
-	ID           int64          `json:"id"`
-	UserID       int64          `json:"user_id"`
-	NodeID       *int64         `json:"node_id,omitempty"` // 节点 ID
-	Name         string         `json:"name"`
-	Protocol     string         `json:"protocol"`
-	Port         int            `json:"port"`
-	Host         string         `json:"host,omitempty"`
-	Settings     map[string]any `json:"settings,omitempty"`
-	Enabled      bool           `json:"enabled"`
-	Remark       string         `json:"remark,omitempty"`
-	ExpiresAt    *string        `json:"expires_at,omitempty"`
-	ExpirySource string         `json:"expiry_source,omitempty"`
-	TrafficLimit  int64         `json:"traffic_limit"`
-	TrafficSource string        `json:"traffic_limit_source,omitempty"`
-	CreatedAt    string         `json:"created_at"`
-	UpdatedAt    string         `json:"updated_at"`
+	ID            int64          `json:"id"`
+	UserID        int64          `json:"user_id"`
+	NodeID        *int64         `json:"node_id,omitempty"` // 节点 ID
+	Name          string         `json:"name"`
+	Protocol      string         `json:"protocol"`
+	Port          int            `json:"port"`
+	Host          string         `json:"host,omitempty"`
+	Settings      map[string]any `json:"settings,omitempty"`
+	Enabled       bool           `json:"enabled"`
+	Remark        string         `json:"remark,omitempty"`
+	ExpiresAt     *string        `json:"expires_at,omitempty"`
+	ExpirySource  string         `json:"expiry_source,omitempty"`
+	TrafficLimit  int64          `json:"traffic_limit"`
+	TrafficSource string         `json:"traffic_limit_source,omitempty"`
+	CreatedAt     string         `json:"created_at"`
+	UpdatedAt     string         `json:"updated_at"`
 }
 
 // getUserFromContext extracts user information from the gin context.
@@ -370,7 +370,47 @@ func (h *ProxyHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, h.buildProxyResponse(c.Request.Context(), p))
 }
 
+func (h *ProxyHandler) loadProxyNode(ctx context.Context, p *repository.Proxy) *repository.Node {
+	if h == nil || p == nil || p.NodeID == nil || h.nodeRepo == nil {
+		return nil
+	}
+
+	nodeModel, err := h.nodeRepo.GetByID(ctx, *p.NodeID)
+	if err != nil {
+		return nil
+	}
+	return nodeModel
+}
+
+func resolveProxyServerAddress(p *repository.Proxy, nodeModel *repository.Node, settings map[string]any) string {
+	if p == nil {
+		return ""
+	}
+	if settings != nil {
+		if explicitServer, ok := settings["server"].(string); ok {
+			if normalized := proxy.NormalizeShareHost(explicitServer); normalized != "" {
+				return normalized
+			}
+		}
+	}
+	if nodeModel != nil {
+		if normalized := proxy.NormalizeShareHost(nodeModel.Address); normalized != "" {
+			return normalized
+		}
+	}
+	if resolved := proxy.ResolveServerAddress(p.Host, settings); resolved != "" {
+		return resolved
+	}
+	return ""
+}
+
 func (h *ProxyHandler) buildProxyResponse(ctx context.Context, p *repository.Proxy) ProxyResponse {
+	nodeModel := h.loadProxyNode(ctx, p)
+	resolvedHost := resolveProxyServerAddress(p, nodeModel, p.Settings)
+	if resolvedHost == "" {
+		resolvedHost = p.Host
+	}
+
 	response := ProxyResponse{
 		ID:        p.ID,
 		UserID:    p.UserID,
@@ -378,7 +418,7 @@ func (h *ProxyHandler) buildProxyResponse(ctx context.Context, p *repository.Pro
 		Name:      p.Name,
 		Protocol:  p.Protocol,
 		Port:      p.Port,
-		Host:      p.Host,
+		Host:      resolvedHost,
 		Settings:  p.Settings,
 		Enabled:   p.Enabled,
 		Remark:    p.Remark,
@@ -517,19 +557,8 @@ func (h *ProxyHandler) GetShareLink(c *gin.Context) {
 		settingsMap = normalizedSettings
 	}
 
-	resolvedServer := ""
-	if explicitServer, ok := settingsMap["server"].(string); ok {
-		resolvedServer = proxy.NormalizeShareHost(explicitServer)
-	}
-	if resolvedServer == "" && p.NodeID != nil && h.nodeRepo != nil {
-		node, nodeErr := h.nodeRepo.GetByID(c.Request.Context(), *p.NodeID)
-		if nodeErr == nil {
-			resolvedServer = proxy.NormalizeShareHost(node.Address)
-		}
-	}
-	if resolvedServer == "" {
-		resolvedServer = proxy.ResolveServerAddress(p.Host, settingsMap)
-	}
+	nodeModel := h.loadProxyNode(c.Request.Context(), p)
+	resolvedServer := resolveProxyServerAddress(p, nodeModel, settingsMap)
 	if resolvedServer == "" && p.NodeID == nil {
 		if forwardedHost := proxy.NormalizeShareHost(c.GetHeader("X-Forwarded-Host")); forwardedHost != "" {
 			resolvedServer = forwardedHost
@@ -545,7 +574,7 @@ func (h *ProxyHandler) GetShareLink(c *gin.Context) {
 		ID:       p.ID,
 		Name:     p.Name,
 		Protocol: p.Protocol,
-		Port:     p.Port,
+		Port:     proxy.ResolveServerPort(p.Port, settingsMap),
 		Host:     p.Host,
 		Settings: settingsMap,
 		Enabled:  p.Enabled,

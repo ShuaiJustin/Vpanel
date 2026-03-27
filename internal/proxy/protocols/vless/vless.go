@@ -173,7 +173,7 @@ func (p *Protocol) GenerateLink(settings *proxy.Settings) (string, error) {
 	}
 
 	// Build link: vless://uuid@host:port?params#name
-	link := fmt.Sprintf("vless://%s@%s:%d", userID, server, settings.Port)
+	link := fmt.Sprintf("vless://%s@%s:%d", userID, server, proxy.ResolveServerPort(settings.Port, settings.Settings))
 	if len(params) > 0 {
 		link += "?" + params.Encode()
 	}

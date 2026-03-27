@@ -453,3 +453,276 @@ func TestGetAccessibleProxies_ReconcilesExistingAutoProvisionedProxyToTLS(t *tes
 		t.Fatalf("expected persisted proxy security to be tls, got %#v", got)
 	}
 }
+
+func TestGetSubscriptionProxies_IncludesMultipleNodes(t *testing.T) {
+	service, db := setupTestService(t)
+	user := createTestUser(t, db, "subscription-multi-node-user")
+
+	nodeOne := createTestNode(t, db, "subscription-node-one")
+	nodeOne.Protocols = `["vmess"]`
+	if err := db.Save(nodeOne).Error; err != nil {
+		t.Fatalf("failed to update node one protocols: %v", err)
+	}
+
+	nodeTwo := createTestNode(t, db, "subscription-node-two")
+	nodeTwo.Protocols = `["vmess"]`
+	if err := db.Save(nodeTwo).Error; err != nil {
+		t.Fatalf("failed to update node two protocols: %v", err)
+	}
+
+	nodeOneRef := nodeOne.ID
+	existingProxy := &repository.Proxy{
+		UserID:   user.ID,
+		NodeID:   &nodeOneRef,
+		Name:     "existing-user-proxy",
+		Protocol: "vmess",
+		Port:     21001,
+		Host:     nodeOne.Address,
+		Settings: map[string]any{
+			"uuid": "12345678-1234-1234-1234-123456789012",
+		},
+		Enabled: true,
+		Remark:  "auto provisioned",
+	}
+	if err := db.Create(existingProxy).Error; err != nil {
+		t.Fatalf("failed to create existing proxy: %v", err)
+	}
+
+	proxies, _, err := service.GetSubscriptionProxies(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("expected subscription proxies, got error: %v", err)
+	}
+	if len(proxies) != 2 {
+		t.Fatalf("expected two subscription proxies, got %d", len(proxies))
+	}
+
+	nodeIDs := map[int64]bool{}
+	for _, proxyModel := range proxies {
+		if proxyModel.NodeID != nil {
+			nodeIDs[*proxyModel.NodeID] = true
+		}
+	}
+	if !nodeIDs[nodeOne.ID] || !nodeIDs[nodeTwo.ID] {
+		t.Fatalf("expected proxies from nodes %d and %d, got %+v", nodeOne.ID, nodeTwo.ID, nodeIDs)
+	}
+
+	var persisted []*repository.Proxy
+	if err := db.Where("user_id = ?", user.ID).Order("id asc").Find(&persisted).Error; err != nil {
+		t.Fatalf("failed to load persisted proxies: %v", err)
+	}
+	if len(persisted) != 2 {
+		t.Fatalf("expected two persisted proxies after subscription provisioning, got %d", len(persisted))
+	}
+}
+
+func TestGetAccessibleProxies_ReassignsWhenExistingProxyNodeUnhealthy(t *testing.T) {
+	service, db := setupTestService(t)
+	user := createTestUser(t, db, "reassign-on-unhealthy-user")
+	badNode := createTestNode(t, db, "bad-node")
+	badNode.Status = repository.NodeStatusUnhealthy
+	if err := db.Save(badNode).Error; err != nil {
+		t.Fatalf("failed to mark bad node unhealthy: %v", err)
+	}
+	goodNode := createTestNode(t, db, "good-node")
+
+	badNodeRef := badNode.ID
+	existingProxy := &repository.Proxy{
+		UserID:   user.ID,
+		NodeID:   &badNodeRef,
+		Name:     "stale-auto-proxy",
+		Protocol: "vmess",
+		Port:     24009,
+		Host:     badNode.Address,
+		Settings: map[string]any{
+			"uuid": "79dc0ef2-b56d-4430-9e2b-baf0ce8ebd7b",
+		},
+		Enabled: true,
+		Remark:  "auto provisioned",
+	}
+	if err := db.Create(existingProxy).Error; err != nil {
+		t.Fatalf("failed to create unhealthy proxy: %v", err)
+	}
+
+	proxies, _, err := service.GetAccessibleProxies(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("expected healthy fallback proxy, got error: %v", err)
+	}
+	if len(proxies) != 1 {
+		t.Fatalf("expected one accessible proxy, got %d", len(proxies))
+	}
+	if proxies[0].NodeID == nil || *proxies[0].NodeID != goodNode.ID {
+		t.Fatalf("expected reassigned proxy on node %d, got %+v", goodNode.ID, proxies[0].NodeID)
+	}
+
+	var assignment repository.UserNodeAssignment
+	if err := db.First(&assignment, "user_id = ?", user.ID).Error; err != nil {
+		t.Fatalf("expected reassigned node assignment, got error: %v", err)
+	}
+	if assignment.NodeID != goodNode.ID {
+		t.Fatalf("expected assignment moved to node %d, got %d", goodNode.ID, assignment.NodeID)
+	}
+}
+
+func TestGetSubscriptionProxies_ExcludesUnhealthyExistingNode(t *testing.T) {
+	service, db := setupTestService(t)
+	user := createTestUser(t, db, "subscription-healthy-only-user")
+	badNode := createTestNode(t, db, "subscription-bad-node")
+	badNode.Status = repository.NodeStatusUnhealthy
+	if err := db.Save(badNode).Error; err != nil {
+		t.Fatalf("failed to mark subscription bad node unhealthy: %v", err)
+	}
+	goodNode := createTestNode(t, db, "subscription-good-node")
+	goodNode.Protocols = `["vmess"]`
+	if err := db.Save(goodNode).Error; err != nil {
+		t.Fatalf("failed to update good node protocols: %v", err)
+	}
+
+	badNodeRef := badNode.ID
+	badProxy := &repository.Proxy{
+		UserID:   user.ID,
+		NodeID:   &badNodeRef,
+		Name:     "bad-existing-proxy",
+		Protocol: "vmess",
+		Port:     25001,
+		Host:     badNode.Address,
+		Settings: map[string]any{
+			"uuid": "80f5a7b7-523f-4b5d-9225-f56d37c18b9b",
+		},
+		Enabled: true,
+		Remark:  "auto provisioned",
+	}
+	if err := db.Create(badProxy).Error; err != nil {
+		t.Fatalf("failed to create bad subscription proxy: %v", err)
+	}
+
+	proxies, _, err := service.GetSubscriptionProxies(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("expected subscription proxies, got error: %v", err)
+	}
+	if len(proxies) != 1 {
+		t.Fatalf("expected one healthy subscription proxy, got %d", len(proxies))
+	}
+	if proxies[0].NodeID == nil || *proxies[0].NodeID != goodNode.ID {
+		t.Fatalf("expected subscription proxy on node %d, got %+v", goodNode.ID, proxies[0].NodeID)
+	}
+}
+
+func TestGetAccessibleProxies_SkipsMissingExistingNode(t *testing.T) {
+	service, db := setupTestService(t)
+	user := createTestUser(t, db, "missing-node-access-user")
+	orphanNode := createTestNode(t, db, "missing-node-access-orphan")
+	goodNode := createTestNode(t, db, "missing-node-access-good")
+
+	orphanNodeRef := orphanNode.ID
+	orphanProxy := &repository.Proxy{
+		UserID:   user.ID,
+		NodeID:   &orphanNodeRef,
+		Name:     "orphan-access-proxy",
+		Protocol: "vmess",
+		Port:     25011,
+		Host:     orphanNode.Address,
+		Settings: map[string]any{
+			"uuid": "f8fd4ccc-3a93-4a68-bf63-2018a3c6099e",
+		},
+		Enabled: true,
+		Remark:  "auto provisioned",
+	}
+	if err := db.Create(orphanProxy).Error; err != nil {
+		t.Fatalf("failed to create orphan access proxy: %v", err)
+	}
+	if err := db.Delete(&repository.Node{}, orphanNode.ID).Error; err != nil {
+		t.Fatalf("failed to delete orphan node: %v", err)
+	}
+
+	proxies, _, err := service.GetAccessibleProxies(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("expected healthy fallback proxy, got error: %v", err)
+	}
+	if len(proxies) != 1 {
+		t.Fatalf("expected one accessible proxy, got %d", len(proxies))
+	}
+	if proxies[0].NodeID == nil || *proxies[0].NodeID != goodNode.ID {
+		t.Fatalf("expected fallback proxy on node %d, got %+v", goodNode.ID, proxies[0].NodeID)
+	}
+}
+
+func TestGetSubscriptionProxies_SkipsMissingExistingNode(t *testing.T) {
+	service, db := setupTestService(t)
+	user := createTestUser(t, db, "missing-node-subscription-user")
+	orphanNode := createTestNode(t, db, "missing-node-subscription-orphan")
+	goodNode := createTestNode(t, db, "missing-node-subscription-good")
+	goodNode.Protocols = `["vmess"]`
+	if err := db.Save(goodNode).Error; err != nil {
+		t.Fatalf("failed to update good node protocols: %v", err)
+	}
+
+	orphanNodeRef := orphanNode.ID
+	orphanProxy := &repository.Proxy{
+		UserID:   user.ID,
+		NodeID:   &orphanNodeRef,
+		Name:     "orphan-subscription-proxy",
+		Protocol: "vmess",
+		Port:     25012,
+		Host:     orphanNode.Address,
+		Settings: map[string]any{
+			"uuid": "49d03fe8-62da-4d80-b224-12b2826ddaf6",
+		},
+		Enabled: true,
+		Remark:  "auto provisioned",
+	}
+	if err := db.Create(orphanProxy).Error; err != nil {
+		t.Fatalf("failed to create orphan subscription proxy: %v", err)
+	}
+	if err := db.Delete(&repository.Node{}, orphanNode.ID).Error; err != nil {
+		t.Fatalf("failed to delete orphan node: %v", err)
+	}
+
+	proxies, _, err := service.GetSubscriptionProxies(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("expected subscription proxies, got error: %v", err)
+	}
+	if len(proxies) != 1 {
+		t.Fatalf("expected one healthy subscription proxy, got %d", len(proxies))
+	}
+	if proxies[0].NodeID == nil || *proxies[0].NodeID != goodNode.ID {
+		t.Fatalf("expected subscription proxy on node %d, got %+v", goodNode.ID, proxies[0].NodeID)
+	}
+}
+
+func TestGetAccessibleProxies_PrefersLowerTrafficPressureWhenAssignmentCountsTie(t *testing.T) {
+	service, db := setupTestService(t)
+	user := createTestUser(t, db, "traffic-aware-user")
+
+	highPressureNode := createTestNode(t, db, "high-pressure-node")
+	highPressureNode.TrafficLimit = 1000
+	highPressureNode.TrafficTotal = 700
+	highPressureNode.AlertTrafficThreshold = 80
+	if err := db.Save(highPressureNode).Error; err != nil {
+		t.Fatalf("failed to update high-pressure node: %v", err)
+	}
+
+	lowPressureNode := createTestNode(t, db, "low-pressure-node")
+	lowPressureNode.TrafficLimit = 1000
+	lowPressureNode.TrafficTotal = 200
+	lowPressureNode.AlertTrafficThreshold = 80
+	if err := db.Save(lowPressureNode).Error; err != nil {
+		t.Fatalf("failed to update low-pressure node: %v", err)
+	}
+
+	createNodeProxy(t, db, highPressureNode.ID, "high-pressure-proxy", 11001)
+	preferredProxy := createNodeProxy(t, db, lowPressureNode.ID, "low-pressure-proxy", 11002)
+
+	proxies, _, err := service.GetAccessibleProxies(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("expected assigned node proxies, got error: %v", err)
+	}
+	if len(proxies) != 1 {
+		t.Fatalf("expected only one assigned proxy, got %d", len(proxies))
+	}
+	if proxies[0].NodeID == nil || *proxies[0].NodeID != lowPressureNode.ID {
+		t.Fatalf("expected assignment to lower traffic pressure node %d, got %+v", lowPressureNode.ID, proxies[0].NodeID)
+	}
+	if proxies[0].ID != preferredProxy.ID {
+		t.Fatalf("expected proxy %d from lower traffic node, got %d", preferredProxy.ID, proxies[0].ID)
+	}
+}

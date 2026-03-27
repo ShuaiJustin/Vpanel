@@ -164,7 +164,22 @@ const getRandomWidth = () => {
 
 <style scoped>
 .skeleton-wrapper {
+  --skeleton-base: #f0f0f0;
+  --skeleton-highlight: #e0e0e0;
+  --skeleton-surface: var(--color-bg-card);
+  --skeleton-muted-surface: #fafafa;
+  --skeleton-border: #f0f0f0;
+  --skeleton-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   width: 100%;
+}
+
+:global(html.dark) .skeleton-wrapper {
+  --skeleton-base: #303848;
+  --skeleton-highlight: #3d475a;
+  --skeleton-surface: var(--color-bg-card);
+  --skeleton-muted-surface: var(--color-border-light);
+  --skeleton-border: var(--color-border);
+  --skeleton-shadow: 0 2px 8px rgba(0, 0, 0, 0.24);
 }
 
 .skeleton-wrapper.animated .skeleton-text,
@@ -174,7 +189,7 @@ const getRandomWidth = () => {
 .skeleton-wrapper.animated .skeleton-stats-icon,
 .skeleton-wrapper.animated .skeleton-chart-area,
 .skeleton-wrapper.animated .skeleton-chart-title {
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background: linear-gradient(90deg, var(--skeleton-base) 25%, var(--skeleton-highlight) 50%, var(--skeleton-base) 75%);
   background-size: 200% 100%;
   animation: skeleton-loading 1.5s infinite;
 }
@@ -191,7 +206,7 @@ const getRandomWidth = () => {
 /* 基础元素 */
 .skeleton-text {
   height: 16px;
-  background-color: #f0f0f0;
+  background-color: var(--skeleton-base);
   border-radius: 4px;
   margin-bottom: 8px;
 }
@@ -220,7 +235,7 @@ const getRandomWidth = () => {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background-color: #f0f0f0;
+  background-color: var(--skeleton-base);
   flex-shrink: 0;
 }
 
@@ -233,11 +248,11 @@ const getRandomWidth = () => {
 
 /* 卡片骨架 */
 .skeleton-card {
-  background: var(--color-bg-card);
+  background: var(--skeleton-surface);
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--skeleton-shadow);
 }
 
 .skeleton-card-header {
@@ -256,12 +271,12 @@ const getRandomWidth = () => {
   width: 100%;
   border-radius: 8px;
   overflow: hidden;
-  background: var(--color-bg-card);
+  background: var(--skeleton-surface);
 }
 
 .skeleton-table-header {
   display: flex;
-  background: #fafafa;
+  background: var(--skeleton-muted-surface);
   padding: 12px 16px;
   gap: 16px;
 }
@@ -270,13 +285,13 @@ const getRandomWidth = () => {
   display: flex;
   padding: 16px;
   gap: 16px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--skeleton-border);
 }
 
 .skeleton-cell {
   flex: 1;
   height: 16px;
-  background-color: #f0f0f0;
+  background-color: var(--skeleton-base);
   border-radius: 4px;
 }
 
@@ -286,7 +301,7 @@ const getRandomWidth = () => {
   align-items: center;
   gap: 12px;
   padding: 12px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--skeleton-border);
 }
 
 .skeleton-list-item:last-child {
@@ -299,32 +314,32 @@ const getRandomWidth = () => {
   align-items: center;
   gap: 16px;
   padding: 20px;
-  background: var(--color-bg-card);
+  background: var(--skeleton-surface);
   border-radius: 8px;
   margin-bottom: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--skeleton-shadow);
 }
 
 .skeleton-stats-icon {
   width: 48px;
   height: 48px;
   border-radius: 8px;
-  background-color: #f0f0f0;
+  background-color: var(--skeleton-base);
   flex-shrink: 0;
 }
 
 /* 图表骨架 */
 .skeleton-chart {
-  background: var(--color-bg-card);
+  background: var(--skeleton-surface);
   border-radius: 8px;
   padding: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--skeleton-shadow);
 }
 
 .skeleton-chart-title {
   width: 120px;
   height: 20px;
-  background-color: #f0f0f0;
+  background-color: var(--skeleton-base);
   border-radius: 4px;
   margin-bottom: 16px;
 }
@@ -332,7 +347,7 @@ const getRandomWidth = () => {
 .skeleton-chart-area {
   width: 100%;
   height: 200px;
-  background-color: #f0f0f0;
+  background-color: var(--skeleton-base);
   border-radius: 4px;
 }
 
@@ -348,7 +363,7 @@ const getRandomWidth = () => {
 .skeleton-input {
   width: 100%;
   height: 40px;
-  background-color: #f0f0f0;
+  background-color: var(--skeleton-base);
   border-radius: 4px;
 }
 </style>

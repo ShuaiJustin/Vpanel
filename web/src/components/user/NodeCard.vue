@@ -1,21 +1,11 @@
 <template>
-  <div
-    class="node-card"
-    :class="{ offline: node.status !== 'online' }"
-  >
+  <div class="node-card" :class="{ offline: node.status !== 'online' }">
     <div class="card-header">
-      <div
-        class="endpoint-badge"
-        :title="endpoint"
-      >
+      <div class="endpoint-badge" :title="endpoint">
         <span class="endpoint-label">节点地址</span>
         <span class="endpoint-value">{{ endpoint }}</span>
       </div>
-      <el-tag
-        :type="statusType"
-        size="small"
-        effect="light"
-      >
+      <el-tag :type="statusType" size="small" effect="light">
         {{ statusLabel }}
       </el-tag>
     </div>
@@ -27,10 +17,7 @@
           <h3 class="node-name">
             {{ displayName }}
           </h3>
-          <p
-            v-if="showSubtitle"
-            class="node-subtitle"
-          >
+          <p v-if="showSubtitle" class="node-subtitle">
             {{ subtitle }}
           </p>
         </div>
@@ -45,10 +32,7 @@
           <span class="meta-chip-label">协议</span>
           <strong>{{ protocolLabel }}</strong>
         </div>
-        <div
-          v-if="portLabel"
-          class="meta-chip"
-        >
+        <div v-if="portLabel" class="meta-chip">
           <span class="meta-chip-label">端口</span>
           <strong>{{ portLabel }}</strong>
         </div>
@@ -58,25 +42,14 @@
         <div class="metric-card">
           <span class="metric-label">延迟</span>
           <div class="metric-value">
-            <span
-              v-if="testing"
-              class="latency-testing"
-            >
+            <span v-if="testing" class="latency-testing">
               <el-icon class="is-loading"><Loading /></el-icon>
               测速中...
             </span>
-            <span
-              v-else-if="hasLatency"
-              :class="latencyClass"
-            >
+            <span v-else-if="hasLatency" :class="latencyClass">
               {{ latency }}ms
             </span>
-            <span
-              v-else
-              class="latency-unknown"
-            >
-              未测试
-            </span>
+            <span v-else class="latency-unknown"> 未测试 </span>
           </div>
         </div>
 
@@ -119,70 +92,89 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import { Timer, CopyDocument, Loading } from '@element-plus/icons-vue'
+import { computed } from "vue";
+import { Timer, CopyDocument, Loading } from "@element-plus/icons-vue";
 import {
   getNodeLatencyClass,
   getNodeRegionFlag,
   getNodeRegionLabel,
   getNodeStatusText,
   getNodeStatusType,
-  getProtocolDisplayName
-} from '@/composables/useNodePresentation'
+  getProtocolDisplayName,
+} from "@/composables/useNodePresentation";
 
 const props = defineProps({
   node: {
     type: Object,
-    required: true
+    required: true,
   },
   latency: {
     type: Number,
-    default: null
+    default: null,
   },
   testing: {
     type: Boolean,
-    default: false
-  }
-})
+    default: false,
+  },
+});
 
-defineEmits(['test', 'copy'])
+defineEmits(["test", "copy"]);
 
-const displayName = computed(() => props.node.display_name || props.node.name || '未命名节点')
-const regionLabel = computed(() => props.node.region_label || getNodeRegionLabel(props.node.region))
-const regionFlag = computed(() => getNodeRegionFlag(props.node.region_label || props.node.region))
-const protocolLabel = computed(() => props.node.protocol_label || getProtocolDisplayName(props.node.protocol))
+const displayName = computed(
+  () => props.node.display_name || props.node.name || "未命名节点",
+);
+const regionLabel = computed(
+  () => props.node.region_label || getNodeRegionLabel(props.node.region),
+);
+const regionFlag = computed(() =>
+  getNodeRegionFlag(props.node.region_label || props.node.region),
+);
+const protocolLabel = computed(
+  () =>
+    props.node.protocol_label || getProtocolDisplayName(props.node.protocol),
+);
 const endpoint = computed(() => {
-  if (!props.node.host) return '-'
-  return props.node.port ? `${props.node.host}:${props.node.port}` : props.node.host
-})
-const fallbackSubtitle = computed(() => [protocolLabel.value, endpoint.value !== '-' ? endpoint.value : ''].filter(Boolean).join(' · '))
-const subtitle = computed(() => props.node.subtitle || '')
+  if (!props.node.host) return "-";
+  return props.node.port
+    ? `${props.node.host}:${props.node.port}`
+    : props.node.host;
+});
+const fallbackSubtitle = computed(() =>
+  [protocolLabel.value, endpoint.value !== "-" ? endpoint.value : ""]
+    .filter(Boolean)
+    .join(" · "),
+);
+const subtitle = computed(() => props.node.subtitle || "");
 const showSubtitle = computed(() => {
-  const value = String(subtitle.value || '').trim()
-  return Boolean(value) && value !== fallbackSubtitle.value
-})
+  const value = String(subtitle.value || "").trim();
+  return Boolean(value) && value !== fallbackSubtitle.value;
+});
 const statusType = computed(() => {
-  if (props.node.status === 'maintenance') return 'warning'
-  return getNodeStatusType(props.node.status)
-})
+  if (props.node.status === "maintenance") return "warning";
+  return getNodeStatusType(props.node.status);
+});
 const statusLabel = computed(() => {
-  if (props.node.status === 'maintenance') return '维护中'
-  return getNodeStatusText(props.node.status)
-})
-const hasLatency = computed(() => typeof props.latency === 'number' && props.latency >= 0)
-const latencyClass = computed(() => getNodeLatencyClass(props.latency))
+  if (props.node.status === "maintenance") return "维护中";
+  return getNodeStatusText(props.node.status);
+});
+const hasLatency = computed(
+  () => typeof props.latency === "number" && props.latency >= 0,
+);
+const latencyClass = computed(() => getNodeLatencyClass(props.latency));
 const normalizedLoad = computed(() => {
-  const load = Number(props.node.load)
-  if (!Number.isFinite(load) || load < 0) return 0
-  if (load > 100) return 100
-  return Math.round(load)
-})
-const portLabel = computed(() => (props.node.port ? String(props.node.port) : ''))
+  const load = Number(props.node.load);
+  if (!Number.isFinite(load) || load < 0) return 0;
+  if (load > 100) return 100;
+  return Math.round(load);
+});
+const portLabel = computed(() =>
+  props.node.port ? String(props.node.port) : "",
+);
 const loadColor = computed(() => {
-  if (normalizedLoad.value >= 80) return '#f56c6c'
-  if (normalizedLoad.value >= 60) return '#e6a23c'
-  return '#67c23a'
-})
+  if (normalizedLoad.value >= 80) return "#f56c6c";
+  if (normalizedLoad.value >= 60) return "#e6a23c";
+  return "#67c23a";
+});
 </script>
 
 <style scoped>
@@ -194,14 +186,21 @@ const loadColor = computed(() => {
   border-radius: 16px;
   box-shadow: var(--shadow-sm);
   overflow: hidden;
-  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
   border: 1px solid var(--color-border-light);
 }
 
 .node-card:hover {
   box-shadow: var(--shadow-md);
   transform: translateY(-3px);
-  border-color: color-mix(in srgb, var(--color-primary) 20%, var(--color-border-light));
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary) 20%,
+    var(--color-border-light)
+  );
 }
 
 .node-card.offline {
@@ -299,7 +298,8 @@ const loadColor = computed(() => {
   padding: 8px 10px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg-card));
-  border: 1px solid color-mix(in srgb, var(--color-primary) 16%, var(--color-border));
+  border: 1px solid
+    color-mix(in srgb, var(--color-primary) 16%, var(--color-border));
   color: var(--color-text-primary);
 }
 
@@ -326,7 +326,11 @@ const loadColor = computed(() => {
   gap: 10px;
   padding: 14px;
   border-radius: 14px;
-  background: color-mix(in srgb, var(--color-bg-card) 86%, var(--color-border-light));
+  background: color-mix(
+    in srgb,
+    var(--color-bg-card) 86%,
+    var(--color-border-light)
+  );
   border: 1px solid var(--color-border-light);
 }
 
@@ -402,7 +406,11 @@ const loadColor = computed(() => {
   gap: 10px;
   padding: 14px 18px 18px;
   border-top: 1px solid var(--color-border-light);
-  background: color-mix(in srgb, var(--color-bg-card) 94%, var(--color-border-light));
+  background: color-mix(
+    in srgb,
+    var(--color-bg-card) 94%,
+    var(--color-border-light)
+  );
 }
 
 .card-footer .el-button {

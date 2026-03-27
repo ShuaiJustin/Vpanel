@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -275,7 +276,53 @@ type TrafficStats struct {
 	Upload     int64   `json:"up"`
 	Download   int64   `json:"down"`
 	Limit      int64   `json:"limit"`
+	UserLimit  int64   `json:"user_limit"`
+	NodeLimit  int64   `json:"node_limit"`
 	Percentage float64 `json:"percentage"`
+}
+
+func effectiveTrafficLimit(userLimit, nodeLimit int64) int64 {
+	switch {
+	case userLimit > 0 && nodeLimit > 0:
+		if userLimit < nodeLimit {
+			return userLimit
+		}
+		return nodeLimit
+	case userLimit > 0:
+		return userLimit
+	case nodeLimit > 0:
+		return nodeLimit
+	default:
+		return 0
+	}
+}
+
+func (h *StatsHandler) getTrafficLimitSummary(ctx context.Context) (userLimit int64, nodeLimit int64, err error) {
+	if h == nil || h.repos == nil || h.repos.DB() == nil {
+		return 0, 0, nil
+	}
+
+	db := h.repos.DB().WithContext(ctx)
+	now := time.Now()
+
+	if err := db.Model(&repository.User{}).
+		Select("COALESCE(SUM(traffic_limit), 0)").
+		Where("enabled = ?", true).
+		Where("expires_at IS NULL OR expires_at > ?", now).
+		Where("traffic_limit > 0").
+		Scan(&userLimit).Error; err != nil {
+		return 0, 0, err
+	}
+
+	if err := db.Model(&repository.Node{}).
+		Select("COALESCE(SUM(traffic_limit), 0)").
+		Where("status = ?", repository.NodeStatusOnline).
+		Where("traffic_limit > 0").
+		Scan(&nodeLimit).Error; err != nil {
+		return 0, 0, err
+	}
+
+	return userLimit, nodeLimit, nil
 }
 
 // GetTrafficStats returns traffic statistics.
@@ -317,7 +364,11 @@ func (h *StatsHandler) GetTrafficStats(c *gin.Context) {
 	}
 
 	total := upload + download
-	limit := int64(10 * 1024 * 1024 * 1024) // 10GB default limit
+	userLimit, nodeLimit, limitErr := h.getTrafficLimitSummary(ctx)
+	if limitErr != nil {
+		h.logger.Warn("failed to get traffic limit summary", logger.F("error", limitErr))
+	}
+	limit := effectiveTrafficLimit(userLimit, nodeLimit)
 	percentage := float64(0)
 	if limit > 0 {
 		percentage = float64(total) / float64(limit) * 100
@@ -328,6 +379,8 @@ func (h *StatsHandler) GetTrafficStats(c *gin.Context) {
 		Upload:     upload,
 		Download:   download,
 		Limit:      limit,
+		UserLimit:  userLimit,
+		NodeLimit:  nodeLimit,
 		Percentage: percentage,
 	}
 

@@ -335,6 +335,10 @@ const exporting = ref(false)
 const timeRange = ref('week')
 const customRange = ref(null)
 const chartType = ref('line')
+const statsUpdatedAt = ref(null)
+const statsRefreshInFlight = ref(false)
+const STATS_REFRESH_INTERVAL = 30 * 1000
+let statsRefreshTimer = null
 
 // 数据
 const stats = reactive({

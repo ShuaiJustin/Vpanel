@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -133,4 +134,34 @@ func getSettingString(settings map[string]any, key string) string {
 		return ""
 	}
 	return strings.TrimSpace(stringValue)
+}
+
+func ResolveServerPort(defaultPort int, settings map[string]any) int {
+	for _, key := range []string{"external_port", "externalPort", "server_port", "serverPort"} {
+		if value, ok := settings[key]; ok {
+			switch typed := value.(type) {
+			case int:
+				if typed >= 1 && typed <= 65535 {
+					return typed
+				}
+			case int64:
+				if typed >= 1 && typed <= 65535 {
+					return int(typed)
+				}
+			case float64:
+				port := int(typed)
+				if port >= 1 && port <= 65535 {
+					return port
+				}
+			case string:
+				if parsed, err := strconv.Atoi(strings.TrimSpace(typed)); err == nil {
+					if parsed >= 1 && parsed <= 65535 {
+						return parsed
+					}
+				}
+			}
+		}
+	}
+
+	return defaultPort
 }

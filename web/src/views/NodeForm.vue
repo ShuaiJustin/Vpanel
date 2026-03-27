@@ -2,11 +2,7 @@
   <div class="node-form-page">
     <section class="hero-panel">
       <div class="hero-panel__nav">
-        <el-button
-          link
-          class="back-link"
-          @click="goBack"
-        >
+        <el-button link class="back-link" @click="goBack">
           <el-icon><ArrowLeft /></el-icon>
           返回节点列表
         </el-button>
@@ -50,16 +46,11 @@
     >
       <div class="form-layout">
         <div class="form-main">
-          <el-card
-            class="section-card"
-            shadow="never"
-          >
+          <el-card class="section-card" shadow="never">
             <template #header>
               <div class="section-head">
                 <div>
-                  <h2 class="section-title">
-                    基础接入
-                  </h2>
+                  <h2 class="section-title">基础接入</h2>
                   <p class="section-subtitle">
                     先确定节点身份、地址与负载策略，系统会根据地址自动给出推荐名称。
                   </p>
@@ -79,12 +70,8 @@
                       v-model="addressType"
                       class="address-type-switch"
                     >
-                      <el-radio-button label="ip">
-                        IP
-                      </el-radio-button>
-                      <el-radio-button label="domain">
-                        域名
-                      </el-radio-button>
+                      <el-radio-button label="ip"> IP </el-radio-button>
+                      <el-radio-button label="domain"> 域名 </el-radio-button>
                     </el-radio-group>
 
                     <el-input
@@ -124,11 +111,7 @@
                   }}
                 </div>
               </el-form-item>
-              <el-form-item
-                class="field-span-2"
-                label="节点名称"
-                prop="name"
-              >
+              <el-form-item class="field-span-2" label="节点名称" prop="name">
                 <div class="name-field">
                   <el-input
                     v-model="form.name"
@@ -155,10 +138,7 @@
                 </div>
               </el-form-item>
 
-              <el-form-item
-                label="Agent 端口"
-                prop="port"
-              >
+              <el-form-item label="Agent 端口" prop="port">
                 <el-input-number
                   v-model="form.port"
                   class="full-width-input"
@@ -166,14 +146,12 @@
                   :max="65535"
                 />
                 <div class="field-tip">
-                  Node Agent 默认监听端口；修改后需与面板记录和防火墙放行保持一致。
+                  Node Agent
+                  默认监听端口；修改后需与面板记录和防火墙放行保持一致。
                 </div>
               </el-form-item>
 
-              <el-form-item
-                label="地区"
-                prop="region"
-              >
+              <el-form-item label="地区" prop="region">
                 <el-select
                   v-model="form.region"
                   filterable
@@ -181,38 +159,14 @@
                   class="full-width-control"
                   placeholder="选择或输入地区"
                 >
-                  <el-option
-                    label="香港"
-                    value="香港"
-                  />
-                  <el-option
-                    label="日本"
-                    value="日本"
-                  />
-                  <el-option
-                    label="新加坡"
-                    value="新加坡"
-                  />
-                  <el-option
-                    label="美国"
-                    value="美国"
-                  />
-                  <el-option
-                    label="韩国"
-                    value="韩国"
-                  />
-                  <el-option
-                    label="台湾"
-                    value="台湾"
-                  />
-                  <el-option
-                    label="德国"
-                    value="德国"
-                  />
-                  <el-option
-                    label="英国"
-                    value="英国"
-                  />
+                  <el-option label="香港" value="香港" />
+                  <el-option label="日本" value="日本" />
+                  <el-option label="新加坡" value="新加坡" />
+                  <el-option label="美国" value="美国" />
+                  <el-option label="韩国" value="韩国" />
+                  <el-option label="台湾" value="台湾" />
+                  <el-option label="德国" value="德国" />
+                  <el-option label="英国" value="英国" />
                 </el-select>
                 <div class="field-tip">
                   如需固定地区标签，可手动指定，系统会优先遵循你的选择。
@@ -233,23 +187,16 @@
                   />
                   <span class="slider-pill">权重 {{ form.weight }}</span>
                 </div>
-                <div class="field-tip">
-                  权重越高，分配到该节点的用户越多。
-                </div>
+                <div class="field-tip">权重越高，分配到该节点的用户越多。</div>
               </el-form-item>
 
-              <el-form-item
-                label="最大用户数"
-                prop="max_users"
-              >
+              <el-form-item label="最大用户数" prop="max_users">
                 <el-input-number
                   v-model="form.max_users"
                   class="full-width-input"
                   :min="0"
                 />
-                <div class="field-tip">
-                  0 表示无限制。
-                </div>
+                <div class="field-tip">0 表示无限制。</div>
               </el-form-item>
 
               <el-form-item label="所属分组">
@@ -272,15 +219,10 @@
                     </span>
                   </el-option>
                 </el-select>
-                <div class="field-tip">
-                  节点可以同时属于多个分组。
-                </div>
+                <div class="field-tip">节点可以同时属于多个分组。</div>
               </el-form-item>
 
-              <el-form-item
-                class="field-span-2"
-                label="标签"
-              >
+              <el-form-item class="field-span-2" label="标签">
                 <div class="tags-input">
                   <el-tag
                     v-for="(tag, index) in form.tags"
@@ -313,16 +255,124 @@
             </div>
           </el-card>
 
-          <el-card
-            class="section-card"
-            shadow="never"
-          >
+          <el-card class="section-card" shadow="never">
             <template #header>
               <div class="section-head">
                 <div>
-                  <h2 class="section-title">
-                    接入限制与 TLS
-                  </h2>
+                  <h2 class="section-title">节点流量策略</h2>
+                  <p class="section-subtitle">
+                    控制节点月流量上限、停新分配阈值，并查看当前周期的额度使用情况。
+                  </p>
+                </div>
+              </div>
+            </template>
+
+            <div class="form-grid">
+              <el-form-item label="月流量上限">
+                <div class="quota-field">
+                  <el-input-number
+                    v-model="form.traffic_limit_value"
+                    class="quota-field__input"
+                    :min="0"
+                    :precision="form.traffic_limit_unit === 'TiB' ? 2 : 0"
+                    :step="form.traffic_limit_unit === 'TiB' ? 0.1 : 10"
+                  />
+                  <el-select
+                    v-model="form.traffic_limit_unit"
+                    class="quota-field__unit"
+                  >
+                    <el-option
+                      v-for="option in trafficLimitUnitOptions"
+                      :key="option.value"
+                      :label="option.label"
+                      :value="option.value"
+                    />
+                  </el-select>
+                </div>
+                <div class="field-tip">
+                  0
+                  表示不限流量；达到阈值后停止分配新用户，达到上限后节点自动停用，并按月自动重置。
+                </div>
+              </el-form-item>
+
+              <el-form-item label="停新分配阈值">
+                <div class="slider-field">
+                  <el-slider
+                    v-model="form.alert_traffic_threshold"
+                    class="slider-field__control"
+                    :min="1"
+                    :max="100"
+                    :disabled="!hasPreviewTrafficLimit"
+                  />
+                  <span class="slider-pill">{{
+                    hasPreviewTrafficLimit
+                      ? `${form.alert_traffic_threshold}%`
+                      : "未启用"
+                  }}</span>
+                </div>
+                <div class="field-tip">
+                  到达该比例后，节点保留现有用户可用，但不再参与新用户分配。
+                </div>
+              </el-form-item>
+
+              <el-form-item label="当前策略预览">
+                <div class="quota-panel">
+                  <div class="quota-panel__headline">
+                    {{ trafficQuotaSummary }}
+                  </div>
+                  <div class="quota-panel__meta">
+                    <span>{{ trafficQuotaStateText }}</span>
+                    <span v-if="hasPreviewTrafficLimit"
+                      >剩余 {{ trafficQuotaRemaining }}</span
+                    >
+                  </div>
+                  <el-progress
+                    v-if="hasPreviewTrafficLimit"
+                    :percentage="trafficQuotaPercent"
+                    :stroke-width="8"
+                    :status="trafficQuotaProgressStatus"
+                    :show-text="false"
+                  />
+                  <div class="field-tip-inline">
+                    {{
+                      isEdit
+                        ? `当前节点下次重置：${currentTrafficResetLabel}`
+                        : "保存后会自动以当前时间作为首个计费周期锚点。"
+                    }}
+                  </div>
+                </div>
+              </el-form-item>
+
+              <el-form-item label="保护机制说明">
+                <div class="quota-policy-list">
+                  <div class="quota-policy-item">
+                    <strong>软阈值</strong>
+                    <span
+                      >达到阈值后停止新分配，避免节点在月底被迅速打满。</span
+                    >
+                  </div>
+                  <div class="quota-policy-item">
+                    <strong>硬上限</strong>
+                    <span
+                      >达到月上限后节点转为停用，订阅和直连节点都会失效。</span
+                    >
+                  </div>
+                  <div class="quota-policy-item">
+                    <strong>月重置</strong>
+                    <span
+                      >系统每小时检查一次，到期后自动清零并恢复下一计费周期。</span
+                    >
+                  </div>
+                </div>
+              </el-form-item>
+            </div>
+          </el-card>
+
+          <el-card class="section-card" shadow="never">
+            <template #header>
+              <div class="section-head">
+                <div>
+                  <h2 class="section-title">接入限制与 TLS</h2>
                   <p class="section-subtitle">
                     配置访问范围、TLS 域名与系统证书，保持节点接入信息完整可读。
                   </p>
@@ -331,19 +381,14 @@
             </template>
 
             <div class="form-grid">
-              <el-form-item
-                class="field-span-2"
-                label="IP 白名单"
-              >
+              <el-form-item class="field-span-2" label="IP 白名单">
                 <el-input
                   v-model="form.ip_whitelist_str"
                   type="textarea"
                   :rows="5"
                   placeholder="每行一个 IP 地址，留空表示不限制&#10;支持 CIDR 格式，如 192.168.1.0/24"
                 />
-                <div class="field-tip">
-                  限制可以连接到此节点的 IP 地址。
-                </div>
+                <div class="field-tip">限制可以连接到此节点的 IP 地址。</div>
               </el-form-item>
 
               <el-form-item label="启用 TLS">
@@ -359,10 +404,7 @@
                 </div>
               </el-form-item>
 
-              <el-form-item
-                label="TLS 域名"
-                prop="tls_domain"
-              >
+              <el-form-item label="TLS 域名" prop="tls_domain">
                 <el-input
                   v-model="form.tls_domain"
                   placeholder="如 jp.example.com"
@@ -372,10 +414,7 @@
                 </div>
               </el-form-item>
 
-              <el-form-item
-                class="field-span-2"
-                label="系统证书"
-              >
+              <el-form-item class="field-span-2" label="系统证书">
                 <el-select
                   v-model="form.certificate_id"
                   filterable
@@ -395,15 +434,12 @@
                 <div class="field-tip">
                   选择证书后会自动回填 TLS 域名，你仍可继续手动修改。
                 </div>
-                <div
-                  v-if="selectedCertificate"
-                  class="certificate-tip"
-                >
+                <div v-if="selectedCertificate" class="certificate-tip">
                   当前证书：{{ selectedCertificate.domain }}
                   <span
                     v-if="
                       selectedCertificate.expireDate &&
-                        selectedCertificate.expireDate !== '-'
+                      selectedCertificate.expireDate !== '-'
                     "
                   >
                     ，到期 {{ selectedCertificate.expireDate }}
@@ -413,17 +449,11 @@
             </div>
           </el-card>
 
-          <el-card
-            v-if="!isEdit"
-            class="section-card"
-            shadow="never"
-          >
+          <el-card v-if="!isEdit" class="section-card" shadow="never">
             <template #header>
               <div class="section-head section-head--split">
                 <div>
-                  <h2 class="section-title">
-                    自动部署
-                  </h2>
+                  <h2 class="section-title">自动部署</h2>
                   <p class="section-subtitle">
                     通过 SSH 自动安装 Agent 与 Xray，适合新节点首次接入。
                   </p>
@@ -444,10 +474,7 @@
               }}
             </div>
 
-            <div
-              v-if="enableAutoInstall"
-              class="form-grid"
-            >
+            <div v-if="enableAutoInstall" class="form-grid">
               <el-form-item label="服务器 IP">
                 <el-input
                   v-model="form.ssh_host"
@@ -473,12 +500,8 @@
 
               <el-form-item label="认证方式">
                 <el-radio-group v-model="form.ssh_auth_type">
-                  <el-radio value="password">
-                    密码
-                  </el-radio>
-                  <el-radio value="key">
-                    私钥
-                  </el-radio>
+                  <el-radio value="password"> 密码 </el-radio>
+                  <el-radio value="key"> 私钥 </el-radio>
                 </el-radio-group>
               </el-form-item>
 
@@ -522,10 +545,7 @@
         </div>
 
         <div class="form-side">
-          <el-card
-            class="summary-card"
-            shadow="never"
-          >
+          <el-card class="summary-card" shadow="never">
             <div class="summary-card__head">
               <span class="summary-card__eyebrow">智能概览</span>
               <strong class="summary-card__title">{{
@@ -553,13 +573,8 @@
             </div>
           </el-card>
 
-          <el-card
-            class="summary-card action-card"
-            shadow="never"
-          >
-            <div class="action-card__title">
-              保存节点
-            </div>
+          <el-card class="summary-card action-card" shadow="never">
+            <div class="action-card__title">保存节点</div>
             <p class="action-card__text">
               {{
                 isEdit
@@ -595,42 +610,26 @@
       width="500px"
       :close-on-click-modal="false"
     >
-      <el-alert
-        type="success"
-        :closable="false"
-        show-icon
-      >
-        <template #title>
-          节点已创建成功！
-        </template>
+      <el-alert type="success" :closable="false" show-icon>
+        <template #title> 节点已创建成功！ </template>
         请保存以下 Token，用于 Node Agent 连接认证。此 Token 只显示一次。
       </el-alert>
       <div class="token-display">
-        <div class="token-label">
-          认证 Token
-        </div>
+        <div class="token-label">认证 Token</div>
         <div class="token-value">
           <code>{{ createdToken }}</code>
-          <el-button
-            link
-            @click="copyToken"
-          >
+          <el-button link @click="copyToken">
             <el-icon><CopyDocument /></el-icon>
             复制
           </el-button>
         </div>
       </div>
       <div class="agent-config">
-        <div class="config-label">
-          Agent 配置示例
-        </div>
+        <div class="config-label">Agent 配置示例</div>
         <pre class="config-code">{{ agentConfigExample }}</pre>
       </div>
       <template #footer>
-        <el-button
-          type="primary"
-          @click="finishCreate"
-        >
+        <el-button type="primary" @click="finishCreate">
           我已保存，完成
         </el-button>
       </template>
@@ -653,6 +652,15 @@ import { ElMessage } from "element-plus";
 import { ArrowLeft, CopyDocument } from "@element-plus/icons-vue";
 import { useNodeStore } from "@/stores/node";
 import { certificatesApi, nodeGroupsApi, nodesApi } from "@/api";
+import {
+  formatNodeTrafficRemaining,
+  formatNodeTrafficResetAt,
+  formatNodeTrafficUsageSummary,
+  getNodeTrafficStateKey,
+  getNodeTrafficStateText,
+  getNodeTrafficUsagePercent,
+  hasNodeTrafficLimit,
+} from "@/composables/useNodePresentation";
 import { copyText } from "@/utils/clipboard";
 import { debounce } from "@/utils/debounce";
 
@@ -692,6 +700,18 @@ let latestSuggestionRequestId = 0;
 // SSH 自动安装相关
 const enableAutoInstall = ref(false);
 const testingConnection = ref(false);
+const currentTrafficTotal = ref(0);
+const currentTrafficResetAt = ref("");
+
+const trafficLimitUnitOptions = [
+  { label: "GiB", value: "GiB" },
+  { label: "TiB", value: "TiB" },
+];
+
+const TRAFFIC_LIMIT_UNIT_MULTIPLIERS = Object.freeze({
+  GiB: 1024 ** 3,
+  TiB: 1024 ** 4,
+});
 
 const form = reactive({
   name: "",
@@ -703,6 +723,9 @@ const form = reactive({
   tags: [],
   ip_whitelist_str: "",
   group_ids: [],
+  traffic_limit_value: 0,
+  traffic_limit_unit: "GiB",
+  alert_traffic_threshold: 80,
   tls_enabled: false,
   tls_domain: "",
   certificate_id: null,
@@ -760,6 +783,70 @@ const suggestedNameDisplay = computed(
   () => normalizeText(form.name) || lastSuggestedName.value || "等待地址识别",
 );
 
+const getTrafficLimitBytes = () => {
+  const value = Number(form.traffic_limit_value);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+
+  const multiplier =
+    TRAFFIC_LIMIT_UNIT_MULTIPLIERS[form.traffic_limit_unit] ||
+    TRAFFIC_LIMIT_UNIT_MULTIPLIERS.GiB;
+  return Math.round(value * multiplier);
+};
+
+const applyTrafficLimitForm = (bytes) => {
+  const normalized = Number(bytes) || 0;
+  if (normalized <= 0) {
+    form.traffic_limit_value = 0;
+    form.traffic_limit_unit = "GiB";
+    return;
+  }
+
+  if (normalized % TRAFFIC_LIMIT_UNIT_MULTIPLIERS.TiB === 0) {
+    form.traffic_limit_unit = "TiB";
+    form.traffic_limit_value = Number(
+      (normalized / TRAFFIC_LIMIT_UNIT_MULTIPLIERS.TiB).toFixed(2),
+    );
+    return;
+  }
+
+  form.traffic_limit_unit = "GiB";
+  const gibValue = normalized / TRAFFIC_LIMIT_UNIT_MULTIPLIERS.GiB;
+  form.traffic_limit_value = Number(
+    gibValue >= 100 ? gibValue.toFixed(0) : gibValue.toFixed(2),
+  );
+};
+
+const previewTrafficNode = computed(() => ({
+  traffic_total: currentTrafficTotal.value,
+  traffic_limit: getTrafficLimitBytes(),
+  alert_traffic_threshold: form.alert_traffic_threshold,
+}));
+
+const hasPreviewTrafficLimit = computed(() =>
+  hasNodeTrafficLimit(previewTrafficNode.value),
+);
+const trafficQuotaSummary = computed(() =>
+  formatNodeTrafficUsageSummary(previewTrafficNode.value),
+);
+const trafficQuotaRemaining = computed(() =>
+  formatNodeTrafficRemaining(previewTrafficNode.value),
+);
+const trafficQuotaPercent = computed(() =>
+  getNodeTrafficUsagePercent(previewTrafficNode.value),
+);
+const trafficQuotaStateText = computed(() =>
+  getNodeTrafficStateText(previewTrafficNode.value),
+);
+const currentTrafficResetLabel = computed(() =>
+  formatNodeTrafficResetAt(currentTrafficResetAt.value),
+);
+const trafficQuotaProgressStatus = computed(() => {
+  const state = getNodeTrafficStateKey(previewTrafficNode.value);
+  if (state === "hard_capped") return "exception";
+  if (state === "soft_capped") return "warning";
+  return "success";
+});
+
 const summaryDescription = computed(() =>
   normalizeText(form.address)
     ? nameSuggestionMessage.value
@@ -778,6 +865,14 @@ const summaryItems = computed(() => [
   {
     label: "Agent 端口",
     value: String(form.port || "-"),
+  },
+  {
+    label: "月流量",
+    value: trafficQuotaSummary.value,
+  },
+  {
+    label: "流量状态",
+    value: trafficQuotaStateText.value,
   },
   {
     label: "TLS 状态",
@@ -810,6 +905,9 @@ const summaryChecklist = computed(() => {
   }
   if (form.tls_enabled && !normalizeText(form.tls_domain)) {
     return "已开启 TLS，建议补充 TLS 域名并确认系统证书。";
+  }
+  if (hasPreviewTrafficLimit.value && !isEdit.value) {
+    return "已启用节点月流量保护，创建后会从当前时间开始首个计费周期。";
   }
   if (
     !isEdit.value &&
@@ -1153,6 +1251,10 @@ const fetchNode = async () => {
       : node.group_id
         ? [node.group_id]
         : [];
+    applyTrafficLimitForm(node.traffic_limit);
+    form.alert_traffic_threshold = Number(node.alert_traffic_threshold) || 80;
+    currentTrafficTotal.value = Number(node.traffic_total) || 0;
+    currentTrafficResetAt.value = node.traffic_reset_at || "";
     form.tls_enabled = Boolean(node.tls_enabled);
     form.tls_domain = node.tls_domain || "";
     form.certificate_id = node.certificate_id ?? null;
@@ -1237,6 +1339,8 @@ const submitForm = async () => {
       ip_whitelist: ipWhitelist,
       group_id: form.group_ids[0] || null,
       group_ids: form.group_ids,
+      traffic_limit: getTrafficLimitBytes(),
+      alert_traffic_threshold: form.alert_traffic_threshold,
       tls_enabled: form.tls_enabled,
       tls_domain: normalizeText(form.tls_domain).toLowerCase(),
       certificate_id: form.certificate_id || null,
@@ -1809,6 +1913,65 @@ onBeforeUnmount(() => {
   text-align: center;
 }
 
+.quota-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px;
+  gap: 12px;
+}
+
+.quota-field__input,
+.quota-field__unit {
+  width: 100%;
+}
+
+.quota-panel {
+  display: grid;
+  gap: 10px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(129, 145, 178, 0.16);
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.quota-panel__headline {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--node-ink);
+}
+
+.quota-panel__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--node-muted);
+}
+
+.quota-policy-list {
+  display: grid;
+  gap: 10px;
+}
+
+.quota-policy-item {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(42, 102, 223, 0.06);
+  border: 1px solid rgba(42, 102, 223, 0.1);
+}
+
+.quota-policy-item strong {
+  color: var(--node-ink);
+  font-size: 13px;
+}
+
+.quota-policy-item span {
+  color: var(--node-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .option-secondary {
   margin-left: 8px;
   color: var(--el-text-color-secondary);
@@ -2055,9 +2218,14 @@ onBeforeUnmount(() => {
   }
 
   .name-field,
-  .slider-field {
+  .slider-field,
+  .quota-field {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .quota-field {
+    grid-template-columns: 1fr;
   }
 
   .slider-pill {

@@ -2,9 +2,7 @@
   <div class="admin-nodes-page">
     <div class="page-header">
       <div class="page-heading">
-        <h1 class="page-title">
-          节点管理
-        </h1>
+        <h1 class="page-title">节点管理</h1>
         <p class="page-subtitle">
           统一查看节点接入、TLS 配置、负载表现和安装状态
         </p>
@@ -16,10 +14,7 @@
           </el-icon>
           刷新
         </el-button>
-        <el-button
-          type="primary"
-          @click="showCreateDialog"
-        >
+        <el-button type="primary" @click="showCreateDialog">
           <el-icon class="el-icon--left">
             <Plus />
           </el-icon>
@@ -35,11 +30,15 @@
       </div>
       <div class="overview-card">
         <span class="overview-label">在线节点</span>
-        <strong class="overview-value is-success">{{ filteredOnlineCount }}</strong>
+        <strong class="overview-value is-success">{{
+          filteredOnlineCount
+        }}</strong>
       </div>
       <div class="overview-card">
         <span class="overview-label">TLS 已启用</span>
-        <strong class="overview-value is-primary">{{ filteredTlsCount }}</strong>
+        <strong class="overview-value is-primary">{{
+          filteredTlsCount
+        }}</strong>
       </div>
       <div class="overview-card">
         <span class="overview-label">当前页用户</span>
@@ -47,16 +46,22 @@
       </div>
       <div class="overview-card">
         <span class="overview-label">平均延迟</span>
-        <strong class="overview-value is-warning">{{ filteredAverageLatency }}ms</strong>
+        <strong class="overview-value is-warning"
+          >{{ filteredAverageLatency }}ms</strong
+        >
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">流量保护</span>
+        <strong class="overview-value is-danger">{{
+          filteredTrafficGuardCount
+        }}</strong>
       </div>
     </div>
 
     <div class="toolbar-card">
       <div class="toolbar-main">
         <div class="toolbar-copy">
-          <div class="toolbar-title">
-            筛选工作区
-          </div>
+          <div class="toolbar-title">筛选工作区</div>
           <div class="toolbar-description">
             按关键词、状态和地区快速定位节点，再从列表直接进入部署、详情和运维动作。
           </div>
@@ -78,18 +83,9 @@
             clearable
             @change="fetchNodes"
           >
-            <el-option
-              label="在线"
-              value="online"
-            />
-            <el-option
-              label="离线"
-              value="offline"
-            />
-            <el-option
-              label="不健康"
-              value="unhealthy"
-            />
+            <el-option label="在线" value="online" />
+            <el-option label="离线" value="offline" />
+            <el-option label="不健康" value="unhealthy" />
           </el-select>
           <el-select
             v-model="nodeStore.filters.region"
@@ -104,23 +100,133 @@
               :value="region"
             />
           </el-select>
-          <el-button @click="resetFilters">
-            重置
-          </el-button>
+          <el-select v-model="trafficStateFilter" placeholder="流量状态" clearable>
+            <el-option
+              v-for="option in TRAFFIC_STATE_FILTER_OPTIONS"
+              :key="option.value || 'all'"
+              :label="option.label"
+              :value="option.value"
+            />
+          </el-select>
+          <el-button @click="resetFilters"> 重置 </el-button>
         </div>
       </div>
       <div class="toolbar-side">
         <span class="toolbar-summary">
-          总记录 {{ nodeStore.total }} 条，当前页 {{ nodeStore.nodeCount }} 条，筛选后 {{ filteredNodeCount }} 条
+          总记录 {{ nodeStore.total }} 条，当前页
+          {{ nodeStore.nodeCount }} 条，筛选后 {{ filteredNodeCount }} 条
         </span>
         <div class="toolbar-chip-row">
           <span class="toolbar-chip">
-            {{ activeFilterCount ? `已启用 ${activeFilterCount} 个筛选` : "当前查看全部节点" }}
+            {{
+              activeFilterCount
+                ? `已启用 ${activeFilterCount} 个筛选`
+                : "当前查看全部节点"
+            }}
           </span>
           <span class="toolbar-chip toolbar-chip--primary">
             在线 {{ filteredOnlineCount }}
           </span>
+          <button
+            type="button"
+            class="toolbar-chip toolbar-chip--warning toolbar-chip--button"
+            @click="applyTrafficStateFilter('soft_capped')"
+          >
+            停新分配 {{ softCappedCount }}
+          </button>
+          <button
+            type="button"
+            class="toolbar-chip toolbar-chip--danger toolbar-chip--button"
+            @click="applyTrafficStateFilter('hard_capped')"
+          >
+            已达上限 {{ hardCappedCount }}
+          </button>
         </div>
+      </div>
+    </div>
+
+    <div v-if="trafficLimitedNodeCount" class="traffic-workspace">
+      <div class="traffic-workspace__header">
+        <div>
+          <div class="toolbar-title">节点流量风险工作台</div>
+          <div class="toolbar-description">
+            当前页自动按风险从高到低排序，优先处理已达上限、停止新分配和接近阈值的节点。
+          </div>
+        </div>
+        <div class="toolbar-chip-row">
+          <button
+            type="button"
+            class="toolbar-chip toolbar-chip--button"
+            @click="applyTrafficStateFilter('')"
+          >
+            全部流量 {{ trafficLimitedNodeCount }}
+          </button>
+          <button
+            type="button"
+            class="toolbar-chip toolbar-chip--warning toolbar-chip--button"
+            @click="applyTrafficStateFilter('soft_capped')"
+          >
+            停新分配 {{ softCappedCount }}
+          </button>
+          <button
+            type="button"
+            class="toolbar-chip toolbar-chip--danger toolbar-chip--button"
+            @click="applyTrafficStateFilter('hard_capped')"
+          >
+            已达上限 {{ hardCappedCount }}
+          </button>
+        </div>
+      </div>
+
+      <div v-if="trafficRiskNodes.length" class="traffic-risk-grid">
+        <div
+          v-for="node in trafficRiskNodes"
+          :key="node.id"
+          class="traffic-risk-card"
+        >
+          <div class="traffic-risk-card__top">
+            <div>
+              <div class="traffic-risk-card__title">{{ node.name }}</div>
+              <div class="metric-subtle">
+                {{ node.address }}:{{ node.port }} · {{ node.region || "未设置地区" }}
+              </div>
+            </div>
+            <span :class="['metric-pill', getNodeTrafficPillClass(node)]">
+              {{ getNodeTrafficStateText(node) }}
+            </span>
+          </div>
+
+          <div class="traffic-risk-card__summary">
+            <span>{{ formatNodeTrafficUsageSummary(node) }}</span>
+            <span>剩余 {{ formatNodeTrafficRemaining(node) }}</span>
+          </div>
+
+          <el-progress
+            v-if="hasNodeTrafficLimit(node)"
+            :percentage="getNodeTrafficUsagePercent(node)"
+            :stroke-width="8"
+            :status="getNodeTrafficProgressStatus(node)"
+          />
+
+          <div class="traffic-risk-card__meta">
+            <span>{{ getTrafficRiskHint(node) }}</span>
+            <span v-if="hasNodeTrafficLimit(node)">
+              重置 {{ formatNodeTrafficResetAt(node.traffic_reset_at) }}
+            </span>
+          </div>
+
+          <div class="traffic-risk-card__actions">
+            <el-button size="small" @click="openNodeOperations(node)">
+              运维
+            </el-button>
+            <el-button size="small" type="primary" plain @click="viewNodeDetail(node)">
+              详情
+            </el-button>
+          </div>
+        </div>
+      </div>
+      <div v-else class="metric-subtle">
+        当前筛选范围内暂无需要优先处理的流量风险节点。
       </div>
     </div>
 
@@ -128,47 +234,42 @@
       <template #header>
         <div class="card-header">
           <span>节点列表</span>
-          <span class="toolbar-summary">集中处理详情、部署、Token 和脚本下载</span>
+          <span class="toolbar-summary"
+            >集中处理详情、部署、Token 和脚本下载</span
+          >
         </div>
       </template>
 
       <div class="table-shell">
         <el-table
           v-loading="nodeStore.loading"
-          :data="nodeStore.filteredNodes"
+          :data="visibleNodes"
           border
           stripe
           row-key="id"
           class="nodes-table"
           :empty-text="hasActiveFilters ? '暂无匹配节点' : '暂无节点'"
         >
-          <el-table-column
-            label="节点对象"
-            min-width="280"
-          >
+          <el-table-column label="节点对象" min-width="280">
             <template #default="{ row }">
               <div class="entity-cell">
-                <div
-                  class="node-address"
-                  :title="`${row.address}:${row.port}`"
-                >
+                <div class="node-address" :title="`${row.address}:${row.port}`">
                   {{ row.address }}:{{ row.port }}
                 </div>
                 <div class="entity-cell__header">
                   <span class="entity-cell__title">{{ row.name }}</span>
-                  <span :class="['metric-pill', getStatusPillClass(row.status)]">
+                  <span
+                    :class="['metric-pill', getStatusPillClass(row.status)]"
+                  >
                     {{ getStatusText(row.status) }}
                   </span>
                 </div>
                 <div class="entity-cell__meta">
                   <span>ID：{{ row.id }}</span>
-                  <span>地区：{{ row.region || '未设置' }}</span>
+                  <span>地区：{{ row.region || "未设置" }}</span>
                   <span>权重：{{ row.weight }}</span>
                 </div>
-                <div
-                  v-if="parseTags(row.tags).length"
-                  class="stack-tags"
-                >
+                <div v-if="parseTags(row.tags).length" class="stack-tags">
                   <el-tag
                     v-for="tag in parseTags(row.tags).slice(0, 3)"
                     :key="tag"
@@ -190,10 +291,7 @@
             </template>
           </el-table-column>
 
-          <el-table-column
-            label="TLS 与接入"
-            min-width="200"
-          >
+          <el-table-column label="TLS 与接入" min-width="200">
             <template #default="{ row }">
               <div class="stack-cell">
                 <div class="stack-item stack-item--inline">
@@ -207,25 +305,30 @@
                 </div>
                 <div class="stack-item">
                   <span class="stack-label">TLS 域名</span>
-                  <span class="stack-value">{{ row.tls_domain || '未配置' }}</span>
+                  <span class="stack-value">{{
+                    row.tls_domain || "未配置"
+                  }}</span>
                 </div>
                 <div class="stack-item">
                   <span class="stack-label">系统证书</span>
-                  <span class="stack-value">{{ row.certificate_id ? getAssignedCertificateDisplay(row.certificate_id) : '未关联' }}</span>
+                  <span class="stack-value">{{
+                    row.certificate_id
+                      ? getAssignedCertificateDisplay(row.certificate_id)
+                      : "未关联"
+                  }}</span>
                 </div>
               </div>
             </template>
           </el-table-column>
 
-          <el-table-column
-            label="负载与同步"
-            min-width="200"
-          >
+          <el-table-column label="负载与同步" min-width="200">
             <template #default="{ row }">
               <div class="stack-cell">
                 <div class="stack-item">
                   <span class="stack-label">用户负载</span>
-                  <span class="stack-value is-strong">{{ row.current_users }}/{{ row.max_users || "∞" }}</span>
+                  <span class="stack-value is-strong"
+                    >{{ row.current_users }}/{{ row.max_users || "∞" }}</span
+                  >
                 </div>
                 <el-progress
                   v-if="row.max_users > 0"
@@ -236,13 +339,23 @@
                 />
                 <div class="stack-item">
                   <span class="stack-label">节点延迟</span>
-                  <span :class="['stack-value', getLatencyValueClass(row.latency)]">{{ row.latency }}ms</span>
+                  <span
+                    :class="['stack-value', getLatencyValueClass(row.latency)]"
+                    >{{ row.latency }}ms</span
+                  >
                 </div>
                 <div class="stack-tags">
-                  <span :class="['metric-pill', getSyncPillClass(row.sync_status)]">
+                  <span
+                    :class="['metric-pill', getSyncPillClass(row.sync_status)]"
+                  >
                     {{ getSyncStatusText(row.sync_status) }}
                   </span>
-                  <span :class="['metric-pill', getInstallPillClass(row.install_status)]">
+                  <span
+                    :class="[
+                      'metric-pill',
+                      getInstallPillClass(row.install_status),
+                    ]"
+                  >
                     {{ getInstallStatusText(row.install_status) }}
                   </span>
                 </div>
@@ -250,30 +363,60 @@
             </template>
           </el-table-column>
 
-          <el-table-column
-            label="最近活动"
-            min-width="180"
-          >
+          <el-table-column label="月流量" min-width="240">
             <template #default="{ row }">
               <div class="stack-cell">
                 <div class="stack-item">
-                  <span class="stack-label">最后在线</span>
-                  <span class="stack-value">{{ formatTime(row.last_seen_at) }}</span>
+                  <span class="stack-label">本周期</span>
+                  <span class="stack-value is-strong">{{
+                    formatNodeTrafficUsageSummary(row)
+                  }}</span>
                 </div>
+                <el-progress
+                  v-if="hasNodeTrafficLimit(row)"
+                  :percentage="getNodeTrafficUsagePercent(row)"
+                  :stroke-width="6"
+                  :show-text="false"
+                  :status="getNodeTrafficProgressStatus(row)"
+                />
                 <div class="stack-item">
-                  <span class="stack-label">最后同步</span>
-                  <span class="stack-value">{{ formatTime(row.synced_at) }}</span>
+                  <span class="stack-label">剩余额度</span>
+                  <span class="stack-value">{{
+                    formatNodeTrafficRemaining(row)
+                  }}</span>
+                </div>
+                <div class="stack-tags">
+                  <span :class="['metric-pill', getNodeTrafficPillClass(row)]">
+                    {{ getNodeTrafficStateText(row) }}
+                  </span>
+                  <span v-if="hasNodeTrafficLimit(row)" class="metric-subtle">
+                    重置 {{ formatNodeTrafficResetAt(row.traffic_reset_at) }}
+                  </span>
                 </div>
               </div>
             </template>
           </el-table-column>
 
-          <el-table-column
-            label="操作"
-            width="220"
-            fixed="right"
-            align="right"
-          >
+          <el-table-column label="最近活动" min-width="180">
+            <template #default="{ row }">
+              <div class="stack-cell">
+                <div class="stack-item">
+                  <span class="stack-label">最后在线</span>
+                  <span class="stack-value">{{
+                    formatTime(row.last_seen_at)
+                  }}</span>
+                </div>
+                <div class="stack-item">
+                  <span class="stack-label">最后同步</span>
+                  <span class="stack-value">{{
+                    formatTime(row.synced_at)
+                  }}</span>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="操作" width="220" fixed="right" align="right">
             <template #default="{ row }">
               <div class="operation-btns">
                 <el-button
@@ -323,10 +466,7 @@
                       <el-dropdown-item command="progress">
                         安装进度
                       </el-dropdown-item>
-                      <el-dropdown-item
-                        command="delete"
-                        divided
-                      >
+                      <el-dropdown-item command="delete" divided>
                         删除节点
                       </el-dropdown-item>
                     </el-dropdown-menu>
@@ -338,16 +478,15 @@
         </el-table>
       </div>
 
-      <div
-        v-if="nodeStore.total > 0"
-        class="pagination-container"
-      >
+      <div v-if="nodeStore.total > 0" class="pagination-container">
         <el-pagination
           v-model:current-page="pagination.page"
           v-model:page-size="pagination.pageSize"
           :total="nodeStore.total"
           :page-sizes="[10, 20, 50, 100]"
-          :layout="isMobile ? 'total, prev, next' : 'total, sizes, prev, pager, next'"
+          :layout="
+            isMobile ? 'total, prev, next' : 'total, sizes, prev, pager, next'
+          "
           @size-change="handleSizeChange"
           @current-change="fetchNodes"
         />
@@ -360,40 +499,18 @@
       :title="isEdit ? '编辑节点' : '添加节点'"
       width="700px"
     >
-      <el-form
-        ref="formRef"
-        :model="form"
-        :rules="rules"
-        label-width="120px"
-      >
-        <el-divider content-position="left">
-          节点信息
-        </el-divider>
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="120px">
+        <el-divider content-position="left"> 节点信息 </el-divider>
 
-        <el-form-item
-          label="节点名称"
-          prop="name"
-        >
-          <el-input
-            v-model="form.name"
-            placeholder="请输入节点名称"
-          />
+        <el-form-item label="节点名称" prop="name">
+          <el-input v-model="form.name" placeholder="请输入节点名称" />
         </el-form-item>
 
-        <el-form-item
-          label="地区"
-          prop="region"
-        >
-          <el-input
-            v-model="form.region"
-            placeholder="如：香港、日本、美国"
-          />
+        <el-form-item label="地区" prop="region">
+          <el-input v-model="form.region" placeholder="如：香港、日本、美国" />
         </el-form-item>
 
-        <el-form-item
-          label="权重"
-          prop="weight"
-        >
+        <el-form-item label="权重" prop="weight">
           <el-input-number
             v-model="form.weight"
             :min="1"
@@ -403,10 +520,7 @@
           <span class="form-tip">负载均衡权重，数值越大分配用户越多</span>
         </el-form-item>
 
-        <el-form-item
-          label="最大用户数"
-          prop="max_users"
-        >
+        <el-form-item label="最大用户数" prop="max_users">
           <el-input-number
             v-model="form.max_users"
             :min="0"
@@ -433,11 +547,7 @@
             @keyup.enter="addTag"
             @blur="addTag"
           />
-          <el-button
-            v-else
-            size="small"
-            @click="showTagInput = true"
-          >
+          <el-button v-else size="small" @click="showTagInput = true">
             + 添加标签
           </el-button>
         </el-form-item>
@@ -451,9 +561,7 @@
           />
         </el-form-item>
 
-        <el-divider content-position="left">
-          TLS 与证书
-        </el-divider>
+        <el-divider content-position="left"> TLS 与证书 </el-divider>
 
         <el-form-item label="启用 TLS">
           <el-switch
@@ -463,14 +571,8 @@
           />
         </el-form-item>
 
-        <el-form-item
-          label="TLS 域名"
-          prop="tls_domain"
-        >
-          <el-input
-            v-model="form.tls_domain"
-            placeholder="如 jp.example.com"
-          />
+        <el-form-item label="TLS 域名" prop="tls_domain">
+          <el-input v-model="form.tls_domain" placeholder="如 jp.example.com" />
           <div class="form-tip-inline">
             用于节点 TLS 标识、健康检查和系统证书自动匹配。
           </div>
@@ -496,83 +598,59 @@
           <div class="form-tip-inline">
             选择后会自动回填 TLS 域名，你仍可继续手动修改。
           </div>
-          <div
-            v-if="selectedCertificate"
-            class="certificate-tip"
-          >
+          <div v-if="selectedCertificate" class="certificate-tip">
             当前证书：{{ selectedCertificate.domain }}
-            <span v-if="selectedCertificate.expireDate && selectedCertificate.expireDate !== '-'">
+            <span
+              v-if="
+                selectedCertificate.expireDate &&
+                selectedCertificate.expireDate !== '-'
+              "
+            >
               ，到期 {{ selectedCertificate.expireDate }}
             </span>
           </div>
         </el-form-item>
 
         <template v-if="!isEdit && form.installMethod === 'manual'">
-          <el-divider content-position="left">
-            节点连接信息
-          </el-divider>
+          <el-divider content-position="left"> 节点连接信息 </el-divider>
 
-          <el-alert
-            type="info"
-            :closable="false"
-            style="margin-bottom: 16px"
-          >
+          <el-alert type="info" :closable="false" style="margin-bottom: 16px">
             手动安装模式需要提供节点地址和 Agent 端口，用于后续连接
           </el-alert>
 
-          <el-form-item
-            label="节点地址"
-            prop="address"
-          >
-            <el-input
-              v-model="form.address"
-              placeholder="IP 地址或域名"
-            />
+          <el-form-item label="节点地址" prop="address">
+            <el-input v-model="form.address" placeholder="IP 地址或域名" />
           </el-form-item>
 
-          <el-form-item
-            label="Agent 端口"
-            prop="port"
-          >
+          <el-form-item label="Agent 端口" prop="port">
             <el-input-number
               v-model="form.port"
               :min="1"
               :max="65535"
               style="width: 100%"
             />
-            <span class="form-tip">Agent 监听端口，修改后需与面板记录和防火墙放行保持一致</span>
+            <span class="form-tip"
+              >Agent 监听端口，修改后需与面板记录和防火墙放行保持一致</span
+            >
           </el-form-item>
         </template>
 
         <template v-if="!isEdit">
-          <el-divider content-position="left">
-            安装方式
-          </el-divider>
+          <el-divider content-position="left"> 安装方式 </el-divider>
 
           <el-form-item label="安装方式">
             <el-radio-group v-model="form.installMethod">
-              <el-radio label="manual">
-                稍后手动安装
-              </el-radio>
-              <el-radio label="auto">
-                立即自动安装
-              </el-radio>
+              <el-radio label="manual"> 稍后手动安装 </el-radio>
+              <el-radio label="auto"> 立即自动安装 </el-radio>
             </el-radio-group>
           </el-form-item>
 
           <template v-if="form.installMethod === 'auto'">
-            <el-alert
-              type="info"
-              :closable="false"
-              style="margin-bottom: 16px"
-            >
+            <el-alert type="info" :closable="false" style="margin-bottom: 16px">
               通过 SSH 连接到服务器并自动安装 Agent 和 Xray
             </el-alert>
 
-            <el-form-item
-              label="Panel 地址"
-              prop="panel_url"
-            >
+            <el-form-item label="Panel 地址" prop="panel_url">
               <el-input
                 v-model="form.panel_url"
                 placeholder="http://your-panel-ip:8080"
@@ -581,24 +659,17 @@
                   <el-icon><Link /></el-icon>
                 </template>
               </el-input>
-              <span class="form-tip">Agent 连接到 Panel 的地址，必须是 Agent
-                服务器能访问的地址</span>
+              <span class="form-tip"
+                >Agent 连接到 Panel 的地址，必须是 Agent
+                服务器能访问的地址</span
+              >
             </el-form-item>
 
-            <el-form-item
-              label="服务器地址"
-              prop="ssh_host"
-            >
-              <el-input
-                v-model="form.ssh_host"
-                placeholder="IP 地址或域名"
-              />
+            <el-form-item label="服务器地址" prop="ssh_host">
+              <el-input v-model="form.ssh_host" placeholder="IP 地址或域名" />
             </el-form-item>
 
-            <el-form-item
-              label="SSH 端口"
-              prop="ssh_port"
-            >
+            <el-form-item label="SSH 端口" prop="ssh_port">
               <el-input-number
                 v-model="form.ssh_port"
                 :min="1"
@@ -607,27 +678,17 @@
               />
             </el-form-item>
 
-            <el-form-item
-              label="用户名"
-              prop="ssh_username"
-            >
+            <el-form-item label="用户名" prop="ssh_username">
               <el-input
                 v-model="form.ssh_username"
                 placeholder="SSH 用户名 (通常为 root)"
               />
             </el-form-item>
 
-            <el-form-item
-              label="认证方式"
-              prop="ssh_auth_method"
-            >
+            <el-form-item label="认证方式" prop="ssh_auth_method">
               <el-radio-group v-model="form.ssh_auth_method">
-                <el-radio label="password">
-                  密码
-                </el-radio>
-                <el-radio label="key">
-                  私钥
-                </el-radio>
+                <el-radio label="password"> 密码 </el-radio>
+                <el-radio label="key"> 私钥 </el-radio>
               </el-radio-group>
             </el-form-item>
 
@@ -684,19 +745,13 @@
               :closable="false"
               style="margin-bottom: 16px"
             >
-              <template #title>
-                常见问题排查
-              </template>
+              <template #title> 常见问题排查 </template>
               <div style="font-size: 13px; line-height: 1.6">
                 <p style="margin: 4px 0">
                   • 确认 SSH 服务正在运行: <code>systemctl status sshd</code>
                 </p>
-                <p style="margin: 4px 0">
-                  • 确认端口正确 (默认 22)
-                </p>
-                <p style="margin: 4px 0">
-                  • 确认防火墙允许 SSH 连接
-                </p>
+                <p style="margin: 4px 0">• 确认端口正确 (默认 22)</p>
+                <p style="margin: 4px 0">• 确认防火墙允许 SSH 连接</p>
                 <p style="margin: 4px 0">
                   • 如果使用密码认证，确认服务器允许:
                   <code>PasswordAuthentication yes</code>
@@ -707,14 +762,8 @@
         </template>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">
-          取消
-        </el-button>
-        <el-button
-          type="primary"
-          :loading="submitting"
-          @click="submitForm"
-        >
+        <el-button @click="dialogVisible = false"> 取消 </el-button>
+        <el-button type="primary" :loading="submitting" @click="submitForm">
           {{
             isEdit
               ? "保存"
@@ -727,44 +776,25 @@
     </el-dialog>
 
     <!-- Token 管理对话框 -->
-    <el-dialog
-      v-model="tokenDialogVisible"
-      title="Token 管理"
-      width="500px"
-    >
-      <div
-        v-if="currentNode"
-        class="token-dialog-content"
-      >
+    <el-dialog v-model="tokenDialogVisible" title="Token 管理" width="500px">
+      <div v-if="currentNode" class="token-dialog-content">
         <div class="token-info">
-          <div class="token-label">
-            节点名称
-          </div>
+          <div class="token-label">节点名称</div>
           <div class="token-value">
             {{ currentNode.name }}
           </div>
         </div>
         <div class="token-info">
-          <div class="token-label">
-            当前 Token
-          </div>
+          <div class="token-label">当前 Token</div>
           <div class="token-value token-text">
             <span v-if="showToken">{{ currentToken || "未生成" }}</span>
             <span v-else>{{
               currentToken ? "••••••••••••••••" : "未生成"
             }}</span>
-            <el-button
-              v-if="currentToken"
-              link
-              @click="showToken = !showToken"
-            >
+            <el-button v-if="currentToken" link @click="showToken = !showToken">
               <el-icon><View v-if="!showToken" /><Hide v-else /></el-icon>
             </el-button>
-            <el-button
-              v-if="currentToken"
-              link
-              @click="copyToken"
-            >
+            <el-button v-if="currentToken" link @click="copyToken">
               <el-icon><CopyDocument /></el-icon>
             </el-button>
           </div>
@@ -801,9 +831,7 @@
           show-icon
           class="new-token-alert"
         >
-          <template #title>
-            新 Token 已生成，请妥善保存：
-          </template>
+          <template #title> 新 Token 已生成，请妥善保存： </template>
           <div class="new-token-text">
             {{ newToken }}
           </div>
@@ -825,10 +853,7 @@
           v-if="!deployResult && deploySteps.length === 0 && !deployLogs"
           class="deploy-loading"
         >
-          <el-icon
-            class="is-loading"
-            :size="40"
-          >
+          <el-icon class="is-loading" :size="40">
             <Loading />
           </el-icon>
           <p style="margin-top: 16px; color: #909399">
@@ -853,16 +878,10 @@
         </el-steps>
 
         <!-- 日志显示 -->
-        <div
-          v-if="deployLogs"
-          class="deploy-logs"
-        >
+        <div v-if="deployLogs" class="deploy-logs">
           <div class="logs-header">
             <span>部署日志</span>
-            <el-button
-              link
-              @click="copyDeployLogs"
-            >
+            <el-button link @click="copyDeployLogs">
               <el-icon><CopyDocument /></el-icon>
               复制日志
             </el-button>
@@ -883,9 +902,7 @@
 
       <template #footer>
         <el-button @click="closeDeployProgress">
-          {{
-            deployResult ? "关闭" : "后台继续安装"
-          }}
+          {{ deployResult ? "关闭" : "后台继续安装" }}
         </el-button>
       </template>
     </el-dialog>
@@ -896,11 +913,7 @@
       title="部署 Agent 到节点"
       width="600px"
     >
-      <el-alert
-        type="info"
-        :closable="false"
-        style="margin-bottom: 20px"
-      >
+      <el-alert type="info" :closable="false" style="margin-bottom: 20px">
         <template #title>
           将 Agent 部署到节点: {{ currentNode?.name }}
         </template>
@@ -912,21 +925,12 @@
         :rules="deployRules"
         label-width="100px"
       >
-        <el-form-item
-          label="服务器地址"
-          prop="host"
-        >
-          <el-input
-            v-model="deployForm.host"
-            placeholder="IP 地址或域名"
-          />
+        <el-form-item label="服务器地址" prop="host">
+          <el-input v-model="deployForm.host" placeholder="IP 地址或域名" />
           <span class="form-tip">通常与节点地址相同</span>
         </el-form-item>
 
-        <el-form-item
-          label="SSH 端口"
-          prop="port"
-        >
+        <el-form-item label="SSH 端口" prop="port">
           <el-input-number
             v-model="deployForm.port"
             :min="1"
@@ -935,27 +939,14 @@
           />
         </el-form-item>
 
-        <el-form-item
-          label="用户名"
-          prop="username"
-        >
-          <el-input
-            v-model="deployForm.username"
-            placeholder="SSH 用户名"
-          />
+        <el-form-item label="用户名" prop="username">
+          <el-input v-model="deployForm.username" placeholder="SSH 用户名" />
         </el-form-item>
 
-        <el-form-item
-          label="认证方式"
-          prop="authMethod"
-        >
+        <el-form-item label="认证方式" prop="authMethod">
           <el-radio-group v-model="deployForm.authMethod">
-            <el-radio label="password">
-              密码
-            </el-radio>
-            <el-radio label="key">
-              私钥
-            </el-radio>
+            <el-radio label="password"> 密码 </el-radio>
+            <el-radio label="key"> 私钥 </el-radio>
           </el-radio-group>
         </el-form-item>
 
@@ -987,73 +978,62 @@
       </el-form>
 
       <template #footer>
-        <el-button @click="deployToNodeDialogVisible = false">
-          取消
-        </el-button>
-        <el-button
-          type="primary"
-          :loading="deploying"
-          @click="submitDeploy"
-        >
+        <el-button @click="deployToNodeDialogVisible = false"> 取消 </el-button>
+        <el-button type="primary" :loading="deploying" @click="submitDeploy">
           开始部署
         </el-button>
       </template>
     </el-dialog>
 
     <!-- 节点详情对话框 -->
-    <el-dialog
-      v-model="detailDialogVisible"
-      title="节点详情"
-      width="700px"
-    >
-      <div
-        v-if="currentNode"
-        class="node-detail"
-      >
-        <el-descriptions
-          :column="2"
-          border
-        >
+    <el-dialog v-model="detailDialogVisible" title="节点详情" width="700px">
+      <div v-if="currentNode" class="node-detail">
+        <el-descriptions :column="2" border>
           <el-descriptions-item label="ID">
-            {{
-              currentNode.id
-            }}
+            {{ currentNode.id }}
           </el-descriptions-item>
           <el-descriptions-item label="名称">
-            {{
-              currentNode.name
-            }}
+            {{ currentNode.name }}
           </el-descriptions-item>
           <el-descriptions-item label="地址">
-            {{ currentNode.address }}:{{
-              currentNode.port
-            }}
+            {{ currentNode.address }}:{{ currentNode.port }}
           </el-descriptions-item>
           <el-descriptions-item label="状态">
             <el-tag :type="getStatusType(currentNode.status)">
-              {{
-                getStatusText(currentNode.status)
-              }}
+              {{ getStatusText(currentNode.status) }}
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="地区">
-            {{
-              currentNode.region || "-"
-            }}
+            {{ currentNode.region || "-" }}
           </el-descriptions-item>
           <el-descriptions-item label="权重">
-            {{
-              currentNode.weight
-            }}
+            {{ currentNode.weight }}
           </el-descriptions-item>
           <el-descriptions-item label="当前用户">
-            {{
-              currentNode.current_users
-            }}
+            {{ currentNode.current_users }}
           </el-descriptions-item>
           <el-descriptions-item label="最大用户">
+            {{ currentNode.max_users || "无限制" }}
+          </el-descriptions-item>
+          <el-descriptions-item label="月流量">
+            {{ formatNodeTrafficUsageSummary(currentNode) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="剩余额度">
+            {{ formatNodeTrafficRemaining(currentNode) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="流量状态">
+            <el-tag :type="getNodeTrafficStateType(currentNode)">
+              {{ getNodeTrafficStateText(currentNode) }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="周期重置">
+            {{ formatNodeTrafficResetAt(currentNode.traffic_reset_at) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="停新阈值">
             {{
-              currentNode.max_users || "无限制"
+              hasNodeTrafficLimit(currentNode)
+                ? `${currentNode.alert_traffic_threshold || 100}%`
+                : "不适用"
             }}
           </el-descriptions-item>
           <el-descriptions-item label="延迟">
@@ -1061,28 +1041,17 @@
           </el-descriptions-item>
           <el-descriptions-item label="同步状态">
             <el-tag :type="getSyncStatusType(currentNode.sync_status)">
-              {{
-                getSyncStatusText(currentNode.sync_status)
-              }}
+              {{ getSyncStatusText(currentNode.sync_status) }}
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="最后在线">
-            {{
-              formatTime(currentNode.last_seen_at)
-            }}
+            {{ formatTime(currentNode.last_seen_at) }}
           </el-descriptions-item>
           <el-descriptions-item label="最后同步">
-            {{
-              formatTime(currentNode.synced_at)
-            }}
+            {{ formatTime(currentNode.synced_at) }}
           </el-descriptions-item>
-          <el-descriptions-item
-            label="创建时间"
-            :span="2"
-          >
-            {{
-              formatTime(currentNode.created_at)
-            }}
+          <el-descriptions-item label="创建时间" :span="2">
+            {{ formatTime(currentNode.created_at) }}
           </el-descriptions-item>
         </el-descriptions>
         <div
@@ -1124,6 +1093,16 @@ import { certificatesApi } from "@/api";
 import { nodesApi } from "@/api/modules/nodes";
 import { copyText } from "@/utils/clipboard";
 import { useViewport } from "@/composables/useViewport";
+import {
+  formatNodeTrafficRemaining,
+  formatNodeTrafficResetAt,
+  formatNodeTrafficUsageSummary,
+  getNodeTrafficStateKey,
+  getNodeTrafficStateText,
+  getNodeTrafficStateType,
+  getNodeTrafficUsagePercent,
+  hasNodeTrafficLimit,
+} from "@/composables/useNodePresentation";
 
 const nodeStore = useNodeStore();
 const router = useRouter();
@@ -1156,6 +1135,7 @@ const deployResult = ref(null);
 const deployStatusMessage = ref("");
 const certificates = ref([]);
 const certificatesLoading = ref(false);
+const trafficStateFilter = ref("");
 
 let installStatusTimer = null;
 let shouldPollInstallStatus = false;
@@ -1326,7 +1306,8 @@ const formatCertificateDate = (value) => {
 const normalizeCertificatesResponse = (response) => {
   if (Array.isArray(response)) return response;
   if (Array.isArray(response?.certificates)) return response.certificates;
-  if (Array.isArray(response?.data?.certificates)) return response.data.certificates;
+  if (Array.isArray(response?.data?.certificates))
+    return response.data.certificates;
   if (Array.isArray(response?.data)) return response.data;
   return [];
 };
@@ -1338,18 +1319,41 @@ const selectedCertificate = computed(
     ) || null,
 );
 
-const filteredNodeCount = computed(() => nodeStore.filteredNodes.length);
+const TRAFFIC_STATE_FILTER_OPTIONS = Object.freeze([
+  { value: "", label: "全部流量状态" },
+  { value: "unlimited", label: "不限流量" },
+  { value: "healthy", label: "可继续分配" },
+  { value: "soft_capped", label: "停止新分配" },
+  { value: "hard_capped", label: "已达上限" },
+]);
+
+const TRAFFIC_STATE_RISK_ORDER = Object.freeze({
+  hard_capped: 0,
+  soft_capped: 1,
+  healthy: 2,
+  unlimited: 3,
+});
+
+const visibleNodes = computed(() => {
+  const nodes = nodeStore.filteredNodes;
+  if (!trafficStateFilter.value) return nodes;
+  return nodes.filter(
+    (node) => getNodeTrafficStateKey(node) === trafficStateFilter.value,
+  );
+});
+
+const filteredNodeCount = computed(() => visibleNodes.value.length);
 const filteredOnlineCount = computed(
-  () => nodeStore.filteredNodes.filter((node) => node.status === "online").length,
+  () => visibleNodes.value.filter((node) => node.status === "online").length,
 );
 const filteredTlsCount = computed(
-  () => nodeStore.filteredNodes.filter((node) => node.tls_enabled).length,
+  () => visibleNodes.value.filter((node) => node.tls_enabled).length,
 );
 const filteredUserCount = computed(() =>
-  nodeStore.filteredNodes.reduce((sum, node) => sum + (node.current_users || 0), 0),
+  visibleNodes.value.reduce((sum, node) => sum + (node.current_users || 0), 0),
 );
 const filteredAverageLatency = computed(() => {
-  const onlineWithLatency = nodeStore.filteredNodes.filter(
+  const onlineWithLatency = visibleNodes.value.filter(
     (node) => node.status === "online" && node.latency > 0,
   );
   if (!onlineWithLatency.length) return 0;
@@ -1358,19 +1362,74 @@ const filteredAverageLatency = computed(() => {
       onlineWithLatency.length,
   );
 });
+const filteredTrafficGuardCount = computed(
+  () =>
+    visibleNodes.value.filter((node) => {
+      const state = getNodeTrafficStateKey(node);
+      return state === "soft_capped" || state === "hard_capped";
+    }).length,
+);
+const softCappedCount = computed(
+  () =>
+    visibleNodes.value.filter(
+      (node) => getNodeTrafficStateKey(node) === "soft_capped",
+    ).length,
+);
+const hardCappedCount = computed(
+  () =>
+    visibleNodes.value.filter(
+      (node) => getNodeTrafficStateKey(node) === "hard_capped",
+    ).length,
+);
+const trafficLimitedNodeCount = computed(
+  () => visibleNodes.value.filter((node) => hasNodeTrafficLimit(node)).length,
+);
+const trafficRiskNodes = computed(() =>
+  [...visibleNodes.value]
+    .filter((node) => {
+      if (!hasNodeTrafficLimit(node)) return false;
+      const state = getNodeTrafficStateKey(node);
+      return (
+        state === "hard_capped" ||
+        state === "soft_capped" ||
+        getNodeTrafficUsagePercent(node) >= 60
+      );
+    })
+    .sort((left, right) => {
+      const leftState = getNodeTrafficStateKey(left);
+      const rightState = getNodeTrafficStateKey(right);
+      const leftOrder = TRAFFIC_STATE_RISK_ORDER[leftState] ?? 99;
+      const rightOrder = TRAFFIC_STATE_RISK_ORDER[rightState] ?? 99;
+      if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+
+      const usageDiff = getNodeTrafficUsagePercent(right) - getNodeTrafficUsagePercent(left);
+      if (usageDiff !== 0) return usageDiff;
+
+      const remainingDiff =
+        Number(left.traffic_limit || 0) -
+        Number(left.traffic_total || 0) -
+        (Number(right.traffic_limit || 0) - Number(right.traffic_total || 0));
+      if (remainingDiff !== 0) return remainingDiff;
+
+      return Number(right.current_users || 0) - Number(left.current_users || 0);
+    })
+    .slice(0, 6),
+);
 const activeFilterCount = computed(
   () =>
     [
       normalizeText(nodeStore.filters.search),
       nodeStore.filters.status,
       nodeStore.filters.region,
+      trafficStateFilter.value,
     ].filter(Boolean).length,
 );
 const hasActiveFilters = computed(() =>
   Boolean(
     normalizeText(nodeStore.filters.search) ||
-      nodeStore.filters.status ||
-      nodeStore.filters.region,
+    nodeStore.filters.status ||
+    nodeStore.filters.region ||
+    trafficStateFilter.value,
   ),
 );
 
@@ -1378,10 +1437,12 @@ const fetchCertificates = async () => {
   certificatesLoading.value = true;
   try {
     const response = await certificatesApi.list();
-    certificates.value = normalizeCertificatesResponse(response).map((cert) => ({
-      ...cert,
-      expireDate: formatCertificateDate(cert.expires_at || cert.expiresAt),
-    }));
+    certificates.value = normalizeCertificatesResponse(response).map(
+      (cert) => ({
+        ...cert,
+        expireDate: formatCertificateDate(cert.expires_at || cert.expiresAt),
+      }),
+    );
   } catch (e) {
     console.error("获取证书失败:", e);
     certificates.value = [];
@@ -1552,6 +1613,39 @@ const getTlsHint = (node) => {
   return "TLS 已启用，请补充域名和证书避免握手异常。";
 };
 
+const getNodeTrafficPillClass = (node) => {
+  const classes = {
+    unlimited: "is-muted",
+    healthy: "is-success",
+    soft_capped: "is-warning",
+    hard_capped: "is-danger",
+  };
+  return classes[getNodeTrafficStateKey(node)] || "is-muted";
+};
+
+const getNodeTrafficProgressStatus = (node) => {
+  const state = getNodeTrafficStateKey(node);
+  if (state === "hard_capped") return "exception";
+  if (state === "soft_capped") return "warning";
+  return "success";
+};
+
+const getTrafficRiskHint = (node) => {
+  const state = getNodeTrafficStateKey(node);
+  const usagePercent = getNodeTrafficUsagePercent(node);
+  if (state === "hard_capped") {
+    return `当前已使用 ${usagePercent}%，节点入口已停止提供`;
+  }
+  if (state === "soft_capped") {
+    return `当前已使用 ${usagePercent}%，系统已停止为新用户分配`;
+  }
+  return `当前已使用 ${usagePercent}%，建议提前准备替补节点`;
+};
+
+const applyTrafficStateFilter = (state) => {
+  trafficStateFilter.value = state || "";
+};
+
 // 获取步骤状态（用于 el-steps 组件）
 const getStepStatus = (step, index) => {
   // 如果 step 是对象（新格式），直接返回状态
@@ -1686,6 +1780,7 @@ const fetchNodes = async () => {
 
 const resetFilters = async () => {
   nodeStore.clearFilters();
+  trafficStateFilter.value = "";
   pagination.page = 1;
   await fetchNodes();
 };
@@ -2353,7 +2448,8 @@ onUnmounted(() => {
   min-height: 52px;
 }
 
-.admin-nodes-page :deep(.nodes-table .el-table__body td.el-table__cell > .cell) {
+.admin-nodes-page
+  :deep(.nodes-table .el-table__body td.el-table__cell > .cell) {
   display: flex;
   align-items: center;
   min-height: 100%;
@@ -2384,6 +2480,102 @@ onUnmounted(() => {
 
 .admin-nodes-page :deep(.row-action--primary) {
   background: #eff6ff;
+}
+
+.overview-value.is-danger {
+  color: var(--el-color-danger);
+}
+
+.metric-subtle {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--el-text-color-secondary);
+}
+
+.toolbar-chip--button {
+  border: none;
+  cursor: pointer;
+}
+
+.toolbar-chip--warning {
+  color: var(--el-color-warning-dark-2);
+  background: color-mix(in srgb, var(--el-color-warning) 12%, white);
+}
+
+.toolbar-chip--danger {
+  color: var(--el-color-danger);
+  background: color-mix(in srgb, var(--el-color-danger) 12%, white);
+}
+
+.traffic-workspace {
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 18px;
+  background: linear-gradient(180deg, var(--el-fill-color-extra-light), var(--el-bg-color));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.traffic-workspace__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.traffic-risk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.traffic-risk-card {
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--el-border-color-lighter);
+  background: var(--el-bg-color-overlay);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.traffic-risk-card__top,
+.traffic-risk-card__summary,
+.traffic-risk-card__meta,
+.traffic-risk-card__actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.traffic-risk-card__top {
+  align-items: flex-start;
+}
+
+.traffic-risk-card__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.traffic-risk-card__summary {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+}
+
+.traffic-risk-card__meta {
+  align-items: flex-start;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--el-text-color-secondary);
+}
+
+.traffic-risk-card__actions {
+  justify-content: flex-end;
 }
 
 .form-tip {
@@ -2544,6 +2736,19 @@ onUnmounted(() => {
     justify-content: flex-start;
   }
 
+  .traffic-workspace__header,
+  .traffic-risk-card__top,
+  .traffic-risk-card__summary,
+  .traffic-risk-card__meta,
+  .traffic-risk-card__actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .traffic-risk-card__actions {
+    width: 100%;
+  }
+
   .page-actions {
     width: 100%;
   }
@@ -2559,22 +2764,22 @@ onUnmounted(() => {
 }
 
 /* ── dark mode ── */
-:root.dark .node-address {
+:global(.dark) .node-address {
   color: #93c5fd;
   background: rgba(59, 130, 246, 0.14);
 }
 
-:root.dark .toolbar-chip {
+:global(.dark) .toolbar-chip {
   background: rgba(100, 116, 139, 0.18);
   color: #94a3b8;
 }
 
-:root.dark .toolbar-chip--primary {
+:global(.dark) .toolbar-chip--primary {
   color: #93c5fd;
   background: rgba(59, 130, 246, 0.16);
 }
 
-:root.dark .admin-nodes-page :deep(.row-action--primary) {
+:global(.dark) .admin-nodes-page :deep(.row-action--primary) {
   background: rgba(59, 130, 246, 0.14);
 }
 </style>

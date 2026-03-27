@@ -387,7 +387,7 @@ func (h *SubscriptionHandler) detectFormat(c *gin.Context) subscription.ClientFo
 	// Check explicit format parameter first
 	if formatParam := c.Query("format"); formatParam != "" {
 		switch strings.ToLower(formatParam) {
-		case "v2rayn", "v2rayng":
+		case "v2ray", "v2rayn", "v2rayng", "base64", "raw":
 			return subscription.FormatV2rayN
 		case "clash":
 			return subscription.FormatClash

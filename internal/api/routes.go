@@ -51,21 +51,22 @@ import (
 
 // Router manages API routes.
 type Router struct {
-	engine              *gin.Engine
-	config              *config.Config
-	logger              logger.Logger
-	authService         *auth.Service
-	proxyManager        proxy.Manager
-	repos               *repository.Repositories
-	settingsService     *settings.Service
-	notificationService *notification.Service
-	trialService        *trial.Service
-	entitlementService  *entitlement.Service
-	xrayManager         xray.Manager
-	logService          *logservice.Service
-	certificateService  CertificateService
-	nodeHealthChecker   *node.HealthChecker
-	nodeRecoveryTracker *handlers.NodeRecoveryTracker
+	engine                    *gin.Engine
+	config                    *config.Config
+	logger                    logger.Logger
+	authService               *auth.Service
+	proxyManager              proxy.Manager
+	repos                     *repository.Repositories
+	settingsService           *settings.Service
+	notificationService       *notification.Service
+	trialService              *trial.Service
+	entitlementService        *entitlement.Service
+	xrayManager               xray.Manager
+	logService                *logservice.Service
+	certificateService        CertificateService
+	nodeHealthChecker         *node.HealthChecker
+	nodeTrafficResetScheduler *node.TrafficResetScheduler
+	nodeRecoveryTracker       *handlers.NodeRecoveryTracker
 }
 
 // CertificateService defines the interface for certificate operations.
@@ -104,19 +105,20 @@ func NewRouter(
 	}, log)
 
 	return &Router{
-		engine:              engine,
-		config:              cfg,
-		logger:              log,
-		authService:         authService,
-		proxyManager:        proxyManager,
-		repos:               repos,
-		settingsService:     settingsService,
-		notificationService: notification.NewService(&notification.NotificationConfig{}),
-		xrayManager:         xrayManager,
-		logService:          logService,
-		certificateService:  certService,
-		nodeHealthChecker:   nil, // 将在 Setup() 中初始化
-		nodeRecoveryTracker: nil,
+		engine:                    engine,
+		config:                    cfg,
+		logger:                    log,
+		authService:               authService,
+		proxyManager:              proxyManager,
+		repos:                     repos,
+		settingsService:           settingsService,
+		notificationService:       notification.NewService(&notification.NotificationConfig{}),
+		xrayManager:               xrayManager,
+		logService:                logService,
+		certificateService:        certService,
+		nodeHealthChecker:         nil, // 将在 Setup() 中初始化
+		nodeTrafficResetScheduler: nil,
+		nodeRecoveryTracker:       nil,
 	}
 }
 
@@ -245,17 +247,59 @@ func (r *Router) Setup() {
 		r.logger,
 	)
 	nodeGroupService := node.NewGroupService(r.repos.NodeGroup, r.repos.Node, r.logger)
-	r.nodeHealthChecker = node.NewHealthChecker(nil, r.repos.Node, r.repos.Certificate, r.repos.HealthCheck, r.logger)
+	r.nodeHealthChecker = node.NewHealthChecker(nil, r.repos.Node, r.repos.Proxy, r.repos.Certificate, r.repos.HealthCheck, r.logger)
 	r.nodeHealthChecker.SetNotificationService(r.notificationService)
 	nodeTrafficService := node.NewTrafficService(
 		r.repos.DB(),
 		r.repos.NodeTraffic,
 		r.repos.Traffic,
+		r.repos.Proxy,
 		r.repos.User,
 		r.repos.Node,
 		r.repos.NodeGroup,
 		r.logger,
-	)
+	).
+		WithUserAccessCheck(func(ctx context.Context, userID int64) error {
+			_, err := r.entitlementService.EvaluateExistingAccess(ctx, userID)
+			return err
+		}).
+		WithAccessRevokedHook(func(ctx context.Context, userID int64, nodeIDs []int64, reason string) {
+			source := "node_traffic_service"
+			syncReason := fmt.Sprintf("user %d access revoked after traffic update: %s", userID, reason)
+			for _, nodeID := range nodeIDs {
+				r.nodeRecoveryTracker.QueueConfigSyncCommand(nodeID, source, syncReason)
+				r.nodeRecoveryTracker.QueueXrayRestartCommand(nodeID, source, "apply synced entitlement config")
+			}
+		}).
+		WithNodeTrafficLimitExceededHook(func(ctx context.Context, nodeID int64, reason string) {
+			source := "node_traffic_service"
+			r.nodeRecoveryTracker.QueueConfigSyncCommand(nodeID, source, reason)
+			r.nodeRecoveryTracker.QueueXrayRestartCommand(nodeID, source, "apply synced over-limit node config")
+		}).
+		WithNodeTrafficAlertHook(func(ctx context.Context, alert *node.NodeTrafficAlert) {
+			if alert == nil || r.notificationService == nil {
+				return
+			}
+
+			if err := r.notificationService.NotifyNodeTrafficAlert(notification.NodeTrafficAlertData{
+				NodeID:           alert.NodeID,
+				NodeName:         alert.NodeName,
+				Level:            alert.Level,
+				TrafficTotal:     alert.TrafficTotal,
+				TrafficLimit:     alert.TrafficLimit,
+				UsagePercent:     alert.UsagePercent,
+				ThresholdPercent: alert.ThresholdPercent,
+				Timestamp:        alert.TriggeredAt,
+			}); err != nil {
+				r.logger.Warn("failed to send node traffic alert notification",
+					logger.Err(err),
+					logger.F("node_id", alert.NodeID),
+					logger.F("level", alert.Level),
+				)
+			}
+		})
+
+	r.nodeTrafficResetScheduler = node.NewTrafficResetScheduler(nil, nodeTrafficService, r.logger)
 	nodeDeployService := node.NewRemoteDeployService(r.logger, r.repos.Node)
 	r.nodeRecoveryTracker = handlers.NewNodeRecoveryTracker(r.logger)
 	proxyHandler.WithRecoveryTracker(r.nodeRecoveryTracker)
@@ -265,7 +309,11 @@ func (r *Router) Setup() {
 	})
 
 	// Create Xray config generator for nodes
-	configGenerator := xray.NewConfigGenerator(r.repos.Proxy, r.repos.Certificate, r.repos.Node, r.logger)
+	configGenerator := xray.NewConfigGenerator(r.repos.Proxy, r.repos.Certificate, r.repos.Node, r.logger).
+		WithUserAccessCheck(func(ctx context.Context, userID int64) error {
+			_, err := r.entitlementService.EvaluateExistingAccess(ctx, userID)
+			return err
+		})
 	nodeConfigTestHandler := handlers.NewNodeConfigTestHandler(configGenerator, r.logger)
 	nodeAgentHandler := handlers.NewNodeAgentHandler(nodeService, nodeTrafficService, r.repos.Node, configGenerator, r.nodeRecoveryTracker, r.logger)
 
@@ -284,12 +332,16 @@ func (r *Router) Setup() {
 	agentDownloadHandler := handlers.NewAgentDownloadHandler(r.logger)
 	if r.nodeHealthChecker != nil {
 		r.nodeHealthChecker.SetOnStatusChange(func(nodeID int64, oldStatus, newStatus string) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			if newStatus == repository.NodeStatusOnline {
+				r.nodeRecoveryTracker.QueueConfigSyncCommand(nodeID, "health_checker", "node recovered to online; refresh node config")
+				return
+			}
 			if newStatus != repository.NodeStatusUnhealthy {
 				return
 			}
-
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
 
 			nodeData, err := r.repos.Node.GetByID(ctx, nodeID)
 			if err != nil {
@@ -342,7 +394,9 @@ func (r *Router) Setup() {
 	subscriptionPublic.Use(subscriptionRateLimiter.RateLimit())
 	{
 		subscriptionPublic.GET("/api/subscription/:token", subscriptionHandler.GetContent)
+		subscriptionPublic.HEAD("/api/subscription/:token", subscriptionHandler.GetContent)
 		subscriptionPublic.GET("/s/:code", subscriptionHandler.GetShortContent)
+		subscriptionPublic.HEAD("/s/:code", subscriptionHandler.GetShortContent)
 	}
 
 	// API routes
@@ -1092,6 +1146,7 @@ func (r *Router) buildNotificationConfig(systemSettings *settings.SystemSettings
 			notification.NotificationDeviceKicked:     true,
 			notification.NotificationAutoBlacklisted:  true,
 			notification.NotificationNodeStatusChange: true,
+			notification.NotificationNodeTrafficAlert: true,
 		},
 		EnabledChannels: map[notification.NotificationChannel]bool{
 			notification.ChannelEmail:    emailEnabled,
@@ -1420,5 +1475,30 @@ func (r *Router) StopHealthChecker(ctx context.Context) error {
 	}
 
 	r.logger.Info("健康检查服务已停止")
+	return nil
+}
+
+// StartNodeTrafficResetScheduler starts the monthly node traffic reset scheduler.
+func (r *Router) StartNodeTrafficResetScheduler(ctx context.Context) error {
+	if r.nodeTrafficResetScheduler == nil {
+		r.logger.Warn("节点流量重置调度器未初始化，跳过启动")
+		return nil
+	}
+	if err := r.nodeTrafficResetScheduler.Start(ctx); err != nil {
+		r.logger.Error("启动节点流量重置调度器失败", logger.Err(err))
+		return err
+	}
+	return nil
+}
+
+// StopNodeTrafficResetScheduler stops the monthly node traffic reset scheduler.
+func (r *Router) StopNodeTrafficResetScheduler(ctx context.Context) error {
+	if r.nodeTrafficResetScheduler == nil {
+		return nil
+	}
+	if err := r.nodeTrafficResetScheduler.Stop(ctx); err != nil {
+		r.logger.Error("停止节点流量重置调度器失败", logger.Err(err))
+		return err
+	}
 	return nil
 }

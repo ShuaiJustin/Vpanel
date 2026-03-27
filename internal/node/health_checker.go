@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"v/internal/database/repository"
 	"v/internal/logger"
 	"v/internal/notification"
+	proxylib "v/internal/proxy"
 )
 
 // HealthCheckConfig holds configuration for the health checker.
@@ -58,6 +60,7 @@ type HealthCheckResult struct {
 type HealthChecker struct {
 	config          *HealthCheckConfig
 	nodeRepo        repository.NodeRepository
+	proxyRepo       repository.ProxyRepository
 	certRepo        repository.CertificateRepository
 	healthCheckRepo repository.HealthCheckRepository
 	logger          logger.Logger
@@ -84,6 +87,7 @@ type HealthChecker struct {
 func NewHealthChecker(
 	config *HealthCheckConfig,
 	nodeRepo repository.NodeRepository,
+	proxyRepo repository.ProxyRepository,
 	certRepo repository.CertificateRepository,
 	healthCheckRepo repository.HealthCheckRepository,
 	log logger.Logger,
@@ -95,6 +99,7 @@ func NewHealthChecker(
 	return &HealthChecker{
 		config:               config,
 		nodeRepo:             nodeRepo,
+		proxyRepo:            proxyRepo,
 		certRepo:             certRepo,
 		healthCheckRepo:      healthCheckRepo,
 		logger:               log,
@@ -209,7 +214,7 @@ func (hc *HealthChecker) checkAllNodes() {
 	if maxConcurrent <= 0 {
 		maxConcurrent = 10 // Default fallback
 	}
-	
+
 	sem := make(chan struct{}, maxConcurrent)
 	var wg sync.WaitGroup
 
@@ -219,7 +224,7 @@ func (hc *HealthChecker) checkAllNodes() {
 
 	for _, node := range nodes {
 		wg.Add(1)
-		
+
 		// Acquire semaphore
 		select {
 		case sem <- struct{}{}:
@@ -233,7 +238,7 @@ func (hc *HealthChecker) checkAllNodes() {
 		go func(n *repository.Node) {
 			defer wg.Done()
 			defer func() { <-sem }() // Release semaphore
-			
+
 			// Check for context cancellation
 			select {
 			case <-hc.ctx.Done():
@@ -297,11 +302,19 @@ func (hc *HealthChecker) performCheck(node *repository.Node) *HealthCheckResult 
 	if result.APIOk {
 		result.XrayOk = hc.checkXray(node.Address, node.Port)
 	}
-	
+
 	// Check certificate expiration if node has a certificate
 	certWarning := hc.checkCertificateExpiration(node)
+	heartbeatHealthy := shouldTrustRecentHeartbeat(node, hc.config.Interval, time.Now())
+	proxyReachable, hasSampledProxy := hc.checkReachableProxyEndpoint(node)
 
 	result.Latency = int(time.Since(start).Milliseconds())
+
+	if nodeTrafficLimitExceeded(node) {
+		result.Status = repository.HealthCheckStatusFailed
+		result.Message = "Node traffic limit exceeded"
+		return result
+	}
 
 	// Determine overall status
 	if result.TCPOk && result.APIOk && result.XrayOk {
@@ -311,9 +324,19 @@ func (hc *HealthChecker) performCheck(node *repository.Node) *HealthCheckResult 
 		} else {
 			result.Message = "All checks passed"
 		}
+	} else if shouldAcceptHeartbeatFallback(heartbeatHealthy, hasSampledProxy, proxyReachable) {
+		result.Status = repository.HealthCheckStatusSuccess
+		result.Message = heartbeatFallbackMessage(hasSampledProxy)
+		if certWarning != "" {
+			result.Message = fmt.Sprintf("%s. %s", result.Message, certWarning)
+		}
 	} else {
 		result.Status = repository.HealthCheckStatusFailed
-		result.Message = hc.buildFailureMessage(result)
+		if heartbeatHealthy && hasSampledProxy && !proxyReachable {
+			result.Message = "Recent heartbeat confirms Xray is running, but sampled proxy endpoints are unreachable from the panel"
+		} else {
+			result.Message = hc.buildFailureMessage(result)
+		}
 		if certWarning != "" {
 			result.Message = fmt.Sprintf("%s. %s", result.Message, certWarning)
 		}
@@ -353,6 +376,116 @@ func (hc *HealthChecker) checkXray(address string, port int) bool {
 	}
 	defer resp.Body.Close()
 	return resp.StatusCode == http.StatusOK
+}
+
+func shouldTrustRecentHeartbeat(node *repository.Node, interval time.Duration, now time.Time) bool {
+	if node == nil || node.LastSeenAt == nil || !node.XrayRunning {
+		return false
+	}
+
+	freshnessWindow := interval * 2
+	if freshnessWindow <= 0 {
+		freshnessWindow = time.Minute
+	}
+
+	return now.Sub(*node.LastSeenAt) <= freshnessWindow
+}
+
+func shouldAcceptHeartbeatFallback(heartbeatHealthy, hasSampledProxy, proxyReachable bool) bool {
+	if !heartbeatHealthy {
+		return false
+	}
+	if !hasSampledProxy {
+		return true
+	}
+	return proxyReachable
+}
+
+func heartbeatFallbackMessage(hasSampledProxy bool) string {
+	if hasSampledProxy {
+		return "Recent heartbeat confirms Xray is running and at least one sampled proxy endpoint is reachable"
+	}
+	return "Recent heartbeat confirms Xray is running"
+}
+
+func (hc *HealthChecker) checkReachableProxyEndpoint(node *repository.Node) (bool, bool) {
+	if hc == nil || hc.proxyRepo == nil || node == nil || node.ID <= 0 {
+		return false, false
+	}
+
+	ctx := hc.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	proxies, err := hc.proxyRepo.GetByNodeID(ctx, node.ID)
+	if err != nil {
+		hc.logger.Warn("Failed to load node proxies during heartbeat fallback health check",
+			logger.Err(err),
+			logger.F("node_id", node.ID))
+		return false, false
+	}
+	if len(proxies) == 0 {
+		return false, false
+	}
+
+	checkedTargets := map[string]struct{}{}
+	checkedCount := 0
+	const maxSampledProxyTargets = 3
+
+	for _, proxyModel := range proxies {
+		if proxyModel == nil || proxyModel.Port <= 0 {
+			continue
+		}
+		host := resolveHealthCheckProxyHost(node, proxyModel)
+		if host == "" {
+			continue
+		}
+		target := fmt.Sprintf("%s:%d", host, proxyModel.Port)
+		if _, exists := checkedTargets[target]; exists {
+			continue
+		}
+		checkedTargets[target] = struct{}{}
+		checkedCount++
+		if hc.checkTCP(host, proxyModel.Port) {
+			return true, true
+		}
+		if checkedCount >= maxSampledProxyTargets {
+			break
+		}
+	}
+
+	return false, checkedCount > 0
+}
+
+func resolveHealthCheckProxyHost(node *repository.Node, proxyModel *repository.Proxy) string {
+	if proxyModel == nil {
+		return ""
+	}
+
+	if proxyModel.Settings != nil {
+		if explicitServer, ok := proxyModel.Settings["server"].(string); ok {
+			if normalized := proxylib.NormalizeShareHost(explicitServer); normalized != "" {
+				return normalized
+			}
+		}
+	}
+
+	if strings.EqualFold(strings.TrimSpace(proxyModel.Remark), "auto provisioned") && node != nil {
+		if normalized := proxylib.NormalizeShareHost(node.Address); normalized != "" {
+			return normalized
+		}
+	}
+
+	if normalized := proxylib.ResolveServerAddress(proxyModel.Host, proxyModel.Settings); normalized != "" {
+		return normalized
+	}
+	if node != nil {
+		if normalized := proxylib.NormalizeShareHost(node.Address); normalized != "" {
+			return normalized
+		}
+	}
+	return ""
 }
 
 // buildFailureMessage builds a failure message based on check results.
@@ -567,7 +700,7 @@ func (hc *HealthChecker) CheckAll(ctx context.Context) ([]*HealthCheckResult, er
 
 	for _, node := range nodes {
 		wg.Add(1)
-		
+
 		// Acquire semaphore
 		select {
 		case sem <- struct{}{}:
@@ -580,7 +713,7 @@ func (hc *HealthChecker) CheckAll(ctx context.Context) ([]*HealthCheckResult, er
 		go func(n *repository.Node) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			
+
 			// Check for context cancellation
 			select {
 			case <-ctx.Done():
@@ -682,7 +815,7 @@ func (hc *HealthChecker) checkCertificateExpiration(node *repository.Node) strin
 	if node.CertificateID == nil {
 		return ""
 	}
-	
+
 	// 获取证书信息
 	cert, err := hc.certRepo.GetByID(hc.ctx, *node.CertificateID)
 	if err != nil {
@@ -692,16 +825,16 @@ func (hc *HealthChecker) checkCertificateExpiration(node *repository.Node) strin
 			logger.Err(err))
 		return ""
 	}
-	
+
 	// 检查证书过期时间
 	if cert.ExpiresAt.IsZero() {
 		return ""
 	}
-	
+
 	now := time.Now()
 	timeUntilExpiry := cert.ExpiresAt.Sub(now)
 	daysLeft := int(timeUntilExpiry.Hours() / 24)
-	
+
 	// 证书已过期
 	if daysLeft < 0 {
 		warning := fmt.Sprintf("证书已过期 %d 天", -daysLeft)
@@ -710,16 +843,16 @@ func (hc *HealthChecker) checkCertificateExpiration(node *repository.Node) strin
 			logger.F("node_name", node.Name),
 			logger.F("domain", cert.Domain),
 			logger.F("days_expired", -daysLeft))
-		
+
 		// TODO: 发送告警通知（需要实现通知服务）
-		
+
 		return warning
 	}
-	
+
 	// 证书即将过期（30天内）
 	if daysLeft <= 30 {
 		warning := fmt.Sprintf("证书将在 %d 天后过期", daysLeft)
-		
+
 		// 仅在7天内记录警告日志
 		if daysLeft <= 7 {
 			hc.logger.Warn("Certificate expiring soon",
@@ -727,12 +860,12 @@ func (hc *HealthChecker) checkCertificateExpiration(node *repository.Node) strin
 				logger.F("node_name", node.Name),
 				logger.F("domain", cert.Domain),
 				logger.F("days_left", daysLeft))
-			
+
 			// TODO: 发送告警通知（需要实现通知服务）
 		}
-		
+
 		return warning
 	}
-	
+
 	return ""
 }

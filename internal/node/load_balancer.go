@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"sort"
 	"sync"
 	"sync/atomic"
 
@@ -30,11 +31,11 @@ const (
 
 // SelectOptions defines options for node selection
 type SelectOptions struct {
-	Strategy   string   // Load balancing strategy
-	GroupID    *int64   // Limit to specific group
-	ExcludeIDs []int64  // Nodes to exclude
-	UserIP     string   // User IP for geographic strategy
-	Sticky     bool     // Maintain user-node affinity
+	Strategy   string  // Load balancing strategy
+	GroupID    *int64  // Limit to specific group
+	ExcludeIDs []int64 // Nodes to exclude
+	UserIP     string  // User IP for geographic strategy
+	Sticky     bool    // Maintain user-node affinity
 }
 
 // BalanceStrategy defines the interface for load balancing strategies
@@ -82,7 +83,6 @@ func NewLoadBalancer(
 
 	return lb
 }
-
 
 // RegisterStrategy registers a load balancing strategy
 func (lb *LoadBalancer) RegisterStrategy(strategy BalanceStrategy) {
@@ -248,6 +248,92 @@ func (lb *LoadBalancer) GetUserNode(ctx context.Context, userID int64) (*Node, e
 	return repoNodeToNode(repoNode), nil
 }
 
+func sortNodesBySelectionPriority(nodes []*Node) {
+	sort.SliceStable(nodes, func(i, j int) bool {
+		return shouldPreferNodeForSelection(nodes[i], nodes[j])
+	})
+}
+
+func shouldPreferNodeForSelection(left, right *Node) bool {
+	if left == nil {
+		return false
+	}
+	if right == nil {
+		return true
+	}
+
+	leftTrafficPressure := nodeSelectionTrafficPressure(left)
+	rightTrafficPressure := nodeSelectionTrafficPressure(right)
+	if leftTrafficPressure != rightTrafficPressure {
+		return leftTrafficPressure < rightTrafficPressure
+	}
+
+	leftCapacityPressure := nodeSelectionCapacityPressure(left)
+	rightCapacityPressure := nodeSelectionCapacityPressure(right)
+	if leftCapacityPressure != rightCapacityPressure {
+		return leftCapacityPressure < rightCapacityPressure
+	}
+
+	if left.CurrentUsers != right.CurrentUsers {
+		return left.CurrentUsers < right.CurrentUsers
+	}
+	if left.Weight != right.Weight {
+		return left.Weight > right.Weight
+	}
+	return left.ID < right.ID
+}
+
+func nodeSelectionTrafficPressure(node *Node) float64 {
+	if node == nil {
+		return 1e9
+	}
+	if node.TrafficLimit <= 0 {
+		return -1
+	}
+	threshold := node.AlertTrafficThreshold
+	if threshold < 1 || threshold > 100 {
+		threshold = 100
+	}
+	return (float64(node.TrafficTotal) * 100 / float64(node.TrafficLimit)) / threshold
+}
+
+func nodeSelectionCapacityPressure(node *Node) float64 {
+	if node == nil {
+		return 1e9
+	}
+	if node.MaxUsers <= 0 {
+		return 0
+	}
+	return float64(node.CurrentUsers) / float64(node.MaxUsers)
+}
+
+func effectiveNodeSelectionWeight(node *Node) int {
+	if node == nil {
+		return 1
+	}
+	weight := node.Weight
+	if weight <= 0 {
+		weight = 1
+	}
+	if node.TrafficLimit <= 0 {
+		return weight
+	}
+
+	remainingRatio := float64(node.TrafficLimit-node.TrafficTotal) / float64(node.TrafficLimit)
+	if remainingRatio < 0 {
+		remainingRatio = 0
+	}
+	if remainingRatio < 0.2 {
+		remainingRatio = 0.2
+	}
+
+	effective := int(math.Round(float64(weight) * remainingRatio))
+	if effective < 1 {
+		effective = 1
+	}
+	return effective
+}
+
 // Rebalance redistributes users across nodes in a group
 func (lb *LoadBalancer) Rebalance(ctx context.Context, groupID int64) error {
 	// Get nodes in group
@@ -299,7 +385,6 @@ func (lb *LoadBalancer) Rebalance(ctx context.Context, groupID int64) error {
 	return nil
 }
 
-
 // getAvailableNodes returns nodes that are available for selection
 func (lb *LoadBalancer) getAvailableNodes(ctx context.Context, opts *SelectOptions) ([]*Node, error) {
 	var repoNodes []*repository.Node
@@ -340,6 +425,7 @@ func (lb *LoadBalancer) getAvailableNodes(ctx context.Context, opts *SelectOptio
 		nodes = append(nodes, repoNodeToNode(rn))
 	}
 
+	sortNodesBySelectionPriority(nodes)
 	return nodes, nil
 }
 
@@ -371,22 +457,26 @@ func containsID(ids []int64, id int64) bool {
 // repoNodeToNode converts a repository node to a service node
 func repoNodeToNode(rn *repository.Node) *Node {
 	return &Node{
-		ID:           rn.ID,
-		Name:         rn.Name,
-		Address:      rn.Address,
-		Port:         rn.Port,
-		Token:        rn.Token,
-		Status:       rn.Status,
-		Region:       rn.Region,
-		Weight:       rn.Weight,
-		MaxUsers:     rn.MaxUsers,
-		CurrentUsers: rn.CurrentUsers,
-		Latency:      rn.Latency,
-		LastSeenAt:   rn.LastSeenAt,
-		SyncStatus:   rn.SyncStatus,
-		SyncedAt:     rn.SyncedAt,
-		CreatedAt:    rn.CreatedAt,
-		UpdatedAt:    rn.UpdatedAt,
+		ID:                    rn.ID,
+		Name:                  rn.Name,
+		Address:               rn.Address,
+		Port:                  rn.Port,
+		Token:                 rn.Token,
+		Status:                rn.Status,
+		Region:                rn.Region,
+		Weight:                rn.Weight,
+		MaxUsers:              rn.MaxUsers,
+		CurrentUsers:          rn.CurrentUsers,
+		Latency:               rn.Latency,
+		LastSeenAt:            rn.LastSeenAt,
+		SyncStatus:            rn.SyncStatus,
+		SyncedAt:              rn.SyncedAt,
+		TrafficTotal:          rn.TrafficTotal,
+		TrafficLimit:          rn.TrafficLimit,
+		TrafficResetAt:        rn.TrafficResetAt,
+		AlertTrafficThreshold: rn.AlertTrafficThreshold,
+		CreatedAt:             rn.CreatedAt,
+		UpdatedAt:             rn.UpdatedAt,
 	}
 }
 
@@ -451,6 +541,10 @@ func (s *LeastConnectionsStrategy) Select(ctx context.Context, nodes []*Node, op
 		if n.CurrentUsers < minConnections {
 			minConnections = n.CurrentUsers
 			minNode = n
+			continue
+		}
+		if n.CurrentUsers == minConnections && shouldPreferNodeForSelection(n, minNode) {
+			minNode = n
 		}
 	}
 
@@ -491,10 +585,7 @@ func (s *WeightedStrategy) Select(ctx context.Context, nodes []*Node, opts *Sele
 	// Calculate total weight and initialize current weights
 	totalWeight := 0
 	for _, n := range nodes {
-		weight := n.Weight
-		if weight <= 0 {
-			weight = 1
-		}
+		weight := effectiveNodeSelectionWeight(n)
 		totalWeight += weight
 
 		// Initialize weight if not exists
@@ -508,16 +599,13 @@ func (s *WeightedStrategy) Select(ctx context.Context, nodes []*Node, opts *Sele
 	maxWeight := -1
 
 	for _, n := range nodes {
-		weight := n.Weight
-		if weight <= 0 {
-			weight = 1
-		}
+		weight := effectiveNodeSelectionWeight(n)
 
 		// Add effective weight
 		s.weights[n.ID] += weight
 
 		// Select node with highest current weight
-		if s.weights[n.ID] > maxWeight {
+		if selectedNode == nil || s.weights[n.ID] > maxWeight || (s.weights[n.ID] == maxWeight && shouldPreferNodeForSelection(n, selectedNode)) {
 			maxWeight = s.weights[n.ID]
 			selectedNode = n
 		}

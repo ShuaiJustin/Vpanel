@@ -26,3 +26,13 @@ func TestResolveServerAddress_FallsBackToSNIWhenAddressMissing(t *testing.T) {
 		t.Fatalf("expected sni fallback vpn.example.com, got %q", server)
 	}
 }
+
+func TestResolveServerPort_UsesExternalPortOverride(t *testing.T) {
+	port := ResolveServerPort(20003, map[string]any{
+		"external_port": "80",
+	})
+
+	if port != 80 {
+		t.Fatalf("expected external port 80, got %d", port)
+	}
+}

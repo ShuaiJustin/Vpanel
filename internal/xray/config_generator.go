@@ -22,10 +22,11 @@ const (
 
 // ConfigGenerator generates Xray configurations for nodes.
 type ConfigGenerator struct {
-	proxyRepo repository.ProxyRepository
-	certRepo  repository.CertificateRepository
-	nodeRepo  repository.NodeRepository
-	logger    logger.Logger
+	proxyRepo       repository.ProxyRepository
+	certRepo        repository.CertificateRepository
+	nodeRepo        repository.NodeRepository
+	userAccessCheck func(context.Context, int64) error
+	logger          logger.Logger
 }
 
 // NewConfigGenerator creates a new Xray config generator.
@@ -41,6 +42,13 @@ func NewConfigGenerator(
 		nodeRepo:  nodeRepo,
 		logger:    log,
 	}
+}
+
+// WithUserAccessCheck registers an optional access check for user-owned proxies.
+// Shared proxies (user_id = 0) are never filtered by this hook.
+func (g *ConfigGenerator) WithUserAccessCheck(check func(context.Context, int64) error) *ConfigGenerator {
+	g.userAccessCheck = check
+	return g
 }
 
 // XrayConfig represents the complete Xray configuration.
@@ -163,17 +171,31 @@ func (g *ConfigGenerator) GenerateForNode(ctx context.Context, nodeID int64) (*X
 	if err != nil {
 		return nil, fmt.Errorf("failed to get proxies for node: %w", err)
 	}
+	allProxies = g.filterAccessibleProxies(ctx, allProxies)
 
-	var optimizationSettings node.NetworkOptimizationSettings
+	var (
+		optimizationSettings node.NetworkOptimizationSettings
+		nodeData             *repository.Node
+	)
 	if g.nodeRepo != nil {
-		nodeData, nodeErr := g.nodeRepo.GetByID(ctx, nodeID)
+		loadedNode, nodeErr := g.nodeRepo.GetByID(ctx, nodeID)
 		if nodeErr != nil {
 			g.logger.Warn("failed to load node optimization settings",
 				logger.F("node_id", nodeID),
 				logger.F("error", nodeErr.Error()))
-		} else if nodeData != nil {
+		} else if loadedNode != nil {
+			nodeData = loadedNode
 			optimizationSettings = node.ParseNetworkOptimizationSettings(nodeData.NetworkOptimizationSettings)
 		}
+	}
+
+	if !shouldServeNodeProxyInbounds(nodeData) {
+		g.logger.Warn("node is not serving proxy inbounds in generated config",
+			logger.F("node_id", nodeID),
+			logger.F("status", nodeStatusValue(nodeData)),
+			logger.F("traffic_total", nodeTrafficTotalValue(nodeData)),
+			logger.F("traffic_limit", nodeTrafficLimitValue(nodeData)))
+		allProxies = nil
 	}
 
 	g.logger.Info("generating config for node",
@@ -212,6 +234,86 @@ func (g *ConfigGenerator) GenerateForNode(ctx context.Context, nodeID int64) (*X
 	}
 
 	return config, nil
+}
+
+func shouldServeNodeProxyInbounds(nodeData *repository.Node) bool {
+	if nodeData == nil {
+		return true
+	}
+	if nodeData.Status != repository.NodeStatusOnline {
+		return false
+	}
+	if nodeData.TrafficLimit > 0 && nodeData.TrafficTotal >= nodeData.TrafficLimit {
+		return false
+	}
+	return true
+}
+
+func nodeStatusValue(nodeData *repository.Node) string {
+	if nodeData == nil {
+		return "unknown"
+	}
+	return strings.TrimSpace(nodeData.Status)
+}
+
+func nodeTrafficTotalValue(nodeData *repository.Node) int64 {
+	if nodeData == nil {
+		return 0
+	}
+	return nodeData.TrafficTotal
+}
+
+func nodeTrafficLimitValue(nodeData *repository.Node) int64 {
+	if nodeData == nil {
+		return 0
+	}
+	return nodeData.TrafficLimit
+}
+
+func (g *ConfigGenerator) filterAccessibleProxies(ctx context.Context, proxies []*repository.Proxy) []*repository.Proxy {
+	if len(proxies) == 0 || g.userAccessCheck == nil {
+		return proxies
+	}
+
+	filtered := make([]*repository.Proxy, 0, len(proxies))
+	accessCache := make(map[int64]error)
+
+	for _, proxy := range proxies {
+		if proxy == nil {
+			continue
+		}
+		if proxy.UserID == 0 {
+			filtered = append(filtered, proxy)
+			continue
+		}
+
+		accessErr, checked := accessCache[proxy.UserID]
+		if !checked {
+			accessErr = g.userAccessCheck(ctx, proxy.UserID)
+			accessCache[proxy.UserID] = accessErr
+		}
+
+		if accessErr == nil {
+			filtered = append(filtered, proxy)
+			continue
+		}
+
+		if apperrors.IsForbidden(accessErr) {
+			g.logger.Debug("skipping inaccessible user proxy from node config",
+				logger.UserID(proxy.UserID),
+				logger.F("proxy_id", proxy.ID),
+			)
+			continue
+		}
+
+		g.logger.Warn("skipping proxy after access check failure",
+			logger.Err(accessErr),
+			logger.UserID(proxy.UserID),
+			logger.F("proxy_id", proxy.ID),
+		)
+	}
+
+	return filtered
 }
 
 // generateInbounds generates inbound configurations from proxies.

@@ -9,7 +9,9 @@ import (
 )
 
 func TestShouldPromoteNodeOnlineFromHeartbeat(t *testing.T) {
-	assert.True(t, shouldPromoteNodeOnlineFromHeartbeat(repository.NodeStatusOffline))
-	assert.True(t, shouldPromoteNodeOnlineFromHeartbeat(repository.NodeStatusOnline))
-	assert.False(t, shouldPromoteNodeOnlineFromHeartbeat(repository.NodeStatusUnhealthy))
+	assert.True(t, shouldPromoteNodeOnlineFromHeartbeat(repository.NodeStatusOffline, nil))
+	assert.True(t, shouldPromoteNodeOnlineFromHeartbeat(repository.NodeStatusOnline, nil))
+	assert.False(t, shouldPromoteNodeOnlineFromHeartbeat(repository.NodeStatusUnhealthy, nil))
+	assert.False(t, shouldPromoteNodeOnlineFromHeartbeat(repository.NodeStatusUnhealthy, &NodeMetrics{XrayRunning: false}))
+	assert.False(t, shouldPromoteNodeOnlineFromHeartbeat(repository.NodeStatusUnhealthy, &NodeMetrics{XrayRunning: true}))
 }

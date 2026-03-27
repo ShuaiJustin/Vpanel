@@ -445,7 +445,7 @@ func (s *Service) GetUserEnabledProxies(ctx context.Context, userID int64) ([]*r
 
 func (s *Service) getAccessibleProxies(ctx context.Context, userID int64) ([]*repository.Proxy, error) {
 	if s.entitlement != nil {
-		proxies, _, err := s.entitlement.GetAccessibleProxies(ctx, userID)
+		proxies, _, err := s.entitlement.GetSubscriptionProxies(ctx, userID)
 		return proxies, err
 	}
 

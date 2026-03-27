@@ -339,15 +339,15 @@ onMounted(() => {
 }
 
 /* 深色模式适配 */
-.dark .status-info h4 {
+:global(.dark) .status-info h4 {
   color: var(--color-text-primary);
 }
 
-.dark .detail-item .value {
+:global(.dark) .detail-item .value {
   color: var(--color-text-primary);
 }
 
-.dark .pause-details {
+:global(.dark) .pause-details {
   background: var(--color-border-light);
 }
 </style>

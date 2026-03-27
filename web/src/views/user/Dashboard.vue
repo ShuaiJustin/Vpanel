@@ -4,17 +4,12 @@
     <div class="welcome-section">
       <div class="welcome-content">
         <h1 class="welcome-title">
-          {{ greeting }}，{{ userStore.username || '用户' }}
+          {{ greeting }}，{{ userStore.username || "用户" }}
         </h1>
-        <p class="welcome-subtitle">
-          欢迎回来，这是您的账户概览
-        </p>
+        <p class="welcome-subtitle">欢迎回来，这是您的账户概览</p>
       </div>
       <div class="welcome-actions">
-        <el-button
-          type="primary"
-          @click="goToSubscription"
-        >
+        <el-button type="primary" @click="goToSubscription">
           <el-icon><Link /></el-icon>
           获取订阅
         </el-button>
@@ -22,32 +17,17 @@
     </div>
 
     <!-- 状态卡片 -->
-    <el-row
-      :gutter="20"
-      class="status-cards"
-    >
+    <el-row :gutter="20" class="status-cards">
       <!-- 账户状态 -->
-      <el-col
-        :xs="24"
-        :sm="12"
-        :lg="6"
-      >
+      <el-col :xs="24" :sm="12" :lg="6">
         <div class="status-card">
-          <div
-            class="card-icon"
-            :class="accountStatusClass"
-          >
+          <div class="card-icon" :class="accountStatusClass">
             <el-icon><User /></el-icon>
           </div>
           <div class="card-content">
-            <div class="card-label">
-              账户状态
-            </div>
+            <div class="card-label">账户状态</div>
             <div class="card-value">
-              <el-tag
-                :type="accountStatusType"
-                size="small"
-              >
+              <el-tag :type="accountStatusType" size="small">
                 {{ accountStatusText }}
               </el-tag>
             </div>
@@ -56,19 +36,13 @@
       </el-col>
 
       <!-- 到期时间 -->
-      <el-col
-        :xs="24"
-        :sm="12"
-        :lg="6"
-      >
+      <el-col :xs="24" :sm="12" :lg="6">
         <div class="status-card">
           <div class="card-icon expiry">
             <el-icon><Calendar /></el-icon>
           </div>
           <div class="card-content">
-            <div class="card-label">
-              到期时间
-            </div>
+            <div class="card-label">到期时间</div>
             <div class="card-value">
               <template v-if="userStore.expiresAt">
                 {{ formatDate(userStore.expiresAt) }}
@@ -76,31 +50,27 @@
                   v-if="userStore.daysUntilExpiry !== null"
                   class="days-hint"
                 >
-                  ({{ userStore.daysUntilExpiry > 0 ? `剩余 ${userStore.daysUntilExpiry} 天` : '已过期' }})
+                  ({{
+                    userStore.daysUntilExpiry > 0
+                      ? `剩余 ${userStore.daysUntilExpiry} 天`
+                      : "已过期"
+                  }})
                 </span>
               </template>
-              <template v-else>
-                永久有效
-              </template>
+              <template v-else> 永久有效 </template>
             </div>
           </div>
         </div>
       </el-col>
 
       <!-- 在线设备 -->
-      <el-col
-        :xs="24"
-        :sm="12"
-        :lg="6"
-      >
+      <el-col :xs="24" :sm="12" :lg="6">
         <div class="status-card">
           <div class="card-icon devices">
             <el-icon><Monitor /></el-icon>
           </div>
           <div class="card-content">
-            <div class="card-label">
-              在线设备
-            </div>
+            <div class="card-label">在线设备</div>
             <div class="card-value">
               {{ onlineDevices }} / {{ maxDevicesDisplay }}
             </div>
@@ -109,51 +79,30 @@
       </el-col>
 
       <!-- 可用节点 -->
-      <el-col
-        :xs="24"
-        :sm="12"
-        :lg="6"
-      >
+      <el-col :xs="24" :sm="12" :lg="6">
         <div class="status-card">
           <div class="card-icon nodes">
             <el-icon><Connection /></el-icon>
           </div>
           <div class="card-content">
-            <div class="card-label">
-              可用节点
-            </div>
-            <div class="card-value">
-              {{ availableNodes }} 个
-            </div>
+            <div class="card-label">可用节点</div>
+            <div class="card-value">{{ availableNodes }} 个</div>
           </div>
         </div>
       </el-col>
     </el-row>
 
     <!-- 流量使用 -->
-    <el-row
-      :gutter="20"
-      class="main-content"
-    >
-      <el-col
-        :xs="24"
-        :lg="16"
-      >
-        <el-card
-          class="traffic-card"
-          shadow="never"
-        >
+    <el-row :gutter="20" class="main-content">
+      <el-col :xs="24" :lg="16">
+        <el-card class="traffic-card" shadow="never">
           <template #header>
             <div class="card-header">
               <div class="card-header-info">
                 <span>流量使用</span>
                 <span class="card-header-hint">{{ trafficRefreshHint }}</span>
               </div>
-              <el-button
-                link
-                type="primary"
-                @click="goToStats"
-              >
+              <el-button link type="primary" @click="goToStats">
                 查看详情
                 <el-icon><ArrowRight /></el-icon>
               </el-button>
@@ -174,9 +123,7 @@
                     <div class="progress-value">
                       {{ trafficPercentDisplay }}
                     </div>
-                    <div class="progress-label">
-                      已使用
-                    </div>
+                    <div class="progress-label">已使用</div>
                   </div>
                 </template>
               </el-progress>
@@ -185,22 +132,21 @@
             <div class="traffic-details">
               <div class="traffic-item">
                 <span class="item-label">已使用</span>
-                <span class="item-value">{{ formatTraffic(userStore.trafficUsed) }}</span>
+                <span class="item-value">{{
+                  formatTraffic(userStore.trafficUsed)
+                }}</span>
               </div>
               <div class="traffic-item">
                 <span class="item-label">总流量</span>
-                <span class="item-value">{{ formatTraffic(userStore.trafficLimit) }}</span>
+                <span class="item-value">{{
+                  formatTraffic(userStore.trafficLimit)
+                }}</span>
               </div>
               <div class="traffic-item">
                 <span class="item-label">剩余流量</span>
-                <span class="item-value">{{ formatTraffic(remainingTraffic) }}</span>
-              </div>
-              <div
-                v-if="trafficResetAt"
-                class="traffic-item"
-              >
-                <span class="item-label">重置时间</span>
-                <span class="item-value">{{ formatDate(trafficResetAt) }}</span>
+                <span class="item-value">{{
+                  formatTraffic(remainingTraffic)
+                }}</span>
               </div>
             </div>
           </div>
@@ -208,77 +154,50 @@
       </el-col>
 
       <!-- 快捷操作 -->
-      <el-col
-        :xs="24"
-        :lg="8"
-      >
-        <el-card
-          class="quick-actions-card"
-          shadow="never"
-        >
+      <el-col :xs="24" :lg="8">
+        <el-card class="quick-actions-card" shadow="never">
           <template #header>
             <span>快捷操作</span>
           </template>
 
           <div class="quick-actions">
-            <div
-              class="action-item"
-              @click="goToNodes"
-            >
+            <div class="action-item" @click="goToNodes">
               <el-icon class="action-icon">
                 <Connection />
               </el-icon>
               <span class="action-label">节点列表</span>
             </div>
-            <div
-              class="action-item"
-              @click="goToSubscription"
-            >
+            <div class="action-item" @click="goToSubscription">
               <el-icon class="action-icon">
                 <Link />
               </el-icon>
               <span class="action-label">订阅管理</span>
             </div>
-            <div
-              class="action-item"
-              @click="goToDownload"
-            >
+            <div class="action-item" @click="goToDownload">
               <el-icon class="action-icon">
                 <Download />
               </el-icon>
               <span class="action-label">客户端下载</span>
             </div>
-            <div
-              class="action-item"
-              @click="goToDevices"
-            >
+            <div class="action-item" @click="goToDevices">
               <el-icon class="action-icon">
                 <Monitor />
               </el-icon>
               <span class="action-label">在线设备</span>
             </div>
-            <div
-              class="action-item"
-              @click="goToTickets"
-            >
+            <div class="action-item" @click="goToTickets">
               <el-icon class="action-icon">
                 <ChatDotRound />
               </el-icon>
               <span class="action-label">工单支持</span>
             </div>
-            <div
-              class="action-item"
-              @click="goToSettings"
-            >
+            <div class="action-item" @click="goToSettings">
               <el-icon class="action-icon">
                 <Setting />
               </el-icon>
               <span class="action-label">个人设置</span>
             </div>
-            <div
-              class="action-item"
-              @click="goToHelp"
-            >
+            <div class="action-item" @click="goToHelp">
               <el-icon class="action-icon">
                 <QuestionFilled />
               </el-icon>
@@ -301,11 +220,7 @@
             <el-icon><Bell /></el-icon>
             最新公告
           </span>
-          <el-button
-            link
-            type="primary"
-            @click="goToAnnouncements"
-          >
+          <el-button link type="primary" @click="goToAnnouncements">
             查看全部
             <el-icon><ArrowRight /></el-icon>
           </el-button>
@@ -313,40 +228,33 @@
       </template>
 
       <div class="announcement-list">
-        <div 
-          v-for="item in announcements" 
-          :key="item.id" 
+        <div
+          v-for="item in announcements"
+          :key="item.id"
           class="announcement-item"
           @click="viewAnnouncement(item.id)"
         >
-          <el-tag 
-            :type="getCategoryType(item.category)" 
+          <el-tag
+            :type="getCategoryType(item.category)"
             size="small"
             class="announcement-tag"
           >
             {{ getCategoryLabel(item.category) }}
           </el-tag>
           <span class="announcement-title">{{ item.title }}</span>
-          <span class="announcement-date">{{ formatDate(item.published_at) }}</span>
+          <span class="announcement-date">{{
+            formatDate(item.published_at)
+          }}</span>
         </div>
       </div>
     </el-card>
 
     <!-- 试用和暂停状态卡片 -->
-    <el-row
-      :gutter="20"
-      class="status-section"
-    >
-      <el-col
-        :xs="24"
-        :lg="12"
-      >
+    <el-row :gutter="20" class="status-section">
+      <el-col :xs="24" :lg="12">
         <TrialCard />
       </el-col>
-      <el-col
-        :xs="24"
-        :lg="12"
-      >
+      <el-col :xs="24" :lg="12">
         <PauseCard />
       </el-col>
     </el-row>
@@ -354,262 +262,277 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
-import { 
-  User, Calendar, Monitor, Connection, Link, Download,
-  ChatDotRound, Setting, QuestionFilled, Bell, ArrowRight
-} from '@element-plus/icons-vue'
-import { useUserPortalStore } from '@/stores/userPortal'
-import { usePortalAnnouncementsStore } from '@/stores/portalAnnouncements'
-import PauseCard from '@/components/user/PauseCard.vue'
-import TrialCard from '@/components/user/TrialCard.vue'
-import api from '@/api/base'
+import { ref, computed, onMounted, onBeforeUnmount } from "vue";
+import { useRouter } from "vue-router";
+import {
+  User,
+  Calendar,
+  Monitor,
+  Connection,
+  Link,
+  Download,
+  ChatDotRound,
+  Setting,
+  QuestionFilled,
+  Bell,
+  ArrowRight,
+} from "@element-plus/icons-vue";
+import { useUserPortalStore } from "@/stores/userPortal";
+import { usePortalAnnouncementsStore } from "@/stores/portalAnnouncements";
+import PauseCard from "@/components/user/PauseCard.vue";
+import TrialCard from "@/components/user/TrialCard.vue";
+import api from "@/api/base";
 
-const router = useRouter()
-const userStore = useUserPortalStore()
-const announcementsStore = usePortalAnnouncementsStore()
+const router = useRouter();
+const userStore = useUserPortalStore();
+const announcementsStore = usePortalAnnouncementsStore();
 
 // 数据
-const onlineDevices = ref(0)
-const maxDevices = ref(0)
-const trafficResetAt = ref(null)
-const trafficUpdatedAt = ref(null)
-const trafficRefreshInFlight = ref(false)
-const TRAFFIC_REFRESH_INTERVAL = 30 * 1000
-let trafficRefreshTimer = null
+const onlineDevices = ref(0);
+const maxDevices = ref(0);
+const trafficUpdatedAt = ref(null);
+const trafficRefreshInFlight = ref(false);
+const TRAFFIC_REFRESH_INTERVAL = 30 * 1000;
+let trafficRefreshTimer = null;
 
 // 计算属性
 const greeting = computed(() => {
-  const hour = new Date().getHours()
-  if (hour < 6) return '夜深了'
-  if (hour < 12) return '早上好'
-  if (hour < 14) return '中午好'
-  if (hour < 18) return '下午好'
-  return '晚上好'
-})
+  const hour = new Date().getHours();
+  if (hour < 6) return "夜深了";
+  if (hour < 12) return "早上好";
+  if (hour < 14) return "中午好";
+  if (hour < 18) return "下午好";
+  return "晚上好";
+});
 
 const accountStatusClass = computed(() => {
-  const status = userStore.status
-  if (status === 'active') return 'active'
-  if (status === 'expired') return 'expired'
-  return 'disabled'
-})
+  const status = userStore.status;
+  if (status === "active") return "active";
+  if (status === "expired") return "expired";
+  return "disabled";
+});
 
 const accountStatusType = computed(() => {
-  const status = userStore.status
-  if (status === 'active') return 'success'
-  if (status === 'expired') return 'warning'
-  return 'danger'
-})
+  const status = userStore.status;
+  if (status === "active") return "success";
+  if (status === "expired") return "warning";
+  return "danger";
+});
 
 const accountStatusText = computed(() => {
-  const status = userStore.status
-  if (status === 'active') return '正常'
-  if (status === 'expired') return '已过期'
-  if (status === 'disabled') return '已禁用'
-  return '未知'
-})
+  const status = userStore.status;
+  if (status === "active") return "正常";
+  if (status === "expired") return "已过期";
+  if (status === "disabled") return "已禁用";
+  return "未知";
+});
 
 const remainingTraffic = computed(() => {
-  return Math.max(0, userStore.trafficLimit - userStore.trafficUsed)
-})
+  return Math.max(0, userStore.trafficLimit - userStore.trafficUsed);
+});
 
 const rawTrafficPercent = computed(() => {
-  if (!userStore.trafficLimit) return 0
-  return Math.min(100, (userStore.trafficUsed / userStore.trafficLimit) * 100)
-})
+  if (!userStore.trafficLimit) return 0;
+  return Math.min(100, (userStore.trafficUsed / userStore.trafficLimit) * 100);
+});
 
 const trafficPercentValue = computed(() => {
-  const percent = rawTrafficPercent.value
-  if (percent > 0 && percent < 0.1) return 0.1
-  return Number(percent.toFixed(percent < 10 ? 1 : 0))
-})
+  const percent = rawTrafficPercent.value;
+  if (percent > 0 && percent < 0.1) return 0.1;
+  return Number(percent.toFixed(percent < 10 ? 1 : 0));
+});
 
 const trafficPercentDisplay = computed(() => {
-  const percent = rawTrafficPercent.value
-  if (percent <= 0) return '0%'
-  if (percent < 0.1) return '<0.1%'
-  return `${percent < 10 ? percent.toFixed(1) : percent.toFixed(0)}%`
-})
+  const percent = rawTrafficPercent.value;
+  if (percent <= 0) return "0%";
+  if (percent < 0.1) return "<0.1%";
+  return `${percent < 10 ? percent.toFixed(1) : percent.toFixed(0)}%`;
+});
 
 const trafficRefreshHint = computed(() => {
-  const baseHint = '约每 30 秒自动刷新'
-  if (!trafficUpdatedAt.value) return baseHint
+  const baseHint = "约每 30 秒自动刷新";
+  if (!trafficUpdatedAt.value) return baseHint;
 
-  const updatedAt = trafficUpdatedAt.value instanceof Date
-    ? trafficUpdatedAt.value
-    : new Date(trafficUpdatedAt.value)
+  const updatedAt =
+    trafficUpdatedAt.value instanceof Date
+      ? trafficUpdatedAt.value
+      : new Date(trafficUpdatedAt.value);
 
   if (Number.isNaN(updatedAt.getTime())) {
-    return baseHint
+    return baseHint;
   }
 
-  const updatedTime = updatedAt.toLocaleTimeString('zh-CN', { hour12: false })
-  return `${updatedTime} 更新 · ${baseHint}`
-})
+  const updatedTime = updatedAt.toLocaleTimeString("zh-CN", { hour12: false });
+  return `${updatedTime} 更新 · ${baseHint}`;
+});
 
 const trafficProgressColor = computed(() => {
-  const percent = rawTrafficPercent.value
-  if (percent >= 90) return '#f56c6c'
-  if (percent >= 70) return '#e6a23c'
-  return '#409eff'
-})
+  const percent = rawTrafficPercent.value;
+  if (percent >= 90) return "#f56c6c";
+  if (percent >= 70) return "#e6a23c";
+  return "#409eff";
+});
 
 const announcements = computed(() => {
-  return announcementsStore.announcements.slice(0, 5)
-})
+  return announcementsStore.announcements.slice(0, 5);
+});
 
 const maxDevicesDisplay = computed(() => {
-  return maxDevices.value === 0 ? '无限制' : String(maxDevices.value)
-})
+  return maxDevices.value === 0 ? "无限制" : String(maxDevices.value);
+});
 
-const availableNodes = computed(() => userStore.availableNodes || 0)
+const availableNodes = computed(() => userStore.availableNodes || 0);
 
 // 方法
 function formatDate(dateStr) {
-  if (!dateStr) return '-'
-  const date = new Date(dateStr)
-  return date.toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  })
+  if (!dateStr) return "-";
+  const date = new Date(dateStr);
+  return date.toLocaleDateString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
 }
 
 function formatTraffic(bytes) {
-  if (!bytes || bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let i = 0
-  let size = bytes
+  if (!bytes || bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  let size = bytes;
   while (size >= 1024 && i < units.length - 1) {
-    size /= 1024
-    i++
+    size /= 1024;
+    i++;
   }
-  return `${size.toFixed(2)} ${units[i]}`
+  return `${size.toFixed(2)} ${units[i]}`;
 }
 
 function getCategoryType(category) {
   const types = {
-    general: 'info',
-    maintenance: 'warning',
-    update: 'success',
-    promotion: 'danger'
-  }
-  return types[category] || 'info'
+    general: "info",
+    maintenance: "warning",
+    update: "success",
+    promotion: "danger",
+  };
+  return types[category] || "info";
 }
 
 function getCategoryLabel(category) {
   const labels = {
-    general: '公告',
-    maintenance: '维护',
-    update: '更新',
-    promotion: '活动'
-  }
-  return labels[category] || '公告'
+    general: "公告",
+    maintenance: "维护",
+    update: "更新",
+    promotion: "活动",
+  };
+  return labels[category] || "公告";
 }
 
 // 导航方法
 function goToNodes() {
-  router.push('/user/nodes')
+  router.push("/user/nodes");
 }
 
 function goToSubscription() {
-  router.push('/user/subscription')
+  router.push("/user/subscription");
 }
 
 function goToDownload() {
-  router.push('/user/download')
+  router.push("/user/download");
 }
 
 function goToDevices() {
-  router.push('/user/devices')
+  router.push("/user/devices");
 }
 
 function goToTickets() {
-  router.push('/user/tickets')
+  router.push("/user/tickets");
 }
 
 function goToSettings() {
-  router.push('/user/settings')
+  router.push("/user/settings");
 }
 
 function goToHelp() {
-  router.push('/user/help')
+  router.push("/user/help");
 }
 
 function goToStats() {
-  router.push('/user/stats')
+  router.push("/user/stats");
 }
 
 function goToAnnouncements() {
-  router.push('/user/announcements')
+  router.push("/user/announcements");
 }
 
 function viewAnnouncement(id) {
-  router.push(`/user/announcements/${id}`)
+  router.push(`/user/announcements/${id}`);
 }
 
 async function refreshTrafficData({ silent = true } = {}) {
-  if (trafficRefreshInFlight.value) return
+  if (trafficRefreshInFlight.value) return;
 
   try {
-    trafficRefreshInFlight.value = true
-    await userStore.fetchProfile({ silent })
-    trafficUpdatedAt.value = new Date()
+    trafficRefreshInFlight.value = true;
+    await userStore.fetchProfile({ silent });
+    trafficUpdatedAt.value = new Date();
   } catch (error) {
-    console.error('Failed to refresh traffic data:', error)
+    console.error("Failed to refresh traffic data:", error);
   } finally {
-    trafficRefreshInFlight.value = false
+    trafficRefreshInFlight.value = false;
   }
 }
 
 function startTrafficAutoRefresh() {
-  stopTrafficAutoRefresh()
+  stopTrafficAutoRefresh();
   trafficRefreshTimer = window.setInterval(() => {
-    if (document.visibilityState === 'hidden') return
-    refreshTrafficData({ silent: true })
-  }, TRAFFIC_REFRESH_INTERVAL)
+    if (document.visibilityState === "hidden") return;
+    refreshTrafficData({ silent: true });
+  }, TRAFFIC_REFRESH_INTERVAL);
 }
 
 function stopTrafficAutoRefresh() {
   if (trafficRefreshTimer !== null) {
-    clearInterval(trafficRefreshTimer)
-    trafficRefreshTimer = null
+    clearInterval(trafficRefreshTimer);
+    trafficRefreshTimer = null;
   }
 }
 
 function handleVisibilityChange() {
-  if (document.visibilityState === 'visible') {
-    refreshTrafficData({ silent: true })
+  if (document.visibilityState === "visible") {
+    refreshTrafficData({ silent: true });
   }
 }
 
 // 加载数据
 async function loadDashboardData() {
   try {
-    await refreshTrafficData({ silent: false })
-    await announcementsStore.fetchAnnouncements()
-    const devicesResp = await api.get('/user/devices')
-    const devicesData = devicesResp?.data ?? devicesResp ?? {}
-    const devices = Array.isArray(devicesData.devices) ? devicesData.devices : []
-    onlineDevices.value = Number(devicesData.current_count ?? devices.length ?? 0)
-    maxDevices.value = Number(devicesData.max_devices ?? devicesData.maxDevices ?? 0)
+    await refreshTrafficData({ silent: false });
+    await announcementsStore.fetchAnnouncements();
+    const devicesResp = await api.get("/user/devices");
+    const devicesData = devicesResp?.data ?? devicesResp ?? {};
+    const devices = Array.isArray(devicesData.devices)
+      ? devicesData.devices
+      : [];
+    onlineDevices.value = Number(
+      devicesData.current_count ?? devices.length ?? 0,
+    );
+    maxDevices.value = Number(
+      devicesData.max_devices ?? devicesData.maxDevices ?? 0,
+    );
   } catch (error) {
-    console.error('Failed to load dashboard data:', error)
+    console.error("Failed to load dashboard data:", error);
   }
 }
 
 onMounted(() => {
-  loadDashboardData()
-  startTrafficAutoRefresh()
-  document.addEventListener('visibilitychange', handleVisibilityChange)
-})
+  loadDashboardData();
+  startTrafficAutoRefresh();
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+});
 
 onBeforeUnmount(() => {
-  stopTrafficAutoRefresh()
-  document.removeEventListener('visibilitychange', handleVisibilityChange)
-})
+  stopTrafficAutoRefresh();
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
+});
 </script>
 
 <style scoped>
@@ -916,40 +839,40 @@ onBeforeUnmount(() => {
 }
 
 /* 深色模式适配 */
-.dark .status-card {
+:global(.dark) .status-card {
   background: var(--color-bg-card);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
 }
 
-.dark .card-value {
+:global(.dark) .card-value {
   color: var(--color-text-primary);
 }
 
-.dark .item-value {
+:global(.dark) .item-value {
   color: var(--color-text-primary);
 }
 
-.dark .progress-value {
+:global(.dark) .progress-value {
   color: var(--color-text-primary);
 }
 
-.dark .announcement-title {
+:global(.dark) .announcement-title {
   color: var(--color-text-primary);
 }
 
-.dark .action-item:hover {
+:global(.dark) .action-item:hover {
   background: var(--color-border-light);
 }
 
-.dark .announcement-item:hover {
+:global(.dark) .announcement-item:hover {
   background: var(--color-border-light);
 }
 
-.dark .traffic-item {
+:global(.dark) .traffic-item {
   border-bottom: 1px solid var(--color-border);
 }
 
-.dark .announcement-item {
+:global(.dark) .announcement-item {
   border-bottom: 1px solid var(--color-border);
 }
 </style>

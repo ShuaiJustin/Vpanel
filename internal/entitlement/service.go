@@ -83,6 +83,16 @@ func (s *Service) WithConfigSyncHook(hook func(nodeID int64, source, reason stri
 // EvaluateAccess resolves the user's effective access state.
 // If the user has no active paid subscription, the first portal access auto-activates one trial when enabled.
 func (s *Service) EvaluateAccess(ctx context.Context, userID int64) (*AccessState, error) {
+	return s.evaluateAccess(ctx, userID, true)
+}
+
+// EvaluateExistingAccess resolves the user's current access state without auto-activating a trial.
+// This is safe to use in read-only paths such as node config generation.
+func (s *Service) EvaluateExistingAccess(ctx context.Context, userID int64) (*AccessState, error) {
+	return s.evaluateAccess(ctx, userID, false)
+}
+
+func (s *Service) evaluateAccess(ctx context.Context, userID int64, allowAutoActivateTrial bool) (*AccessState, error) {
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -108,7 +118,12 @@ func (s *Service) EvaluateAccess(ctx context.Context, userID int64) (*AccessStat
 		state.HasActiveSubscription = true
 	}
 
-	repoTrial, err := s.getOrAutoActivateTrial(ctx, userID, state.HasActiveSubscription)
+	var repoTrial *repository.Trial
+	if allowAutoActivateTrial {
+		repoTrial, err = s.getOrAutoActivateTrial(ctx, userID, state.HasActiveSubscription)
+	} else {
+		repoTrial, err = s.getTrial(ctx, userID)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +186,13 @@ func (s *Service) GetAccessibleProxies(ctx context.Context, userID int64) ([]*re
 		if err != nil {
 			return nil, nil, err
 		}
-		return enabledOnly(proxies), state, nil
+		usableProxies, filterErr := s.filterUsableUserProxies(ctx, proxies)
+		if filterErr != nil {
+			return nil, nil, filterErr
+		}
+		if enabled := enabledOnly(usableProxies); len(enabled) > 0 {
+			return enabled, state, nil
+		}
 	}
 
 	nodeID, err := s.getOrAssignNode(ctx, userID)
@@ -198,6 +219,107 @@ func (s *Service) GetAccessibleProxies(ctx context.Context, userID int64) ([]*re
 	return []*repository.Proxy{selectPrimaryProxy(proxies)}, state, nil
 }
 
+// GetSubscriptionProxies returns all proxies a user can use in subscription clients.
+func (s *Service) GetSubscriptionProxies(ctx context.Context, userID int64) ([]*repository.Proxy, *AccessState, error) {
+	state, err := s.EvaluateAccess(ctx, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	result := make([]*repository.Proxy, 0)
+	existingNodeIDs := map[int64]struct{}{}
+
+	proxies, err := s.proxyRepo.GetByUserID(ctx, userID, 10000, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(proxies) > 0 {
+		proxies, err = s.reconcileUserAutoProvisionedProxies(ctx, proxies)
+		if err != nil {
+			return nil, nil, err
+		}
+		usableProxies, filterErr := s.filterUsableUserProxies(ctx, proxies)
+		if filterErr != nil {
+			return nil, nil, filterErr
+		}
+		for _, proxyModel := range enabledOnly(usableProxies) {
+			result = append(result, proxyModel)
+			if proxyModel.NodeID != nil {
+				existingNodeIDs[*proxyModel.NodeID] = struct{}{}
+			}
+		}
+	}
+
+	if s.nodeRepo == nil || s.proxyRepo == nil {
+		return result, state, nil
+	}
+
+	availableNodes, err := s.nodeRepo.GetAvailable(ctx)
+	if err != nil {
+		if len(result) > 0 {
+			s.logger.Warn("failed to list available nodes for subscription proxies",
+				logger.Err(err),
+				logger.UserID(userID),
+			)
+			return result, state, nil
+		}
+		return nil, nil, err
+	}
+
+	for _, nodeModel := range availableNodes {
+		if nodeModel == nil {
+			continue
+		}
+		if _, exists := existingNodeIDs[nodeModel.ID]; exists {
+			continue
+		}
+
+		nodeProxies, proxyErr := s.proxyRepo.GetByNodeID(ctx, nodeModel.ID)
+		if proxyErr != nil {
+			s.logger.Warn("failed to load node proxies for subscription",
+				logger.Err(proxyErr),
+				logger.UserID(userID),
+				logger.F("node_id", nodeModel.ID),
+			)
+			continue
+		}
+
+		shared := sharedOnly(enabledOnly(nodeProxies))
+		if len(shared) > 0 {
+			selected := selectPrimaryProxy(shared)
+			if selected != nil {
+				result = append(result, selected)
+				existingNodeIDs[nodeModel.ID] = struct{}{}
+			}
+			continue
+		}
+
+		if !s.canAutoProvisionDefaultProxy() {
+			continue
+		}
+
+		proxyModel, provisionErr := s.ensureAutoProvisionedProxyOnNode(ctx, userID, nodeModel.ID)
+		if provisionErr != nil {
+			s.logger.Warn("failed to auto provision subscription proxy",
+				logger.Err(provisionErr),
+				logger.UserID(userID),
+				logger.F("node_id", nodeModel.ID),
+			)
+			continue
+		}
+		if proxyModel != nil {
+			result = append(result, proxyModel)
+			existingNodeIDs[nodeModel.ID] = struct{}{}
+		}
+	}
+
+	if len(result) == 0 {
+		return nil, nil, errors.NewForbiddenError("当前暂无可用节点")
+	}
+
+	return result, state, nil
+}
+
 // GetAccessibleProxy returns a specific accessible proxy for a user.
 func (s *Service) GetAccessibleProxy(ctx context.Context, userID, proxyID int64) (*repository.Proxy, *AccessState, error) {
 	proxies, state, err := s.GetAccessibleProxies(ctx, userID)
@@ -215,12 +337,12 @@ func (s *Service) GetAccessibleProxy(ctx context.Context, userID, proxyID int64)
 }
 
 func (s *Service) getOrAutoActivateTrial(ctx context.Context, userID int64, hasActiveSubscription bool) (*repository.Trial, error) {
-	repoTrial, err := s.trialRepo.GetByUserID(ctx, userID)
-	if err == nil {
-		return repoTrial, nil
-	}
-	if err != nil && err != gorm.ErrRecordNotFound {
+	repoTrial, err := s.getTrial(ctx, userID)
+	if err != nil {
 		return nil, err
+	}
+	if repoTrial != nil {
+		return repoTrial, nil
 	}
 
 	cfg := s.trialConfig()
@@ -240,6 +362,17 @@ func (s *Service) getOrAutoActivateTrial(ctx context.Context, userID int64, hasA
 		return nil, err
 	}
 	return repoTrial, nil
+}
+
+func (s *Service) getTrial(ctx context.Context, userID int64) (*repository.Trial, error) {
+	repoTrial, err := s.trialRepo.GetByUserID(ctx, userID)
+	if err == nil {
+		return repoTrial, nil
+	}
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	return nil, err
 }
 
 func (s *Service) getOrAssignNode(ctx context.Context, userID int64) (int64, error) {
@@ -288,7 +421,7 @@ func (s *Service) getOrAssignNode(ctx context.Context, userID int64) (int64, err
 		}
 
 		if len(sharedOnly(enabledOnly(proxies))) > 0 {
-			if !found || count < selectedCount || (count == selectedCount && candidate.ID < selectedNodeID) {
+			if !found || shouldPreferAssignedNodeCandidate(candidate, count, selectedNodeID, selectedCount, availableNodes) {
 				selectedNodeID = candidate.ID
 				selectedCount = count
 				found = true
@@ -299,7 +432,7 @@ func (s *Service) getOrAssignNode(ctx context.Context, userID int64) (int64, err
 		if !s.canAutoProvisionDefaultProxy() {
 			continue
 		}
-		if !fallbackFound || count < fallbackCount || (count == fallbackCount && candidate.ID < fallbackNodeID) {
+		if !fallbackFound || shouldPreferAssignedNodeCandidate(candidate, count, fallbackNodeID, fallbackCount, availableNodes) {
 			fallbackNodeID = candidate.ID
 			fallbackCount = count
 			fallbackFound = true
@@ -326,6 +459,70 @@ func (s *Service) getOrAssignNode(ctx context.Context, userID int64) (int64, err
 	return selectedNodeID, nil
 }
 
+func shouldPreferAssignedNodeCandidate(candidate *repository.Node, candidateCount int64, currentNodeID, currentCount int64, availableNodes []*repository.Node) bool {
+	if candidate == nil {
+		return false
+	}
+	if candidateCount != currentCount {
+		return candidateCount < currentCount
+	}
+
+	current := findAvailableNodeByID(availableNodes, currentNodeID)
+	if current == nil {
+		return true
+	}
+
+	candidateTrafficPressure := nodeAssignmentTrafficPressure(candidate)
+	currentTrafficPressure := nodeAssignmentTrafficPressure(current)
+	if candidateTrafficPressure != currentTrafficPressure {
+		return candidateTrafficPressure < currentTrafficPressure
+	}
+
+	candidateCapacityPressure := nodeAssignmentCapacityPressure(candidate)
+	currentCapacityPressure := nodeAssignmentCapacityPressure(current)
+	if candidateCapacityPressure != currentCapacityPressure {
+		return candidateCapacityPressure < currentCapacityPressure
+	}
+
+	if candidate.CurrentUsers != current.CurrentUsers {
+		return candidate.CurrentUsers < current.CurrentUsers
+	}
+	return candidate.ID < current.ID
+}
+
+func findAvailableNodeByID(nodes []*repository.Node, nodeID int64) *repository.Node {
+	for _, node := range nodes {
+		if node != nil && node.ID == nodeID {
+			return node
+		}
+	}
+	return nil
+}
+
+func nodeAssignmentTrafficPressure(node *repository.Node) float64 {
+	if node == nil {
+		return 1e9
+	}
+	if node.TrafficLimit <= 0 {
+		return -1
+	}
+	threshold := node.AlertTrafficThreshold
+	if threshold <= 0 || threshold > 100 {
+		threshold = 100
+	}
+	return (float64(node.TrafficTotal) * 100 / float64(node.TrafficLimit)) / threshold
+}
+
+func nodeAssignmentCapacityPressure(node *repository.Node) float64 {
+	if node == nil {
+		return 1e9
+	}
+	if node.MaxUsers <= 0 {
+		return 0
+	}
+	return float64(node.CurrentUsers) / float64(node.MaxUsers)
+}
+
 func (s *Service) autoProvisionDefaultProxy(ctx context.Context, userID, nodeID int64) (*repository.Proxy, error) {
 	if !s.canAutoProvisionDefaultProxy() {
 		return nil, nil
@@ -336,9 +533,38 @@ func (s *Service) autoProvisionDefaultProxy(ctx context.Context, userID, nodeID 
 		return nil, err
 	}
 	if enabled := enabledOnly(existing); len(enabled) > 0 {
-		return selectPrimaryProxy(enabled), nil
+		usable, filterErr := s.filterUsableUserProxies(ctx, enabled)
+		if filterErr != nil {
+			return nil, filterErr
+		}
+		if len(usable) > 0 {
+			return selectPrimaryProxy(usable), nil
+		}
 	}
 
+	return s.createAutoProvisionedProxy(ctx, userID, nodeID)
+}
+
+func (s *Service) ensureAutoProvisionedProxyOnNode(ctx context.Context, userID, nodeID int64) (*repository.Proxy, error) {
+	if !s.canAutoProvisionDefaultProxy() {
+		return nil, nil
+	}
+
+	existing, err := s.proxyRepo.GetByUserID(ctx, userID, 10000, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, proxyModel := range enabledOnly(existing) {
+		if proxyModel.NodeID != nil && *proxyModel.NodeID == nodeID {
+			return proxyModel, nil
+		}
+	}
+
+	return s.createAutoProvisionedProxy(ctx, userID, nodeID)
+}
+
+func (s *Service) createAutoProvisionedProxy(ctx context.Context, userID, nodeID int64) (*repository.Proxy, error) {
 	node, err := s.nodeRepo.GetByID(ctx, nodeID)
 	if err != nil {
 		return nil, err
@@ -435,6 +661,14 @@ func (s *Service) reconcileUserAutoProvisionedProxy(ctx context.Context, proxyMo
 
 	node, err := s.nodeRepo.GetByID(ctx, *proxyModel.NodeID)
 	if err != nil {
+		if errors.IsNotFound(err) {
+			s.logger.Warn("skip reconciliation for auto provisioned proxy on missing node",
+				logger.UserID(proxyModel.UserID),
+				logger.F("proxy_id", proxyModel.ID),
+				logger.F("node_id", *proxyModel.NodeID),
+			)
+			return proxyModel, nil
+		}
 		return nil, err
 	}
 	if !nodeSupportsAutoProvisionTLS(node) {
@@ -626,6 +860,50 @@ func (s *Service) trialConfig() *trial.Config {
 		return nil
 	}
 	return s.trialService.GetConfig()
+}
+
+func (s *Service) filterUsableUserProxies(ctx context.Context, proxies []*repository.Proxy) ([]*repository.Proxy, error) {
+	if len(proxies) == 0 || s == nil || s.nodeRepo == nil {
+		return proxies, nil
+	}
+
+	usable := make([]*repository.Proxy, 0, len(proxies))
+	nodeOnlineCache := make(map[int64]bool)
+
+	for _, proxyModel := range proxies {
+		if proxyModel == nil {
+			continue
+		}
+		if proxyModel.NodeID == nil {
+			usable = append(usable, proxyModel)
+			continue
+		}
+
+		nodeID := *proxyModel.NodeID
+		online, ok := nodeOnlineCache[nodeID]
+		if !ok {
+			nodeModel, err := s.nodeRepo.GetByID(ctx, nodeID)
+			if err != nil {
+				if errors.IsNotFound(err) {
+					s.logger.Warn("skip user proxy on missing node",
+						logger.UserID(proxyModel.UserID),
+						logger.F("proxy_id", proxyModel.ID),
+						logger.F("node_id", nodeID),
+					)
+					nodeOnlineCache[nodeID] = false
+					continue
+				}
+				return nil, err
+			}
+			online = nodeModel != nil && nodeModel.Status == repository.NodeStatusOnline
+			nodeOnlineCache[nodeID] = online
+		}
+		if online {
+			usable = append(usable, proxyModel)
+		}
+	}
+
+	return usable, nil
 }
 
 func enabledOnly(proxies []*repository.Proxy) []*repository.Proxy {

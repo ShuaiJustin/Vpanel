@@ -2,9 +2,13 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
@@ -14,6 +18,7 @@ import (
 	"gorm.io/gorm"
 
 	"v/internal/database/repository"
+	"v/internal/logger"
 )
 
 // Feature: project-optimization, Property 20: Statistics Accuracy
@@ -28,7 +33,7 @@ func setupStatsTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 
 	// Create tables
-	err = db.AutoMigrate(&repository.User{}, &repository.Proxy{}, &repository.Traffic{})
+	err = db.AutoMigrate(&repository.User{}, &repository.Proxy{}, &repository.Traffic{}, &repository.Node{})
 	require.NoError(t, err)
 
 	return db
@@ -337,6 +342,102 @@ func generateEmail(i int) string {
 
 func generateProxyName(i int) string {
 	return "proxy" + string(rune('a'+i%26)) + string(rune('0'+i/26))
+}
+
+func TestStatsHandlerGetTrafficStatsUsesEffectiveLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupStatsTestDB(t)
+	repos := repository.NewRepositories(db)
+	handler := NewStatsHandler(logger.NewNopLogger(), repos, nil)
+
+	now := time.Now()
+	future := now.Add(24 * time.Hour)
+	past := now.Add(-24 * time.Hour)
+
+	require.NoError(t, db.Create(&repository.User{
+		Username:     "active-limited-a",
+		PasswordHash: "hash",
+		Email:        "a@test.local",
+		Enabled:      true,
+		TrafficLimit: 1000,
+		ExpiresAt:    &future,
+	}).Error)
+	require.NoError(t, db.Create(&repository.User{
+		Username:     "active-limited-b",
+		PasswordHash: "hash",
+		Email:        "b@test.local",
+		Enabled:      true,
+		TrafficLimit: 2000,
+	}).Error)
+	require.NoError(t, db.Create(&repository.User{
+		Username:     "disabled-user",
+		PasswordHash: "hash",
+		Email:        "disabled@test.local",
+		Enabled:      false,
+		TrafficLimit: 5000,
+	}).Error)
+	require.NoError(t, db.Model(&repository.User{}).Where("username = ?", "disabled-user").Update("enabled", false).Error)
+	require.NoError(t, db.Create(&repository.User{
+		Username:     "expired-user",
+		PasswordHash: "hash",
+		Email:        "expired@test.local",
+		Enabled:      true,
+		TrafficLimit: 7000,
+		ExpiresAt:    &past,
+	}).Error)
+
+	require.NoError(t, db.Create(&repository.Node{
+		Name:         "online-a",
+		Address:      "10.0.0.1",
+		Token:        "node-token-a",
+		Status:       repository.NodeStatusOnline,
+		TrafficLimit: 900,
+	}).Error)
+	require.NoError(t, db.Create(&repository.Node{
+		Name:         "online-b",
+		Address:      "10.0.0.2",
+		Token:        "node-token-b",
+		Status:       repository.NodeStatusOnline,
+		TrafficLimit: 600,
+	}).Error)
+	require.NoError(t, db.Create(&repository.Node{
+		Name:         "offline-node",
+		Address:      "10.0.0.3",
+		Token:        "node-token-c",
+		Status:       repository.NodeStatusOffline,
+		TrafficLimit: 8000,
+	}).Error)
+
+	require.NoError(t, db.Create(&repository.Traffic{
+		UserID:     1,
+		ProxyID:    1,
+		Upload:     100,
+		Download:   300,
+		RecordedAt: now,
+	}).Error)
+
+	router := gin.New()
+	router.GET("/stats/traffic", handler.GetTrafficStats)
+
+	req := httptest.NewRequest(http.MethodGet, "/stats/traffic?period=month", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var response struct {
+		Code int          `json:"code"`
+		Data TrafficStats `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Equal(t, 200, response.Code)
+	assert.Equal(t, int64(400), response.Data.Total)
+	assert.Equal(t, int64(100), response.Data.Upload)
+	assert.Equal(t, int64(300), response.Data.Download)
+	assert.Equal(t, int64(3000), response.Data.UserLimit)
+	assert.Equal(t, int64(1500), response.Data.NodeLimit)
+	assert.Equal(t, int64(1500), response.Data.Limit)
+	assert.InDelta(t, 26.6666, response.Data.Percentage, 0.01)
 }
 
 // TestStatisticsAccuracy_ProtocolCounts tests protocol count accuracy.

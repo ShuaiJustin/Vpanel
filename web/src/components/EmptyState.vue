@@ -19,7 +19,7 @@
             cx="100"
             cy="80"
             r="40"
-            fill="#e8e8e8"
+            fill="var(--empty-state-illustration-primary)"
           />
           <rect
             x="40"
@@ -27,7 +27,7 @@
             width="120"
             height="10"
             rx="5"
-            fill="#e8e8e8"
+            fill="var(--empty-state-illustration-primary)"
           />
           <rect
             x="60"
@@ -35,7 +35,7 @@
             width="80"
             height="10"
             rx="5"
-            fill="#f0f0f0"
+            fill="var(--empty-state-illustration-secondary)"
           />
         </svg>
       </slot>
@@ -195,6 +195,12 @@ const displayDescription = computed(() => props.description || preset.value.desc
 
 <style scoped>
 .empty-state {
+  --empty-state-border: #e0e0e0;
+  --empty-state-surface: #fafafa;
+  --empty-state-icon: #c0c4cc;
+  --empty-state-description: #909399;
+  --empty-state-illustration-primary: #e8e8e8;
+  --empty-state-illustration-secondary: #f0f0f0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -203,10 +209,19 @@ const displayDescription = computed(() => props.description || preset.value.desc
   text-align: center;
 }
 
+:global(html.dark) .empty-state {
+  --empty-state-border: var(--color-border-dark);
+  --empty-state-surface: var(--color-border-light);
+  --empty-state-icon: var(--color-text-placeholder);
+  --empty-state-description: var(--color-text-secondary);
+  --empty-state-illustration-primary: #374151;
+  --empty-state-illustration-secondary: #2f3746;
+}
+
 .empty-state.with-border {
-  border: 1px dashed #e0e0e0;
+  border: 1px dashed var(--empty-state-border);
   border-radius: 8px;
-  background: #fafafa;
+  background: var(--empty-state-surface);
 }
 
 /* 尺寸 */
@@ -245,7 +260,7 @@ const displayDescription = computed(() => props.description || preset.value.desc
   width: 80px;
   height: 80px;
   margin-bottom: 16px;
-  color: #c0c4cc;
+  color: var(--empty-state-icon);
 }
 
 .empty-state-icon :deep(svg) {
@@ -269,7 +284,7 @@ const displayDescription = computed(() => props.description || preset.value.desc
 /* 描述 */
 .empty-state-description {
   font-size: 14px;
-  color: #909399;
+  color: var(--empty-state-description);
   max-width: 300px;
   line-height: 1.5;
 }

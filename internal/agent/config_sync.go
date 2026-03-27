@@ -2,7 +2,10 @@
 package agent
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -159,13 +162,9 @@ func (m *ConfigSyncManager) Sync(ctx context.Context) error {
 		return fmt.Errorf("failed to fetch config: %w", err)
 	}
 
-	// Parse config to check version
-	var configMeta struct {
-		Version   string `json:"version"`
-		Timestamp int64  `json:"timestamp"`
-	}
-	if err := json.Unmarshal(configData, &configMeta); err != nil {
-		return fmt.Errorf("failed to parse config metadata: %w", err)
+	configVersion := configVersion(configData)
+	if configVersion == "" {
+		return fmt.Errorf("received empty config from panel")
 	}
 
 	// Check if config has changed
@@ -173,9 +172,9 @@ func (m *ConfigSyncManager) Sync(ctx context.Context) error {
 	currentVersion := m.syncVersion
 	m.mu.RUnlock()
 
-	if configMeta.Version == currentVersion {
+	if configVersion == currentVersion {
 		m.logger.Debug("config unchanged, skipping sync",
-			logger.F("version", configMeta.Version))
+			logger.F("version", configVersion))
 		return nil
 	}
 
@@ -191,14 +190,24 @@ func (m *ConfigSyncManager) Sync(ctx context.Context) error {
 	m.mu.Lock()
 	m.lastSyncTime = time.Now()
 	m.lastSyncErr = nil
-	m.syncVersion = configMeta.Version
+	m.syncVersion = configVersion
 	m.mu.Unlock()
 
 	m.logger.Info("config synced successfully",
-		logger.F("version", configMeta.Version),
+		logger.F("version", configVersion),
 		logger.F("node_id", nodeID))
 
 	return nil
+}
+
+func configVersion(configData json.RawMessage) string {
+	trimmed := bytes.TrimSpace(configData)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return ""
+	}
+
+	digest := sha256.Sum256(trimmed)
+	return hex.EncodeToString(digest[:])
 }
 
 // applyConfig applies the configuration to Xray.
