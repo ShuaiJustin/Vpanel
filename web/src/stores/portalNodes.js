@@ -86,6 +86,10 @@ export const usePortalNodesStore = defineStore('portalNodes', () => {
       protocols.value = response.protocols || protocols.value
       return response
     } catch (err) {
+      nodes.value = []
+      regions.value = []
+      protocols.value = []
+      latencyResults.value = {}
       error.value = err.message || '获取节点列表失败'
       throw err
     } finally {

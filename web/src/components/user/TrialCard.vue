@@ -175,8 +175,9 @@ const trialConfig = ref(null)
 
 // Computed
 const showCard = computed(() => {
-  // Show card if trial is enabled and user either has trial or can activate
-  return trialConfig.value?.enabled && (hasTrial.value || canActivate.value)
+  if (!trialConfig.value?.enabled) return false
+  if (!hasTrial.value && !canActivate.value) return false
+  return trialStatus.value !== 'converted'
 })
 
 const trialStatus = computed(() => trial.value?.status || '')

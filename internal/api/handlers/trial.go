@@ -121,6 +121,8 @@ func (h *TrialHandler) ActivateTrial(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "You have already used your trial"})
 		case trial.ErrEmailNotVerified:
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Email verification required"})
+		case trial.ErrActiveSubscription:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "当前已有有效订阅，无需试用"})
 		default:
 			h.logger.Error("Failed to activate trial", logger.Err(err), logger.F("user_id", uid))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to activate trial"})

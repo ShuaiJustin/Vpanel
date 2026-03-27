@@ -511,7 +511,8 @@ async function loadNodes() {
     await nodesStore.fetchNodes();
     return true;
   } catch (error) {
-    ElMessage.error("加载节点列表失败");
+    const message = typeof error === "string" ? error : error?.message || "加载节点列表失败";
+    ElMessage.error(message);
     return false;
   } finally {
     loading.value = false;

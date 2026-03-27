@@ -29,6 +29,7 @@ export const useSubscriptionStore = defineStore('subscription', () => {
       return response
     } catch (err) {
       console.error('Fetch subscription link error:', err)
+      subscriptionInfo.value = null
       error.value = err.response?.data?.error || err.message || '获取订阅链接失败'
       throw error.value
     } finally {
@@ -46,6 +47,7 @@ export const useSubscriptionStore = defineStore('subscription', () => {
       return response
     } catch (err) {
       console.error('Fetch subscription info error:', err)
+      subscriptionInfo.value = null
       error.value = err.response?.data?.error || err.message || '获取订阅信息失败'
       throw error.value
     } finally {
@@ -63,6 +65,7 @@ export const useSubscriptionStore = defineStore('subscription', () => {
       return response
     } catch (err) {
       console.error('Regenerate subscription error:', err)
+      subscriptionInfo.value = null
       error.value = err.response?.data?.error || err.message || '重新生成订阅链接失败'
       throw error.value
     } finally {

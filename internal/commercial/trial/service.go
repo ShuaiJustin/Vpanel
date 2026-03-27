@@ -4,6 +4,7 @@ package trial
 import (
 	"context"
 	"errors"
+	"math"
 	"time"
 
 	"v/internal/database/repository"
@@ -12,12 +13,13 @@ import (
 
 // Common errors
 var (
-	ErrTrialNotFound    = errors.New("trial not found")
-	ErrTrialAlreadyUsed = errors.New("user has already used trial")
-	ErrTrialExpired     = errors.New("trial has expired")
-	ErrTrialNotActive   = errors.New("trial is not active")
-	ErrTrialDisabled    = errors.New("trial feature is disabled")
-	ErrEmailNotVerified = errors.New("email verification required for trial")
+	ErrTrialNotFound      = errors.New("trial not found")
+	ErrTrialAlreadyUsed   = errors.New("user has already used trial")
+	ErrTrialExpired       = errors.New("trial has expired")
+	ErrTrialNotActive     = errors.New("trial is not active")
+	ErrTrialDisabled      = errors.New("trial feature is disabled")
+	ErrEmailNotVerified   = errors.New("email verification required for trial")
+	ErrActiveSubscription = errors.New("user already has an active subscription")
 )
 
 // Config holds trial configuration.
@@ -34,7 +36,7 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		Enabled:             true,
-		Duration:            7,          // 7 days
+		Duration:            7,            // 7 days
 		TrafficLimit:        107374182400, // 100 GB
 		RequireEmailVerify:  false,
 		AutoActivate:        true,
@@ -104,6 +106,15 @@ func (s *Service) ActivateTrial(ctx context.Context, userID int64) (*Trial, erro
 		return nil, ErrTrialDisabled
 	}
 
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		s.logger.Error("Failed to get user", logger.Err(err), logger.F("user_id", userID))
+		return nil, err
+	}
+	if s.userHasActiveSubscription(user, time.Now()) {
+		return nil, ErrActiveSubscription
+	}
+
 	// Check if user has already used trial
 	exists, err := s.trialRepo.ExistsByUserID(ctx, userID)
 	if err != nil {
@@ -115,15 +126,8 @@ func (s *Service) ActivateTrial(ctx context.Context, userID int64) (*Trial, erro
 	}
 
 	// Check email verification if required
-	if s.config.RequireEmailVerify {
-		user, err := s.userRepo.GetByID(ctx, userID)
-		if err != nil {
-			s.logger.Error("Failed to get user", logger.Err(err), logger.F("user_id", userID))
-			return nil, err
-		}
-		if !user.EmailVerified {
-			return nil, ErrEmailNotVerified
-		}
+	if s.config.RequireEmailVerify && !user.EmailVerified {
+		return nil, ErrEmailNotVerified
 	}
 
 	// Create trial
@@ -154,6 +158,7 @@ func (s *Service) GetTrial(ctx context.Context, userID int64) (*Trial, error) {
 	if err != nil {
 		return nil, ErrTrialNotFound
 	}
+	repoTrial = s.normalizeTrialState(ctx, repoTrial)
 	return s.toTrial(repoTrial), nil
 }
 
@@ -163,6 +168,7 @@ func (s *Service) GetTrialByID(ctx context.Context, id int64) (*Trial, error) {
 	if err != nil {
 		return nil, ErrTrialNotFound
 	}
+	repoTrial = s.normalizeTrialState(ctx, repoTrial)
 	return s.toTrial(repoTrial), nil
 }
 
@@ -304,6 +310,14 @@ func (s *Service) CanActivateTrial(ctx context.Context, userID int64) (bool, str
 		return false, "Trial feature is disabled"
 	}
 
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return false, "Failed to get user information"
+	}
+	if s.userHasActiveSubscription(user, time.Now()) {
+		return false, "当前已有有效订阅，无需试用"
+	}
+
 	exists, err := s.trialRepo.ExistsByUserID(ctx, userID)
 	if err != nil {
 		return false, "Failed to check trial status"
@@ -312,14 +326,8 @@ func (s *Service) CanActivateTrial(ctx context.Context, userID int64) (bool, str
 		return false, "You have already used your trial"
 	}
 
-	if s.config.RequireEmailVerify {
-		user, err := s.userRepo.GetByID(ctx, userID)
-		if err != nil {
-			return false, "Failed to get user information"
-		}
-		if !user.EmailVerified {
-			return false, "Email verification required"
-		}
+	if s.config.RequireEmailVerify && !user.EmailVerified {
+		return false, "Email verification required"
 	}
 
 	return true, ""
@@ -364,6 +372,50 @@ func (s *Service) GrantTrial(ctx context.Context, userID int64, durationDays int
 }
 
 // toTrial converts a repository trial to a service trial.
+func (s *Service) normalizeTrialState(ctx context.Context, repoTrial *repository.Trial) *repository.Trial {
+	if repoTrial == nil || repoTrial.Status != "active" {
+		return repoTrial
+	}
+
+	now := time.Now()
+	if user, err := s.userRepo.GetByID(ctx, repoTrial.UserID); err == nil {
+		if s.userHasActiveSubscription(user, now) {
+			if err := s.trialRepo.MarkConverted(ctx, repoTrial.UserID); err != nil {
+				s.logger.Warn("failed to mark active trial converted during status normalization", logger.Err(err), logger.F("trial_id", repoTrial.ID), logger.F("user_id", repoTrial.UserID))
+			}
+			repoTrial.Status = "converted"
+			convertedAt := now
+			repoTrial.ConvertedAt = &convertedAt
+			return repoTrial
+		}
+	} else {
+		s.logger.Warn("failed to load user during trial normalization", logger.Err(err), logger.F("trial_id", repoTrial.ID), logger.F("user_id", repoTrial.UserID))
+	}
+
+	if !now.After(repoTrial.ExpireAt) {
+		return repoTrial
+	}
+
+	if err := s.trialRepo.UpdateStatus(ctx, repoTrial.ID, "expired"); err != nil {
+		s.logger.Warn("failed to mark expired trial during status normalization", logger.Err(err), logger.F("trial_id", repoTrial.ID), logger.F("user_id", repoTrial.UserID))
+	}
+	repoTrial.Status = "expired"
+	return repoTrial
+}
+
+func (s *Service) userHasActiveSubscription(user *repository.User, now time.Time) bool {
+	if user == nil || !user.Enabled {
+		return false
+	}
+	if user.ExpiresAt != nil && !now.After(*user.ExpiresAt) {
+		return true
+	}
+	if user.ExpiresAt == nil && user.TrafficLimit > 0 {
+		return true
+	}
+	return false
+}
+
 func (s *Service) toTrial(rt *repository.Trial) *Trial {
 	trial := &Trial{
 		ID:           rt.ID,
@@ -380,9 +432,9 @@ func (s *Service) toTrial(rt *repository.Trial) *Trial {
 	// Calculate remaining days
 	if rt.Status == "active" && time.Now().Before(rt.ExpireAt) {
 		remaining := rt.ExpireAt.Sub(time.Now())
-		trial.RemainingDays = int(remaining.Hours() / 24)
-		if trial.RemainingDays < 0 {
-			trial.RemainingDays = 0
+		trial.RemainingDays = int(math.Ceil(remaining.Hours() / 24))
+		if trial.RemainingDays < 1 {
+			trial.RemainingDays = 1
 		}
 	}
 
