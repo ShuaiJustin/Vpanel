@@ -11,6 +11,7 @@
     
     <el-tabs
       v-model="activeName"
+      class="settings-tabs"
       type="border-card"
       @tab-click="handleTabClick"
     >
@@ -20,7 +21,7 @@
       >
         <el-form
           :model="serverForm"
-          label-width="120px"
+          :label-width="settingsLabelWidth"
           class="settings-form"
         >
           <el-form-item label="面板监听地址">
@@ -97,7 +98,7 @@
             </el-select>
           </el-form-item>
           <el-divider />
-          <el-form-item>
+          <el-form-item class="form-actions-row">
             <el-button
               type="primary"
               @click="saveServerSettings"
@@ -120,7 +121,7 @@
       >
         <el-form
           :model="dbForm"
-          label-width="120px"
+          :label-width="settingsLabelWidth"
           class="settings-form"
         >
           <el-form-item label="数据库类型">
@@ -193,7 +194,7 @@
           </template>
           
           <el-divider />
-          <el-form-item>
+          <el-form-item class="form-actions-row">
             <el-button
               type="primary"
               @click="saveDbSettings"
@@ -219,7 +220,7 @@
       >
         <el-form
           :model="logForm"
-          label-width="120px"
+          :label-width="settingsLabelWidth"
           class="settings-form"
         >
           <el-form-item label="日志级别">
@@ -274,7 +275,7 @@
             </div>
           </el-form-item>
           <el-divider />
-          <el-form-item>
+          <el-form-item class="form-actions-row">
             <el-button
               type="primary"
               @click="saveLogSettings"
@@ -297,7 +298,7 @@
       >
         <el-form
           :model="emailForm"
-          label-width="140px"
+          :label-width="settingsLabelWidth"
           class="settings-form"
         >
           <el-alert
@@ -364,7 +365,7 @@
           </el-form-item>
 
           <el-divider />
-          <el-form-item>
+          <el-form-item class="form-actions-row">
             <el-button
               type="primary"
               :loading="emailForm.saving"
@@ -423,7 +424,7 @@
           title="这里管理的是面板服务器本地 Xray，不是远程节点内核。Docker 或远程节点部署下显示“未安装”通常是正常现象。"
         />
         <el-form
-          label-width="120px"
+          :label-width="settingsLabelWidth"
           class="settings-form"
         >
           <el-form-item label="当前版本">
@@ -434,51 +435,51 @@
               >
                 {{ xraySettings.currentVersion || '未安装' }}
               </el-tag>
-              <el-button 
-                type="primary" 
-                size="small" 
-                :loading="xraySettings.loading"
-                style="margin-left: 10px;"
-                @click="refreshXrayVersions"
-              >
-                刷新
-              </el-button>
-              <el-button 
-                type="warning" 
-                size="small" 
-                :loading="xraySettings.syncing"
-                style="margin-left: 10px;"
-                @click="syncVersionsFromGitHub"
-              >
-                从GitHub同步
-              </el-button>
+              <div class="version-info__actions">
+                <el-button 
+                  type="primary" 
+                  size="small" 
+                  :loading="xraySettings.loading"
+                  @click="refreshXrayVersions"
+                >
+                  刷新
+                </el-button>
+                <el-button 
+                  type="warning" 
+                  size="small" 
+                  :loading="xraySettings.syncing"
+                  @click="syncVersionsFromGitHub"
+                >
+                  从GitHub同步
+                </el-button>
+              </div>
             </div>
           </el-form-item>
           
           <el-form-item label="运行状态">
-            <el-tag :type="xraySettings.running ? 'success' : 'danger'">
-              {{ xraySettings.running ? '运行中' : '已停止' }}
-            </el-tag>
-            <el-button 
-              v-if="!xraySettings.running"
-              type="success" 
-              size="small" 
-              :loading="xraySettings.starting"
-              style="margin-left: 10px;"
-              @click="startXray"
-            >
-              启动
-            </el-button>
-            <el-button 
-              v-else
-              type="danger" 
-              size="small" 
-              :loading="xraySettings.stopping"
-              style="margin-left: 10px;"
-              @click="stopXray"
-            >
-              停止
-            </el-button>
+            <div class="status-control">
+              <el-tag :type="xraySettings.running ? 'success' : 'danger'">
+                {{ xraySettings.running ? '运行中' : '已停止' }}
+              </el-tag>
+              <el-button 
+                v-if="!xraySettings.running"
+                type="success" 
+                size="small" 
+                :loading="xraySettings.starting"
+                @click="startXray"
+              >
+                启动
+              </el-button>
+              <el-button 
+                v-else
+                type="danger" 
+                size="small" 
+                :loading="xraySettings.stopping"
+                @click="stopXray"
+              >
+                停止
+              </el-button>
+            </div>
           </el-form-item>
           
           <el-form-item label="切换版本">
@@ -486,7 +487,6 @@
               <el-select 
                 v-model="xraySettings.selectedVersion" 
                 placeholder="选择版本" 
-                style="width: 180px;"
                 :loading="xraySettings.loading"
                 :disabled="xraySettings.switching"
               >
@@ -507,7 +507,6 @@
                 type="primary" 
                 :loading="xraySettings.switching" 
                 :disabled="!xraySettings.selectedVersion || xraySettings.selectedVersion === xraySettings.currentVersion"
-                style="margin-left: 10px;"
                 @click="handleSwitchVersion"
               >
                 切换版本
@@ -526,7 +525,7 @@
           </el-form-item>
           
           <el-divider />
-          <el-form-item>
+          <el-form-item class="form-actions-row">
             <el-button
               type="primary"
               @click="saveXraySettings"
@@ -550,7 +549,7 @@
       >
         <el-form
           :model="adminForm"
-          label-width="120px"
+          :label-width="settingsLabelWidth"
           class="settings-form"
         >
           <el-alert
@@ -598,7 +597,7 @@
           </el-form-item>
           
           <el-divider />
-          <el-form-item>
+          <el-form-item class="form-actions-row">
             <el-button
               type="primary"
               @click="changeAdminPassword"
@@ -621,15 +620,20 @@
       >
         <el-form
           :model="securityForm"
-          label-width="120px"
-          class="settings-form"
+          :label-width="settingsLabelWidth"
+          class="settings-form security-form"
         >
-          <el-form-item label="会话超时时间">
-            <el-input-number
-              v-model="securityForm.sessionTimeout"
-              :min="5"
-              :max="1440"
-            />
+          <el-form-item
+            label="会话超时时间"
+            class="security-inline-item"
+          >
+            <div class="security-inline-control">
+              <el-input-number
+                v-model="securityForm.sessionTimeout"
+                :min="5"
+                :max="1440"
+              />
+            </div>
             <div class="form-tips">
               单位：分钟，超过该时间未操作将自动注销
             </div>
@@ -648,8 +652,13 @@
               placeholder="每行一个IP地址，支持CIDR格式，如：192.168.1.0/24"
             />
           </el-form-item>
-          <el-form-item label="登录失败锁定">
-            <el-switch v-model="securityForm.enableLoginLock" />
+          <el-form-item
+            label="登录失败锁定"
+            class="security-inline-item"
+          >
+            <div class="security-inline-control">
+              <el-switch v-model="securityForm.enableLoginLock" />
+            </div>
             <div class="form-tips">
               连续登录失败将暂时锁定账号
             </div>
@@ -676,7 +685,7 @@
           </el-form-item>
           
           <el-divider />
-          <el-form-item>
+          <el-form-item class="form-actions-row">
             <el-button
               type="primary"
               :loading="securityState.saving"
@@ -696,7 +705,7 @@
         <el-form class="settings-form">
           <el-form-item
             label="支持的协议"
-            label-width="120px"
+            :label-width="settingsLabelWidth"
           >
             <el-descriptions
               :column="1"
@@ -873,7 +882,7 @@
           
           <el-form-item
             label="支持的传输层"
-            label-width="120px"
+            :label-width="settingsLabelWidth"
           >
             <el-descriptions
               :column="1"
@@ -1290,6 +1299,7 @@ const activeName = ref('server')
 const versionDetailsDialogWidth = computed(() => (isMobile.value ? 'calc(100vw - 24px)' : '600px'))
 const updateProgressDialogWidth = computed(() => (isMobile.value ? 'calc(100vw - 24px)' : '500px'))
 const errorDialogWidth = computed(() => (isMobile.value ? 'calc(100vw - 24px)' : '600px'))
+const settingsLabelWidth = computed(() => (isMobile.value ? '100%' : '168px'))
 
 // 同步时间处理
 const lastSyncTime = ref(localStorage.getItem('xray_last_sync_time') || '')
@@ -2748,15 +2758,120 @@ const openGitHubReleases = () => {
   padding: 20px;
 }
 
+.settings-tabs :deep(.el-tabs__header) {
+  margin-bottom: 22px;
+}
+
+.settings-tabs :deep(.el-tabs__nav-wrap) {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.settings-tabs :deep(.el-tabs__nav-scroll) {
+  overflow-x: auto;
+}
+
+.settings-tabs :deep(.el-tabs__nav) {
+  flex-wrap: nowrap;
+}
+
+.settings-tabs :deep(.el-tabs__item) {
+  min-width: max-content;
+  padding-inline: 24px;
+}
+
+.settings-tabs :deep(.el-tabs__content) {
+  padding-top: 8px;
+}
+
 .settings-form {
   max-width: 800px;
   margin-top: 20px;
 }
 
 .form-tips {
+  display: block;
+  width: 100%;
+  flex: 0 0 100%;
   font-size: 12px;
+  line-height: 1.6;
   color: #909399;
   margin-top: 5px;
+}
+
+.settings-form :deep(.el-form-item__label) {
+  width: 168px !important;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+
+.settings-form :deep(.el-form-item__content) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 6px;
+  min-width: 0;
+}
+
+.settings-form :deep(.el-input),
+.settings-form :deep(.el-select),
+.settings-form :deep(.el-textarea),
+.settings-form :deep(.el-date-editor),
+.settings-form :deep(.el-cascader),
+.settings-form :deep(.el-descriptions) {
+  width: 100%;
+  max-width: 100%;
+}
+
+.settings-form :deep(.el-divider__text) {
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--admin-surface-strong);
+  color: var(--admin-title);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.settings-form :deep(.form-actions-row .el-form-item__content) {
+  width: 100%;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-form :deep(.form-actions-row .el-button) {
+  min-width: 160px;
+  min-height: 44px;
+  padding-inline: 20px;
+}
+
+.settings-form :deep(.el-input-number) {
+  width: min(320px, 100%);
+  max-width: 100%;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.settings-form :deep(.el-input-number .el-input__wrapper) {
+  border-radius: inherit;
+}
+
+.security-inline-control {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+}
+
+.security-form :deep(.security-inline-item .el-form-item__content) {
+  align-items: flex-start;
+}
+
+.security-inline-control :deep(.el-input-number),
+.security-inline-control :deep(.el-switch) {
+  flex-shrink: 0;
 }
 
 .el-divider {
@@ -2801,8 +2916,16 @@ const openGitHubReleases = () => {
 .version-info {
   display: flex;
   align-items: center;
-  flex-direction: column;
+  flex-wrap: wrap;
+  gap: 10px;
   width: 100%;
+}
+
+.version-info__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
 }
 
 .version-actions {
@@ -3024,21 +3147,27 @@ const openGitHubReleases = () => {
   justify-content: space-between;
 }
 
+.status-control {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .version-control {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
 }
 
-.version-select-container {
-  margin-right: 10px;
+.version-control :deep(.el-select) {
+  width: min(240px, 100%);
 }
 
-.version-select-container .el-select {
-  width: 180px;
-}
-
-.version-select-container .el-button {
-  margin-left: 10px;
+.version-control :deep(.el-button) {
+  flex-shrink: 0;
 }
 
 .version-tips {
@@ -3067,7 +3196,18 @@ const openGitHubReleases = () => {
     margin-left: 0 !important;
   }
 
+  .settings-tabs :deep(.el-tabs__item) {
+    padding-inline: 18px;
+  }
+
+  .settings-form :deep(.form-actions-row .el-form-item__content) {
+    width: 100%;
+  }
+
   .protocol-description,
+  .version-info,
+  .version-info__actions,
+  .status-control,
   .version-control,
   .sync-info-title,
   .error-header,
@@ -3078,6 +3218,10 @@ const openGitHubReleases = () => {
     gap: 10px;
   }
 
+  .version-info__actions,
+  .version-info__actions :deep(.el-button),
+  .status-control,
+  .status-control :deep(.el-button),
   .version-control :deep(.el-select),
   .version-control :deep(.el-button),
   .version-actions,

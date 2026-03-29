@@ -11,6 +11,7 @@
     
     <el-tabs
       v-model="activeTab"
+      class="restriction-tabs"
       type="border-card"
     >
       <!-- 统计仪表板 -->
@@ -342,7 +343,7 @@
           </el-form-item>
           
           <el-divider />
-          <el-form-item>
+          <el-form-item class="form-actions-row">
             <el-button
               type="primary"
               :loading="settingsSaving"
@@ -1588,14 +1589,99 @@ onMounted(async () => {
   align-items: center;
 }
 
+.restriction-tabs :deep(.el-tabs__header) {
+  margin-bottom: 22px;
+}
+
+.restriction-tabs :deep(.el-tabs__nav-wrap) {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.restriction-tabs :deep(.el-tabs__nav-scroll) {
+  overflow-x: auto;
+}
+
+.restriction-tabs :deep(.el-tabs__nav) {
+  flex-wrap: nowrap;
+}
+
+.restriction-tabs :deep(.el-tabs__item) {
+  min-width: max-content;
+  padding-inline: 24px;
+}
+
+.restriction-tabs :deep(.el-tabs__content) {
+  padding-top: 8px;
+}
+
 .settings-form {
   max-width: 800px;
 }
 
 .form-tips {
+  display: block;
+  width: 100%;
+  flex: 0 0 100%;
   font-size: 12px;
+  line-height: 1.6;
   color: var(--el-text-color-secondary);
   margin-top: 4px;
+}
+
+.settings-form :deep(.el-form-item__label) {
+  white-space: nowrap;
+  word-break: keep-all;
+}
+
+.settings-form :deep(.el-form-item__content) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 6px;
+  min-width: 0;
+}
+
+.settings-form :deep(.el-input),
+.settings-form :deep(.el-select),
+.settings-form :deep(.el-textarea),
+.settings-form :deep(.el-date-editor),
+.settings-form :deep(.el-cascader),
+.settings-form :deep(.el-radio-group) {
+  width: 100%;
+  max-width: 100%;
+}
+
+.settings-form :deep(.el-divider__text) {
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--admin-surface-strong);
+  color: var(--admin-title);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.settings-form :deep(.form-actions-row .el-form-item__content) {
+  width: 100%;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-form :deep(.form-actions-row .el-button) {
+  min-width: 140px;
+  min-height: 44px;
+  padding-inline: 20px;
+}
+
+.settings-form :deep(.el-input-number) {
+  width: min(320px, 100%);
+  flex-shrink: 0;
+}
+
+.settings-form :deep(.el-switch) {
+  flex-shrink: 0;
 }
 
 .actions {
@@ -1653,6 +1739,14 @@ onMounted(async () => {
 
   .settings-form :deep(.el-form-item__content) {
     margin-left: 0 !important;
+  }
+
+  .restriction-tabs :deep(.el-tabs__item) {
+    padding-inline: 18px;
+  }
+
+  .settings-form :deep(.form-actions-row .el-form-item__content) {
+    width: 100%;
   }
 }
 </style>

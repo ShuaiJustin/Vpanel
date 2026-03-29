@@ -11,6 +11,7 @@
 
 - **[脚本使用指南](./SCRIPTS-GUIDE.md)** - 开发和部署脚本说明
 - **[Node Agent 指南](./NODE-AGENT-GUIDE.md)** - Agent 开发和使用
+- **[第三方登录接入建议](./third-party-login-recommendations.md)** - 企业微信 / Linux DO 选型与落地建议
 
 ### 运维指南
 

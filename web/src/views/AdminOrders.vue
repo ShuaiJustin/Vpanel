@@ -34,6 +34,7 @@
       <div class="orders-toolbar">
         <el-select
           v-model="filter.status"
+          class="toolbar-field toolbar-field--status"
           placeholder="订单状态"
           clearable
         >
@@ -60,6 +61,7 @@
         </el-select>
         <el-select
           v-model="filter.paymentMethod"
+          class="toolbar-field toolbar-field--method"
           placeholder="支付方式"
           clearable
         >
@@ -72,35 +74,41 @@
         </el-select>
         <el-input
           v-model="filter.search"
-          class="search-input"
+          class="search-input toolbar-field toolbar-field--search"
           placeholder="搜索订单号或用户 ID"
           clearable
           @keyup.enter="applyFilters"
         />
         <el-date-picker
           v-model="filter.dateRange"
+          class="toolbar-field toolbar-field--date"
           type="daterange"
           start-placeholder="开始日期"
           end-placeholder="结束日期"
           unlink-panels
           value-format="YYYY-MM-DD"
         />
-        <el-input-number
-          v-model="filter.minAmount"
-          :min="0"
-          :precision="2"
-          :step="10"
-          controls-position="right"
-          placeholder="最低实付"
-        />
-        <el-input-number
-          v-model="filter.maxAmount"
-          :min="0"
-          :precision="2"
-          :step="10"
-          controls-position="right"
-          placeholder="最高实付"
-        />
+        <div class="toolbar-field toolbar-field--amount amount-range-field">
+          <el-input-number
+            v-model="filter.minAmount"
+            class="amount-input"
+            :min="0"
+            :precision="2"
+            :step="10"
+            controls-position="right"
+            placeholder="最低实付"
+          />
+          <span class="amount-range-separator">-</span>
+          <el-input-number
+            v-model="filter.maxAmount"
+            class="amount-input"
+            :min="0"
+            :precision="2"
+            :step="10"
+            controls-position="right"
+            placeholder="最高实付"
+          />
+        </div>
         <div class="filter-actions">
           <el-button
             type="primary"
@@ -113,7 +121,7 @@
           </el-button>
         </div>
       </div>
-      <div class="toolbar-actions">
+      <div class="toolbar-actions toolbar-actions--summary">
         <span class="toolbar-summary">当前页 {{ orders.length }} 笔订单，共 {{ pagination.total }} 笔</span>
       </div>
     </div>
@@ -619,19 +627,72 @@ onMounted(() => {
 
 .orders-toolbar {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 12px;
   width: 100%;
+  align-items: center;
+}
+
+.toolbar-field {
+  min-width: 0;
+}
+
+.toolbar-field--status,
+.toolbar-field--method,
+.toolbar-field--amount {
+  grid-column: span 2;
+}
+
+.toolbar-field--search,
+.toolbar-field--date {
+  grid-column: span 3;
 }
 
 .search-input {
   min-width: 0;
 }
 
+.amount-range-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.amount-range-separator {
+  color: var(--admin-text-muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+.amount-input {
+  min-width: 0;
+}
+
+.orders-toolbar :deep(.el-select),
+.orders-toolbar :deep(.el-input),
+.orders-toolbar :deep(.el-date-editor),
+.orders-toolbar :deep(.el-input-number) {
+  width: 100%;
+  max-width: 100%;
+}
+
+.orders-toolbar :deep(.el-input-number__increase),
+.orders-toolbar :deep(.el-input-number__decrease) {
+  background: transparent;
+}
+
 .filter-actions {
   display: flex;
   gap: 12px;
   align-items: center;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+}
+
+.toolbar-actions--summary {
+  width: 100%;
+  justify-content: flex-start;
 }
 
 .orders-table {
@@ -661,9 +722,47 @@ onMounted(() => {
   color: #64748b;
 }
 
+@media (max-width: 1280px) {
+  .orders-toolbar {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .toolbar-field--status,
+  .toolbar-field--method,
+  .toolbar-field--amount {
+    grid-column: span 2;
+  }
+
+  .toolbar-field--search,
+  .toolbar-field--date {
+    grid-column: span 3;
+  }
+}
+
 @media (max-width: 768px) {
   .admin-orders-page {
     padding: 12px;
+  }
+
+  .orders-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar-field--status,
+  .toolbar-field--method,
+  .toolbar-field--search,
+  .toolbar-field--date,
+  .toolbar-field--amount,
+  .filter-actions {
+    grid-column: auto;
+  }
+
+  .amount-range-field {
+    grid-template-columns: 1fr;
+  }
+
+  .amount-range-separator {
+    display: none;
   }
 
   .orders-table {
