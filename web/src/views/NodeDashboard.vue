@@ -590,6 +590,7 @@ import {
 } from "@element-plus/icons-vue";
 import { useNodeStore } from "@/stores/node";
 import { useNodeGroupStore } from "@/stores/nodeGroup";
+import { extractErrorMessage } from "@/utils/entitlement";
 
 const router = useRouter();
 const nodeStore = useNodeStore();
@@ -948,7 +949,7 @@ async function fetchData() {
 
     lastUpdatedAt.value = new Date();
   } catch (error) {
-    ElMessage.error(error.message || "获取节点概览失败");
+    ElMessage.error(extractErrorMessage(error) || "获取节点概览失败");
   }
 }
 

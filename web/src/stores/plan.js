@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { plansApi } from '@/api/index'
+import { toNormalizedError } from '@/utils/entitlement'
 
 export const usePlanStore = defineStore('plan', () => {
   // 状态
@@ -34,8 +35,9 @@ export const usePlanStore = defineStore('plan', () => {
       return response
     } catch (err) {
       console.error('Fetch plans error:', err)
-      error.value = err.message || '获取套餐列表失败'
-      throw error.value
+      const normalizedError = toNormalizedError(err, '获取套餐列表失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -51,8 +53,9 @@ export const usePlanStore = defineStore('plan', () => {
       return response
     } catch (err) {
       console.error('Fetch plan error:', err)
-      error.value = err.message || '获取套餐详情失败'
-      throw error.value
+      const normalizedError = toNormalizedError(err, '获取套餐详情失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -67,8 +70,9 @@ export const usePlanStore = defineStore('plan', () => {
       return response
     } catch (err) {
       console.error('Compare plans error:', err)
-      error.value = err.message || '比较套餐失败'
-      throw error.value
+      const normalizedError = toNormalizedError(err, '比较套餐失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }

@@ -391,6 +391,7 @@ import { ElMessage } from 'element-plus'
 import { Search, Refresh, Download, Delete } from '@element-plus/icons-vue'
 import { logsApi } from '@/api'
 import { useViewport } from '@/composables/useViewport'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const { isMobile } = useViewport()
 
@@ -487,7 +488,7 @@ const fetchLogs = async () => {
   } catch (error) {
     if (!error.cancelled) {
       console.error('Failed to fetch logs:', error)
-      ElMessage.error('获取日志列表失败')
+      ElMessage.error(extractErrorMessage(error) || '获取日志列表失败')
     }
   } finally {
     loading.value = false
@@ -541,7 +542,7 @@ const showLogDetail = async (log) => {
   } catch (error) {
     if (!error.cancelled) {
       console.error('Failed to fetch log detail:', error)
-      ElMessage.error('获取日志详情失败')
+      ElMessage.error(extractErrorMessage(error) || '获取日志详情失败')
     }
   }
 }
@@ -567,7 +568,7 @@ const handleCleanup = async () => {
   } catch (error) {
     if (!error.cancelled) {
       console.error('Failed to cleanup logs:', error)
-      ElMessage.error(error.message || '清理日志失败')
+      ElMessage.error(extractErrorMessage(error) || '清理日志失败')
     }
   } finally {
     cleanupLoading.value = false
@@ -621,7 +622,7 @@ const confirmExport = async () => {
   } catch (error) {
     if (!error.cancelled) {
       console.error('Failed to export logs:', error)
-      ElMessage.error('导出日志失败')
+      ElMessage.error(extractErrorMessage(error) || '导出日志失败')
     }
   } finally {
     exportLoading.value = false

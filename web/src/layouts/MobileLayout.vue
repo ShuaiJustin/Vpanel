@@ -55,6 +55,10 @@
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
+              <el-dropdown-item command="balance">
+                <el-icon><Coin /></el-icon>
+                我的余额
+              </el-dropdown-item>
               <el-dropdown-item command="settings">
                 <el-icon><Setting /></el-icon>
                 个人设置
@@ -120,7 +124,7 @@ import {
   ArrowLeft, Bell, MoreFilled, Setting, QuestionFilled,
   SwitchButton, HomeFilled, Connection, Link, Download,
   Sunny, Moon,
-  ChatDotRound, Monitor
+  ChatDotRound, Monitor, Coin
 } from '@element-plus/icons-vue'
 import { usePortalAnnouncementsStore } from '@/stores/portalAnnouncements'
 import { useUserPortalStore } from '@/stores/userPortal'
@@ -201,6 +205,10 @@ function toggleTheme() {
   toggleDarkMode()
 }
 
+function goToBalance() {
+  router.push('/user/balance')
+}
+
 function goToSettings() {
   router.push('/user/settings')
 }
@@ -211,6 +219,9 @@ function goToHelp() {
 
 function handleAction(command) {
   switch (command) {
+    case 'balance':
+      goToBalance()
+      break
     case 'settings':
       goToSettings()
       break

@@ -224,6 +224,7 @@ import { DocumentCopy, Grid, Link, Warning } from '@element-plus/icons-vue'
 import { useSubscriptionStore } from '@/stores/subscription'
 import QRCode from 'qrcode'
 import { copyText } from '@/utils/clipboard'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const subscriptionStore = useSubscriptionStore()
 
@@ -247,7 +248,7 @@ const fetchSubscription = async () => {
   try {
     await subscriptionStore.fetchLink()
   } catch (error) {
-    ElMessage.error(error || '获取订阅链接失败')
+    ElMessage.error(extractErrorMessage(error) || '获取订阅链接失败')
   }
 }
 
@@ -294,7 +295,7 @@ const confirmRegenerate = async () => {
     regenerateDialogVisible.value = false
     ElMessage.success('订阅链接已重新生成')
   } catch (error) {
-    ElMessage.error(error || '重新生成订阅链接失败')
+    ElMessage.error(extractErrorMessage(error) || '重新生成订阅链接失败')
   }
 }
 

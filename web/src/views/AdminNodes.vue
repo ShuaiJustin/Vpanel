@@ -1093,6 +1093,7 @@ import { certificatesApi } from "@/api";
 import { nodesApi } from "@/api/modules/nodes";
 import { copyText } from "@/utils/clipboard";
 import { useViewport } from "@/composables/useViewport";
+import { extractErrorMessage } from "@/utils/entitlement";
 import {
   formatNodeTrafficRemaining,
   formatNodeTrafficResetAt,
@@ -1740,7 +1741,7 @@ const pollInstallStatus = async (nodeId) => {
       clearInstallStatusPolling();
       deployResult.value = {
         success: false,
-        message: e.message || "获取安装状态失败",
+        message: extractErrorMessage(e) || "获取安装状态失败",
       };
     }
   };
@@ -2045,7 +2046,7 @@ const copyToken = async () => {
     await copyText(currentToken.value);
     ElMessage.success("已复制到剪贴板");
   } catch (error) {
-    ElMessage.error(error.message || "复制失败");
+    ElMessage.error(extractErrorMessage(error) || "复制失败");
   }
 };
 
@@ -2088,7 +2089,7 @@ const viewInstallStatus = async (node) => {
   } catch (e) {
     deployResult.value = {
       success: false,
-      message: e.message || "获取安装状态失败",
+      message: extractErrorMessage(e) || "获取安装状态失败",
     };
   }
 };
@@ -2144,7 +2145,7 @@ const submitDeploy = async () => {
         ElMessage.success("Agent 部署成功");
         fetchNodes();
       } else {
-        ElMessage.error(result.message || "Agent 部署失败");
+        ElMessage.error(extractErrorMessage(result?.message) || "Agent 部署失败");
       }
     } catch (deployError) {
       // 处理部署 API 错误
@@ -2161,16 +2162,16 @@ const submitDeploy = async () => {
         errorSteps = responseData.steps || [];
         errorLogs = responseData.logs || "";
         errorMessage =
-          responseData.message || deployError.message || "Agent 部署失败";
+          extractErrorMessage(responseData?.message) || extractErrorMessage(deployError) || "Agent 部署失败";
       } else if (deployError.details?.steps || deployError.details?.logs) {
         // 从 details 字段获取（备用）
         errorSteps = deployError.details.steps || [];
         errorLogs = deployError.details.logs || "";
-        errorMessage = deployError.message || "Agent 部署失败";
+        errorMessage = extractErrorMessage(deployError) || "Agent 部署失败";
       } else if (deployError.message) {
         // 网络错误或其他错误
-        errorMessage = deployError.message;
-        errorLogs = `错误详情:\n${deployError.message}\n\n错误ID: ${deployError.errorId || "N/A"}`;
+        errorMessage = extractErrorMessage(deployError) || "Agent 部署失败";
+        errorLogs = `错误详情:\n${extractErrorMessage(deployError) || "未知错误"}`;
       }
 
       deploySteps.value = errorSteps;
@@ -2194,7 +2195,7 @@ const submitDeploy = async () => {
       }
     }
   } catch (e) {
-    ElMessage.error(e.message || "部署失败");
+    ElMessage.error(extractErrorMessage(e) || "部署失败");
     deployProgressDialogVisible.value = false;
   } finally {
     deploying.value = false;
@@ -2211,7 +2212,7 @@ const copyDeployLogs = async () => {
     await copyText(deployLogs.value);
     ElMessage.success("已复制到剪贴板");
   } catch (error) {
-    ElMessage.error(error.message || "复制失败");
+    ElMessage.error(extractErrorMessage(error) || "复制失败");
   }
 };
 
@@ -2231,7 +2232,7 @@ const downloadDeployScript = async (node) => {
 
     ElMessage.success("部署脚本已下载");
   } catch (e) {
-    ElMessage.error(e.message || "下载失败");
+    ElMessage.error(extractErrorMessage(e) || "下载失败");
   }
 };
 
@@ -2264,20 +2265,20 @@ const testSSHConnection = async () => {
 
     connectionTestResult.value = {
       success: res.success,
-      message: res.success ? "SSH 连接测试成功" : res.message || "SSH 连接失败",
+      message: res.success ? "SSH 连接测试成功" : extractErrorMessage(res?.message) || "SSH 连接失败",
     };
 
     if (res.success) {
       ElMessage.success("SSH 连接测试成功");
     } else {
-      ElMessage.error(res.message || "SSH 连接失败");
+      ElMessage.error(extractErrorMessage(res?.message) || "SSH 连接失败");
     }
   } catch (e) {
     connectionTestResult.value = {
       success: false,
-      message: e.message || "SSH 连接测试失败",
+      message: extractErrorMessage(e) || "SSH 连接测试失败",
     };
-    ElMessage.error(e.message || "SSH 连接测试失败");
+    ElMessage.error(extractErrorMessage(e) || "SSH 连接测试失败");
   } finally {
     testingConnection.value = false;
   }

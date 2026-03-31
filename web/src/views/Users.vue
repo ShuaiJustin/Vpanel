@@ -324,6 +324,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { MoreFilled, Search } from '@element-plus/icons-vue'
 import { usersApi } from '@/api'
 import { useViewport } from '@/composables/useViewport'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const { isMobile, viewportWidth } = useViewport()
 
@@ -446,7 +447,7 @@ const fetchUsers = async () => {
     syncCurrentPage()
   } catch (error) {
     console.error('Failed to fetch users:', error)
-    ElMessage.error(error.message || '获取用户列表失败')
+    ElMessage.error(extractErrorMessage(error) || '获取用户列表失败')
     users.value = []
   } finally {
     loading.value = false
@@ -515,7 +516,7 @@ const handleSaveUser = async () => {
     await fetchUsers()
   } catch (error) {
     console.error('Failed to save user:', error)
-    ElMessage.error(error.message || '保存用户失败')
+    ElMessage.error(extractErrorMessage(error) || '保存用户失败')
   } finally {
     saving.value = false
   }
@@ -533,7 +534,7 @@ const handleToggleStatus = async (row) => {
     ElMessage.success(`已${row.status ? '启用' : '禁用'}用户：${row.username}`)
   } catch (error) {
     console.error('Failed to update user status:', error)
-    ElMessage.error(error.message || '更新用户状态失败')
+    ElMessage.error(extractErrorMessage(error) || '更新用户状态失败')
   }
 }
 
@@ -570,7 +571,7 @@ const handleResetPassword = async (row) => {
     }
 
     console.error('Failed to reset password:', error)
-    ElMessage.error(error.message || '重置密码失败')
+    ElMessage.error(extractErrorMessage(error) || '重置密码失败')
   }
 }
 
@@ -595,7 +596,7 @@ const handleDelete = async (row) => {
     }
 
     console.error('Failed to delete user:', error)
-    ElMessage.error(error.message || '删除用户失败')
+    ElMessage.error(extractErrorMessage(error) || '删除用户失败')
   }
 }
 

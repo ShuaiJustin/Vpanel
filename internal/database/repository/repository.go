@@ -327,18 +327,19 @@ type Repositories struct {
 	Certificate           CertificateRepository
 	CertificateDeployment CertificateDeploymentRepository
 	// Commercial System repositories
-	Plan         PlanRepository
-	Order        OrderRepository
-	Balance      BalanceRepository
-	Coupon       CouponRepository
-	Invite       InviteRepository
-	Invoice      InvoiceRepository
-	Trial        TrialRepository
-	PlanChange   PlanChangeRepository
-	ExchangeRate ExchangeRateRepository
-	PlanPrice    PlanPriceRepository
-	Pause        PauseRepository
-	GiftCard     GiftCardRepository
+	Plan            PlanRepository
+	Order           OrderRepository
+	Balance         BalanceRepository
+	BalanceRecharge BalanceRechargeOrderRepository
+	Coupon          CouponRepository
+	Invite          InviteRepository
+	Invoice         InvoiceRepository
+	Trial           TrialRepository
+	PlanChange      PlanChangeRepository
+	ExchangeRate    ExchangeRateRepository
+	PlanPrice       PlanPriceRepository
+	Pause           PauseRepository
+	GiftCard        GiftCardRepository
 	// Multi-Server Management repositories
 	Node               NodeRepository
 	NodeGroup          NodeGroupRepository
@@ -370,18 +371,19 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		HelpArticle:  NewHelpArticleRepository(db),
 		AuthToken:    NewAuthTokenRepository(db),
 		// Commercial System repositories
-		Plan:         NewPlanRepository(db),
-		Order:        NewOrderRepository(db),
-		Balance:      NewBalanceRepository(db),
-		Coupon:       NewCouponRepository(db),
-		Invite:       NewInviteRepository(db),
-		Invoice:      NewInvoiceRepository(db),
-		Trial:        NewTrialRepository(db),
-		PlanChange:   NewPlanChangeRepository(db),
-		ExchangeRate: NewExchangeRateRepository(db),
-		PlanPrice:    NewPlanPriceRepository(db),
-		Pause:        NewPauseRepository(db),
-		GiftCard:     NewGiftCardRepository(db),
+		Plan:            NewPlanRepository(db),
+		Order:           NewOrderRepository(db),
+		Balance:         NewBalanceRepository(db),
+		BalanceRecharge: NewBalanceRechargeOrderRepository(db),
+		Coupon:          NewCouponRepository(db),
+		Invite:          NewInviteRepository(db),
+		Invoice:         NewInvoiceRepository(db),
+		Trial:           NewTrialRepository(db),
+		PlanChange:      NewPlanChangeRepository(db),
+		ExchangeRate:    NewExchangeRateRepository(db),
+		PlanPrice:       NewPlanPriceRepository(db),
+		Pause:           NewPauseRepository(db),
+		GiftCard:        NewGiftCardRepository(db),
 		// Multi-Server Management repositories
 		Node:                  NewNodeRepository(db),
 		NodeGroup:             NewNodeGroupRepository(db),

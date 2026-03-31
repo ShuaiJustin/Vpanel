@@ -133,6 +133,9 @@
           <el-menu-item index="/admin/orders">
             订单管理
           </el-menu-item>
+          <el-menu-item index="/admin/recharge-orders">
+            充值订单
+          </el-menu-item>
           <el-menu-item index="/admin/coupons">
             优惠券管理
           </el-menu-item>
@@ -143,7 +146,7 @@
             试用管理
           </el-menu-item>
           <el-menu-item index="/admin/payment-settings">
-            支付配置
+            支付/充值配置
           </el-menu-item>
           <el-menu-item index="/admin/reports">
             财务报表

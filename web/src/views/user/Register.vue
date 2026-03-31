@@ -178,6 +178,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock, Message, Ticket, CircleCheck } from '@element-plus/icons-vue'
 import { useUserPortalStore } from '@/stores/userPortal'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const router = useRouter()
 const route = useRoute()
@@ -309,8 +310,7 @@ async function handleRegister() {
     needEmailVerification.value = response.need_email_verification !== false
     showSuccessDialog.value = true
   } catch (error) {
-    const message = error.response?.data?.error || error.response?.data?.message || error.message || '注册失败'
-    ElMessage.error(message)
+    ElMessage.error(extractErrorMessage(error) || '注册失败')
   } finally {
     loading.value = false
   }

@@ -380,6 +380,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ordersApi, paymentsApi } from '@/api/index'
 import { useViewport } from '@/composables/useViewport'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const { isMobile } = useViewport()
 
@@ -493,7 +494,7 @@ const fetchOrders = async () => {
     orders.value = res.orders || []
     pagination.total = res.total || 0
   } catch (error) {
-    ElMessage.error(error.message || '获取订单列表失败')
+    ElMessage.error(extractErrorMessage(error) || '获取订单列表失败')
   } finally {
     loading.value = false
   }
@@ -543,7 +544,7 @@ const viewDetail = async (order) => {
     currentOrder.value = res.order
     detailVisible.value = true
   } catch (error) {
-    ElMessage.error(error.message || '获取订单详情失败')
+    ElMessage.error(extractErrorMessage(error) || '获取订单详情失败')
   }
 }
 
@@ -564,7 +565,7 @@ const updateStatus = async (order, status) => {
     if (error === 'cancel') {
       return
     }
-    ElMessage.error(error.message || `${actionLabel}失败`)
+    ElMessage.error(extractErrorMessage(error) || `${actionLabel}失败`)
   }
 }
 
@@ -604,7 +605,7 @@ const submitRefund = async () => {
       await viewDetail(currentOrder.value)
     }
   } catch (error) {
-    ElMessage.error(error.message || '退款失败')
+    ElMessage.error(extractErrorMessage(error) || '退款失败')
   } finally {
     submittingRefund.value = false
   }

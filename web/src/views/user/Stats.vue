@@ -318,6 +318,7 @@ import {
 } from '@element-plus/icons-vue'
 import { usePortalStatsStore } from '@/stores/portalStats'
 import Chart from 'chart.js/auto'
+import { extractErrorMessage } from '@/utils/entitlement'
 import { useViewport } from '@/composables/useViewport'
 
 const statsStore = usePortalStatsStore()
@@ -456,7 +457,7 @@ async function loadStats(options = {}) {
   } catch (error) {
     console.error('加载统计数据失败:', error)
     if (!silent) {
-      ElMessage.error(error?.message || '加载统计数据失败，请稍后重试')
+      ElMessage.error(extractErrorMessage(error) || '加载统计数据失败，请稍后重试')
     }
   } finally {
     statsRefreshInFlight.value = false
@@ -580,7 +581,7 @@ async function exportData() {
     await statsStore.exportStats(params)
     ElMessage.success('数据导出成功')
   } catch (error) {
-    ElMessage.error('导出失败')
+    ElMessage.error(extractErrorMessage(error) || '导出失败')
   } finally {
     exporting.value = false
   }

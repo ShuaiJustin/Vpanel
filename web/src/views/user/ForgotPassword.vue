@@ -89,6 +89,7 @@ import { ref, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Key, Message, CircleCheck, ArrowLeft } from '@element-plus/icons-vue'
 import { useUserPortalStore } from '@/stores/userPortal'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const userStore = useUserPortalStore()
 
@@ -124,8 +125,7 @@ async function handleSubmit() {
     emailSent.value = true
     ElMessage.success('重置链接已发送')
   } catch (error) {
-    const message = error.response?.data?.message || error.message || '发送失败'
-    ElMessage.error(message)
+    ElMessage.error(extractErrorMessage(error) || '发送失败')
   } finally {
     loading.value = false
   }
@@ -138,8 +138,7 @@ async function resendEmail() {
     await userStore.forgotPassword(forgotForm.email)
     ElMessage.success('重置链接已重新发送')
   } catch (error) {
-    const message = error.response?.data?.message || error.message || '发送失败'
-    ElMessage.error(message)
+    ElMessage.error(extractErrorMessage(error) || '发送失败')
   } finally {
     loading.value = false
   }

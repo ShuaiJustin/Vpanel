@@ -458,6 +458,7 @@ import { useUserPortalStore } from '@/stores/userPortal'
 import { useTheme } from '@/composables/useTheme'
 import { useViewport } from '@/composables/useViewport'
 import { copyText } from '@/utils/clipboard'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const router = useRouter()
 const userStore = useUserPortalStore()
@@ -601,7 +602,7 @@ async function changePassword() {
     passwordFormRef.value.resetFields()
   } catch (error) {
     if (error !== false) {
-      ElMessage.error(error.message || '修改失败')
+      ElMessage.error(extractErrorMessage(error) || '修改失败')
     }
   } finally {
     changingPassword.value = false
@@ -651,7 +652,7 @@ async function confirmTwoFactor() {
     }
     showTwoFactorDialog.value = false
   } catch (error) {
-    ElMessage.error(error.message || '操作失败')
+    ElMessage.error(extractErrorMessage(error) || '操作失败')
   } finally {
     processingTwoFactor.value = false
   }

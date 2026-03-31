@@ -6,6 +6,7 @@ import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import router from '@/router'
 import { cancelManager, deduplicator } from '@/utils/requestManager'
+import { isNoEntitlementError, normalizeBackendErrorMessage } from '@/utils/entitlement'
 
 // 错误码到本地化消息的映射
 const ERROR_MESSAGES = {
@@ -21,6 +22,11 @@ const ERROR_MESSAGES = {
   XRAY_ERROR: 'Xray 服务异常',
   NETWORK_ERROR: '网络连接失败',
   TIMEOUT_ERROR: '请求超时',
+  PAYMENT_ERROR: '创建支付失败，请稍后重试',
+  PAYMENT_METHOD_UNAVAILABLE: '当前支付方式暂不可用，请选择其他支付方式',
+  INSUFFICIENT_BALANCE: '余额不足，请先充值后再支付',
+  ORDER_NOT_PAYABLE: '当前订单状态不支持继续支付，请返回订单页刷新后重试',
+  RECHARGE_UNAVAILABLE: '当前未开启在线充值，请联系管理员或使用礼品卡充值',
   UNKNOWN_ERROR: '未知错误'
 }
 
@@ -73,11 +79,12 @@ export function formatApiError(error) {
       data?.error?.code ||
       STATUS_TO_ERROR_CODE[status] ||
       'UNKNOWN_ERROR'
-    const message =
+    const message = normalizeBackendErrorMessage(
       data?.message ||
       data?.error?.message ||
       (typeof data?.error === 'string' ? data.error : '') ||
       getErrorMessage(code)
+    ) || getErrorMessage(code)
     
     return {
       errorId,
@@ -173,6 +180,13 @@ api.interceptors.response.use(
     }
     
     const formattedError = formatApiError(error)
+    const currentPathname = typeof window !== 'undefined' ? window.location.pathname : ''
+    const isUserPortalEntitlementError = currentPathname.startsWith('/user') && isNoEntitlementError(formattedError)
+
+    if (isUserPortalEntitlementError) {
+      formattedError.silent = true
+      formattedError.isEntitlementError = true
+    }
     
     // 保留原始响应数据（用于获取详细错误信息，如部署日志）
     if (error.response?.data) {
@@ -227,7 +241,10 @@ api.interceptors.response.use(
     // 只在非静默模式下显示错误消息
     // 401 错误已经在上面标记为 silent，这里会被跳过
     if (!error.config?.silent && !formattedError.silent) {
-      const displayMessage = `${formattedError.message} (${formattedError.errorId})`
+      const isUserPortalPath = currentPathname.startsWith('/user')
+      const displayMessage = isUserPortalPath
+        ? formattedError.message
+        : `${formattedError.message} (${formattedError.errorId})`
       const now = Date.now()
       
       // 防止 1 秒内显示相同的错误消息

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { ordersApi, paymentsApi } from '@/api/index'
+import { toNormalizedError } from '@/utils/entitlement'
 
 export const useOrderStore = defineStore('order', () => {
   // 状态
@@ -48,8 +49,9 @@ export const useOrderStore = defineStore('order', () => {
       return response
     } catch (err) {
       console.error('Fetch orders error:', err)
-      error.value = err.message || '获取订单列表失败'
-      throw error.value
+      const normalizedError = toNormalizedError(err, '获取订单列表失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -65,8 +67,9 @@ export const useOrderStore = defineStore('order', () => {
       return response
     } catch (err) {
       console.error('Fetch order error:', err)
-      error.value = err.message || '获取订单详情失败'
-      throw error.value
+      const normalizedError = toNormalizedError(err, '获取订单详情失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -82,8 +85,9 @@ export const useOrderStore = defineStore('order', () => {
       return response
     } catch (err) {
       console.error('Fetch order by number error:', err)
-      error.value = err.message || '获取订单详情失败'
-      throw error.value
+      const normalizedError = toNormalizedError(err, '获取订单详情失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -99,8 +103,9 @@ export const useOrderStore = defineStore('order', () => {
       return response
     } catch (err) {
       console.error('Create order error:', err)
-      error.value = err.message || '创建订单失败'
-      throw error.value
+      const normalizedError = toNormalizedError(err, '创建订单失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -123,8 +128,9 @@ export const useOrderStore = defineStore('order', () => {
       return response
     } catch (err) {
       console.error('Cancel order error:', err)
-      error.value = err.message || '取消订单失败'
-      throw error.value
+      const normalizedError = toNormalizedError(err, '取消订单失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -140,8 +146,9 @@ export const useOrderStore = defineStore('order', () => {
       return response
     } catch (err) {
       console.error('Create payment error:', err)
-      error.value = err.message || '创建支付失败'
-      throw error.value
+      const normalizedError = toNormalizedError(err, '创建支付失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       paymentLoading.value = false
     }
@@ -153,7 +160,7 @@ export const useOrderStore = defineStore('order', () => {
       return response
     } catch (err) {
       console.error('Check payment status error:', err)
-      throw err
+      throw toNormalizedError(err, '查询支付状态失败')
     }
   }
 
@@ -168,7 +175,7 @@ export const useOrderStore = defineStore('order', () => {
       return result
     } catch (err) {
       console.error('Poll payment status error:', err)
-      throw err
+      throw toNormalizedError(err, '查询支付状态失败')
     } finally {
       paymentLoading.value = false
     }

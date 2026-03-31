@@ -228,6 +228,7 @@ import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
 import { statsApi } from '@/api'
 import { useViewport } from '@/composables/useViewport'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const { isMobile, isTablet } = useViewport()
 
@@ -348,7 +349,7 @@ async function fetchTrafficData() {
       activeUsers: 0
     }
     renderTrafficChart()
-    ElMessage.error(error?.message || '获取流量统计失败')
+    ElMessage.error(extractErrorMessage(error) || '获取流量统计失败')
   } finally {
     loading.value = false
   }

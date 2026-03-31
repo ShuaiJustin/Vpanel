@@ -6,9 +6,11 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
+	"v/internal/commercial/balance"
 	"v/internal/commercial/payment"
 	"v/internal/logger"
 )
@@ -51,13 +53,45 @@ type PaymentResponse struct {
 	ExpireTime string `json:"expire_time"`
 }
 
+func getCreatePaymentErrorResponse(err error) (int, gin.H) {
+	lowerMessage := strings.ToLower(err.Error())
+
+	switch {
+	case errors.Is(err, payment.ErrOrderNotFound):
+		return http.StatusNotFound, gin.H{
+			"code":    "NOT_FOUND",
+			"message": "订单不存在或已失效，请返回订单页重新创建。",
+		}
+	case errors.Is(err, payment.ErrOrderNotPending):
+		return http.StatusBadRequest, gin.H{
+			"code":    "ORDER_NOT_PAYABLE",
+			"message": "当前订单状态不支持继续支付，请返回订单页刷新后重试。",
+		}
+	case errors.Is(err, payment.ErrGatewayNotFound):
+		return http.StatusBadRequest, gin.H{
+			"code":    "PAYMENT_METHOD_UNAVAILABLE",
+			"message": "当前支付方式暂不可用，请选择其他支付方式。",
+		}
+	case strings.Contains(lowerMessage, balance.ErrInsufficientBalance.Error()):
+		return http.StatusBadRequest, gin.H{
+			"code":    "INSUFFICIENT_BALANCE",
+			"message": "余额不足，请先充值后再支付。",
+		}
+	default:
+		return http.StatusBadRequest, gin.H{
+			"code":    "PAYMENT_ERROR",
+			"message": "创建支付失败，请稍后重试。",
+		}
+	}
+}
+
 // CreatePayment creates a payment for an order.
 func (h *PaymentHandler) CreatePayment(c *gin.Context) {
 	var req CreatePaymentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code":    "VALIDATION_ERROR",
-			"message": "Invalid request body",
+			"message": "请求参数不正确，请刷新页面后重试。",
 		})
 		return
 	}
@@ -65,14 +99,8 @@ func (h *PaymentHandler) CreatePayment(c *gin.Context) {
 	result, err := h.paymentService.CreatePayment(c.Request.Context(), req.OrderNo, req.Method, c.ClientIP())
 	if err != nil {
 		h.logger.Error("Failed to create payment", logger.Err(err))
-		message := "Failed to create payment"
-		if errors.Is(err, payment.ErrGatewayNotFound) {
-			message = "Selected payment method is not available"
-		}
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    "PAYMENT_ERROR",
-			"message": message,
-		})
+		status, payload := getCreatePaymentErrorResponse(err)
+		c.JSON(status, payload)
 		return
 	}
 

@@ -3,10 +3,10 @@
     <div class="page-header">
       <div class="page-heading">
         <h1 class="page-title">
-          支付配置
+          支付/充值配置
         </h1>
         <p class="page-subtitle">
-          在商业化管理中统一维护支付宝和微信支付商户参数
+          在商业化管理中统一维护订单支付与余额充值所需的支付宝和微信支付商户参数
         </p>
       </div>
       <div class="page-actions">
@@ -28,7 +28,7 @@
 
     <div class="overview-strip">
       <div class="overview-card">
-        <span class="overview-label">前台在线支付</span>
+        <span class="overview-label">前台在线方式</span>
         <strong class="overview-value">{{ onlineMethodCountLabel }}</strong>
       </div>
       <div class="overview-card">
@@ -50,12 +50,12 @@
         <span class="toolbar-summary">用户前台当前展示：{{ availableMethodsLabel }}</span>
       </div>
       <div class="toolbar-actions">
-        <span class="toolbar-summary">只有支付方式已启用且参数完整时，用户前台才会出现对应入口；余额支付不依赖外部商户参数。</span>
+        <span class="toolbar-summary">只有在线支付方式已启用且参数完整时，用户前台才会出现对应入口；余额支付不依赖外部商户参数，但余额充值依赖在线支付网关。</span>
       </div>
     </div>
 
     <el-alert
-      title="保存后会立即刷新运行中的支付网关"
+      title="保存后会立即刷新运行中的支付/充值网关"
       description="建议先补齐参数，再打开支付方式开关。通知地址和返回地址留空时，系统会按面板公网地址自动拼接默认回调。"
       type="info"
       :closable="false"
@@ -277,6 +277,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { paymentsApi, settingsApi } from '@/api'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -441,7 +442,7 @@ const loadSettings = async () => {
     applySettings(response?.data || {})
     await loadAvailableMethods()
   } catch (error) {
-    ElMessage.error(error.message || '加载支付配置失败')
+    ElMessage.error(extractErrorMessage(error) || '加载支付/充值配置失败')
   } finally {
     loading.value = false
   }
@@ -474,9 +475,9 @@ const saveSettings = async () => {
     const response = await settingsApi.update(payload)
     applySettings(response?.data || {})
     await loadAvailableMethods()
-    ElMessage.success('支付配置已保存')
+    ElMessage.success('支付/充值配置已保存')
   } catch (error) {
-    ElMessage.error(error.message || '保存支付配置失败')
+    ElMessage.error(extractErrorMessage(error) || '保存支付/充值配置失败')
   } finally {
     saving.value = false
   }

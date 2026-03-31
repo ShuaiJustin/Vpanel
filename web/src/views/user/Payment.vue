@@ -113,8 +113,37 @@
               <span>{{ method.label }}</span>
             </button>
           </div>
+          <div
+            v-if="showBalanceOverview"
+            class="balance-overview"
+            :class="{ 'balance-overview--warning': balanceInfoLoaded && !balanceInfoError && !isBalanceEnough }"
+          >
+            <div class="balance-overview__content">
+              <span class="balance-overview__label">当前可用余额</span>
+              <strong class="balance-overview__amount">¥{{ balanceStore.formattedBalance }}</strong>
+              <p class="balance-overview__hint">
+                {{ balanceOverviewHint }}
+              </p>
+            </div>
+            <div class="balance-overview__actions">
+              <el-button
+                link
+                @click="goToBalance"
+              >
+                查看余额
+              </el-button>
+              <el-button
+                v-if="balanceInfoLoaded && (!isBalanceEnough || balanceInfoError)"
+                type="primary"
+                plain
+                @click="goToRecharge"
+              >
+                去充值
+              </el-button>
+            </div>
+          </div>
           <el-empty
-            v-else
+            v-if="paymentMethods.length === 0"
             description="当前没有可用的支付方式"
           />
         </el-card>
@@ -123,6 +152,26 @@
           shadow="never"
           class="summary-card"
         >
+          <div
+            v-if="showRechargePrompt"
+            class="payment-hint"
+          >
+            <el-alert
+              type="warning"
+              show-icon
+              :closable="false"
+              :title="paymentHintTitle"
+              description="充值完成后，可返回当前订单继续完成余额支付。"
+            />
+            <el-button
+              type="primary"
+              plain
+              class="payment-hint__action"
+              @click="goToRecharge"
+            >
+              去充值
+            </el-button>
+          </div>
           <div class="summary-row">
             <span>订单实付</span>
             <span class="summary-value">¥{{ formatPrice(order.pay_amount) }}</span>
@@ -136,7 +185,7 @@
             size="large"
             class="pay-button"
             :loading="paying"
-            :disabled="!selectedMethod"
+            :disabled="!selectedMethod || balancePaymentDisabled"
             @click="handlePay"
           >
             {{ selectedMethod === 'balance' ? '确认余额支付' : '立即支付' }}
@@ -193,18 +242,21 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { CreditCard, Wallet, Coin } from '@element-plus/icons-vue'
 import QRCode from 'qrcode'
 import { useOrderStore } from '@/stores/order'
+import { useBalanceStore } from '@/stores/balance'
 import { paymentsApi } from '@/api'
 import { useViewport } from '@/composables/useViewport'
+import { extractErrorMessage, getErrorCode } from '@/utils/entitlement'
 
 const route = useRoute()
 const router = useRouter()
 const orderStore = useOrderStore()
+const balanceStore = useBalanceStore()
 const { isMobile } = useViewport()
 
 const qrcodeCanvas = ref(null)
@@ -217,6 +269,9 @@ const polling = ref(false)
 const pollProgress = ref(0)
 const paymentMethods = ref([])
 const paymentLink = ref('')
+const insufficientBalanceMessage = ref('')
+const balanceInfoLoaded = ref(false)
+const balanceInfoError = ref('')
 
 const paymentMethodMeta = {
   alipay: { label: '支付宝', icon: CreditCard },
@@ -247,10 +302,90 @@ const selectedMethodLabel = computed(() => {
   const method = paymentMethods.value.find(item => item.value === selectedMethod.value)
   return method?.label || ''
 })
+const hasBalanceMethod = computed(() => paymentMethods.value.some(item => item.value === 'balance'))
+const showBalanceOverview = computed(() => paymentMethods.value.length > 0 && hasBalanceMethod.value)
+const isBalanceEnough = computed(() => Number(balanceStore.balance || 0) >= Number(order.value?.pay_amount || 0))
+const balancePaymentDisabled = computed(() => {
+  return selectedMethod.value === 'balance' && balanceInfoLoaded.value && !balanceInfoError.value && !isBalanceEnough.value
+})
+const balanceOverviewHint = computed(() => {
+  if (balanceInfoError.value) {
+    return balanceInfoError.value
+  }
+
+  if (!balanceInfoLoaded.value) {
+    return '正在加载余额信息...'
+  }
+
+  if (isBalanceEnough.value) {
+    return '当前余额可直接用于支付本订单。'
+  }
+
+  const shortage = Math.max(Number(order.value?.pay_amount || 0) - Number(balanceStore.balance || 0), 0)
+  return `当前余额不足，还差 ¥${formatPrice(shortage)}，请先充值。`
+})
+const paymentHintTitle = computed(() => insufficientBalanceMessage.value || balanceOverviewHint.value)
+const showRechargePrompt = computed(() => {
+  return selectedMethod.value === 'balance' && balanceInfoLoaded.value && (!isBalanceEnough.value || Boolean(insufficientBalanceMessage.value) || Boolean(balanceInfoError.value))
+})
 
 const formatPrice = price => (Number(price || 0) / 100).toFixed(2)
 const getStatusInfo = status => orderStore.getStatusInfo(status)
 const getMethodLabel = method => paymentMethodMeta[method]?.label || method || '-'
+
+const clearPaymentHint = () => {
+  insufficientBalanceMessage.value = ''
+}
+
+const goToBalance = () => {
+  router.push({
+    name: 'user-balance',
+    query: {
+      redirect: route.fullPath
+    }
+  }).catch(error => {
+    console.error('跳转到余额页面失败:', error)
+  })
+}
+
+const isInsufficientBalanceError = error => {
+  const code = getErrorCode(error)
+  const message = extractErrorMessage(error)
+
+  return code === 'INSUFFICIENT_BALANCE' || message.includes('余额不足')
+}
+
+const goToRecharge = () => {
+  router.push({
+    name: 'user-balance',
+    query: {
+      action: 'recharge',
+      redirect: route.fullPath
+    }
+  }).catch(error => {
+    console.error('跳转到余额充值页面失败:', error)
+  })
+}
+
+const fetchBalanceInfo = async () => {
+  if (!hasBalanceMethod.value) {
+    balanceInfoLoaded.value = false
+    balanceInfoError.value = ''
+    return
+  }
+
+  balanceInfoLoaded.value = false
+  balanceInfoError.value = ''
+
+  try {
+    await balanceStore.fetchBalance()
+  } catch (error) {
+    console.warn('加载余额信息失败:', error)
+    balanceInfoError.value = '余额信息暂时无法加载，请点击“查看余额”确认。'
+  } finally {
+    balanceInfoLoaded.value = true
+  }
+}
 
 const fetchPaymentMethods = async () => {
   try {
@@ -276,6 +411,7 @@ const fetchPaymentMethods = async () => {
 const initOrder = async () => {
   loading.value = true
   paymentLink.value = ''
+  clearPaymentHint()
   try {
     const planId = Number(route.query.plan_id)
     const orderId = Number(route.query.order_id)
@@ -298,8 +434,9 @@ const initOrder = async () => {
     }
 
     await fetchPaymentMethods()
+    await fetchBalanceInfo()
   } catch (error) {
-    ElMessage.error(error || '加载订单失败')
+    ElMessage.error(extractErrorMessage(error) || '加载订单失败')
     router.replace({ name: 'user-plans' })
   } finally {
     loading.value = false
@@ -363,6 +500,7 @@ const handlePay = async () => {
     return
   }
 
+  clearPaymentHint()
   paying.value = true
   try {
     const paymentData = await orderStore.createPayment(order.value.order_no, selectedMethod.value)
@@ -382,11 +520,21 @@ const handlePay = async () => {
       query: { payment: 'success', order_no: order.value.order_no }
     })
   } catch (error) {
-    ElMessage.error(error || '创建支付失败')
+    const message = extractErrorMessage(error) || '创建支付失败'
+
+    if (selectedMethod.value === 'balance' && isInsufficientBalanceError(error)) {
+      insufficientBalanceMessage.value = message
+    }
+
+    ElMessage.error(message)
   } finally {
     paying.value = false
   }
 }
+
+watch(selectedMethod, () => {
+  clearPaymentHint()
+})
 
 onMounted(() => {
   initOrder()
@@ -468,6 +616,63 @@ onUnmounted(() => {
   background: rgba(64, 158, 255, 0.12);
 }
 
+.balance-overview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(37, 99, 235, 0.06);
+  border: 1px solid rgba(37, 99, 235, 0.14);
+}
+
+.balance-overview--warning {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.24);
+}
+
+.balance-overview__content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.balance-overview__label {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.balance-overview__amount {
+  font-size: 20px;
+  color: var(--color-text-primary);
+}
+
+.balance-overview__hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.balance-overview__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.payment-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.payment-hint__action {
+  align-self: flex-start;
+}
+
 .summary-row {
   display: flex;
   justify-content: space-between;
@@ -534,6 +739,16 @@ onUnmounted(() => {
 
   .payment-methods {
     grid-template-columns: 1fr;
+  }
+
+  .balance-overview {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .balance-overview__actions,
+  .payment-hint__action {
+    width: 100%;
   }
 }
 </style>

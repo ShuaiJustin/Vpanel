@@ -317,6 +317,7 @@ import { CopyDocument, Plus } from '@element-plus/icons-vue'
 import { couponsApi } from '@/api/index'
 import { useViewport } from '@/composables/useViewport'
 import { copyText } from '@/utils/clipboard'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const { isMobile } = useViewport()
 
@@ -415,7 +416,7 @@ const fetchCoupons = async () => {
     coupons.value = res.coupons || []
     pagination.total = res.total || 0
   } catch (e) {
-    ElMessage.error(e.message || '获取优惠券列表失败')
+    ElMessage.error(extractErrorMessage(e) || '获取优惠券列表失败')
   } finally {
     loading.value = false
   }
@@ -499,7 +500,7 @@ const submitForm = async () => {
     dialogVisible.value = false
     fetchCoupons()
   } catch (e) {
-    ElMessage.error(e.message || '操作失败')
+    ElMessage.error(extractErrorMessage(e) || '操作失败')
   } finally {
     submitting.value = false
   }
@@ -518,7 +519,7 @@ const deleteCoupon = async (coupon) => {
     ElMessage.success('删除成功')
     fetchCoupons()
   } catch (e) {
-    ElMessage.error(e.message || '删除失败')
+    ElMessage.error(extractErrorMessage(e) || '删除失败')
   }
 }
 

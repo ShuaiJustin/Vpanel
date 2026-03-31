@@ -324,6 +324,7 @@ import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import api from '@/api'
 import { useViewport } from '@/composables/useViewport'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const { isMobile, isTablet } = useViewport()
 
@@ -460,7 +461,7 @@ const fetchReports = async () => {
     ])
   } catch (error) {
     console.error('Failed to fetch reports:', error)
-    ElMessage.error(`获取报表数据失败: ${error.message || '未知错误'}`)
+    ElMessage.error(`获取报表数据失败: ${extractErrorMessage(error) || '未知错误'}`)
   }
 }
 

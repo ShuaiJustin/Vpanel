@@ -930,6 +930,7 @@ import {
 } from '@element-plus/icons-vue'
 import api from '@/api/index'
 import { useViewport } from '@/composables/useViewport'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 // 当前标签页
 const activeTab = ref('stats')
@@ -985,7 +986,7 @@ const refreshStats = async () => {
     stats.countryStats = data?.country_stats || []
   } catch (error) {
     console.error('Failed to fetch stats:', error)
-    ElMessage.error(`获取统计数据失败: ${error.message || '未知错误'}`)
+    ElMessage.error(`获取统计数据失败: ${extractErrorMessage(error) || '未知错误'}`)
   } finally {
     statsLoading.value = false
   }

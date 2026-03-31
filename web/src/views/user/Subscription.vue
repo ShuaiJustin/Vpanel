@@ -93,6 +93,7 @@
 
     <!-- 订阅链接卡片 -->
     <el-card
+      v-if="!noEntitlement"
       class="subscription-card"
       shadow="never"
     >
@@ -177,6 +178,27 @@
           </template>
         </el-alert>
       </div>
+    </el-card>
+
+    <el-card
+      v-else
+      class="subscription-card subscription-card--empty"
+      shadow="never"
+    >
+      <el-empty description="当前暂无可用订阅链接">
+        <template #description>
+          <p class="subscription-empty__description">
+            {{ noEntitlementMessage }}
+          </p>
+        </template>
+        <el-button
+          type="primary"
+          @click="goToPlans"
+        >
+          <el-icon><ShoppingCart /></el-icon>
+          购买/续费套餐
+        </el-button>
+      </el-empty>
     </el-card>
 
     <!-- 客户端推荐 -->
@@ -267,6 +289,7 @@ import PauseCard from '@/components/user/PauseCard.vue'
 import QRCode from 'qrcode'
 import { copyText } from '@/utils/clipboard'
 import { useViewport } from '@/composables/useViewport'
+import { extractErrorMessage, getNoEntitlementMessage, isNoEntitlementError } from '@/utils/entitlement'
 
 const router = useRouter()
 const userStore = useUserPortalStore()
@@ -282,6 +305,7 @@ const selectedFormat = ref('clash')
 const showResetDialog = ref(false)
 const resetting = ref(false)
 const loading = ref(false)
+const noEntitlement = ref(false)
 const subscriptionUpdatedAt = ref(null)
 const subscriptionRefreshInFlight = ref(false)
 const SUBSCRIPTION_REFRESH_INTERVAL = 30 * 1000
@@ -332,6 +356,7 @@ const daysUntilExpiry = computed(() => userStore.daysUntilExpiry)
 const trafficUsed = computed(() => userStore.trafficUsed)
 const trafficLimit = computed(() => userStore.trafficLimit)
 const availableNodes = computed(() => userStore.availableNodes || 0)
+const noEntitlementMessage = computed(() => getNoEntitlementMessage('subscription'))
 
 const subscriptionRefreshHint = computed(() => {
   const baseHint = '约每 30 秒自动刷新'
@@ -372,7 +397,6 @@ async function loadSubscription(options = {}) {
   try {
     subscriptionRefreshInFlight.value = true
     await userStore.fetchProfile({ silent })
-    await subscriptionStore.fetchLink()
     if (includePauseStatus) {
       try {
         await pauseStore.fetchPauseStatus()
@@ -380,12 +404,19 @@ async function loadSubscription(options = {}) {
         console.warn('加载暂停状态失败:', pauseError)
       }
     }
+    await subscriptionStore.fetchLink()
+    noEntitlement.value = false
     subscriptionUpdatedAt.value = new Date()
     await generateQRCode()
   } catch (error) {
     console.error('加载订阅失败:', error)
-    if (!silent) {
-      ElMessage.error('加载订阅信息失败')
+    if (isNoEntitlementError(error)) {
+      noEntitlement.value = true
+      subscriptionUpdatedAt.value = null
+      subscriptionStore.clearSubscription()
+    } else if (!silent) {
+      noEntitlement.value = false
+      ElMessage.error(extractErrorMessage(error) || '加载订阅信息失败')
     }
   } finally {
     subscriptionRefreshInFlight.value = false
@@ -452,7 +483,7 @@ async function confirmReset() {
     await generateQRCode()
   } catch (error) {
     console.error('重置订阅失败:', error)
-    ElMessage.error(error?.message || '重置失败')
+    ElMessage.error(extractErrorMessage(error) || '重置失败')
   } finally {
     resetting.value = false
   }
@@ -463,11 +494,15 @@ function goToDownload() {
 }
 
 function goToPlanUpgrade() {
-  router.push({ name: 'user-plan-upgrade' })
+  router.push({ name: 'user-plan-upgrade' }).catch(error => {
+    console.error('跳转到套餐升降级页面失败:', error)
+  })
 }
 
 function goToPlans() {
-  router.push('/user/plans')
+  router.push('/user/plans').catch(error => {
+    console.error('跳转到套餐页面失败:', error)
+  })
 }
 
 function openClientLink(client) {
@@ -577,6 +612,16 @@ onBeforeUnmount(() => {
 .clients-card {
   margin-bottom: 20px;
   border-radius: 8px;
+}
+
+.subscription-card--empty :deep(.el-card__body) {
+  padding: 36px 24px;
+}
+
+.subscription-empty__description {
+  margin: 0;
+  color: var(--color-text-secondary);
+  line-height: 1.8;
 }
 
 .card-header {

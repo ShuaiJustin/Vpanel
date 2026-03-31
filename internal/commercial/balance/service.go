@@ -3,9 +3,15 @@ package balance
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
+	"time"
+
+	"gorm.io/gorm"
 
 	"v/internal/database/repository"
 	"v/internal/logger"
@@ -13,10 +19,14 @@ import (
 
 // Common errors
 var (
-	ErrInsufficientBalance = errors.New("insufficient balance")
-	ErrInvalidAmount       = errors.New("invalid amount")
-	ErrUserNotFound        = errors.New("user not found")
-	ErrNegativeBalance     = errors.New("balance cannot be negative")
+	ErrInsufficientBalance   = errors.New("insufficient balance")
+	ErrInvalidAmount         = errors.New("invalid amount")
+	ErrUserNotFound          = errors.New("user not found")
+	ErrNegativeBalance       = errors.New("balance cannot be negative")
+	ErrRechargeUnavailable   = errors.New("recharge is unavailable")
+	ErrRechargeOrderNotFound = errors.New("recharge order not found")
+	ErrRechargeOrderNotReady = errors.New("recharge order is not pending")
+	ErrInvalidRechargeMethod = errors.New("invalid recharge method")
 )
 
 // Transaction type constants
@@ -27,6 +37,8 @@ const (
 	TxTypeCommission = repository.BalanceTxTypeCommission
 	TxTypeAdjustment = repository.BalanceTxTypeAdjustment
 )
+
+const rechargeOrderExpiration = 30 * time.Minute
 
 // Transaction represents a balance transaction.
 type Transaction struct {
@@ -41,11 +53,38 @@ type Transaction struct {
 	CreatedAt   string `json:"created_at"`
 }
 
+// RechargeOrder represents a balance recharge order.
+type RechargeOrder struct {
+	ID        int64      `json:"id"`
+	OrderNo   string     `json:"order_no"`
+	UserID    int64      `json:"user_id"`
+	Username  string     `json:"username,omitempty"`
+	Amount    int64      `json:"amount"`
+	Method    string     `json:"method"`
+	Status    string     `json:"status"`
+	PaymentNo string     `json:"payment_no"`
+	PaidAt    *time.Time `json:"paid_at,omitempty"`
+	ExpiredAt time.Time  `json:"expired_at"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+type RechargeOrderFilter struct {
+	UserID    *int64
+	Search    string
+	Status    string
+	Method    string
+	StartDate *time.Time
+	EndDate   *time.Time
+	MinAmount *int64
+	MaxAmount *int64
+}
+
 // Service provides balance management operations.
 type Service struct {
-	balanceRepo repository.BalanceRepository
-	logger      logger.Logger
-	mu          sync.Mutex
+	balanceRepo  repository.BalanceRepository
+	rechargeRepo repository.BalanceRechargeOrderRepository
+	logger       logger.Logger
+	mu           sync.Mutex
 }
 
 // NewService creates a new balance service.
@@ -56,6 +95,11 @@ func NewService(balanceRepo repository.BalanceRepository, log logger.Logger) *Se
 	}
 }
 
+// WithRechargeRepository enables recharge order management for the balance service.
+func (s *Service) WithRechargeRepository(rechargeRepo repository.BalanceRechargeOrderRepository) *Service {
+	s.rechargeRepo = rechargeRepo
+	return s
+}
 
 // GetBalance retrieves the current balance for a user.
 func (s *Service) GetBalance(ctx context.Context, userID int64) (int64, error) {
@@ -88,7 +132,6 @@ func (s *Service) Recharge(ctx context.Context, userID int64, amount int64, orde
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Get current balance
 	currentBalance, err := s.balanceRepo.GetBalance(ctx, userID)
 	if err != nil {
 		s.logger.Error("Failed to get balance for recharge", logger.Err(err), logger.F("userID", userID))
@@ -97,13 +140,11 @@ func (s *Service) Recharge(ctx context.Context, userID int64, amount int64, orde
 
 	newBalance := currentBalance + amount
 
-	// Update balance
 	if err := s.balanceRepo.IncrementBalance(ctx, userID, amount); err != nil {
 		s.logger.Error("Failed to increment balance", logger.Err(err), logger.F("userID", userID))
 		return err
 	}
 
-	// Record transaction
 	tx := &repository.BalanceTransaction{
 		UserID:      userID,
 		Type:        TxTypeRecharge,
@@ -132,32 +173,26 @@ func (s *Service) Deduct(ctx context.Context, userID int64, amount int64, orderI
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Get current balance
 	currentBalance, err := s.balanceRepo.GetBalance(ctx, userID)
 	if err != nil {
 		s.logger.Error("Failed to get balance for deduction", logger.Err(err), logger.F("userID", userID))
 		return err
 	}
 
-	// Check sufficient balance
 	if currentBalance < amount {
 		return ErrInsufficientBalance
 	}
 
 	newBalance := currentBalance - amount
-
-	// Ensure non-negative balance
 	if newBalance < 0 {
 		return ErrNegativeBalance
 	}
 
-	// Update balance
 	if err := s.balanceRepo.DecrementBalance(ctx, userID, amount); err != nil {
 		s.logger.Error("Failed to decrement balance", logger.Err(err), logger.F("userID", userID))
 		return err
 	}
 
-	// Record transaction (negative amount for deduction)
 	tx := &repository.BalanceTransaction{
 		UserID:      userID,
 		Type:        TxTypePurchase,
@@ -186,7 +221,6 @@ func (s *Service) Refund(ctx context.Context, userID int64, amount int64, orderI
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Get current balance
 	currentBalance, err := s.balanceRepo.GetBalance(ctx, userID)
 	if err != nil {
 		s.logger.Error("Failed to get balance for refund", logger.Err(err), logger.F("userID", userID))
@@ -195,13 +229,11 @@ func (s *Service) Refund(ctx context.Context, userID int64, amount int64, orderI
 
 	newBalance := currentBalance + amount
 
-	// Update balance
 	if err := s.balanceRepo.IncrementBalance(ctx, userID, amount); err != nil {
 		s.logger.Error("Failed to increment balance for refund", logger.Err(err), logger.F("userID", userID))
 		return err
 	}
 
-	// Record transaction
 	tx := &repository.BalanceTransaction{
 		UserID:      userID,
 		Type:        TxTypeRefund,
@@ -230,7 +262,6 @@ func (s *Service) AddCommission(ctx context.Context, userID int64, amount int64,
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Get current balance
 	currentBalance, err := s.balanceRepo.GetBalance(ctx, userID)
 	if err != nil {
 		s.logger.Error("Failed to get balance for commission", logger.Err(err), logger.F("userID", userID))
@@ -239,13 +270,11 @@ func (s *Service) AddCommission(ctx context.Context, userID int64, amount int64,
 
 	newBalance := currentBalance + amount
 
-	// Update balance
 	if err := s.balanceRepo.IncrementBalance(ctx, userID, amount); err != nil {
 		s.logger.Error("Failed to increment balance for commission", logger.Err(err), logger.F("userID", userID))
 		return err
 	}
 
-	// Record transaction
 	tx := &repository.BalanceTransaction{
 		UserID:      userID,
 		Type:        TxTypeCommission,
@@ -273,7 +302,6 @@ func (s *Service) Adjust(ctx context.Context, userID int64, amount int64, reason
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Get current balance
 	currentBalance, err := s.balanceRepo.GetBalance(ctx, userID)
 	if err != nil {
 		s.logger.Error("Failed to get balance for adjustment", logger.Err(err), logger.F("userID", userID))
@@ -281,13 +309,10 @@ func (s *Service) Adjust(ctx context.Context, userID int64, amount int64, reason
 	}
 
 	newBalance := currentBalance + amount
-
-	// Ensure non-negative balance
 	if newBalance < 0 {
 		return ErrNegativeBalance
 	}
 
-	// Update balance
 	if amount > 0 {
 		if err := s.balanceRepo.IncrementBalance(ctx, userID, amount); err != nil {
 			s.logger.Error("Failed to increment balance for adjustment", logger.Err(err), logger.F("userID", userID))
@@ -300,7 +325,6 @@ func (s *Service) Adjust(ctx context.Context, userID int64, amount int64, reason
 		}
 	}
 
-	// Record transaction
 	tx := &repository.BalanceTransaction{
 		UserID:      userID,
 		Type:        TxTypeAdjustment,
@@ -363,6 +387,119 @@ func (s *Service) GetStatistics(ctx context.Context, userID int64) (totalRecharg
 	return totalRecharge, totalSpent, totalCommission, nil
 }
 
+// ListRechargeOrders retrieves recharge orders with pagination and filters.
+func (s *Service) ListRechargeOrders(ctx context.Context, filter RechargeOrderFilter, page, pageSize int) ([]*RechargeOrder, int64, error) {
+	if s.rechargeRepo == nil {
+		return nil, 0, ErrRechargeUnavailable
+	}
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+
+	offset := (page - 1) * pageSize
+	repoOrders, total, err := s.rechargeRepo.List(ctx, repository.BalanceRechargeOrderFilter{
+		UserID:    filter.UserID,
+		Search:    filter.Search,
+		Status:    filter.Status,
+		Method:    filter.Method,
+		StartDate: filter.StartDate,
+		EndDate:   filter.EndDate,
+		MinAmount: filter.MinAmount,
+		MaxAmount: filter.MaxAmount,
+	}, pageSize, offset)
+	if err != nil {
+		s.logger.Error("Failed to list recharge orders", logger.Err(err))
+		return nil, 0, err
+	}
+
+	orders := make([]*RechargeOrder, len(repoOrders))
+	for i, repoOrder := range repoOrders {
+		orders[i] = s.toRechargeOrder(repoOrder)
+	}
+
+	return orders, total, nil
+}
+
+// CreateRechargeOrder creates a new online recharge order.
+func (s *Service) CreateRechargeOrder(ctx context.Context, userID int64, amount int64, method string) (*RechargeOrder, error) {
+	if s.rechargeRepo == nil {
+		return nil, ErrRechargeUnavailable
+	}
+	if amount <= 0 {
+		return nil, fmt.Errorf("%w: amount must be positive", ErrInvalidAmount)
+	}
+
+	method = strings.TrimSpace(method)
+	if method == "" || method == "balance" {
+		return nil, ErrInvalidRechargeMethod
+	}
+
+	repoOrder := &repository.BalanceRechargeOrder{
+		OrderNo:   generateRechargeOrderNo(),
+		UserID:    userID,
+		Amount:    amount,
+		Method:    method,
+		Status:    repository.BalanceRechargeStatusPending,
+		ExpiredAt: time.Now().Add(rechargeOrderExpiration),
+	}
+
+	if err := s.rechargeRepo.Create(ctx, repoOrder); err != nil {
+		s.logger.Error("Failed to create recharge order", logger.Err(err), logger.F("userID", userID), logger.F("amount", amount), logger.F("method", method))
+		return nil, err
+	}
+
+	return s.toRechargeOrder(repoOrder), nil
+}
+
+// GetRechargeOrderByOrderNo retrieves a recharge order.
+func (s *Service) GetRechargeOrderByOrderNo(ctx context.Context, orderNo string) (*RechargeOrder, error) {
+	if s.rechargeRepo == nil {
+		return nil, ErrRechargeUnavailable
+	}
+
+	repoOrder, err := s.rechargeRepo.GetByOrderNo(ctx, strings.TrimSpace(orderNo))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrRechargeOrderNotFound
+		}
+		return nil, err
+	}
+
+	return s.toRechargeOrder(repoOrder), nil
+}
+
+// GetRechargePaymentDetails returns the payment comparison fields used by payment callbacks.
+func (s *Service) GetRechargePaymentDetails(ctx context.Context, orderNo string) (int64, string, string, error) {
+	order, err := s.GetRechargeOrderByOrderNo(ctx, orderNo)
+	if err != nil {
+		return 0, "", "", err
+	}
+	return order.Amount, order.PaymentNo, order.Status, nil
+}
+
+// MarkRechargePaid marks a recharge order as paid and credits the user's balance.
+func (s *Service) MarkRechargePaid(ctx context.Context, orderNo string, paymentNo string, paidAt time.Time) error {
+	if s.rechargeRepo == nil {
+		return ErrRechargeUnavailable
+	}
+
+	_, err := s.rechargeRepo.MarkPaidAndCredit(ctx, strings.TrimSpace(orderNo), strings.TrimSpace(paymentNo), paidAt, fmt.Sprintf("账户余额充值（订单 %s）", strings.TrimSpace(orderNo)))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrRechargeOrderNotFound
+		}
+		if errors.Is(err, gorm.ErrInvalidData) {
+			return ErrRechargeOrderNotReady
+		}
+		return err
+	}
+
+	return nil
+}
+
 // toTransaction converts a repository transaction to a service transaction.
 func (s *Service) toTransaction(rt *repository.BalanceTransaction) *Transaction {
 	return &Transaction{
@@ -376,4 +513,31 @@ func (s *Service) toTransaction(rt *repository.BalanceTransaction) *Transaction 
 		Operator:    rt.Operator,
 		CreatedAt:   rt.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
+}
+
+func (s *Service) toRechargeOrder(order *repository.BalanceRechargeOrder) *RechargeOrder {
+	return &RechargeOrder{
+		ID:      order.ID,
+		OrderNo: order.OrderNo,
+		UserID:  order.UserID,
+		Username: func() string {
+			if order.User != nil {
+				return order.User.Username
+			}
+			return ""
+		}(),
+		Amount:    order.Amount,
+		Method:    order.Method,
+		Status:    order.Status,
+		PaymentNo: order.PaymentNo,
+		PaidAt:    order.PaidAt,
+		ExpiredAt: order.ExpiredAt,
+		CreatedAt: order.CreatedAt,
+	}
+}
+
+func generateRechargeOrderNo() string {
+	randomBytes := make([]byte, 4)
+	_, _ = rand.Read(randomBytes)
+	return fmt.Sprintf("RCG-%s-%s", time.Now().Format("20060102"), hex.EncodeToString(randomBytes))
 }

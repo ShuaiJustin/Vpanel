@@ -254,6 +254,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useOrderStore } from '@/stores/order'
 import { useViewport } from '@/composables/useViewport'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const route = useRoute()
 const router = useRouter()
@@ -288,9 +289,13 @@ const formatPrice = (price) => (price / 100).toFixed(2)
 const getStatusInfo = (status) => orderStore.getStatusInfo(status)
 const getMethodLabel = (method) => methodLabels[method] || method || '-'
 
-const fetchOrders = () => {
+const fetchOrders = async () => {
   const params = statusFilter.value ? { status: statusFilter.value } : {}
-  orderStore.fetchOrders(params)
+  try {
+    await orderStore.fetchOrders(params)
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error) || '加载订单列表失败')
+  }
 }
 
 const handlePaymentResultNotice = async () => {
@@ -333,8 +338,12 @@ const goToPay = (order) => {
 }
 
 const viewDetail = async (order) => {
-  await orderStore.fetchOrder(order.id)
-  showDetailDialog.value = true
+  try {
+    await orderStore.fetchOrder(order.id)
+    showDetailDialog.value = true
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error) || '加载订单详情失败')
+  }
 }
 
 const handleCancel = (order) => {
@@ -352,7 +361,7 @@ const confirmCancel = async () => {
     showCancelDialog.value = false
     fetchOrders()
   } catch (error) {
-    ElMessage.error(error || '取消失败')
+    ElMessage.error(extractErrorMessage(error) || '取消失败')
   } finally {
     cancelling.value = false
   }

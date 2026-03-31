@@ -178,6 +178,7 @@ func (d *Database) AutoMigrate() error {
 		&repository.CommercialPlan{},
 		&repository.Order{},
 		&repository.BalanceTransaction{},
+		&repository.BalanceRechargeOrder{},
 		&repository.Coupon{},
 		&repository.CouponUsage{},
 		&repository.CommercialInviteCode{},

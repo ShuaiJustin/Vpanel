@@ -663,6 +663,7 @@ import {
 } from "@/composables/useNodePresentation";
 import { copyText } from "@/utils/clipboard";
 import { debounce } from "@/utils/debounce";
+import { extractErrorMessage } from "@/utils/entitlement";
 
 const route = useRoute();
 const router = useRouter();
@@ -1391,7 +1392,7 @@ const submitForm = async () => {
       }
     }
   } catch (e) {
-    ElMessage.error(e.message || "操作失败");
+    ElMessage.error(extractErrorMessage(e) || "操作失败");
   } finally {
     submitting.value = false;
   }
@@ -1402,7 +1403,7 @@ const copyToken = async () => {
     await copyText(createdToken.value);
     ElMessage.success("已复制到剪贴板");
   } catch (error) {
-    ElMessage.error(error.message || "复制失败");
+    ElMessage.error(extractErrorMessage(error) || "复制失败");
   }
 };
 

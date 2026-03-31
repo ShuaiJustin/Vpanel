@@ -116,6 +116,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Download } from '@element-plus/icons-vue'
 import { invoicesApi } from '@/api/index'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 // 状态
 const loading = ref(false)
@@ -158,7 +159,7 @@ const fetchInvoices = async () => {
     invoices.value = response.invoices || []
     pagination.total = response.total || 0
   } catch (error) {
-    ElMessage.error(error.message || '获取发票列表失败')
+    ElMessage.error(extractErrorMessage(error) || '获取发票列表失败')
   } finally {
     loading.value = false
   }
@@ -181,7 +182,7 @@ const downloadInvoice = async (invoice) => {
     window.URL.revokeObjectURL(url)
     ElMessage.success('发票下载成功')
   } catch (error) {
-    ElMessage.error(error.message || '下载失败')
+    ElMessage.error(extractErrorMessage(error) || '下载失败')
   } finally {
     downloading.value = null
   }

@@ -75,4 +75,33 @@ describe('formatApiError', () => {
     expect(formatted.code).toBe('NOT_FOUND')
     expect(formatted.message).toBe('missing')
   })
+
+  it('strips duplicated backend error code prefixes from message', () => {
+    const formatted = formatApiError({
+      response: {
+        status: 403,
+        data: {
+          message: 'FORBIDDEN: 当前无有效订阅或试用',
+        },
+      },
+    })
+
+    expect(formatted.code).toBe('FORBIDDEN')
+    expect(formatted.message).toBe('当前无有效订阅或试用')
+  })
+
+  it('normalizes generic payment creation messages to friendly chinese copy', () => {
+    const formatted = formatApiError({
+      response: {
+        status: 400,
+        data: {
+          code: 'PAYMENT_ERROR',
+          message: 'Failed to create payment',
+        },
+      },
+    })
+
+    expect(formatted.code).toBe('PAYMENT_ERROR')
+    expect(formatted.message).toBe('创建支付失败，请稍后重试。')
+  })
 })

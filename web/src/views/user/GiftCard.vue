@@ -178,6 +178,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Present, Ticket, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { giftCardsApi } from '@/api'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 // 状态
 const loading = ref(false)
@@ -228,7 +229,7 @@ const handleRedeem = async () => {
     // 刷新列表
     fetchGiftCards()
   } catch (error) {
-    const msg = error.response?.data?.error || '兑换失败'
+    const msg = extractErrorMessage(error) || '兑换失败'
     ElMessage.error(msg)
   } finally {
     redeeming.value = false

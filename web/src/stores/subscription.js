@@ -1,6 +1,20 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { subscriptionApi } from '@/api/index'
+import { extractErrorMessage } from '@/utils/entitlement'
+
+function createStoreError(err, fallbackMessage) {
+  const message = extractErrorMessage(err) || fallbackMessage
+
+  if (typeof err === 'object' && err !== null) {
+    return {
+      ...err,
+      message
+    }
+  }
+
+  return { message }
+}
 
 export const useSubscriptionStore = defineStore('subscription', () => {
   // 状态
@@ -29,9 +43,10 @@ export const useSubscriptionStore = defineStore('subscription', () => {
       return response
     } catch (err) {
       console.error('Fetch subscription link error:', err)
+      const normalizedError = createStoreError(err, '获取订阅链接失败')
       subscriptionInfo.value = null
-      error.value = err.response?.data?.error || err.message || '获取订阅链接失败'
-      throw error.value
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -47,9 +62,10 @@ export const useSubscriptionStore = defineStore('subscription', () => {
       return response
     } catch (err) {
       console.error('Fetch subscription info error:', err)
+      const normalizedError = createStoreError(err, '获取订阅信息失败')
       subscriptionInfo.value = null
-      error.value = err.response?.data?.error || err.message || '获取订阅信息失败'
-      throw error.value
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -65,9 +81,10 @@ export const useSubscriptionStore = defineStore('subscription', () => {
       return response
     } catch (err) {
       console.error('Regenerate subscription error:', err)
+      const normalizedError = createStoreError(err, '重新生成订阅链接失败')
       subscriptionInfo.value = null
-      error.value = err.response?.data?.error || err.message || '重新生成订阅链接失败'
-      throw error.value
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }

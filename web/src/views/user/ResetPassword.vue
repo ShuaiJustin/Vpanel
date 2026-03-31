@@ -150,6 +150,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Key, Lock, CircleCheck, CircleClose, ArrowLeft, Loading } from '@element-plus/icons-vue'
 import { useUserPortalStore } from '@/stores/userPortal'
+import { extractErrorMessage, getErrorCode } from '@/utils/entitlement'
 
 const router = useRouter()
 const route = useRoute()
@@ -264,11 +265,11 @@ async function handleReset() {
     resetSuccess.value = true
     ElMessage.success('密码重置成功')
   } catch (error) {
-    const message = error.response?.data?.message || error.message || '重置失败'
+    const message = extractErrorMessage(error) || '重置失败'
     
     // 检查是否是令牌无效错误
-    if (error.response?.data?.code === 'INVALID_TOKEN' || 
-        error.response?.data?.code === 'TOKEN_USED') {
+    const errorCode = getErrorCode(error)
+    if (errorCode === 'INVALID_TOKEN' || errorCode === 'TOKEN_USED') {
       tokenInvalid.value = true
     } else {
       ElMessage.error(message)

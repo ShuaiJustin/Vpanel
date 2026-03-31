@@ -26,15 +26,21 @@ var (
 	ErrAmountMismatch    = errors.New("payment amount mismatch")
 )
 
+// RechargeCallbackHandler provides recharge payment callback handling.
+type RechargeCallbackHandler interface {
+	GetRechargePaymentDetails(ctx context.Context, orderNo string) (amount int64, paymentNo string, status string, err error)
+	MarkRechargePaid(ctx context.Context, orderNo string, paymentNo string, paidAt time.Time) error
+}
+
 // Service provides payment management operations.
 type Service struct {
-	gateways     map[string]PaymentGateway
-	orderService *order.Service
-	balanceSvc   *balance.Service
-	logger       logger.Logger
-	mu           sync.RWMutex
+	gateways        map[string]PaymentGateway
+	orderService    *order.Service
+	balanceSvc      *balance.Service
+	rechargeHandler RechargeCallbackHandler
+	logger          logger.Logger
+	mu              sync.RWMutex
 
-	// Track processed callbacks for idempotency
 	processedCallbacks map[string]bool
 	callbackMu         sync.Mutex
 }
@@ -52,6 +58,12 @@ func NewService(orderService *order.Service, log logger.Logger) *Service {
 // WithBalanceService enables direct balance payments without an external gateway.
 func (s *Service) WithBalanceService(balanceSvc *balance.Service) *Service {
 	s.balanceSvc = balanceSvc
+	return s
+}
+
+// WithRechargeHandler enables recharge callback handling for non-order payments.
+func (s *Service) WithRechargeHandler(handler RechargeCallbackHandler) *Service {
+	s.rechargeHandler = handler
 	return s
 }
 
@@ -103,30 +115,17 @@ func (s *Service) ListGateways() []string {
 
 // CreatePayment creates a payment for an order.
 func (s *Service) CreatePayment(ctx context.Context, orderNo string, method string, clientIP string) (*PaymentRequest, error) {
-	// Get order
 	ord, err := s.orderService.GetByOrderNo(ctx, orderNo)
 	if err != nil {
 		return nil, ErrOrderNotFound
 	}
 
-	// Check order status
 	if ord.Status != order.StatusPending {
 		return nil, ErrOrderNotPending
 	}
 
 	if method == "balance" {
 		return s.createBalancePayment(ctx, ord)
-	}
-
-	// Get gateway
-	gateway, err := s.GetGateway(method)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create payment order
-	if clientIP == "" {
-		clientIP = "127.0.0.1"
 	}
 
 	paymentOrder := &PaymentOrder{
@@ -137,18 +136,39 @@ func (s *Service) CreatePayment(ctx context.Context, orderNo string, method stri
 		ClientIP:    clientIP,
 	}
 
-	// Create payment
-	request, err := gateway.CreatePayment(paymentOrder)
+	return s.CreateGatewayPayment(method, paymentOrder)
+}
+
+// CreateGatewayPayment creates an external gateway payment for a generic payment order.
+func (s *Service) CreateGatewayPayment(method string, paymentOrder *PaymentOrder) (*PaymentRequest, error) {
+	if paymentOrder == nil || strings.TrimSpace(paymentOrder.OrderNo) == "" || paymentOrder.Amount <= 0 {
+		return nil, fmt.Errorf("%w: invalid payment order", ErrPaymentFailed)
+	}
+	if strings.TrimSpace(method) == "balance" {
+		return nil, ErrGatewayNotFound
+	}
+
+	gateway, err := s.GetGateway(method)
+	if err != nil {
+		return nil, err
+	}
+
+	requestOrder := *paymentOrder
+	if requestOrder.ClientIP == "" {
+		requestOrder.ClientIP = "127.0.0.1"
+	}
+
+	request, err := gateway.CreatePayment(&requestOrder)
 	if err != nil {
 		s.logger.Error("Failed to create payment",
 			logger.Err(err),
-			logger.F("orderNo", orderNo),
+			logger.F("orderNo", requestOrder.OrderNo),
 			logger.F("method", method))
 		return nil, fmt.Errorf("%w: %v", ErrPaymentFailed, err)
 	}
 
 	s.logger.Info("Payment created",
-		logger.F("orderNo", orderNo),
+		logger.F("orderNo", requestOrder.OrderNo),
 		logger.F("method", method))
 
 	return request, nil
@@ -190,13 +210,11 @@ func (s *Service) createBalancePayment(ctx context.Context, ord *order.Order) (*
 
 // HandleCallback handles a payment callback.
 func (s *Service) HandleCallback(ctx context.Context, method string, data []byte, signature string) error {
-	// Get gateway
 	gateway, err := s.GetGateway(method)
 	if err != nil {
 		return err
 	}
 
-	// Verify callback
 	result, err := gateway.VerifyCallback(data, signature)
 	if err != nil {
 		s.logger.Error("Failed to verify callback",
@@ -218,56 +236,106 @@ func (s *Service) HandleCallback(ctx context.Context, method string, data []byte
 		return ErrInvalidCallback
 	}
 
+	callbackKey := fmt.Sprintf("%s:%s", method, paymentNo)
+
 	ord, err := s.orderService.GetByOrderNo(ctx, orderNo)
-	if err != nil {
+	if err == nil {
+		if result.Amount > 0 && ord.PayAmount != result.Amount {
+			s.logger.Warn("Payment callback amount mismatch",
+				logger.F("orderNo", orderNo),
+				logger.F("expected", ord.PayAmount),
+				logger.F("actual", result.Amount))
+			return ErrAmountMismatch
+		}
+
+		if ord.PaymentNo == paymentNo && (ord.Status == order.StatusPaid || ord.Status == order.StatusCompleted) {
+			s.logger.Info("Duplicate callback ignored after persisted payment lookup",
+				logger.F("orderNo", orderNo),
+				logger.F("paymentNo", paymentNo))
+			return nil
+		}
+
+		if s.markCallbackProcessing(callbackKey, paymentNo) {
+			return nil
+		}
+
+		if err := s.orderService.MarkPaid(ctx, orderNo, paymentNo); err != nil {
+			s.logger.Error("Failed to mark order as paid",
+				logger.Err(err),
+				logger.F("orderNo", orderNo))
+			s.unmarkCallbackProcessing(callbackKey)
+			return err
+		}
+
+		s.logger.Info("Payment callback processed",
+			logger.F("orderNo", orderNo),
+			logger.F("paymentNo", paymentNo),
+			logger.F("amount", result.Amount))
+		return nil
+	}
+
+	if s.rechargeHandler == nil {
 		return ErrOrderNotFound
 	}
 
-	if result.Amount > 0 && ord.PayAmount != result.Amount {
-		s.logger.Warn("Payment callback amount mismatch",
+	amount, persistedPaymentNo, status, rechargeErr := s.rechargeHandler.GetRechargePaymentDetails(ctx, orderNo)
+	if rechargeErr != nil {
+		return ErrOrderNotFound
+	}
+
+	if result.Amount > 0 && amount != result.Amount {
+		s.logger.Warn("Recharge callback amount mismatch",
 			logger.F("orderNo", orderNo),
-			logger.F("expected", ord.PayAmount),
+			logger.F("expected", amount),
 			logger.F("actual", result.Amount))
 		return ErrAmountMismatch
 	}
 
-	if ord.PaymentNo == paymentNo && (ord.Status == order.StatusPaid || ord.Status == order.StatusCompleted) {
-		s.logger.Info("Duplicate callback ignored after persisted payment lookup",
+	if persistedPaymentNo == paymentNo && status == order.StatusPaid {
+		s.logger.Info("Duplicate recharge callback ignored after persisted payment lookup",
 			logger.F("orderNo", orderNo),
 			logger.F("paymentNo", paymentNo))
 		return nil
 	}
 
-	// Check for duplicate callback (idempotency)
-	callbackKey := fmt.Sprintf("%s:%s", method, paymentNo)
-	s.callbackMu.Lock()
-	if s.processedCallbacks[callbackKey] {
-		s.callbackMu.Unlock()
-		s.logger.Info("Duplicate callback ignored",
-			logger.F("paymentNo", paymentNo))
-		return nil // Idempotent - return success
+	if s.markCallbackProcessing(callbackKey, paymentNo) {
+		return nil
 	}
-	s.processedCallbacks[callbackKey] = true
-	s.callbackMu.Unlock()
 
-	// Mark order as paid
-	if err := s.orderService.MarkPaid(ctx, orderNo, paymentNo); err != nil {
-		s.logger.Error("Failed to mark order as paid",
+	if err := s.rechargeHandler.MarkRechargePaid(ctx, orderNo, paymentNo, result.PaidAt); err != nil {
+		s.logger.Error("Failed to mark recharge order as paid",
 			logger.Err(err),
 			logger.F("orderNo", orderNo))
-		// Remove from processed to allow retry
-		s.callbackMu.Lock()
-		delete(s.processedCallbacks, callbackKey)
-		s.callbackMu.Unlock()
+		s.unmarkCallbackProcessing(callbackKey)
 		return err
 	}
 
-	s.logger.Info("Payment callback processed",
+	s.logger.Info("Recharge payment callback processed",
 		logger.F("orderNo", orderNo),
 		logger.F("paymentNo", paymentNo),
 		logger.F("amount", result.Amount))
 
 	return nil
+}
+
+func (s *Service) markCallbackProcessing(callbackKey string, paymentNo string) bool {
+	s.callbackMu.Lock()
+	defer s.callbackMu.Unlock()
+
+	if s.processedCallbacks[callbackKey] {
+		s.logger.Info("Duplicate callback ignored",
+			logger.F("paymentNo", paymentNo))
+		return true
+	}
+
+	s.processedCallbacks[callbackKey] = true
+	return false
+}
+
+func (s *Service) unmarkCallbackProcessing(callbackKey string) {
+	s.callbackMu.Lock()
+	defer s.callbackMu.Unlock()
+	delete(s.processedCallbacks, callbackKey)
 }
 
 // QueryPayment queries the payment status.
@@ -291,24 +359,20 @@ func (s *Service) QueryPayment(ctx context.Context, method string, paymentNo str
 
 // ProcessRefund processes a refund for an order.
 func (s *Service) ProcessRefund(ctx context.Context, orderID int64, amount int64, reason string) (*RefundResult, error) {
-	// Get order
 	ord, err := s.orderService.GetByID(ctx, orderID)
 	if err != nil {
 		return nil, ErrOrderNotFound
 	}
 
-	// Check if order has payment info
 	if ord.PaymentNo == "" || ord.PaymentMethod == "" {
 		return nil, fmt.Errorf("order has no payment information")
 	}
 
-	// Get gateway
 	gateway, err := s.GetGateway(ord.PaymentMethod)
 	if err != nil {
 		return nil, err
 	}
 
-	// Process refund
 	result, err := gateway.Refund(ord.PaymentNo, amount, reason)
 	if err != nil {
 		s.logger.Error("Failed to process refund",
@@ -325,12 +389,10 @@ func (s *Service) ProcessRefund(ctx context.Context, orderID int64, amount int64
 		return result, nil
 	}
 
-	// Update order status
 	if err := s.orderService.UpdateStatus(ctx, orderID, order.StatusRefunded); err != nil {
 		s.logger.Error("Failed to update order status after refund",
 			logger.Err(err),
 			logger.F("orderID", orderID))
-		// Refund was successful, just log the error
 	}
 
 	s.logger.Info("Refund processed",

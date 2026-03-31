@@ -1174,6 +1174,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Delete, MoreFilled } from '@element-plus/icons-vue'
 import api from '@/api/index'
 import QRCode from 'qrcode'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const route = useRoute()
 const router = useRouter()
@@ -1758,7 +1759,7 @@ const runBatchOperation = async (operation) => {
     await loadInbounds()
   } catch (error) {
     console.error(`Failed to batch ${operation} inbounds:`, error)
-    ElMessage.error(`批量${actionText}失败: ` + (error?.message || '未知错误'))
+    ElMessage.error(`批量${actionText}失败: ${extractErrorMessage(error) || '未知错误'}`)
   } finally {
     batchLoading.value = ''
   }
@@ -2402,7 +2403,7 @@ const saveInbound = async () => {
       }
     } catch (error) {
       console.error('Failed to save inbound:', error)
-      ElMessage.error('添加入站失败: ' + (error?.message || '未知错误'))
+      ElMessage.error(`添加入站失败: ${extractErrorMessage(error) || '未知错误'}`)
     } finally {
       submitting.value = false
     }
@@ -2425,7 +2426,7 @@ const editInbound = async (row) => {
     validateTrojanForm()
   } catch (error) {
     console.error('加载入站详情失败:', error)
-    ElMessage.error('加载入站详情失败: ' + (error?.message || '未知错误'))
+    ElMessage.error(`加载入站详情失败: ${extractErrorMessage(error) || '未知错误'}`)
     addInboundDialogVisible.value = false
   } finally {
     dialogLoading.value = false
@@ -2451,7 +2452,7 @@ const toggleStatus = (row) => {
       }
     } catch (error) {
       console.error(`Failed to ${action} inbound:`, error)
-      ElMessage.error(`${action}入站失败: ` + error.message)
+      ElMessage.error(`${action}入站失败: ${extractErrorMessage(error) || '未知错误'}`)
     }
   }).catch(() => {
     // 取消操作
@@ -2476,7 +2477,7 @@ const deleteInbound = (row) => {
       }
     } catch (error) {
       console.error('Failed to delete inbound:', error)
-      ElMessage.error('删除入站失败: ' + error.message)
+      ElMessage.error(`删除入站失败: ${extractErrorMessage(error) || '未知错误'}`)
     }
   }).catch(() => {
     // 取消删除
@@ -2528,7 +2529,7 @@ const copyLink = async (row) => {
     ElMessage.success('链接已复制到剪贴板');
   } catch (error) {
     console.error('复制链接失败:', error);
-    ElMessage.error('复制链接失败: ' + error.message);
+    ElMessage.error(`复制链接失败: ${extractErrorMessage(error) || '未知错误'}`);
   }
 }
 
@@ -2696,12 +2697,12 @@ const showQrCode = async (row) => {
         qrElement.appendChild(canvas)
       }).catch(err => {
         console.error('QRCode generation error:', err)
-        ElMessage.error('生成二维码失败: ' + err.message)
+        ElMessage.error(`生成二维码失败: ${extractErrorMessage(err) || '未知错误'}`)
       })
     }
   } catch (error) {
     console.error('Failed to show QR code:', error)
-    ElMessage.error('生成二维码失败: ' + error.message)
+    ElMessage.error(`生成二维码失败: ${extractErrorMessage(error) || '未知错误'}`)
   }
 }
 
@@ -2753,7 +2754,7 @@ const downloadQrCode = async () => {
     ElMessage.success('二维码已下载')
   } catch (error) {
     console.error('Failed to download QR code:', error)
-    ElMessage.error('下载二维码失败: ' + error.message)
+    ElMessage.error(`下载二维码失败: ${extractErrorMessage(error) || '未知错误'}`)
   }
 }
 </script>

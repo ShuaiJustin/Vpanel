@@ -112,10 +112,12 @@
 <script setup>
 import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { Star, Check } from '@element-plus/icons-vue'
 import { usePlanStore } from '@/stores/plan'
 import { useCurrencyStore } from '@/stores/currency'
 import CurrencySelector from '@/components/CurrencySelector.vue'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const router = useRouter()
 const planStore = usePlanStore()
@@ -163,11 +165,18 @@ const selectPlan = (plan) => {
   })
 }
 
+const loadPlans = async () => {
+  try {
+    await currencyStore.initialize()
+    await planStore.fetchPlans()
+  } catch (error) {
+    console.error('加载套餐失败:', error)
+    ElMessage.error(extractErrorMessage(error) || '加载套餐列表失败')
+  }
+}
+
 onMounted(async () => {
-  // 初始化货币
-  await currencyStore.initialize()
-  // 获取套餐
-  planStore.fetchPlans()
+  await loadPlans()
 })
 </script>
 

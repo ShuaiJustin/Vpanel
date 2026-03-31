@@ -276,6 +276,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { DocumentCopy, RefreshRight, Search } from '@element-plus/icons-vue'
 import { subscriptionApi } from '@/api/index'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const route = useRoute()
 
@@ -568,7 +569,7 @@ const fetchSubscriptions = async () => {
     total.value = expectedTotal || dedupedRows.length
   } catch (error) {
     console.error('获取订阅列表失败:', error)
-    ElMessage.error('获取订阅列表失败')
+    ElMessage.error(extractErrorMessage(error) || '获取订阅列表失败')
     subscriptions.value = []
     total.value = 0
   } finally {
@@ -594,7 +595,7 @@ const handleResetStats = async (row) => {
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') {
       console.error('重置统计失败:', error)
-      ElMessage.error('重置统计失败')
+      ElMessage.error(extractErrorMessage(error) || '重置统计失败')
     }
   }
 }
@@ -617,7 +618,7 @@ const handleRevoke = async (row) => {
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') {
       console.error('撤销订阅失败:', error)
-      ElMessage.error('撤销订阅失败')
+      ElMessage.error(extractErrorMessage(error) || '撤销订阅失败')
     }
   }
 }

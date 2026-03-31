@@ -161,6 +161,7 @@ import {
   Check, VideoPlay, ShoppingCart, InfoFilled 
 } from '@element-plus/icons-vue'
 import { getTrialStatus, activateTrial } from '@/api/modules/portal/trial'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const router = useRouter()
 
@@ -217,7 +218,9 @@ function formatTraffic(bytes) {
 }
 
 function goToPlans() {
-  router.push('/user/plans')
+  router.push('/user/plans').catch(error => {
+    console.error('跳转到套餐页面失败:', error)
+  })
 }
 
 async function fetchTrialStatus() {
@@ -247,7 +250,7 @@ async function handleActivate() {
     canActivate.value = false
     ElMessage.success('试用已激活！')
   } catch (error) {
-    ElMessage.error(error.message || '激活失败')
+    ElMessage.error(extractErrorMessage(error) || '激活失败')
   } finally {
     activating.value = false
   }

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { invitesApi } from '@/api/index'
+import { toNormalizedError } from '@/utils/entitlement'
 
 export const useInviteStore = defineStore('invite', () => {
   // 状态
@@ -56,8 +57,9 @@ export const useInviteStore = defineStore('invite', () => {
       return response
     } catch (err) {
       console.error('Fetch invite code error:', err)
-      error.value = err.message || '获取邀请码失败'
-      throw error.value
+      const normalizedError = toNormalizedError(err, '获取邀请码失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -78,8 +80,9 @@ export const useInviteStore = defineStore('invite', () => {
       return response
     } catch (err) {
       console.error('Fetch referrals error:', err)
-      error.value = err.message || '获取推荐列表失败'
-      throw error.value
+      const normalizedError = toNormalizedError(err, '获取推荐列表失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -95,8 +98,9 @@ export const useInviteStore = defineStore('invite', () => {
       return response
     } catch (err) {
       console.error('Fetch stats error:', err)
-      error.value = err.message || '获取邀请统计失败'
-      throw error.value
+      const normalizedError = toNormalizedError(err, '获取邀请统计失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -117,8 +121,9 @@ export const useInviteStore = defineStore('invite', () => {
       return response
     } catch (err) {
       console.error('Fetch commissions error:', err)
-      error.value = err.message || '获取佣金列表失败'
-      throw error.value
+      const normalizedError = toNormalizedError(err, '获取佣金列表失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -134,8 +139,9 @@ export const useInviteStore = defineStore('invite', () => {
       return response
     } catch (err) {
       console.error('Fetch earnings error:', err)
-      error.value = err.message || '获取收益汇总失败'
-      throw error.value
+      const normalizedError = toNormalizedError(err, '获取收益汇总失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }

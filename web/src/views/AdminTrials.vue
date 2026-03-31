@@ -222,6 +222,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Timer, Refresh } from '@element-plus/icons-vue'
 import api from '@/api'
 import { useViewport } from '@/composables/useViewport'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const { isMobile } = useViewport()
 
@@ -296,7 +297,7 @@ const searchUserTrial = async () => {
     searchResult.value = response?.trial || null
   } catch (error) {
     if (error.status === 404) searchResult.value = null
-    else ElMessage.error(error.message || '查询失败')
+    else ElMessage.error(extractErrorMessage(error) || '查询失败')
   } finally {
     searching.value = false
   }
@@ -310,7 +311,7 @@ const expireTrials = async () => {
     ElMessage.success(`已过期 ${response?.expired_count || 0} 个试用`)
     fetchStats()
   } catch (error) {
-    if (error !== 'cancel') ElMessage.error(error.message || '操作失败')
+    if (error !== 'cancel') ElMessage.error(extractErrorMessage(error) || '操作失败')
   } finally {
     expiring.value = false
   }
@@ -331,7 +332,7 @@ const submitGrant = async () => {
     grantDialogVisible.value = false
     fetchStats()
   } catch (error) {
-    ElMessage.error(error.message || '授予失败')
+    ElMessage.error(extractErrorMessage(error) || '授予失败')
   } finally {
     granting.value = false
   }

@@ -15,6 +15,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
+	"v/internal/commercial/balance"
 	"v/internal/commercial/order"
 	"v/internal/commercial/payment"
 	"v/internal/database"
@@ -87,9 +88,11 @@ func setupPaymentTestRouter(db *gorm.DB) (*gin.Engine, *payment.Service, *order.
 	log := logger.NewNopLogger()
 	orderRepo := repository.NewOrderRepository(db)
 	planRepo := repository.NewPlanRepository(db)
+	balanceRepo := repository.NewBalanceRepository(db)
 
 	orderService := order.NewService(orderRepo, planRepo, log, nil)
-	paymentService := payment.NewService(orderService, log)
+	balanceService := balance.NewService(balanceRepo, log)
+	paymentService := payment.NewService(orderService, log).WithBalanceService(balanceService)
 
 	// Register mock gateway
 	mockGateway := &MockPaymentGateway{name: "mock", shouldSucceed: true}
@@ -300,8 +303,15 @@ func TestPaymentInvalidOrder(t *testing.T) {
 
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400 for invalid order, got %d", w.Code)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404 for invalid order, got %d", w.Code)
+	}
+
+	var response map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &response)
+
+	if response["message"] != "订单不存在或已失效，请返回订单页重新创建。" {
+		t.Errorf("Expected friendly order not found message, got %v", response["message"])
 	}
 }
 
@@ -335,5 +345,57 @@ func TestPaymentInvalidMethod(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("Expected status 400 for invalid method, got %d", w.Code)
+	}
+
+	var response map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &response)
+
+	if response["code"] != "PAYMENT_METHOD_UNAVAILABLE" {
+		t.Errorf("Expected PAYMENT_METHOD_UNAVAILABLE code, got %v", response["code"])
+	}
+
+	if response["message"] != "当前支付方式暂不可用，请选择其他支付方式。" {
+		t.Errorf("Expected friendly invalid method message, got %v", response["message"])
+	}
+}
+
+func TestBalancePaymentInsufficientBalance(t *testing.T) {
+	db := setupPaymentTestDB(t)
+	router, _, orderService := setupPaymentTestRouter(db)
+
+	testPlan := createOrderTestPlan(db, "Test Plan", 1000, 30)
+	testUser := createOrderTestUser(db, "testuser")
+
+	ctx := context.Background()
+	createdOrder, _ := orderService.Create(ctx, &order.CreateOrderRequest{
+		UserID: int64(testUser.ID),
+		PlanID: int64(testPlan.ID),
+	})
+
+	body := map[string]interface{}{
+		"order_no": createdOrder.OrderNo,
+		"method":   "balance",
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/payments/create", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400 for insufficient balance, got %d", w.Code)
+	}
+
+	var response map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &response)
+
+	if response["code"] != "INSUFFICIENT_BALANCE" {
+		t.Errorf("Expected INSUFFICIENT_BALANCE code, got %v", response["code"])
+	}
+
+	if response["message"] != "余额不足，请先充值后再支付。" {
+		t.Errorf("Expected friendly insufficient balance message, got %v", response["message"])
 	}
 }

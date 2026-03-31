@@ -5,6 +5,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { tickets as ticketsApi } from '@/api/modules/portal'
+import { toNormalizedError } from '@/utils/entitlement'
 
 export const usePortalTicketsStore = defineStore('portalTickets', () => {
   // 状态
@@ -50,8 +51,9 @@ export const usePortalTicketsStore = defineStore('portalTickets', () => {
       total.value = response.total || 0
       return response
     } catch (err) {
-      error.value = err.message || '获取工单列表失败'
-      throw err
+      const normalizedError = toNormalizedError(err, '获取工单列表失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -65,8 +67,9 @@ export const usePortalTicketsStore = defineStore('portalTickets', () => {
       currentTicket.value = response
       return response
     } catch (err) {
-      error.value = err.message || '获取工单详情失败'
-      throw err
+      const normalizedError = toNormalizedError(err, '获取工单详情失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -82,8 +85,9 @@ export const usePortalTicketsStore = defineStore('portalTickets', () => {
       total.value++
       return response
     } catch (err) {
-      error.value = err.message || '创建工单失败'
-      throw err
+      const normalizedError = toNormalizedError(err, '创建工单失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -111,8 +115,9 @@ export const usePortalTicketsStore = defineStore('portalTickets', () => {
       }
       return response
     } catch (err) {
-      error.value = err.message || '回复工单失败'
-      throw err
+      const normalizedError = toNormalizedError(err, '回复工单失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -134,8 +139,9 @@ export const usePortalTicketsStore = defineStore('portalTickets', () => {
         tickets.value[ticketIndex].status = 'closed'
       }
     } catch (err) {
-      error.value = err.message || '关闭工单失败'
-      throw err
+      const normalizedError = toNormalizedError(err, '关闭工单失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -157,8 +163,9 @@ export const usePortalTicketsStore = defineStore('portalTickets', () => {
         tickets.value[ticketIndex].status = 'open'
       }
     } catch (err) {
-      error.value = err.message || '重新打开工单失败'
-      throw err
+      const normalizedError = toNormalizedError(err, '重新打开工单失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }

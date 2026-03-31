@@ -221,6 +221,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Check } from '@element-plus/icons-vue'
 import { planChangeApi, plansApi } from '@/api'
 import { useUserPortalStore } from '@/stores/userPortal'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const router = useRouter()
 const userStore = useUserPortalStore()
@@ -292,7 +293,7 @@ const selectPlan = async (plan) => {
     })
     changeResult.value = response.data
   } catch (error) {
-    ElMessage.error(error.response?.data?.message || '计算价格失败')
+    ElMessage.error(extractErrorMessage(error) || '计算价格失败')
     selectedPlan.value = null
   }
 }
@@ -320,7 +321,7 @@ const confirmUpgrade = async () => {
     router.push({ name: 'UserSubscription' })
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || '升级失败')
+      ElMessage.error(extractErrorMessage(error) || '升级失败')
     }
   } finally {
     submitting.value = false
@@ -346,7 +347,7 @@ const confirmDowngrade = async () => {
     cancelSelection()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || '降级预约失败')
+      ElMessage.error(extractErrorMessage(error) || '降级预约失败')
     }
   } finally {
     submitting.value = false
@@ -361,7 +362,7 @@ const cancelDowngrade = async () => {
     pendingDowngrade.value = null
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || '取消失败')
+      ElMessage.error(extractErrorMessage(error) || '取消失败')
     }
   }
 }
@@ -401,7 +402,7 @@ const fetchData = async () => {
     // 获取待执行的降级
     await fetchPendingDowngrade()
   } catch (error) {
-    ElMessage.error('加载数据失败')
+    ElMessage.error(extractErrorMessage(error) || '加载数据失败')
   } finally {
     loading.value = false
   }

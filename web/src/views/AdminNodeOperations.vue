@@ -278,6 +278,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import { useNodeStore } from '@/stores/node'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const router = useRouter()
 const nodeStore = useNodeStore()
@@ -418,7 +419,7 @@ const fetchNodes = async () => {
       region: filters.region || undefined
     })
   } catch (error) {
-    ElMessage.error(error.message || '获取节点运维列表失败')
+    ElMessage.error(extractErrorMessage(error) || '获取节点运维列表失败')
   }
 }
 

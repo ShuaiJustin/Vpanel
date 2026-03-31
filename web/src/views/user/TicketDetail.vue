@@ -203,6 +203,7 @@ import {
   ArrowLeft, Loading, Calendar, Clock, Document, Upload 
 } from '@element-plus/icons-vue'
 import { usePortalTicketsStore } from '@/stores/portalTickets'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const router = useRouter()
 const route = useRoute()
@@ -306,7 +307,7 @@ async function loadTicket() {
   try {
     ticket.value = await ticketsStore.fetchTicket(id)
   } catch (error) {
-    ElMessage.error('加载工单失败')
+    ElMessage.error(extractErrorMessage(error) || '加载工单失败')
     ticket.value = null
   } finally {
     loading.value = false
@@ -332,7 +333,7 @@ async function submitReply() {
     await loadTicket()
   } catch (error) {
     if (error !== false) {
-      ElMessage.error(error.message || '提交失败')
+      ElMessage.error(extractErrorMessage(error) || '提交失败')
     }
   } finally {
     submitting.value = false
@@ -356,7 +357,7 @@ async function closeTicket() {
     await loadTicket()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('操作失败')
+      ElMessage.error(extractErrorMessage(error) || '操作失败')
     }
   }
 }

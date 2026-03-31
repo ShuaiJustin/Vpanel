@@ -12,7 +12,7 @@ export const paymentsApi = {
    * @param {string} data.method - 支付方式 (alipay, wechat, balance)
    * @returns {Promise<Object>} 支付信息（包含支付URL或二维码）
    */
-  create: (data) => api.post('/payments/create', data),
+  create: (data) => api.post('/payments/create', data, { silent: true }),
 
   /**
    * 查询支付状态

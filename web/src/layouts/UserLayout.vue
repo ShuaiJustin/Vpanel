@@ -66,6 +66,10 @@
             </div>
             <template #dropdown>
               <el-dropdown-menu>
+                <el-dropdown-item command="balance">
+                  <el-icon><Coin /></el-icon>
+                  我的余额
+                </el-dropdown-item>
                 <el-dropdown-item command="settings">
                   <el-icon><Setting /></el-icon>
                   个人设置
@@ -190,6 +194,14 @@
         
         <div class="mobile-nav">
           <router-link
+            to="/user/balance"
+            class="mobile-nav-item"
+            @click="showMobileMenu = false"
+          >
+            <el-icon><Coin /></el-icon>
+            <span>我的余额</span>
+          </router-link>
+          <router-link
             to="/user/settings"
             class="mobile-nav-item"
             @click="showMobileMenu = false"
@@ -243,6 +255,7 @@ import {
   Download,
   DataAnalysis,
   Bell,
+  Coin,
   Setting,
   ArrowDown,
   Menu,
@@ -308,6 +321,9 @@ const goToAnnouncements = () => {
 
 const handleCommand = (command) => {
   switch (command) {
+    case 'balance':
+      router.push('/user/balance')
+      break
     case 'settings':
       router.push('/user/settings')
       break

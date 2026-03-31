@@ -289,6 +289,7 @@ import { CopyDocument, Download } from '@element-plus/icons-vue'
 import { useInviteStore } from '@/stores/invite'
 import QRCode from 'qrcode'
 import { copyText } from '@/utils/clipboard'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const inviteStore = useInviteStore()
 
@@ -356,21 +357,33 @@ const downloadQR = () => {
   ElMessage.success('二维码已下载')
 }
 
-const handleReferralPageChange = (page) => {
+const handleReferralPageChange = async (page) => {
   inviteStore.setReferralPage(page)
-  inviteStore.fetchReferrals()
+  try {
+    await inviteStore.fetchReferrals()
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error) || '加载推荐列表失败')
+  }
 }
 
-const handleCommissionPageChange = (page) => {
+const handleCommissionPageChange = async (page) => {
   inviteStore.setCommissionPage(page)
-  inviteStore.fetchCommissions()
+  try {
+    await inviteStore.fetchCommissions()
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error) || '加载佣金列表失败')
+  }
 }
 
 onMounted(async () => {
-  await inviteStore.fetchAll()
-  await inviteStore.fetchReferrals()
-  await inviteStore.fetchCommissions()
-  generateQRCode()
+  try {
+    await inviteStore.fetchAll()
+    await inviteStore.fetchReferrals()
+    await inviteStore.fetchCommissions()
+    generateQRCode()
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error) || '加载邀请信息失败')
+  }
 })
 </script>
 

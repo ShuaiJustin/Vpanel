@@ -5,6 +5,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { stats as statsApi } from '@/api/modules/portal'
+import { toNormalizedError } from '@/utils/entitlement'
 
 export const usePortalStatsStore = defineStore('portalStats', () => {
   // 状态
@@ -79,8 +80,9 @@ export const usePortalStatsStore = defineStore('portalStats', () => {
       return data
     } catch (err) {
       console.error('获取统计数据失败:', err)
-      error.value = err?.message || '获取统计数据失败'
-      throw err
+      const normalizedError = toNormalizedError(err, '获取统计数据失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -99,9 +101,10 @@ export const usePortalStatsStore = defineStore('portalStats', () => {
       trafficStats.value = Array.isArray(data?.daily) ? data.daily : []
       return response
     } catch (err) {
-      error.value = err.message || '获取流量统计失败'
+      const normalizedError = toNormalizedError(err, '获取流量统计失败')
+      error.value = normalizedError.message
       trafficStats.value = []
-      throw err
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -118,9 +121,10 @@ export const usePortalStatsStore = defineStore('portalStats', () => {
       usageStats.value = response.data || response
       return response
     } catch (err) {
-      error.value = err.message || '获取使用统计失败'
+      const normalizedError = toNormalizedError(err, '获取使用统计失败')
+      error.value = normalizedError.message
       usageStats.value = { by_node: [], by_protocol: [] }
-      throw err
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -134,9 +138,10 @@ export const usePortalStatsStore = defineStore('portalStats', () => {
       dashboardStats.value = response
       return response
     } catch (err) {
-      error.value = err.message || '获取仪表板统计失败'
+      const normalizedError = toNormalizedError(err, '获取仪表板统计失败')
+      error.value = normalizedError.message
       dashboardStats.value = null
-      throw err
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -159,8 +164,9 @@ export const usePortalStatsStore = defineStore('portalStats', () => {
       document.body.removeChild(link)
       window.URL.revokeObjectURL(url)
     } catch (err) {
-      error.value = err.message || '导出统计数据失败'
-      throw err
+      const normalizedError = toNormalizedError(err, '导出统计数据失败')
+      error.value = normalizedError.message
+      throw normalizedError
     }
   }
 

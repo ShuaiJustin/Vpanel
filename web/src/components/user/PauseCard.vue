@@ -148,6 +148,7 @@ import {
   VideoPause, VideoPlay, Clock, CircleCheck, CircleCloseFilled
 } from '@element-plus/icons-vue'
 import { usePauseStore } from '@/stores/pause'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const pauseStore = usePauseStore()
 
@@ -195,7 +196,7 @@ async function handlePause() {
     showPauseDialog.value = false
     ElMessage.success('订阅已暂停')
   } catch (error) {
-    ElMessage.error(error.message || '暂停失败')
+    ElMessage.error(extractErrorMessage(error) || '暂停失败')
   } finally {
     pausing.value = false
   }
@@ -207,14 +208,16 @@ async function handleResume() {
     await pauseStore.resume()
     ElMessage.success('订阅已恢复')
   } catch (error) {
-    ElMessage.error(error.message || '恢复失败')
+    ElMessage.error(extractErrorMessage(error) || '恢复失败')
   } finally {
     resuming.value = false
   }
 }
 
 onMounted(() => {
-  pauseStore.fetchPauseStatus()
+  pauseStore.fetchPauseStatus().catch(error => {
+    console.warn('加载暂停状态失败:', error)
+  })
 })
 </script>
 

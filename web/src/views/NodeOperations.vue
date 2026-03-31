@@ -529,6 +529,7 @@ import {
 } from '@/composables/useNodePresentation'
 import { useViewport } from '@/composables/useViewport'
 import { useNodeStore } from '@/stores/node'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const route = useRoute()
 const router = useRouter()
@@ -744,7 +745,7 @@ const fetchNode = async () => {
   try {
     await nodeStore.fetchNode(route.params.id)
   } catch (error) {
-    ElMessage.error(error.message || '获取节点运维信息失败')
+    ElMessage.error(extractErrorMessage(error) || '获取节点运维信息失败')
   } finally {
     loading.value = false
   }
@@ -797,7 +798,7 @@ const syncConfig = async () => {
     ElMessage.success(response.message || '配置同步已加入队列')
     await fetchNode()
   } catch (error) {
-    ElMessage.error(error.message || '同步失败')
+    ElMessage.error(extractErrorMessage(error) || '同步失败')
   } finally {
     syncing.value = false
   }
@@ -811,7 +812,7 @@ const startCore = async () => {
     ElMessage.success(response.message || '启动命令已加入队列')
     await fetchNode()
   } catch (error) {
-    ElMessage.error(error.message || '启动节点内核失败')
+    ElMessage.error(extractErrorMessage(error) || '启动节点内核失败')
   } finally {
     coreActionLoading.value = ''
   }
@@ -836,7 +837,7 @@ const restartCore = async () => {
     ElMessage.success(response.message || '重启命令已加入队列')
     await fetchNode()
   } catch (error) {
-    ElMessage.error(error.message || '重启节点内核失败')
+    ElMessage.error(extractErrorMessage(error) || '重启节点内核失败')
   } finally {
     coreActionLoading.value = ''
   }
@@ -881,7 +882,7 @@ const inspectNetworkOptimization = async () => {
     ElMessage.success('节点网络状态检测完成')
   } catch (error) {
     updateNetworkLogs(error?.logs || error?.response?.data?.logs)
-    ElMessage.error(error.message || '检测节点网络优化状态失败')
+    ElMessage.error(extractErrorMessage(error) || '检测节点网络优化状态失败')
   } finally {
     networkOptimizationAction.value = ''
   }
@@ -914,7 +915,7 @@ const applyNetworkOptimization = async () => {
     await refreshData()
   } catch (error) {
     updateNetworkLogs(error?.logs || error?.response?.data?.logs)
-    ElMessage.error(error.message || '应用节点网络优化失败')
+    ElMessage.error(extractErrorMessage(error) || '应用节点网络优化失败')
   } finally {
     networkOptimizationAction.value = ''
   }
@@ -947,7 +948,7 @@ const rollbackNetworkOptimization = async () => {
     await refreshData()
   } catch (error) {
     networkOptimizationLogs.value = error?.logs || error?.response?.data?.logs || ''
-    ElMessage.error(error.message || '回滚节点网络优化失败')
+    ElMessage.error(extractErrorMessage(error) || '回滚节点网络优化失败')
   } finally {
     networkOptimizationAction.value = ''
   }

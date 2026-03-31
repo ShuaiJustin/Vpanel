@@ -5,6 +5,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { announcements as announcementsApi } from '@/api/modules/portal'
+import { toNormalizedError } from '@/utils/entitlement'
 
 export const usePortalAnnouncementsStore = defineStore('portalAnnouncements', () => {
   // 状态
@@ -50,8 +51,9 @@ export const usePortalAnnouncementsStore = defineStore('portalAnnouncements', ()
       unreadCount.value = response.unread_count || 0
       return response
     } catch (err) {
-      error.value = err.message || '获取公告列表失败'
-      throw err
+      const normalizedError = toNormalizedError(err, '获取公告列表失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -73,8 +75,9 @@ export const usePortalAnnouncementsStore = defineStore('portalAnnouncements', ()
       }
       return announcement
     } catch (err) {
-      error.value = err.message || '获取公告详情失败'
-      throw err
+      const normalizedError = toNormalizedError(err, '获取公告详情失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -128,8 +131,9 @@ export const usePortalAnnouncementsStore = defineStore('portalAnnouncements', ()
       }
       unreadCount.value = 0
     } catch (err) {
-      error.value = err.message || '标记全部已读失败'
-      throw err
+      const normalizedError = toNormalizedError(err, '标记全部已读失败')
+      error.value = normalizedError.message
+      throw normalizedError
     }
   }
 

@@ -6,6 +6,7 @@ import {
   resumeSubscription, 
   getPauseHistory 
 } from '@/api/modules/pause'
+import { toNormalizedError } from '@/utils/entitlement'
 
 export const usePauseStore = defineStore('pause', () => {
   // State
@@ -57,8 +58,9 @@ export const usePauseStore = defineStore('pause', () => {
       status.value = response.data || response
       return status.value
     } catch (err) {
-      error.value = err.message || 'Failed to fetch pause status'
-      throw err
+      const normalizedError = toNormalizedError(err, '加载暂停状态失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -73,8 +75,9 @@ export const usePauseStore = defineStore('pause', () => {
       await fetchPauseStatus()
       return response.data || response
     } catch (err) {
-      error.value = err.message || 'Failed to pause subscription'
-      throw err
+      const normalizedError = toNormalizedError(err, '暂停失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -89,8 +92,9 @@ export const usePauseStore = defineStore('pause', () => {
       await fetchPauseStatus()
       return response.data || response
     } catch (err) {
-      error.value = err.message || 'Failed to resume subscription'
-      throw err
+      const normalizedError = toNormalizedError(err, '恢复失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -106,8 +110,9 @@ export const usePauseStore = defineStore('pause', () => {
       historyTotal.value = data.total || 0
       return data
     } catch (err) {
-      error.value = err.message || 'Failed to fetch pause history'
-      throw err
+      const normalizedError = toNormalizedError(err, '获取暂停记录失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }

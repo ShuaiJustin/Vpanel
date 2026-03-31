@@ -5,6 +5,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { auth as authApi } from '@/api/modules/portal'
+import { toNormalizedError } from '@/utils/entitlement'
 
 export const useUserPortalStore = defineStore('userPortal', () => {
   function getStoredValue(key) {
@@ -115,8 +116,9 @@ export const useUserPortalStore = defineStore('userPortal', () => {
       
       return response
     } catch (err) {
-      error.value = err.message || '登录失败'
-      throw err
+      const normalizedError = toNormalizedError(err, '登录失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -150,8 +152,9 @@ export const useUserPortalStore = defineStore('userPortal', () => {
 
       return response
     } catch (err) {
-      error.value = err.message || '两步验证失败'
-      throw err
+      const normalizedError = toNormalizedError(err, '两步验证失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -164,8 +167,9 @@ export const useUserPortalStore = defineStore('userPortal', () => {
       const response = await authApi.register(data)
       return response
     } catch (err) {
-      error.value = err.message || '注册失败'
-      throw err
+      const normalizedError = toNormalizedError(err, '注册失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -195,8 +199,9 @@ export const useUserPortalStore = defineStore('userPortal', () => {
       syncUserInfoStorage(response)
       return response
     } catch (err) {
-      error.value = err.message || '获取用户信息失败'
-      throw err
+      const normalizedError = toNormalizedError(err, '获取用户信息失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       if (!silent) {
         loading.value = false
@@ -213,8 +218,9 @@ export const useUserPortalStore = defineStore('userPortal', () => {
       syncUserInfoStorage(user.value)
       return response
     } catch (err) {
-      error.value = err.message || '更新资料失败'
-      throw err
+      const normalizedError = toNormalizedError(err, '更新资料失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -226,8 +232,9 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     try {
       await authApi.changePassword(data)
     } catch (err) {
-      error.value = err.message || '修改密码失败'
-      throw err
+      const normalizedError = toNormalizedError(err, '修改密码失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -239,8 +246,9 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     try {
       await authApi.forgotPassword({ email })
     } catch (err) {
-      error.value = err.message || '发送重置邮件失败'
-      throw err
+      const normalizedError = toNormalizedError(err, '发送重置邮件失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -252,8 +260,9 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     try {
       await authApi.resetPassword(data)
     } catch (err) {
-      error.value = err.message || '重置密码失败'
-      throw err
+      const normalizedError = toNormalizedError(err, '重置密码失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }

@@ -144,6 +144,7 @@ import { ElMessage } from 'element-plus'
 import { User, Lock, Key } from '@element-plus/icons-vue'
 import { useUserPortalStore } from '@/stores/userPortal'
 import { verifyEmail as verifyPortalEmail } from '@/api/modules/portal/auth'
+import { extractErrorMessage, getErrorStatus } from '@/utils/entitlement'
 
 const router = useRouter()
 const route = useRoute()
@@ -230,14 +231,15 @@ async function handleLogin() {
       router.push(redirect)
     }
   } catch (error) {
-    let message = error.response?.data?.error || error.response?.data?.message || error.message || '登录失败'
-    if (error?.status === 404) {
+    let message = extractErrorMessage(error) || '登录失败'
+    const status = getErrorStatus(error)
+    if (status === 404) {
       message = '账号不存在，请检查邮箱/用户名是否正确'
-    } else if (error?.status === 401) {
+    } else if (status === 401) {
       message = '密码错误，请重新输入'
-    } else if (error?.status === 403) {
-      message = error.message || '账号已被禁用，请联系管理员'
-    } else if (error?.status === 429) {
+    } else if (status === 403) {
+      message = extractErrorMessage(error) || '账号已被禁用，请联系管理员'
+    } else if (status === 429) {
       message = '登录尝试过于频繁，请稍后再试'
     }
     ElMessage.error(message)
@@ -274,8 +276,7 @@ async function handle2FAVerify() {
       router.push(redirect)
     }
   } catch (error) {
-    const message = error.response?.data?.error || error.response?.data?.message || error.message || '验证失败'
-    ElMessage.error(message)
+    ElMessage.error(extractErrorMessage(error) || '验证失败')
   } finally {
     loading.value = false
   }
@@ -299,8 +300,7 @@ onMounted(async () => {
     await verifyPortalEmail(token)
     ElMessage.success('邮箱验证成功，现在可以登录了')
   } catch (error) {
-    const message = error.response?.data?.message || error.message || '邮箱验证失败'
-    ElMessage.error(message)
+    ElMessage.error(extractErrorMessage(error) || '邮箱验证失败')
   } finally {
     const query = { ...route.query }
     delete query.verify_email_token

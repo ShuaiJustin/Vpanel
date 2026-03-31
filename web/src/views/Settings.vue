@@ -395,8 +395,8 @@
         name="payment"
       >
         <el-alert
-          title="支付配置已迁移到商业化管理"
-          description="为避免系统设置和商业化管理出现两套支付配置入口，这里只保留跳转入口。请统一在“商业化管理 -> 支付配置”中维护商户参数。"
+          title="支付/充值配置已迁移到商业化管理"
+          description="为避免系统设置和商业化管理出现两套支付配置入口，这里只保留跳转入口。请统一在“商业化管理 -> 支付/充值配置”中维护商户参数。"
           type="info"
           :closable="false"
           show-icon
@@ -406,7 +406,7 @@
             type="primary"
             @click="openPaymentSettingsPage"
           >
-            前往商业化管理中的支付配置
+            前往商业化管理中的支付/充值配置
           </el-button>
         </div>
       </el-tab-pane>
@@ -1289,6 +1289,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import api from '@/api/index'
 import { useViewport } from '@/composables/useViewport'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 // store
 const userStore = useUserStore()
@@ -1497,7 +1498,7 @@ const startXray = async () => {
     }
   } catch (error) {
     console.error('Failed to start Xray:', error)
-    ElMessage.error('启动 Xray 失败: ' + (error.response?.data?.error || error.message || '未知错误'))
+    ElMessage.error('启动 Xray 失败: ' + (extractErrorMessage(error) || '未知错误'))
   } finally {
     xraySettings.starting = false
   }
@@ -1533,7 +1534,7 @@ const stopXray = async () => {
       return
     }
     console.error('Failed to stop Xray:', error)
-    ElMessage.error('停止 Xray 失败: ' + (error.response?.data?.error || error.message || '未知错误'))
+    ElMessage.error('停止 Xray 失败: ' + (extractErrorMessage(error) || '未知错误'))
   } finally {
     xraySettings.stopping = false
   }
@@ -1716,12 +1717,12 @@ const restartXray = async () => {
     
     console.error('Failed to restart Xray:', error)
     ElMessage.error({
-      message: '重启 Xray 失败: ' + (error.response?.data?.message || error.message || '未知错误'),
+      message: '重启 Xray 失败: ' + (extractErrorMessage(error) || '未知错误'),
       duration: 5000
     })
     
     // 显示详细错误信息
-    const errorMsg = error.response?.data?.message || error.message || '未知错误'
+    const errorMsg = extractErrorMessage(error) || '未知错误'
     const errorDetail = error.response?.data?.detail || error.stack || ''
     showErrorDetails(
       '重启 Xray 失败',
@@ -1764,7 +1765,7 @@ const performVersionSwitch = async () => {
     }
   } catch (error) {
     console.error('Failed to switch xray version:', error);
-    ElMessage.error('切换版本失败: ' + (error.response?.data?.message || error.message || '未知错误'));
+    ElMessage.error('切换版本失败: ' + (extractErrorMessage(error) || '未知错误'));
     throw error;
   }
 };
@@ -2078,7 +2079,7 @@ const saveServerSettings = async () => {
     // await api.saveServerSettings(serverForm)
     ElMessage.success('服务器配置保存成功')
   } catch (error) {
-    ElMessage.error('保存失败：' + error.message)
+    ElMessage.error('保存失败：' + (extractErrorMessage(error) || '未知错误'))
   }
 }
 
@@ -2098,7 +2099,7 @@ const restartPanel = () => {
       // await api.restartPanel()
       ElMessage.success('面板重启指令已发送，请稍后刷新页面')
     } catch (error) {
-      ElMessage.error('重启失败：' + error.message)
+      ElMessage.error('重启失败：' + (extractErrorMessage(error) || '未知错误'))
     }
   })
   .catch(() => {
@@ -2112,7 +2113,7 @@ const saveDbSettings = async () => {
     // await api.saveDbSettings(dbForm)
     ElMessage.success('数据库配置保存成功')
   } catch (error) {
-    ElMessage.error('保存失败：' + error.message)
+    ElMessage.error('保存失败：' + (extractErrorMessage(error) || '未知错误'))
   }
 }
 
@@ -2122,7 +2123,7 @@ const testDbConnection = async () => {
     // await api.testDbConnection(dbForm)
     ElMessage.success('数据库连接测试成功')
   } catch (error) {
-    ElMessage.error('连接测试失败：' + error.message)
+    ElMessage.error('连接测试失败：' + (extractErrorMessage(error) || '未知错误'))
   }
 }
 
@@ -2132,7 +2133,7 @@ const backupDb = async () => {
     // await api.backupDatabase()
     ElMessage.success('数据库备份成功')
   } catch (error) {
-    ElMessage.error('备份失败：' + error.message)
+    ElMessage.error('备份失败：' + (extractErrorMessage(error) || '未知错误'))
   }
 }
 
@@ -2142,7 +2143,7 @@ const saveLogSettings = async () => {
     // await api.saveLogSettings(logForm)
     ElMessage.success('日志配置保存成功')
   } catch (error) {
-    ElMessage.error('保存失败：' + error.message)
+    ElMessage.error('保存失败：' + (extractErrorMessage(error) || '未知错误'))
   }
 }
 
@@ -2189,7 +2190,7 @@ const saveEmailSettings = async () => {
     ElMessage.success('邮箱配置保存成功')
   } catch (error) {
     console.error('Failed to save email settings:', error)
-    ElMessage.error(error.message || '保存邮箱配置失败')
+    ElMessage.error(extractErrorMessage(error) || '保存邮箱配置失败')
   } finally {
     emailForm.saving = false
   }
@@ -2204,7 +2205,7 @@ const testEmailSettings = async () => {
     ElMessage.success('测试邮件已发送，请检查收件箱')
   } catch (error) {
     console.error('Failed to send test email:', error)
-    ElMessage.error(error.message || '发送测试邮件失败')
+    ElMessage.error(extractErrorMessage(error) || '发送测试邮件失败')
   } finally {
     emailForm.testing = false
   }
@@ -2261,7 +2262,7 @@ const clearLogs = () => {
       // await api.clearLogs()
       ElMessage.success('日志清理成功')
     } catch (error) {
-      ElMessage.error('清理失败：' + error.message)
+      ElMessage.error('清理失败：' + (extractErrorMessage(error) || '未知错误'))
     }
   })
   .catch(() => {
@@ -2312,7 +2313,7 @@ const changeAdminPassword = async () => {
         window.location.href = '/user/login'
       }, 1500)
     } catch (error) {
-      ElMessage.error('修改失败：' + error.message)
+      ElMessage.error('修改失败：' + (extractErrorMessage(error) || '未知错误'))
     }
   })
   .catch(() => {
@@ -2334,7 +2335,7 @@ const resetAdminPassword = () => {
     try {
       ElMessage.warning('固定默认密码重置未开放，请在用户管理中执行密码重置。')
     } catch (error) {
-      ElMessage.error('重置失败：' + error.message)
+      ElMessage.error('重置失败：' + (extractErrorMessage(error) || '未知错误'))
     }
   })
   .catch(() => {
@@ -2381,7 +2382,7 @@ const saveSecuritySettings = async () => {
     ElMessage.success('安全设置保存成功')
   } catch (error) {
     console.error('Failed to save security settings:', error)
-    ElMessage.error(error.message || '保存安全设置失败')
+    ElMessage.error(extractErrorMessage(error) || '保存安全设置失败')
   } finally {
     securityState.saving = false
   }
@@ -2411,10 +2412,10 @@ const saveXraySettings = async () => {
     ElMessage.success('Xray设置保存成功');
   } catch (error) {
     console.error('Failed to save Xray settings:', error);
-    ElMessage.error('保存Xray设置失败：' + (error.response?.data?.message || '未知错误'));
+    ElMessage.error('保存Xray设置失败：' + (extractErrorMessage(error) || '未知错误'));
     
     // 显示详细错误信息
-    const errorMsg = error.response?.data?.message || error.message || '未知错误'
+    const errorMsg = extractErrorMessage(error) || '未知错误'
     const errorDetail = error.response?.data?.detail || error.stack || ''
     showErrorDetails(
       '保存 Xray 设置失败',
@@ -2450,7 +2451,7 @@ const saveProtocolSettings = async () => {
     ElMessage.success('协议配置保存成功')
   } catch (error) {
     console.error('Failed to save protocol settings:', error)
-    ElMessage.error('保存协议配置失败: ' + (error.response?.data?.message || error.message))
+    ElMessage.error('保存协议配置失败: ' + (extractErrorMessage(error) || '未知错误'))
   } finally {
     protocolsLoading.value = false
   }
@@ -2532,7 +2533,7 @@ const downloadXrayVersion = async (version) => {
     console.error('Failed to download/install version:', error);
     xraySettings.updateProgress.status = 'error';
     xraySettings.updateProgress.message = '更新失败';
-    xraySettings.updateProgress.error = error.message || '未知错误';
+    xraySettings.updateProgress.error = extractErrorMessage(error) || '未知错误';
     
     // 延迟关闭进度显示后显示错误详情
     setTimeout(() => {
@@ -2541,7 +2542,7 @@ const downloadXrayVersion = async (version) => {
       // 显示详细错误信息
       showErrorDetails(
         '下载或安装 Xray 版本失败',
-        error.response?.data?.message || error.message || '未知错误',
+        extractErrorMessage(error) || '未知错误',
         '请检查网络连接、磁盘空间和系统权限。您也可以尝试手动下载并安装该版本。',
         true,
         'updateVersion',
@@ -2608,7 +2609,7 @@ const retryFailedOperation = async () => {
     }
   } catch (error) {
     console.error('Retry operation failed:', error)
-    ElMessage.error('重试操作失败: ' + (error.response?.data?.message || error.message || '未知错误'))
+    ElMessage.error('重试操作失败: ' + (extractErrorMessage(error) || '未知错误'))
   }
 }
 
@@ -2621,7 +2622,7 @@ const refreshXraySettings = async () => {
     ElMessage.success('刷新设置成功');
     console.log('刷新后的Xray设置：', { ...xraySettings });
   } catch (error) {
-    ElMessage.error('刷新设置失败：' + error.message);
+    ElMessage.error('刷新设置失败：' + (extractErrorMessage(error) || '未知错误'));
   } finally {
     xraySettings.loading = false;
   }
@@ -2702,10 +2703,10 @@ const handleSwitchVersion = async () => {
       xraySettings.updateProgress.status = 'error'
       xraySettings.updateProgress.percent = 0
       xraySettings.updateProgress.message = '版本切换失败'
-      xraySettings.updateProgress.error = error.response?.data?.message || error.message || '未知错误'
+      xraySettings.updateProgress.error = extractErrorMessage(error) || '未知错误'
       
       // 分析错误信息
-      const errorMsg = error.response?.data?.message || error.message || ''
+      const errorMsg = extractErrorMessage(error) || ''
       let detailedError = '切换版本时出错'
       let suggestion = '请检查网络连接和服务器状态'
       
@@ -2740,7 +2741,7 @@ const handleSwitchVersion = async () => {
     }
     
     console.error('Unexpected error during version switch:', error)
-    ElMessage.error(`发生意外错误: ${error.message || '未知错误'}`)
+    ElMessage.error(`发生意外错误: ${extractErrorMessage(error) || '未知错误'}`)
   } finally {
     // 无论成功失败都重置状态
     xraySettings.switching = false

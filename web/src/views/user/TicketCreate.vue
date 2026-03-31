@@ -187,6 +187,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Plus, InfoFilled } from '@element-plus/icons-vue'
 import { usePortalTicketsStore } from '@/stores/portalTickets'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const router = useRouter()
 const ticketsStore = usePortalTicketsStore()
@@ -244,7 +245,7 @@ async function submitTicket() {
     router.push(`/user/tickets/${ticket.id}`)
   } catch (error) {
     if (error !== false) {
-      ElMessage.error(error.message || '提交失败')
+      ElMessage.error(extractErrorMessage(error) || '提交失败')
     }
   } finally {
     submitting.value = false

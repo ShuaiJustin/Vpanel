@@ -44,6 +44,7 @@ const AdminReports = () => import(/* webpackChunkName: "commercial-admin" */ '..
 const AdminGiftCards = () => import(/* webpackChunkName: "commercial-admin" */ '../views/AdminGiftCards.vue')
 const AdminTrials = () => import(/* webpackChunkName: "commercial-admin" */ '../views/AdminTrials.vue')
 const AdminPaymentSettings = () => import(/* webpackChunkName: "commercial-admin" */ '../views/AdminPaymentSettings.vue')
+const AdminRechargeOrders = () => import(/* webpackChunkName: "commercial-admin" */ '../views/AdminRechargeOrders.vue')
 
 // 节点管理 - 按需加载
 const AdminNodes = () => import(/* webpackChunkName: "node-admin" */ '../views/AdminNodes.vue')
@@ -282,6 +283,16 @@ const routes = [
         }
       },
       {
+        path: 'recharge-orders',
+        name: 'AdminRechargeOrders',
+        component: AdminRechargeOrders,
+        meta: {
+          requiresAuth: true,
+          title: '充值订单',
+          roles: ['admin']
+        }
+      },
+      {
         path: 'coupons',
         name: 'AdminCoupons',
         component: AdminCoupons,
@@ -327,7 +338,7 @@ const routes = [
         component: AdminPaymentSettings,
         meta: {
           requiresAuth: true,
-          title: '支付配置',
+          title: '支付/充值配置',
           roles: ['admin']
         }
       },

@@ -24,7 +24,7 @@
       </div>
     </div>
 
-    <div class="filter-bar">
+    <div v-if="!accessRestricted" class="filter-bar">
       <div class="filter-left">
         <el-input
           v-model="filters.keyword"
@@ -131,6 +131,31 @@
       </el-icon>
       <p>加载节点列表...</p>
     </div>
+
+    <el-card
+      v-else-if="accessRestricted"
+      class="access-card"
+      shadow="never"
+    >
+      <el-empty description="当前暂无可用节点">
+        <template #description>
+          <p class="access-card__description">
+            {{ accessRestrictedMessage }}
+          </p>
+        </template>
+        <div class="access-card__actions">
+          <el-button
+            type="primary"
+            @click="goToPlans"
+          >
+            购买/续费套餐
+          </el-button>
+          <el-button @click="goToSubscription">
+            查看订阅状态
+          </el-button>
+        </div>
+      </el-empty>
+    </el-card>
 
     <el-empty
       v-else-if="filteredNodes.length === 0"
@@ -252,6 +277,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import {
   Grid,
@@ -273,10 +299,14 @@ import {
   getNodeStatusType,
   getProtocolDisplayName,
 } from "@/composables/useNodePresentation";
+import { extractErrorMessage, getNoEntitlementMessage, isNoEntitlementError } from "@/utils/entitlement";
 
+const router = useRouter();
 const nodesStore = usePortalNodesStore();
 
 const loading = ref(false);
+const accessRestricted = ref(false);
+const accessRestrictedMessage = ref(getNoEntitlementMessage("nodes"));
 const viewMode = ref("card");
 const sortBy = ref("default");
 const testingAll = ref(false);
@@ -509,9 +539,16 @@ async function loadNodes() {
   loading.value = true;
   try {
     await nodesStore.fetchNodes();
+    accessRestricted.value = false;
     return true;
   } catch (error) {
-    const message = typeof error === "string" ? error : error?.message || "加载节点列表失败";
+    if (isNoEntitlementError(error)) {
+      accessRestricted.value = true;
+      return false;
+    }
+
+    accessRestricted.value = false;
+    const message = extractErrorMessage(error) || "加载节点列表失败";
     ElMessage.error(message);
     return false;
   } finally {
@@ -524,6 +561,18 @@ async function refreshNodes() {
   if (ok) {
     ElMessage.success("节点列表已刷新");
   }
+}
+
+function goToPlans() {
+  router.push("/user/plans").catch((error) => {
+    console.error("跳转到套餐页面失败:", error);
+  });
+}
+
+function goToSubscription() {
+  router.push("/user/subscription").catch((error) => {
+    console.error("跳转到订阅页面失败:", error);
+  });
 }
 
 onMounted(() => {
@@ -627,6 +676,27 @@ onMounted(() => {
   text-align: center;
   padding: 60px 0;
   color: var(--color-text-secondary);
+}
+
+.access-card {
+  border-radius: 16px;
+}
+
+.access-card :deep(.el-card__body) {
+  padding: 28px 20px;
+}
+
+.access-card__description {
+  margin: 0;
+  color: var(--color-text-secondary);
+  line-height: 1.8;
+}
+
+.access-card__actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .loading-icon {
@@ -795,6 +865,10 @@ onMounted(() => {
 
   .nodes-grid {
     grid-template-columns: 1fr;
+  }
+
+  .access-card__actions {
+    flex-direction: column;
   }
 }
 </style>

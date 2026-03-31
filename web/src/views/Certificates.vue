@@ -947,6 +947,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { MoreFilled, Search } from '@element-plus/icons-vue'
 import { certificatesApi, nodesApi } from '@/api'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const router = useRouter()
 
@@ -1110,12 +1111,7 @@ const syncCurrentPage = () => {
 }
 
 const getApplyErrorMessage = (error) => {
-  const rawMessage = [
-    error?.response?.data?.error?.message,
-    error?.response?.data?.message,
-    error?.response?.data?.error,
-    error?.message
-  ].find(item => typeof item === 'string' && item.trim())
+  const rawMessage = extractErrorMessage(error)
 
   if (!rawMessage) return '申请证书失败，请稍后重试。'
 
@@ -1602,7 +1598,7 @@ const confirmUpload = async () => {
     }
   } catch (error) {
     console.error('Failed to upload certificate:', error)
-    ElMessage.error(error?.message || '上传证书失败')
+    ElMessage.error(extractErrorMessage(error) || '上传证书失败')
   }
 }
 

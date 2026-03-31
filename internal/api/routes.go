@@ -182,10 +182,10 @@ func (r *Router) Setup() {
 
 	// Create commercial services
 	planService := plan.NewService(r.repos.Plan, r.logger)
-	balanceService := balance.NewService(r.repos.Balance, r.logger)
+	balanceService := balance.NewService(r.repos.Balance, r.logger).WithRechargeRepository(r.repos.BalanceRecharge)
 	couponService := coupon.NewService(r.repos.Coupon, r.logger)
 	orderService := order.NewService(r.repos.Order, r.repos.Plan, r.logger, nil).WithUserRepository(r.repos.User)
-	paymentService := payment.NewService(orderService, r.logger).WithBalanceService(balanceService)
+	paymentService := payment.NewService(orderService, r.logger).WithBalanceService(balanceService).WithRechargeHandler(balanceService)
 	r.registerConfiguredPaymentGateways(paymentService)
 	r.loadStoredPaymentSettings(context.Background(), paymentService)
 	r.loadStoredNotificationSettings(context.Background())
@@ -358,7 +358,7 @@ func (r *Router) Setup() {
 	planHandler := handlers.NewPlanHandler(planService, r.logger)
 	orderHandler := handlers.NewOrderHandler(orderService, r.logger).WithRefundService(refundService)
 	paymentHandler := handlers.NewPaymentHandlerWithRetry(paymentService, retryService, r.logger)
-	balanceHandler := handlers.NewBalanceHandler(balanceService, r.logger)
+	balanceHandler := handlers.NewBalanceHandler(balanceService, r.logger).WithPaymentService(paymentService)
 	couponHandler := handlers.NewCouponHandler(couponService, r.logger)
 	inviteHandler := handlers.NewInviteHandler(inviteService, commissionService, r.logger)
 	invoiceHandler := handlers.NewInvoiceHandler(invoiceService, r.logger)
@@ -638,6 +638,8 @@ func (r *Router) Setup() {
 			{
 				balanceRoutes.GET("", balanceHandler.GetBalance)
 				balanceRoutes.GET("/transactions", balanceHandler.GetTransactions)
+				balanceRoutes.POST("/recharge", balanceHandler.CreateRecharge)
+				balanceRoutes.GET("/recharge/status/:orderNo", balanceHandler.GetRechargeStatus)
 			}
 
 			// Coupon routes (user - validate only)
@@ -733,6 +735,7 @@ func (r *Router) Setup() {
 			adminBalance := protected.Group("/admin/balance")
 			adminBalance.Use(authMiddleware.RequireRole("admin"))
 			{
+				adminBalance.GET("/recharge-orders", balanceHandler.ListAdminRechargeOrders)
 				adminBalance.POST("/adjust", balanceHandler.AdjustBalance)
 			}
 

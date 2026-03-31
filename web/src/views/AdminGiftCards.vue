@@ -340,6 +340,7 @@ import { Plus, CopyDocument } from '@element-plus/icons-vue'
 import { giftCardsApi } from '@/api/index'
 import { copyText } from '@/utils/clipboard'
 import { useViewport } from '@/composables/useViewport'
+import { extractErrorMessage } from '@/utils/entitlement'
 
 const { isMobile } = useViewport()
 
@@ -418,7 +419,7 @@ const fetchGiftCards = async () => {
     giftCards.value = payload.gift_cards || []
     pagination.total = payload.total || 0
   } catch (e) {
-    ElMessage.error(e.response?.data?.error || '获取礼品卡列表失败')
+    ElMessage.error(extractErrorMessage(e) || '获取礼品卡列表失败')
   } finally {
     loading.value = false
   }
@@ -468,7 +469,7 @@ const submitForm = async () => {
     fetchGiftCards()
     fetchStats()
   } catch (e) {
-    ElMessage.error(e.response?.data?.error || '创建失败')
+    ElMessage.error(extractErrorMessage(e) || '创建失败')
   } finally {
     submitting.value = false
   }
@@ -482,7 +483,7 @@ const disableGiftCard = async (gc) => {
     fetchGiftCards()
     fetchStats()
   } catch (e) {
-    ElMessage.error(e.response?.data?.error || '操作失败')
+    ElMessage.error(extractErrorMessage(e) || '操作失败')
   }
 }
 
@@ -493,7 +494,7 @@ const enableGiftCard = async (gc) => {
     fetchGiftCards()
     fetchStats()
   } catch (e) {
-    ElMessage.error(e.response?.data?.error || '操作失败')
+    ElMessage.error(extractErrorMessage(e) || '操作失败')
   }
 }
 
@@ -505,7 +506,7 @@ const deleteGiftCard = async (gc) => {
     fetchGiftCards()
     fetchStats()
   } catch (e) {
-    ElMessage.error(e.response?.data?.error || '删除失败')
+    ElMessage.error(extractErrorMessage(e) || '删除失败')
   }
 }
 

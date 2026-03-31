@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { balanceApi } from '@/api/index'
+import { toNormalizedError } from '@/utils/entitlement'
 
 export const useBalanceStore = defineStore('balance', () => {
   // 状态
@@ -42,8 +43,9 @@ export const useBalanceStore = defineStore('balance', () => {
       return response
     } catch (err) {
       console.error('Fetch balance error:', err)
-      error.value = err.message || '获取余额失败'
-      throw error.value
+      const normalizedError = toNormalizedError(err, '获取余额失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -64,8 +66,9 @@ export const useBalanceStore = defineStore('balance', () => {
       return response
     } catch (err) {
       console.error('Fetch transactions error:', err)
-      error.value = err.message || '获取交易记录失败'
-      throw error.value
+      const normalizedError = toNormalizedError(err, '获取交易记录失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -80,8 +83,9 @@ export const useBalanceStore = defineStore('balance', () => {
       return response
     } catch (err) {
       console.error('Recharge error:', err)
-      error.value = err.message || '充值失败'
-      throw error.value
+      const normalizedError = toNormalizedError(err, '充值失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }

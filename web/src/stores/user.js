@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi, usersApi } from '@/api'
+import { extractErrorMessage, toNormalizedError } from '@/utils/entitlement'
 
 export const useUserStore = defineStore('user', () => {
   // 状态
@@ -41,13 +42,6 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  const extractErrorMessage = (err, fallback) => {
-    if (typeof err === 'string') {
-      return err
-    }
-    return err?.message || err?.error || fallback
-  }
-
   // API方法
   const login = async (credentials) => {
     loading.value = true
@@ -67,16 +61,15 @@ export const useUserStore = defineStore('user', () => {
       setUser(userInfo)
       return true
     } catch (err) {
-      // 根据错误类型返回友好的错误消息
+      const normalizedError = toNormalizedError(err, '登录失败，请稍后重试')
       if (err.code === 'UNAUTHORIZED' || err.status === 401) {
-        error.value = '用户名或密码错误'
+        normalizedError.message = '用户名或密码错误'
       } else if (err.code === 'NETWORK_ERROR') {
-        error.value = '网络连接失败，请检查网络'
-      } else {
-        error.value = extractErrorMessage(err, '登录失败，请稍后重试')
+        normalizedError.message = '网络连接失败，请检查网络'
       }
-      
-      throw error.value
+
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -109,9 +102,9 @@ export const useUserStore = defineStore('user', () => {
       setUser(response)
       return user.value
     } catch (err) {
-      error.value = extractErrorMessage(err, '获取用户信息失败')
-      
-      throw error.value
+      const normalizedError = toNormalizedError(err, '获取用户信息失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -130,9 +123,9 @@ export const useUserStore = defineStore('user', () => {
         total: response?.total || response?.users?.length || 0
       }
     } catch (err) {
-      error.value = extractErrorMessage(err, '获取用户列表失败')
-      
-      throw error.value
+      const normalizedError = toNormalizedError(err, '获取用户列表失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -145,8 +138,9 @@ export const useUserStore = defineStore('user', () => {
     try {
       return await usersApi.create(userData)
     } catch (err) {
-      error.value = extractErrorMessage(err, '创建用户失败')
-      throw error.value
+      const normalizedError = toNormalizedError(err, '创建用户失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -159,8 +153,9 @@ export const useUserStore = defineStore('user', () => {
     try {
       return await usersApi.update(userId, userData)
     } catch (err) {
-      error.value = extractErrorMessage(err, '更新用户失败')
-      throw error.value
+      const normalizedError = toNormalizedError(err, '更新用户失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -174,8 +169,9 @@ export const useUserStore = defineStore('user', () => {
       await usersApi.delete(userId)
       return true
     } catch (err) {
-      error.value = extractErrorMessage(err, '删除用户失败')
-      throw error.value
+      const normalizedError = toNormalizedError(err, '删除用户失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -193,8 +189,9 @@ export const useUserStore = defineStore('user', () => {
       }
       return true
     } catch (err) {
-      error.value = extractErrorMessage(err, '更新用户状态失败')
-      throw error.value
+      const normalizedError = toNormalizedError(err, '更新用户状态失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -209,8 +206,9 @@ export const useUserStore = defineStore('user', () => {
       setUser(updatedUser)
       return updatedUser
     } catch (err) {
-      error.value = extractErrorMessage(err, '更新个人资料失败')
-      throw error.value
+      const normalizedError = toNormalizedError(err, '更新个人资料失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
@@ -227,8 +225,9 @@ export const useUserStore = defineStore('user', () => {
       })
       return true
     } catch (err) {
-      error.value = extractErrorMessage(err, '修改密码失败')
-      throw error.value
+      const normalizedError = toNormalizedError(err, '修改密码失败')
+      error.value = normalizedError.message
+      throw normalizedError
     } finally {
       loading.value = false
     }
