@@ -25,6 +25,7 @@
           </div>
           <el-button
             type="primary"
+            :disabled="!code"
             @click="copyCode"
           >
             <el-icon><CopyDocument /></el-icon>
@@ -40,7 +41,7 @@
             readonly
           >
             <template #append>
-              <el-button @click="copyLink">
+              <el-button :disabled="!inviteLink" @click="copyLink">
                 复制
               </el-button>
             </template>
@@ -134,6 +135,15 @@
           佣金将在订单完成后7天自动确认并转入您的余额
         </template>
       </el-alert>
+      <div class="earnings-actions">
+        <el-button
+          type="primary"
+          plain
+          @click="goToBalance"
+        >
+          查看我的余额
+        </el-button>
+      </div>
     </el-card>
 
     <!-- 推荐列表 -->
@@ -184,7 +194,11 @@
       <el-empty
         v-if="referrals.length === 0"
         description="暂无推荐记录"
-      />
+      >
+        <template #description>
+          <p class="empty-description">先分享您的邀请码或邀请链接，好友注册后就会出现在这里。</p>
+        </template>
+      </el-empty>
 
       <div
         v-if="referralPagination.total > 0"
@@ -264,7 +278,11 @@
       <el-empty
         v-if="commissions.length === 0"
         description="暂无佣金记录"
-      />
+      >
+        <template #description>
+          <p class="empty-description">好友完成有效转化后，佣金记录会显示在这里。</p>
+        </template>
+      </el-empty>
 
       <div
         v-if="commissionPagination.total > 0"
@@ -284,6 +302,7 @@
 
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { CopyDocument, Download } from '@element-plus/icons-vue'
 import { useInviteStore } from '@/stores/invite'
@@ -291,6 +310,7 @@ import QRCode from 'qrcode'
 import { copyText } from '@/utils/clipboard'
 import { extractErrorMessage } from '@/utils/entitlement'
 
+const router = useRouter()
 const inviteStore = useInviteStore()
 
 // 引用
@@ -314,6 +334,12 @@ const formatPrice = (price) => (price / 100).toFixed(2)
 const getReferralStatusInfo = (status) => inviteStore.getReferralStatusInfo(status)
 const getCommissionStatusInfo = (status) => inviteStore.getCommissionStatusInfo(status)
 
+const goToBalance = () => {
+  router.push({ name: 'user-balance' }).catch(error => {
+    console.error('跳转到余额页面失败:', error)
+  })
+}
+
 const generateQRCode = async () => {
   await nextTick()
   if (qrcodeCanvas.value && inviteLink.value) {
@@ -329,6 +355,11 @@ const generateQRCode = async () => {
 }
 
 const copyCode = async () => {
+  if (!code.value) {
+    ElMessage.warning('邀请码暂未生成，请稍后刷新重试')
+    return
+  }
+
   try {
     await copyText(code.value)
     ElMessage.success('邀请码已复制')
@@ -339,6 +370,11 @@ const copyCode = async () => {
 }
 
 const copyLink = async () => {
+  if (!inviteLink.value) {
+    ElMessage.warning('邀请链接暂未生成，请稍后刷新重试')
+    return
+  }
+
   try {
     await copyText(inviteLink.value)
     ElMessage.success('邀请链接已复制')
@@ -486,6 +522,15 @@ onMounted(async () => {
   display: flex;
   gap: 40px;
   margin-bottom: 16px;
+}
+
+.earnings-actions {
+  margin-top: 16px;
+}
+
+.empty-description {
+  margin: 0;
+  color: #909399;
 }
 
 .earnings-item {

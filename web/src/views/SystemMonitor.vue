@@ -14,12 +14,22 @@
       <template #header>
         <div class="card-header">
           <span>系统监控</span>
-          <el-button
-            type="primary"
-            @click="refreshData"
-          >
-            刷新数据
-          </el-button>
+          <div class="card-actions">
+            <el-button
+              :loading="repairingRuntime"
+              type="warning"
+              plain
+              @click="triggerRuntimeReconcile"
+            >
+              修复脏代理
+            </el-button>
+            <el-button
+              type="primary"
+              @click="refreshData"
+            >
+              刷新数据
+            </el-button>
+          </div>
         </div>
       </template>
       
@@ -252,6 +262,7 @@ let diskChart = null
 // 数据状态
 const loading = ref(false)
 const apiError = ref(false)
+const repairingRuntime = ref(false)
 const processSearch = ref('')
 const cpuUsage = ref(0)
 const memoryUsage = ref(0)
@@ -464,6 +475,34 @@ const updateCharts = () => {
 }
 
 // 刷新数据
+const buildRuntimeReconcileSummary = (stats = {}) => {
+  const scannedProxies = Number(stats.scanned_proxies ?? stats.scannedProxies ?? 0)
+  const deletedMissingNode = Number(stats.deleted_missing_node ?? stats.deletedMissingNode ?? 0)
+  const evaluatedUsers = Number(stats.evaluated_users ?? stats.evaluatedUsers ?? 0)
+  const forbiddenUsersDetected = Number(stats.forbidden_users_detected ?? stats.forbiddenUsersDetected ?? 0)
+
+  return `扫描代理 ${scannedProxies} 条，清理缺失节点代理 ${deletedMissingNode} 条，校验用户 ${evaluatedUsers} 个，发现失效用户 ${forbiddenUsersDetected} 个`
+}
+
+const triggerRuntimeReconcile = async () => {
+  if (repairingRuntime.value) return
+
+  repairingRuntime.value = true
+  try {
+    const response = await systemApi.triggerRuntimeReconcile()
+    const data = response?.code === 200 && response?.data ? response.data : response
+    const stats = data?.stats || {}
+
+    ElMessage.success(data?.message ? `${data.message}：${buildRuntimeReconcileSummary(stats)}` : buildRuntimeReconcileSummary(stats))
+    await refreshData()
+  } catch (error) {
+    console.error('触发运行时巡检失败:', error)
+    ElMessage.error(error?.message || '触发运行时巡检失败')
+  } finally {
+    repairingRuntime.value = false
+  }
+}
+
 const refreshData = async () => {
   loading.value = true
   apiError.value = false
@@ -567,6 +606,13 @@ onUnmounted(() => {
 .card-header {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.card-actions {
+  display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;

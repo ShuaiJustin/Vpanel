@@ -90,6 +90,9 @@ func (s *Server) Start() error {
 	if err := s.router.StartNodeTrafficResetScheduler(ctx); err != nil {
 		s.logger.Warn("节点流量重置调度器启动失败，继续启动服务器", logger.Err(err))
 	}
+	if err := s.router.StartRuntimeReconciler(ctx); err != nil {
+		s.logger.Warn("运行时巡检器启动失败，继续启动服务器", logger.Err(err))
+	}
 
 	// 启动证书自动续期服务
 	if s.config.Certificate.AutoRenewEnabled {
@@ -149,6 +152,9 @@ func (s *Server) Stop(ctx context.Context) error {
 
 	// Stop health checker and schedulers
 	if s.router != nil {
+		if err := s.router.StopRuntimeReconciler(ctx); err != nil {
+			s.logger.Warn("运行时巡检器停止失败", logger.Err(err))
+		}
 		if err := s.router.StopNodeTrafficResetScheduler(ctx); err != nil {
 			s.logger.Warn("节点流量重置调度器停止失败", logger.Err(err))
 		}

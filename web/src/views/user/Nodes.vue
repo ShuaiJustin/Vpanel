@@ -140,7 +140,7 @@
       <el-empty description="当前暂无可用节点">
         <template #description>
           <p class="access-card__description">
-            {{ accessRestrictedMessage }}
+            {{ accessRestrictedHint }}
           </p>
         </template>
         <div class="access-card__actions">
@@ -148,9 +148,12 @@
             type="primary"
             @click="goToPlans"
           >
-            购买/续费套餐
+            {{ accessPlanActionLabel }}
           </el-button>
-          <el-button @click="goToSubscription">
+          <el-button
+            v-if="hasCurrentPlan"
+            @click="goToSubscription"
+          >
             查看订阅状态
           </el-button>
         </div>
@@ -159,8 +162,15 @@
 
     <el-empty
       v-else-if="filteredNodes.length === 0"
-      description="暂无可用节点"
-    />
+      :description="emptyNodesDescription"
+    >
+      <el-button
+        v-if="hasActiveFilters"
+        @click="resetFilters"
+      >
+        清空筛选
+      </el-button>
+    </el-empty>
 
     <div v-else-if="viewMode === 'card'" class="nodes-grid">
       <NodeCard
@@ -288,6 +298,7 @@ import {
   RefreshRight,
 } from "@element-plus/icons-vue";
 import { usePortalNodesStore } from "@/stores/portalNodes";
+import { useUserPortalStore } from "@/stores/userPortal";
 import { proxiesApi } from "@/api/modules/proxies";
 import { copyText } from "@/utils/clipboard";
 import NodeCard from "@/components/user/NodeCard.vue";
@@ -303,6 +314,7 @@ import { extractErrorMessage, getNoEntitlementMessage, isNoEntitlementError } fr
 
 const router = useRouter();
 const nodesStore = usePortalNodesStore();
+const userStore = useUserPortalStore();
 
 const loading = ref(false);
 const accessRestricted = ref(false);
@@ -352,6 +364,26 @@ const hasActiveFilters = computed(() =>
   Boolean(
     filters.keyword || filters.region || filters.protocol || filters.status,
   ),
+);
+const hasCurrentPlan = computed(() => Boolean(userStore.user?.plan_id));
+const hasExpiredEntitlement = computed(() => hasCurrentPlan.value && userStore.status === "expired");
+const accessPlanActionLabel = computed(() => {
+  if (!hasCurrentPlan.value) return "购买套餐";
+  if (hasExpiredEntitlement.value) return "续费套餐";
+  return "查看套餐列表";
+});
+const accessRestrictedHint = computed(() => {
+  if (!accessRestricted.value) return "";
+  if (!hasCurrentPlan.value) {
+    return "当前还没有有效套餐，购买套餐后即可查看和使用节点。";
+  }
+  if (hasExpiredEntitlement.value) {
+    return "当前套餐已过期，续费后即可继续查看和使用节点。";
+  }
+  return accessRestrictedMessage.value || getNoEntitlementMessage("nodes");
+});
+const emptyNodesDescription = computed(() =>
+  hasActiveFilters.value ? "没有符合条件的节点" : "暂无可用节点",
 );
 
 const getNodeDisplayName = (node) =>
@@ -544,6 +576,8 @@ async function loadNodes() {
   } catch (error) {
     if (isNoEntitlementError(error)) {
       accessRestricted.value = true;
+      accessRestrictedMessage.value =
+        extractErrorMessage(error) || getNoEntitlementMessage("nodes");
       return false;
     }
 

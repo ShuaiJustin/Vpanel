@@ -20,7 +20,7 @@ func NewProxyRepository(db *gorm.DB) ProxyRepository {
 }
 
 func (r *proxyRepository) validProxyQuery(ctx context.Context) *gorm.DB {
-	query := r.db.WithContext(ctx).Model(&Proxy{})
+	query := r.getDB(ctx).Model(&Proxy{})
 	if !r.db.Migrator().HasTable((&User{}).TableName()) {
 		return query
 	}
@@ -31,7 +31,7 @@ func (r *proxyRepository) validProxyQuery(ctx context.Context) *gorm.DB {
 
 // Create creates a new proxy.
 func (r *proxyRepository) Create(ctx context.Context, proxy *Proxy) error {
-	result := r.db.WithContext(ctx).Create(proxy)
+	result := r.getDB(ctx).Create(proxy)
 	if result.Error != nil {
 		return errors.NewDatabaseError("failed to create proxy", result.Error)
 	}
@@ -41,7 +41,7 @@ func (r *proxyRepository) Create(ctx context.Context, proxy *Proxy) error {
 // GetByID retrieves a proxy by ID.
 func (r *proxyRepository) GetByID(ctx context.Context, id int64) (*Proxy, error) {
 	var proxy Proxy
-	result := r.db.WithContext(ctx).First(&proxy, id)
+	result := r.getDB(ctx).First(&proxy, id)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			return nil, errors.NewNotFoundError("proxy", id)
@@ -53,7 +53,7 @@ func (r *proxyRepository) GetByID(ctx context.Context, id int64) (*Proxy, error)
 
 // Update updates a proxy.
 func (r *proxyRepository) Update(ctx context.Context, proxy *Proxy) error {
-	result := r.db.WithContext(ctx).Save(proxy)
+	result := r.getDB(ctx).Save(proxy)
 	if result.Error != nil {
 		return errors.NewDatabaseError("failed to update proxy", result.Error)
 	}
@@ -62,7 +62,7 @@ func (r *proxyRepository) Update(ctx context.Context, proxy *Proxy) error {
 
 // Delete deletes a proxy by ID.
 func (r *proxyRepository) Delete(ctx context.Context, id int64) error {
-	result := r.db.WithContext(ctx).Delete(&Proxy{}, id)
+	result := r.getDB(ctx).Delete(&Proxy{}, id)
 	if result.Error != nil {
 		return errors.NewDatabaseError("failed to delete proxy", result.Error)
 	}
@@ -75,7 +75,7 @@ func (r *proxyRepository) Delete(ctx context.Context, id int64) error {
 // List retrieves proxies with pagination.
 func (r *proxyRepository) List(ctx context.Context, limit, offset int) ([]*Proxy, error) {
 	var proxies []*Proxy
-	result := r.db.WithContext(ctx).Limit(limit).Offset(offset).Find(&proxies)
+	result := r.getDB(ctx).Limit(limit).Offset(offset).Find(&proxies)
 	if result.Error != nil {
 		return nil, errors.NewDatabaseError("failed to list proxies", result.Error)
 	}
@@ -85,7 +85,7 @@ func (r *proxyRepository) List(ctx context.Context, limit, offset int) ([]*Proxy
 // GetByProtocol retrieves proxies by protocol.
 func (r *proxyRepository) GetByProtocol(ctx context.Context, protocol string) ([]*Proxy, error) {
 	var proxies []*Proxy
-	result := r.db.WithContext(ctx).Where("protocol = ?", protocol).Find(&proxies)
+	result := r.getDB(ctx).Where("protocol = ?", protocol).Find(&proxies)
 	if result.Error != nil {
 		return nil, errors.NewDatabaseError("failed to get proxies by protocol", result.Error)
 	}
@@ -105,7 +105,7 @@ func (r *proxyRepository) GetEnabled(ctx context.Context) ([]*Proxy, error) {
 // GetByUserID retrieves proxies by user ID with pagination.
 func (r *proxyRepository) GetByUserID(ctx context.Context, userID int64, limit, offset int) ([]*Proxy, error) {
 	var proxies []*Proxy
-	result := r.db.WithContext(ctx).Where("user_id = ?", userID).Limit(limit).Offset(offset).Find(&proxies)
+	result := r.getDB(ctx).Where("user_id = ?", userID).Limit(limit).Offset(offset).Find(&proxies)
 	if result.Error != nil {
 		return nil, errors.NewDatabaseError("failed to get proxies by user ID", result.Error)
 	}
@@ -115,7 +115,7 @@ func (r *proxyRepository) GetByUserID(ctx context.Context, userID int64, limit, 
 // CountByUserID counts proxies by user ID.
 func (r *proxyRepository) CountByUserID(ctx context.Context, userID int64) (int64, error) {
 	var count int64
-	result := r.db.WithContext(ctx).Model(&Proxy{}).Where("user_id = ?", userID).Count(&count)
+	result := r.getDB(ctx).Model(&Proxy{}).Where("user_id = ?", userID).Count(&count)
 	if result.Error != nil {
 		return 0, errors.NewDatabaseError("failed to count proxies by user ID", result.Error)
 	}
@@ -137,7 +137,7 @@ func (r *proxyRepository) GetByPort(ctx context.Context, port int) (*Proxy, erro
 
 // EnableByUserID enables all proxies for a user.
 func (r *proxyRepository) EnableByUserID(ctx context.Context, userID int64) error {
-	result := r.db.WithContext(ctx).Model(&Proxy{}).Where("user_id = ?", userID).Update("enabled", true)
+	result := r.getDB(ctx).Model(&Proxy{}).Where("user_id = ?", userID).Update("enabled", true)
 	if result.Error != nil {
 		return errors.NewDatabaseError("failed to enable proxies by user ID", result.Error)
 	}
@@ -146,7 +146,7 @@ func (r *proxyRepository) EnableByUserID(ctx context.Context, userID int64) erro
 
 // DisableByUserID disables all proxies for a user.
 func (r *proxyRepository) DisableByUserID(ctx context.Context, userID int64) error {
-	result := r.db.WithContext(ctx).Model(&Proxy{}).Where("user_id = ?", userID).Update("enabled", false)
+	result := r.getDB(ctx).Model(&Proxy{}).Where("user_id = ?", userID).Update("enabled", false)
 	if result.Error != nil {
 		return errors.NewDatabaseError("failed to disable proxies by user ID", result.Error)
 	}
@@ -158,7 +158,7 @@ func (r *proxyRepository) DeleteByIDs(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	result := r.db.WithContext(ctx).Delete(&Proxy{}, ids)
+	result := r.getDB(ctx).Delete(&Proxy{}, ids)
 	if result.Error != nil {
 		return errors.NewDatabaseError("failed to delete proxies by IDs", result.Error)
 	}
@@ -168,7 +168,7 @@ func (r *proxyRepository) DeleteByIDs(ctx context.Context, ids []int64) error {
 // Count returns the total number of proxies.
 func (r *proxyRepository) Count(ctx context.Context) (int64, error) {
 	var count int64
-	result := r.db.WithContext(ctx).Model(&Proxy{}).Count(&count)
+	result := r.getDB(ctx).Model(&Proxy{}).Count(&count)
 	if result.Error != nil {
 		return 0, errors.NewDatabaseError("failed to count proxies", result.Error)
 	}
@@ -178,7 +178,7 @@ func (r *proxyRepository) Count(ctx context.Context) (int64, error) {
 // CountEnabled returns the number of enabled proxies.
 func (r *proxyRepository) CountEnabled(ctx context.Context) (int64, error) {
 	var count int64
-	result := r.db.WithContext(ctx).Model(&Proxy{}).Where("enabled = ?", true).Count(&count)
+	result := r.getDB(ctx).Model(&Proxy{}).Where("enabled = ?", true).Count(&count)
 	if result.Error != nil {
 		return 0, errors.NewDatabaseError("failed to count enabled proxies", result.Error)
 	}
@@ -188,7 +188,7 @@ func (r *proxyRepository) CountEnabled(ctx context.Context) (int64, error) {
 // CountByProtocol returns proxy counts grouped by protocol.
 func (r *proxyRepository) CountByProtocol(ctx context.Context) ([]*ProtocolCount, error) {
 	var results []*ProtocolCount
-	err := r.db.WithContext(ctx).Model(&Proxy{}).
+	err := r.getDB(ctx).Model(&Proxy{}).
 		Select("protocol, COUNT(*) as count").
 		Group("protocol").
 		Scan(&results).Error
@@ -211,4 +211,11 @@ func (r *proxyRepository) GetByNodeID(ctx context.Context, nodeID int64) ([]*Pro
 	}
 
 	return proxies, nil
+}
+
+func (r *proxyRepository) getDB(ctx context.Context) *gorm.DB {
+	if tx, ok := ctx.Value("tx").(*gorm.DB); ok {
+		return tx
+	}
+	return r.db.WithContext(ctx)
 }

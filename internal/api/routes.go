@@ -66,6 +66,7 @@ type Router struct {
 	certificateService        CertificateService
 	nodeHealthChecker         *node.HealthChecker
 	nodeTrafficResetScheduler *node.TrafficResetScheduler
+	runtimeReconciler         *entitlement.RuntimeReconciler
 	nodeRecoveryTracker       *handlers.NodeRecoveryTracker
 }
 
@@ -118,6 +119,7 @@ func NewRouter(
 		certificateService:        certService,
 		nodeHealthChecker:         nil, // 将在 Setup() 中初始化
 		nodeTrafficResetScheduler: nil,
+		runtimeReconciler:         nil,
 		nodeRecoveryTracker:       nil,
 	}
 }
@@ -222,7 +224,8 @@ func (r *Router) Setup() {
 		r.repos.UserNodeAssignment,
 		trialService,
 		r.logger,
-	).WithProxyManager(r.proxyManager)
+	).WithProxyManager(r.proxyManager).WithPauseRepository(r.repos.Pause)
+	authHandler.WithEntitlementService(r.entitlementService)
 	orderService.WithAfterPlanAppliedHook(func(ctx context.Context, userID int64) error {
 		_, _, err := r.entitlementService.GetAccessibleProxies(ctx, userID)
 		return err
@@ -244,6 +247,7 @@ func (r *Router) Setup() {
 	nodeService := node.NewService(
 		r.repos.Node,
 		r.repos.UserNodeAssignment,
+		r.repos.Proxy,
 		r.logger,
 	)
 	nodeGroupService := node.NewGroupService(r.repos.NodeGroup, r.repos.Node, r.logger)
@@ -300,6 +304,8 @@ func (r *Router) Setup() {
 		})
 
 	r.nodeTrafficResetScheduler = node.NewTrafficResetScheduler(nil, nodeTrafficService, r.logger)
+	r.runtimeReconciler = entitlement.NewRuntimeReconciler(nil, r.entitlementService, r.repos.Proxy, r.repos.Node, r.logger)
+	systemHandler.WithRuntimeReconciler(r.runtimeReconciler)
 	nodeDeployService := node.NewRemoteDeployService(r.logger, r.repos.Node)
 	r.nodeRecoveryTracker = handlers.NewNodeRecoveryTracker(r.logger)
 	proxyHandler.WithRecoveryTracker(r.nodeRecoveryTracker)
@@ -362,7 +368,7 @@ func (r *Router) Setup() {
 	couponHandler := handlers.NewCouponHandler(couponService, r.logger)
 	inviteHandler := handlers.NewInviteHandler(inviteService, commissionService, r.logger)
 	invoiceHandler := handlers.NewInvoiceHandler(invoiceService, r.logger)
-	reportHandler := handlers.NewReportHandler(orderService, r.logger)
+	reportHandler := handlers.NewReportHandler(orderService, r.repos, r.logger)
 	trialHandler := handlers.NewTrialHandler(trialService, r.logger)
 	planChangeHandler := handlers.NewPlanChangeHandler(planChangeService, r.logger)
 	currencyHandler := handlers.NewCurrencyHandler(currencyService, planCurrencyService, r.logger)
@@ -460,6 +466,13 @@ func (r *Router) Setup() {
 				system.GET("/info", systemHandler.GetInfo)
 				system.GET("/status", systemHandler.GetDetailedStatus)
 				system.GET("/stats", systemHandler.GetStats)
+			}
+
+			// Admin system routes
+			adminSystem := protected.Group("/admin/system")
+			adminSystem.Use(authMiddleware.RequireRole("admin"))
+			{
+				adminSystem.POST("/runtime-reconcile", systemHandler.AdminTriggerRuntimeReconcile)
 			}
 
 			// Role routes
@@ -736,6 +749,8 @@ func (r *Router) Setup() {
 			adminBalance.Use(authMiddleware.RequireRole("admin"))
 			{
 				adminBalance.GET("/recharge-orders", balanceHandler.ListAdminRechargeOrders)
+				adminBalance.GET("/users/:userID", balanceHandler.AdminGetUserBalance)
+				adminBalance.GET("/users/:userID/transactions", balanceHandler.AdminGetUserTransactions)
 				adminBalance.POST("/adjust", balanceHandler.AdjustBalance)
 			}
 
@@ -761,6 +776,7 @@ func (r *Router) Setup() {
 			adminReports := protected.Group("/admin/reports")
 			adminReports.Use(authMiddleware.RequireRole("admin"))
 			{
+				adminReports.GET("/overview", reportHandler.GetCommercialOverview)
 				adminReports.GET("/revenue", reportHandler.GetRevenueReport)
 				adminReports.GET("/orders", reportHandler.GetOrderStats)
 				adminReports.GET("/failed-payments", paymentHandler.GetFailedPaymentStats)
@@ -1501,6 +1517,31 @@ func (r *Router) StopNodeTrafficResetScheduler(ctx context.Context) error {
 	}
 	if err := r.nodeTrafficResetScheduler.Stop(ctx); err != nil {
 		r.logger.Error("停止节点流量重置调度器失败", logger.Err(err))
+		return err
+	}
+	return nil
+}
+
+// StartRuntimeReconciler starts the background stale runtime reconciler.
+func (r *Router) StartRuntimeReconciler(ctx context.Context) error {
+	if r.runtimeReconciler == nil {
+		r.logger.Warn("运行时巡检器未初始化，跳过启动")
+		return nil
+	}
+	if err := r.runtimeReconciler.Start(ctx); err != nil {
+		r.logger.Error("启动运行时巡检器失败", logger.Err(err))
+		return err
+	}
+	return nil
+}
+
+// StopRuntimeReconciler stops the background stale runtime reconciler.
+func (r *Router) StopRuntimeReconciler(ctx context.Context) error {
+	if r.runtimeReconciler == nil {
+		return nil
+	}
+	if err := r.runtimeReconciler.Stop(ctx); err != nil {
+		r.logger.Error("停止运行时巡检器失败", logger.Err(err))
 		return err
 	}
 	return nil

@@ -379,8 +379,33 @@ const openRechargeDialogIfNeeded = () => {
   }
 }
 
+const getSafeRedirectTarget = () => {
+  const redirect = String(route.query.redirect || '').trim()
+  return redirect.startsWith('/user/') ? redirect : ''
+}
+
+const returnToRedirectTarget = (message) => {
+  const redirectTarget = getSafeRedirectTarget()
+  if (!redirectTarget) {
+    return false
+  }
+
+  if (message) {
+    ElMessage.success(message)
+  }
+
+  router.replace(redirectTarget).catch(error => {
+    console.error('返回原页面失败:', error)
+  })
+  return true
+}
+
 const goToGiftCard = () => {
-  router.push({ name: 'user-gift-card' }).catch(error => {
+  const redirectTarget = getSafeRedirectTarget()
+  router.push({
+    name: 'user-gift-card',
+    query: redirectTarget ? { redirect: redirectTarget } : undefined
+  }).catch(error => {
     console.error('跳转礼品卡页面失败:', error)
   })
 }
@@ -446,7 +471,11 @@ const startPolling = async (orderNo) => {
     pollProgress.value = 100
     showQRDialog.value = false
     await fetchData()
-    ElMessage.success(route.query.redirect ? '充值成功，已返回余额页；你可以回原订单继续支付。' : '充值成功')
+
+    const redirected = returnToRedirectTarget('充值成功，正在返回原订单继续支付')
+    if (!redirected) {
+      ElMessage.success('充值成功')
+    }
   } catch (error) {
     ElMessage.info(extractErrorMessage(error) || '充值结果确认超时，请稍后刷新余额页面查看。')
   } finally {
@@ -487,7 +516,7 @@ const handleRecharge = async () => {
       startPolling(rechargeOrderNo.value)
     }
 
-    ElMessage.success(route.query.redirect ? '充值订单已创建，完成充值后可返回原订单继续支付' : '充值订单已创建')
+    ElMessage.success(getSafeRedirectTarget() ? '充值订单已创建，支付完成后会自动返回原订单继续支付' : '充值订单已创建')
   } catch (error) {
     ElMessage.error(extractErrorMessage(error) || '充值失败')
   } finally {

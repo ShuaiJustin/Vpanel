@@ -78,14 +78,26 @@
         </el-descriptions>
       </el-card>
 
-      <el-alert
-        v-if="!canPay"
-        type="info"
-        show-icon
-        :closable="false"
-        class="status-alert"
-        :title="statusAlertTitle"
-      />
+      <template v-if="!canPay">
+        <el-alert
+          type="info"
+          show-icon
+          :closable="false"
+          class="status-alert"
+          :title="statusAlertTitle"
+        />
+        <div class="status-actions">
+          <el-button
+            type="primary"
+            @click="handleStatusPrimaryAction"
+          >
+            {{ statusPrimaryActionLabel }}
+          </el-button>
+          <el-button @click="goToOrders">
+            查看订单列表
+          </el-button>
+        </div>
+      </template>
 
       <template v-else>
         <el-card
@@ -149,6 +161,7 @@
         </el-card>
 
         <el-card
+          v-if="paymentMethods.length > 0"
           shadow="never"
           class="summary-card"
         >
@@ -161,7 +174,7 @@
               show-icon
               :closable="false"
               :title="paymentHintTitle"
-              description="充值完成后，可返回当前订单继续完成余额支付。"
+              description="充值完成后，系统会自动返回当前订单页，您可继续使用余额支付。"
             />
             <el-button
               type="primary"
@@ -191,13 +204,50 @@
             {{ selectedMethod === 'balance' ? '确认余额支付' : '立即支付' }}
           </el-button>
         </el-card>
+
+        <el-card
+          v-else
+          shadow="never"
+          class="summary-card"
+        >
+          <el-alert
+            type="warning"
+            show-icon
+            :closable="false"
+            title="当前暂时没有可用支付方式，请稍后重试。"
+          />
+          <div class="status-actions">
+            <el-button
+              type="primary"
+              @click="goToOrders"
+            >
+              返回订单列表
+            </el-button>
+            <el-button @click="goToPlans">
+              重新选择套餐
+            </el-button>
+          </div>
+        </el-card>
       </template>
     </template>
 
     <el-empty
       v-else
       description="订单不存在或已失效"
-    />
+    >
+      <template #description>
+        <p class="empty-description">当前订单可能已过期、已被取消，或页面参数不完整。</p>
+      </template>
+      <el-button
+        type="primary"
+        @click="goToOrders"
+      >
+        查看订单列表
+      </el-button>
+      <el-button @click="goToPlans">
+        去购买套餐
+      </el-button>
+    </el-empty>
 
     <el-dialog
       v-model="showQRDialog"
@@ -298,6 +348,16 @@ const statusAlertTitle = computed(() => {
   }
   return '当前订单无法支付。'
 })
+const statusPrimaryActionLabel = computed(() => {
+  const status = order.value?.status
+  if (status === 'paid' || status === 'completed') {
+    return '前往订阅管理'
+  }
+  if (status === 'cancelled' || status === 'refunded') {
+    return '重新选择套餐'
+  }
+  return '返回订单列表'
+})
 const selectedMethodLabel = computed(() => {
   const method = paymentMethods.value.find(item => item.value === selectedMethod.value)
   return method?.label || ''
@@ -365,6 +425,37 @@ const goToRecharge = () => {
   }).catch(error => {
     console.error('跳转到余额充值页面失败:', error)
   })
+}
+
+const goToOrders = () => {
+  router.push({ name: 'user-orders' }).catch(error => {
+    console.error('跳转到订单页面失败:', error)
+  })
+}
+
+const goToPlans = () => {
+  router.push({ name: 'user-plans' }).catch(error => {
+    console.error('跳转到套餐页面失败:', error)
+  })
+}
+
+const goToSubscription = () => {
+  router.push({ name: 'UserSubscription' }).catch(error => {
+    console.error('跳转到订阅页面失败:', error)
+  })
+}
+
+const handleStatusPrimaryAction = () => {
+  const status = order.value?.status
+  if (status === 'paid' || status === 'completed') {
+    goToSubscription()
+    return
+  }
+  if (status === 'cancelled' || status === 'refunded') {
+    goToPlans()
+    return
+  }
+  goToOrders()
 }
 
 const fetchBalanceInfo = async () => {
@@ -578,6 +669,18 @@ onUnmounted(() => {
 .summary-card,
 .status-alert {
   margin-bottom: 16px;
+}
+
+.status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.empty-description {
+  margin: 0 0 12px;
+  color: #909399;
 }
 
 .price-highlight {

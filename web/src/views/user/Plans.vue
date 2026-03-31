@@ -10,9 +10,10 @@
           <p class="page-subtitle">
             选择适合您的套餐，享受高速稳定的服务
           </p>
+          <p class="page-hint">
+            当前下单与支付统一以人民币结算，订单金额请以支付页展示为准。
+          </p>
         </div>
-        <!-- 货币选择器 -->
-        <CurrencySelector />
       </div>
     </div>
 
@@ -59,14 +60,14 @@
 
         <!-- 价格 -->
         <div class="plan-price">
-          <span class="price-currency">{{ currencySymbol }}</span>
-          <span class="price-amount">{{ formatDisplayPrice(plan) }}</span>
+          <span class="price-currency">¥</span>
+          <span class="price-amount">{{ formatPlanPrice(plan) }}</span>
           <span class="price-period">/ {{ plan.duration }}天</span>
         </div>
 
         <!-- 月均价格 -->
         <div class="plan-monthly">
-          月均 {{ currencySymbol }}{{ formatMonthlyPrice(plan) }}
+          月均 ¥{{ formatMonthlyPrice(plan) }}
         </div>
 
         <!-- 功能列表 -->
@@ -115,30 +116,20 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Star, Check } from '@element-plus/icons-vue'
 import { usePlanStore } from '@/stores/plan'
-import { useCurrencyStore } from '@/stores/currency'
-import CurrencySelector from '@/components/CurrencySelector.vue'
 import { extractErrorMessage } from '@/utils/entitlement'
 
 const router = useRouter()
 const planStore = usePlanStore()
-const currencyStore = useCurrencyStore()
-
-// 计算属性
 const loading = computed(() => planStore.loading)
 const sortedPlans = computed(() => planStore.sortedPlans)
-const currencySymbol = computed(() => currencyStore.currencySymbol)
 
 // 方法
 const formatPrice = (price) => (price / 100).toFixed(2)
 
-const formatDisplayPrice = (plan) => {
-  // 如果套餐有多币种价格，使用当前货币的价格
-  const price = plan.display_price || plan.price
-  return formatPrice(price)
-}
+const formatPlanPrice = (plan) => formatPrice(plan.price)
 
 const formatMonthlyPrice = (plan) => {
-  const price = plan.display_price || plan.price
+  const price = plan?.price || 0
   if (!plan || plan.duration <= 0) return '0.00'
   return formatPrice(Math.round(price / (plan.duration / 30)))
 }
@@ -156,18 +147,16 @@ const formatTraffic = (bytes) => {
 }
 
 const selectPlan = (plan) => {
-  router.push({ 
-    name: 'user-payment', 
-    query: { 
-      plan_id: plan.id,
-      currency: currencyStore.currentCurrency
-    } 
+  router.push({
+    name: 'user-payment',
+    query: {
+      plan_id: plan.id
+    }
   })
 }
 
 const loadPlans = async () => {
   try {
-    await currencyStore.initialize()
     await planStore.fetchPlans()
   } catch (error) {
     console.error('加载套餐失败:', error)
@@ -213,6 +202,13 @@ onMounted(async () => {
   font-size: 16px;
   color: #909399;
   margin: 0;
+  text-align: left;
+}
+
+.page-hint {
+  font-size: 13px;
+  color: #909399;
+  margin: 8px 0 0;
   text-align: left;
 }
 

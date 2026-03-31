@@ -10,6 +10,30 @@
       </p>
     </div>
 
+    <el-alert
+      v-if="paymentSuccessOrderNo"
+      type="success"
+      show-icon
+      :closable="true"
+      class="payment-success-alert"
+      title="支付成功，订单已完成。"
+      @close="paymentSuccessOrderNo = ''"
+    >
+      <template #default>
+        <div class="payment-success-body">
+          <span>订单号：{{ paymentSuccessOrderNo }}</span>
+          <div class="payment-success-actions">
+            <el-button link type="primary" @click="openPaidOrderDetail">
+              查看订单详情
+            </el-button>
+            <el-button link type="primary" @click="goToSubscription">
+              前往订阅管理
+            </el-button>
+          </div>
+        </div>
+      </template>
+    </el-alert>
+
     <!-- 订单列表 -->
     <el-card
       shadow="never"
@@ -145,7 +169,17 @@
       <el-empty
         v-if="!loading && orders.length === 0"
         description="暂无订单"
-      />
+      >
+        <template #description>
+          <p class="empty-description">您还没有订单，先去挑一个适合自己的套餐吧。</p>
+        </template>
+        <el-button
+          type="primary"
+          @click="goToPlans"
+        >
+          去购买套餐
+        </el-button>
+      </el-empty>
 
       <!-- 分页 -->
       <div
@@ -267,6 +301,7 @@ const showDetailDialog = ref(false)
 const showCancelDialog = ref(false)
 const cancelling = ref(false)
 const orderToCancel = ref(null)
+const paymentSuccessOrderNo = ref('')
 
 // 计算属性
 const loading = computed(() => orderStore.loading)
@@ -306,6 +341,7 @@ const handlePaymentResultNotice = async () => {
   ElMessage.success('支付成功')
 
   const orderNo = String(route.query.order_no || '').trim()
+  paymentSuccessOrderNo.value = orderNo
   if (orderNo) {
     try {
       await orderStore.fetchOrderByOrderNo(orderNo)
@@ -335,6 +371,34 @@ const handleSizeChange = (size) => {
 
 const goToPay = (order) => {
   router.push({ name: 'user-payment', query: { order_id: order.id } })
+}
+
+const goToPlans = () => {
+  router.push({ name: 'user-plans' }).catch(error => {
+    console.error('跳转到套餐页面失败:', error)
+  })
+}
+
+const goToSubscription = () => {
+  router.push({ name: 'UserSubscription' }).catch(error => {
+    console.error('跳转到订阅页面失败:', error)
+  })
+}
+
+const openPaidOrderDetail = async () => {
+  if (currentOrder.value?.order_no === paymentSuccessOrderNo.value) {
+    showDetailDialog.value = true
+    return
+  }
+
+  if (!paymentSuccessOrderNo.value) return
+
+  try {
+    await orderStore.fetchOrderByOrderNo(paymentSuccessOrderNo.value)
+    showDetailDialog.value = true
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error) || '加载订单详情失败')
+  }
 }
 
 const viewDetail = async (order) => {
@@ -395,6 +459,24 @@ onMounted(() => {
   margin: 0;
 }
 
+.payment-success-alert {
+  margin-bottom: 16px;
+}
+
+.payment-success-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.payment-success-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
 .orders-card {
   border-radius: 8px;
 }
@@ -409,6 +491,11 @@ onMounted(() => {
 
 .loading-container {
   padding: 20px;
+}
+
+.empty-description {
+  margin: 0;
+  color: #909399;
 }
 
 .price {

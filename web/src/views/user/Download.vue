@@ -10,6 +10,22 @@
       </p>
     </div>
 
+    <el-alert
+      v-if="showSubscriptionUnavailableAlert"
+      type="warning"
+      show-icon
+      :closable="false"
+      class="subscription-alert"
+      :title="subscriptionUnavailableMessage"
+    >
+      <template #default>
+        <div class="subscription-alert__actions">
+          <el-button type="primary" @click="goToPlans">购买/续费套餐</el-button>
+          <el-button @click="goToSubscription">查看订阅管理</el-button>
+        </div>
+      </template>
+    </el-alert>
+
     <el-card
       class="quick-start-card"
       shadow="never"
@@ -328,6 +344,7 @@ import { useViewport } from '@/composables/useViewport'
 import { useSubscriptionStore } from '@/stores/subscription'
 import { copyText } from '@/utils/clipboard'
 import { sanitizeHtml } from '@/utils/htmlSanitizer'
+import { extractErrorMessage, getNoEntitlementMessage, isNoEntitlementError } from '@/utils/entitlement'
 import { 
   Monitor, Iphone, Apple, Platform,
   Download, Document, Star, Box, InfoFilled, Link
@@ -348,6 +365,7 @@ const activeTip = ref(['1'])
 const tutorialVisible = ref(false)
 const tutorialStep = ref(0)
 const currentClient = ref(null)
+const subscriptionUnavailableMessage = ref('')
 
 // 平台列表
 const platforms = [
@@ -1310,6 +1328,10 @@ const subscriptionLinkPreview = computed(() => {
   return `${subscriptionLink.value.slice(0, 64)}...${subscriptionLink.value.slice(-24)}`
 })
 
+const showSubscriptionUnavailableAlert = computed(() => {
+  return !subscriptionLink.value && Boolean(subscriptionUnavailableMessage.value)
+})
+
 const tutorialSteps = computed(() => {
   const tutorial = currentTutorial.value
   return [
@@ -1395,6 +1417,20 @@ function getClientBadges(client) {
   return badges
 }
 
+function updateSubscriptionUnavailableMessage(error = null) {
+  if (!error) {
+    subscriptionUnavailableMessage.value = ''
+    return
+  }
+
+  if (isNoEntitlementError(error)) {
+    subscriptionUnavailableMessage.value = getNoEntitlementMessage('download')
+    return
+  }
+
+  subscriptionUnavailableMessage.value = '订阅链接暂时无法加载，您可以先安装客户端，稍后再来复制订阅链接。'
+}
+
 function openExternal(url) {
   if (typeof window === 'undefined' || !url) {
     return
@@ -1417,11 +1453,18 @@ function openExternal(url) {
 
 async function ensureSubscriptionLink() {
   if (subscriptionStore.link) {
+    updateSubscriptionUnavailableMessage()
     return subscriptionStore.link
   }
 
-  const result = await subscriptionStore.fetchLink()
-  return result?.link || ''
+  try {
+    const result = await subscriptionStore.fetchLink()
+    updateSubscriptionUnavailableMessage()
+    return result?.link || ''
+  } catch (error) {
+    updateSubscriptionUnavailableMessage(error)
+    throw error
+  }
 }
 
 function downloadClient(client) {
@@ -1460,8 +1503,14 @@ async function copySubscriptionLink() {
     await copyText(link)
     ElMessage.success('订阅链接已复制')
   } catch (error) {
+    updateSubscriptionUnavailableMessage(error)
+    if (isNoEntitlementError(error)) {
+      ElMessage.warning(getNoEntitlementMessage('download'))
+      return
+    }
+
     console.error('复制订阅链接失败:', error)
-    ElMessage.error('复制失败，请前往订阅管理手动复制')
+    ElMessage.error(extractErrorMessage(error) || '复制失败，请前往订阅管理手动复制')
   }
 }
 
@@ -1473,13 +1522,24 @@ function goToSubscription() {
   })
 }
 
+function goToPlans() {
+  tutorialVisible.value = false
+  router.push('/user/plans').catch(err => {
+    console.error('跳转到套餐页面失败:', err)
+    ElMessage.error('跳转失败，请稍后重试')
+  })
+}
+
 onMounted(async () => {
   selectedPlatform.value = detectPlatform()
 
   try {
     await ensureSubscriptionLink()
   } catch (error) {
-    console.warn('下载页预加载订阅链接失败:', error)
+    updateSubscriptionUnavailableMessage(error)
+    if (!isNoEntitlementError(error)) {
+      console.warn('下载页预加载订阅链接失败:', error)
+    }
   }
 })
 </script>
@@ -1504,6 +1564,17 @@ onMounted(async () => {
   font-size: 14px;
   color: var(--color-text-secondary);
   margin: 0;
+}
+
+.subscription-alert {
+  margin-bottom: 16px;
+}
+
+.subscription-alert__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
 }
 
 .quick-start-card {

@@ -53,6 +53,13 @@ type Transaction struct {
 	CreatedAt   string `json:"created_at"`
 }
 
+type TransactionFilter struct {
+	UserID    *int64
+	Type      string
+	StartDate *time.Time
+	EndDate   *time.Time
+}
+
 // RechargeOrder represents a balance recharge order.
 type RechargeOrder struct {
 	ID        int64      `json:"id"`
@@ -343,8 +350,8 @@ func (s *Service) Adjust(ctx context.Context, userID int64, amount int64, reason
 	return nil
 }
 
-// GetTransactions retrieves transaction history for a user.
-func (s *Service) GetTransactions(ctx context.Context, userID int64, page, pageSize int) ([]*Transaction, int64, error) {
+// ListTransactions retrieves transaction history with pagination and filters.
+func (s *Service) ListTransactions(ctx context.Context, filter TransactionFilter, page, pageSize int) ([]*Transaction, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -353,9 +360,14 @@ func (s *Service) GetTransactions(ctx context.Context, userID int64, page, pageS
 	}
 
 	offset := (page - 1) * pageSize
-	repoTxs, total, err := s.balanceRepo.ListByUser(ctx, userID, pageSize, offset)
+	repoTxs, total, err := s.balanceRepo.ListTransactions(ctx, repository.BalanceFilter{
+		UserID:    filter.UserID,
+		Type:      filter.Type,
+		StartDate: filter.StartDate,
+		EndDate:   filter.EndDate,
+	}, pageSize, offset)
 	if err != nil {
-		s.logger.Error("Failed to list transactions", logger.Err(err), logger.F("userID", userID))
+		s.logger.Error("Failed to list transactions", logger.Err(err))
 		return nil, 0, err
 	}
 
@@ -365,6 +377,11 @@ func (s *Service) GetTransactions(ctx context.Context, userID int64, page, pageS
 	}
 
 	return txs, total, nil
+}
+
+// GetTransactions retrieves transaction history for a user.
+func (s *Service) GetTransactions(ctx context.Context, userID int64, page, pageSize int) ([]*Transaction, int64, error) {
+	return s.ListTransactions(ctx, TransactionFilter{UserID: &userID}, page, pageSize)
 }
 
 // GetStatistics retrieves balance statistics for a user.

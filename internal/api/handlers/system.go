@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -18,14 +19,20 @@ import (
 	"github.com/shirou/gopsutil/v3/process"
 
 	"v/internal/config"
+	"v/internal/entitlement"
 	"v/internal/logger"
 )
 
+type RuntimeReconciler interface {
+	RunOnce(ctx context.Context) (*entitlement.RuntimeReconcileStats, error)
+}
+
 // SystemHandler handles system-related requests.
 type SystemHandler struct {
-	config    *config.Config
-	logger    logger.Logger
-	startTime time.Time
+	config            *config.Config
+	logger            logger.Logger
+	startTime         time.Time
+	runtimeReconciler RuntimeReconciler
 }
 
 // NewSystemHandler creates a new SystemHandler.
@@ -35,6 +42,12 @@ func NewSystemHandler(cfg *config.Config, log logger.Logger) *SystemHandler {
 		logger:    log,
 		startTime: time.Now(),
 	}
+}
+
+// WithRuntimeReconciler enables manual triggering of stale runtime cleanup.
+func (h *SystemHandler) WithRuntimeReconciler(runtimeReconciler RuntimeReconciler) *SystemHandler {
+	h.runtimeReconciler = runtimeReconciler
+	return h
 }
 
 // SystemInfoResponse represents system information.
@@ -148,6 +161,28 @@ func (h *SystemHandler) GetStats(c *gin.Context) {
 		TotalTraffic:    0,
 		UploadTraffic:   0,
 		DownloadTraffic: 0,
+	})
+}
+
+// AdminTriggerRuntimeReconcile manually triggers a stale runtime reconciliation pass (admin only).
+// POST /api/admin/system/runtime-reconcile
+func (h *SystemHandler) AdminTriggerRuntimeReconcile(c *gin.Context) {
+	if h.runtimeReconciler == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Runtime reconciler is unavailable"})
+		return
+	}
+
+	stats, err := h.runtimeReconciler.RunOnce(c.Request.Context())
+	if err != nil {
+		h.logger.Error("Failed to trigger runtime reconciliation", logger.Err(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to trigger runtime reconciliation"})
+		return
+	}
+
+	h.logger.Info("runtime reconciliation triggered manually")
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Runtime reconciliation completed",
+		"stats":   stats,
 	})
 }
 

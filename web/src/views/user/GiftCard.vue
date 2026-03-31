@@ -175,10 +175,34 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Present, Ticket, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { giftCardsApi } from '@/api'
+import { useBalanceStore } from '@/stores/balance'
 import { extractErrorMessage } from '@/utils/entitlement'
+
+const route = useRoute()
+const router = useRouter()
+const balanceStore = useBalanceStore()
+
+const getSafeRedirectTarget = () => {
+  const redirect = String(route.query.redirect || '').trim()
+  return redirect.startsWith('/user/') ? redirect : ''
+}
+
+const returnToRedirectTarget = (message) => {
+  const redirectTarget = getSafeRedirectTarget()
+  if (!redirectTarget) {
+    return false
+  }
+
+  ElMessage.success(message)
+  router.replace(redirectTarget).catch(error => {
+    console.error('返回原页面失败:', error)
+  })
+  return true
+}
 
 // 状态
 const loading = ref(false)
@@ -223,11 +247,18 @@ const handleRedeem = async () => {
 
   try {
     const res = await giftCardsApi.redeem({ code })
+    redeemCode.value = ''
+    await Promise.allSettled([
+      fetchGiftCards(),
+      balanceStore.fetchBalance()
+    ])
+
+    if (returnToRedirectTarget('兑换成功，正在返回原订单继续支付')) {
+      return
+    }
+
     redeemResult.value = res
     showSuccessDialog.value = true
-    redeemCode.value = ''
-    // 刷新列表
-    fetchGiftCards()
   } catch (error) {
     const msg = extractErrorMessage(error) || '兑换失败'
     ElMessage.error(msg)

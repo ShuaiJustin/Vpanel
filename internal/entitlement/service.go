@@ -41,6 +41,7 @@ type Service struct {
 	proxyRepo      repository.ProxyRepository
 	nodeRepo       repository.NodeRepository
 	assignmentRepo repository.UserNodeAssignmentRepository
+	pauseRepo      repository.PauseRepository
 	trialService   *trial.Service
 	proxyManager   proxylib.Manager
 	configSyncHook func(nodeID int64, source, reason string)
@@ -71,6 +72,12 @@ func NewService(
 // WithProxyManager enables automatic default proxy provisioning.
 func (s *Service) WithProxyManager(proxyManager proxylib.Manager) *Service {
 	s.proxyManager = proxyManager
+	return s
+}
+
+// WithPauseRepository enables pause-aware cleanup decisions for expired subscriptions.
+func (s *Service) WithPauseRepository(pauseRepo repository.PauseRepository) *Service {
+	s.pauseRepo = pauseRepo
 	return s
 }
 
@@ -105,6 +112,12 @@ func (s *Service) evaluateAccess(ctx context.Context, userID int64, allowAutoAct
 	}
 
 	if !user.Enabled {
+		if cleanupErr := s.cleanupRevokedUserRuntime(ctx, userID, "entitlement_user_disabled", "disabled user revoked user proxy runtime", false); cleanupErr != nil {
+			s.logger.Warn("failed to cleanup disabled user runtime resources",
+				logger.Err(cleanupErr),
+				logger.UserID(userID),
+			)
+		}
 		return state, errors.NewForbiddenError("user account is disabled")
 	}
 
@@ -127,8 +140,10 @@ func (s *Service) evaluateAccess(ctx context.Context, userID int64, allowAutoAct
 	if err != nil {
 		return nil, err
 	}
+	expiredTrialRequiresCleanup := false
 	if repoTrial != nil {
 		if repoTrial.Status == "active" && now.After(repoTrial.ExpireAt) {
+			expiredTrialRequiresCleanup = !state.HasActiveSubscription
 			if !state.HasActiveSubscription {
 				expireAt := repoTrial.ExpireAt
 				state.EffectiveExpiresAt = &expireAt
@@ -139,6 +154,8 @@ func (s *Service) evaluateAccess(ctx context.Context, userID int64, allowAutoAct
 					logger.UserID(userID),
 					logger.F("trial_id", repoTrial.ID),
 				)
+			} else {
+				repoTrial.Status = "expired"
 			}
 		} else if repoTrial.Status == "active" && !now.After(repoTrial.ExpireAt) {
 			state.Trial = repoTrial
@@ -152,6 +169,26 @@ func (s *Service) evaluateAccess(ctx context.Context, userID int64, allowAutoAct
 					state.EffectiveTrafficUsed = repoTrial.TrafficUsed
 				}
 			}
+		} else if repoTrial.Status == "expired" && !state.HasActiveSubscription {
+			expiredTrialRequiresCleanup = true
+		}
+	}
+
+	if expiredTrialRequiresCleanup {
+		if cleanupErr := s.cleanupRevokedUserRuntime(ctx, userID, "entitlement_trial_cleanup", "expired trial revoked user proxy runtime", false); cleanupErr != nil {
+			s.logger.Warn("failed to cleanup expired trial runtime resources",
+				logger.Err(cleanupErr),
+				logger.UserID(userID),
+			)
+		}
+	}
+
+	if user.ExpiresAt != nil && now.After(*user.ExpiresAt) && !state.HasActiveSubscription && !state.HasActiveTrial {
+		if cleanupErr := s.cleanupRevokedUserRuntime(ctx, userID, "entitlement_subscription_cleanup", "expired subscription revoked user proxy runtime", true); cleanupErr != nil {
+			s.logger.Warn("failed to cleanup expired subscription runtime resources",
+				logger.Err(cleanupErr),
+				logger.UserID(userID),
+			)
 		}
 	}
 
@@ -168,6 +205,72 @@ func (s *Service) evaluateAccess(ctx context.Context, userID int64, allowAutoAct
 	}
 
 	return state, nil
+}
+
+func (s *Service) cleanupRevokedUserRuntime(ctx context.Context, userID int64, source, reason string, skipIfActivePause bool) error {
+	if s == nil || userID <= 0 {
+		return nil
+	}
+	if skipIfActivePause {
+		activePause, err := s.activePause(ctx, userID)
+		if err != nil {
+			return err
+		}
+		if activePause != nil {
+			return nil
+		}
+	}
+
+	affectedNodeIDs := make(map[int64]struct{})
+	deletedProxyIDs := make([]int64, 0)
+
+	if s.proxyRepo != nil {
+		proxies, err := s.proxyRepo.GetByUserID(ctx, userID, 10000, 0)
+		if err != nil {
+			return err
+		}
+		for _, proxyModel := range proxies {
+			if proxyModel == nil {
+				continue
+			}
+			deletedProxyIDs = append(deletedProxyIDs, proxyModel.ID)
+			if proxyModel.NodeID != nil && *proxyModel.NodeID > 0 {
+				affectedNodeIDs[*proxyModel.NodeID] = struct{}{}
+			}
+		}
+		if err := s.proxyRepo.DeleteByIDs(ctx, deletedProxyIDs); err != nil {
+			return err
+		}
+	}
+
+	if s.assignmentRepo != nil {
+		if err := s.assignmentRepo.Unassign(ctx, userID); err != nil {
+			return err
+		}
+	}
+
+	if s.configSyncHook != nil {
+		for nodeID := range affectedNodeIDs {
+			s.configSyncHook(nodeID, source, reason)
+		}
+	}
+
+	if len(deletedProxyIDs) > 0 || len(affectedNodeIDs) > 0 {
+		s.logger.Info("cleaned up expired trial runtime resources",
+			logger.UserID(userID),
+			logger.F("deleted_proxy_count", len(deletedProxyIDs)),
+			logger.F("affected_node_count", len(affectedNodeIDs)),
+		)
+	}
+
+	return nil
+}
+
+func (s *Service) activePause(ctx context.Context, userID int64) (*repository.SubscriptionPause, error) {
+	if s == nil || s.pauseRepo == nil || userID <= 0 {
+		return nil, nil
+	}
+	return s.pauseRepo.GetActivePause(ctx, userID)
 }
 
 // GetAccessibleProxies returns only the proxies the user is entitled to use.

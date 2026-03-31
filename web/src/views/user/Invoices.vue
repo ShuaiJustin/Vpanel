@@ -90,7 +90,17 @@
       <el-empty
         v-if="!loading && invoices.length === 0"
         description="暂无发票"
-      />
+      >
+        <template #description>
+          <p class="empty-description">支付成功后的订单如支持开票，会在这里生成对应发票。</p>
+        </template>
+        <el-button
+          type="primary"
+          @click="goToOrders"
+        >
+          查看订单列表
+        </el-button>
+      </el-empty>
 
       <!-- 分页 -->
       <div
@@ -113,10 +123,13 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Download } from '@element-plus/icons-vue'
 import { invoicesApi } from '@/api/index'
 import { extractErrorMessage } from '@/utils/entitlement'
+
+const router = useRouter()
 
 // 状态
 const loading = ref(false)
@@ -147,6 +160,12 @@ const getStatusLabel = (status) => {
     failed: '生成失败'
   }
   return labels[status] || status
+}
+
+const goToOrders = () => {
+  router.push({ name: 'user-orders' }).catch(error => {
+    console.error('跳转到订单页面失败:', error)
+  })
 }
 
 const fetchInvoices = async () => {
@@ -237,6 +256,11 @@ onMounted(() => {
 .amount {
   font-weight: 500;
   color: var(--color-text-primary);
+}
+
+.empty-description {
+  margin: 0 0 12px;
+  color: #909399;
 }
 
 .pagination-container {

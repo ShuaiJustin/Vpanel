@@ -15,6 +15,7 @@ import (
 	"v/internal/api/middleware"
 	"v/internal/auth"
 	"v/internal/database/repository"
+	"v/internal/entitlement"
 	"v/internal/logger"
 	"v/internal/settings"
 	"v/pkg/errors"
@@ -33,6 +34,7 @@ type AuthHandler struct {
 	authService              *auth.Service
 	userRepo                 repository.UserRepository
 	loginHistoryRepo         repository.LoginHistoryRepository
+	entitlementService       *entitlement.Service
 	logger                   logger.Logger
 	settingsService          *settings.Service
 	loginRateLimiter         *auth.RateLimiter
@@ -54,6 +56,24 @@ func NewAuthHandler(authService *auth.Service, userRepo repository.UserRepositor
 func (h *AuthHandler) WithSecuritySettings(settingsService *settings.Service) *AuthHandler {
 	h.settingsService = settingsService
 	return h
+}
+
+// WithEntitlementService enables runtime cleanup reconciliation after admin access changes.
+func (h *AuthHandler) WithEntitlementService(entitlementService *entitlement.Service) *AuthHandler {
+	h.entitlementService = entitlementService
+	return h
+}
+
+func (h *AuthHandler) reconcileRevokedUserRuntime(ctx context.Context, userID int64) {
+	if h == nil || h.entitlementService == nil || userID <= 0 {
+		return
+	}
+	if _, err := h.entitlementService.EvaluateExistingAccess(ctx, userID); err != nil && !errors.IsForbidden(err) {
+		h.logger.Warn("failed to reconcile revoked user runtime resources",
+			logger.Err(err),
+			logger.UserID(userID),
+		)
+	}
 }
 
 // LoginRequest represents a login request.
@@ -906,6 +926,7 @@ func (h *AuthHandler) DisableUser(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, errors.NewDatabaseError("Failed to disable user", err).ToResponse(""))
 		return
 	}
+	h.reconcileRevokedUserRuntime(c.Request.Context(), id)
 
 	h.logger.Info("user disabled", logger.F("user_id", id))
 	c.JSON(http.StatusOK, gin.H{"message": "User disabled successfully"})
@@ -1098,6 +1119,9 @@ func (h *AuthHandler) UpdateUserExtended(c *gin.Context) {
 	if err := h.userRepo.Update(c.Request.Context(), user); err != nil {
 		c.JSON(http.StatusInternalServerError, errors.NewDatabaseError("Failed to update user", err).ToResponse(""))
 		return
+	}
+	if !user.Enabled || (user.ExpiresAt != nil && time.Now().After(*user.ExpiresAt)) {
+		h.reconcileRevokedUserRuntime(c.Request.Context(), id)
 	}
 
 	h.logger.Info("user updated (extended)", logger.F("user_id", id))

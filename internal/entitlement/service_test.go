@@ -35,6 +35,7 @@ func setupTestService(t *testing.T) (*Service, *gorm.DB) {
 		&repository.Node{},
 		&repository.Proxy{},
 		&repository.Trial{},
+		&repository.SubscriptionPause{},
 		&repository.UserNodeAssignment{},
 	); err != nil {
 		t.Fatalf("failed to migrate test schema: %v", err)
@@ -45,6 +46,7 @@ func setupTestService(t *testing.T) (*Service, *gorm.DB) {
 	proxyRepo := repository.NewProxyRepository(db)
 	nodeRepo := repository.NewNodeRepository(db)
 	assignmentRepo := repository.NewUserNodeAssignmentRepository(db)
+	pauseRepo := repository.NewPauseRepository(db)
 	trialService := trialsvc.NewService(trialRepo, userRepo, logger.NewNopLogger(), nil)
 	proxyManager := proxy.NewManager(proxyRepo)
 	proxyManager.RegisterProtocol(vmess.New())
@@ -60,7 +62,7 @@ func setupTestService(t *testing.T) (*Service, *gorm.DB) {
 		assignmentRepo,
 		trialService,
 		logger.NewNopLogger(),
-	).WithProxyManager(proxyManager)
+	).WithProxyManager(proxyManager).WithPauseRepository(pauseRepo)
 
 	return service, db
 }
@@ -147,6 +149,30 @@ func TestEvaluateAccess_AutoActivatesTrial(t *testing.T) {
 func TestEvaluateAccess_DeniesExpiredTrial(t *testing.T) {
 	service, db := setupTestService(t)
 	user := createTestUser(t, db, "expired-trial-user")
+	node := createTestNode(t, db, "expired-trial-node")
+	nodeRef := node.ID
+	proxyModel := &repository.Proxy{
+		UserID:   user.ID,
+		NodeID:   &nodeRef,
+		Name:     "expired-trial-proxy",
+		Protocol: "vmess",
+		Port:     12001,
+		Host:     "127.0.0.1",
+		Enabled:  true,
+	}
+	if err := db.Create(proxyModel).Error; err != nil {
+		t.Fatalf("failed to create expired-trial proxy: %v", err)
+	}
+
+	assignmentRepo := repository.NewUserNodeAssignmentRepository(db)
+	if err := assignmentRepo.Assign(context.Background(), user.ID, node.ID); err != nil {
+		t.Fatalf("failed to assign expired-trial user: %v", err)
+	}
+
+	var syncedNodeID int64
+	service.WithConfigSyncHook(func(nodeID int64, source, reason string) {
+		syncedNodeID = nodeID
+	})
 
 	expiredTrial := &repository.Trial{
 		UserID:      user.ID,
@@ -170,6 +196,277 @@ func TestEvaluateAccess_DeniesExpiredTrial(t *testing.T) {
 	}
 	if repoTrial.Status != "expired" {
 		t.Fatalf("expected expired trial status to be persisted, got %s", repoTrial.Status)
+	}
+
+	var remainingProxies int64
+	if err := db.Model(&repository.Proxy{}).Where("user_id = ?", user.ID).Count(&remainingProxies).Error; err != nil {
+		t.Fatalf("failed to count remaining proxies: %v", err)
+	}
+	if remainingProxies != 0 {
+		t.Fatalf("expected expired trial proxies to be removed, got %d", remainingProxies)
+	}
+
+	assignment, err := assignmentRepo.GetByUserID(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("failed to reload expired-trial assignment: %v", err)
+	}
+	if assignment != nil {
+		t.Fatalf("expected expired trial assignment cleanup, got %+v", assignment)
+	}
+	if syncedNodeID != node.ID {
+		t.Fatalf("expected config sync for node %d, got %d", node.ID, syncedNodeID)
+	}
+}
+
+func TestEvaluateExistingAccess_CleansRuntimeForPersistedExpiredTrial(t *testing.T) {
+	service, db := setupTestService(t)
+	user := createTestUser(t, db, "persisted-expired-trial-user")
+	node := createTestNode(t, db, "persisted-expired-trial-node")
+	nodeRef := node.ID
+
+	proxyModel := &repository.Proxy{
+		UserID:   user.ID,
+		NodeID:   &nodeRef,
+		Name:     "persisted-expired-trial-proxy",
+		Protocol: "vmess",
+		Port:     12002,
+		Host:     "127.0.0.1",
+		Enabled:  true,
+	}
+	if err := db.Create(proxyModel).Error; err != nil {
+		t.Fatalf("failed to create persisted expired-trial proxy: %v", err)
+	}
+
+	assignmentRepo := repository.NewUserNodeAssignmentRepository(db)
+	if err := assignmentRepo.Assign(context.Background(), user.ID, node.ID); err != nil {
+		t.Fatalf("failed to assign persisted expired-trial user: %v", err)
+	}
+
+	persistedExpiredTrial := &repository.Trial{
+		UserID:      user.ID,
+		Status:      "expired",
+		StartAt:     time.Now().AddDate(0, 0, -14),
+		ExpireAt:    time.Now().AddDate(0, 0, -7),
+		TrafficUsed: 0,
+	}
+	if err := db.Create(persistedExpiredTrial).Error; err != nil {
+		t.Fatalf("failed to create persisted expired trial: %v", err)
+	}
+
+	var syncedNodeID int64
+	service.WithConfigSyncHook(func(nodeID int64, source, reason string) {
+		syncedNodeID = nodeID
+	})
+
+	_, err := service.EvaluateExistingAccess(context.Background(), user.ID)
+	if err == nil || !pkgerrors.IsForbidden(err) {
+		t.Fatalf("expected forbidden error for persisted expired trial, got %v", err)
+	}
+
+	var remainingProxies int64
+	if err := db.Model(&repository.Proxy{}).Where("user_id = ?", user.ID).Count(&remainingProxies).Error; err != nil {
+		t.Fatalf("failed to count remaining proxies: %v", err)
+	}
+	if remainingProxies != 0 {
+		t.Fatalf("expected persisted expired trial proxies to be removed, got %d", remainingProxies)
+	}
+
+	assignment, err := assignmentRepo.GetByUserID(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("failed to reload persisted expired-trial assignment: %v", err)
+	}
+	if assignment != nil {
+		t.Fatalf("expected persisted expired trial assignment cleanup, got %+v", assignment)
+	}
+	if syncedNodeID != node.ID {
+		t.Fatalf("expected config sync for node %d, got %d", node.ID, syncedNodeID)
+	}
+}
+
+func TestEvaluateExistingAccess_CleansRuntimeForExpiredSubscription(t *testing.T) {
+	service, db := setupTestService(t)
+	user := createTestUser(t, db, "expired-subscription-user")
+	node := createTestNode(t, db, "expired-subscription-node")
+	nodeRef := node.ID
+	expiredAt := time.Now().Add(-2 * time.Hour)
+	user.ExpiresAt = &expiredAt
+	if err := db.Save(user).Error; err != nil {
+		t.Fatalf("failed to expire test user: %v", err)
+	}
+
+	proxyModel := &repository.Proxy{
+		UserID:   user.ID,
+		NodeID:   &nodeRef,
+		Name:     "expired-subscription-proxy",
+		Protocol: "vmess",
+		Port:     12003,
+		Host:     "127.0.0.1",
+		Enabled:  true,
+	}
+	if err := db.Create(proxyModel).Error; err != nil {
+		t.Fatalf("failed to create expired-subscription proxy: %v", err)
+	}
+
+	assignmentRepo := repository.NewUserNodeAssignmentRepository(db)
+	if err := assignmentRepo.Assign(context.Background(), user.ID, node.ID); err != nil {
+		t.Fatalf("failed to assign expired-subscription user: %v", err)
+	}
+
+	var syncedNodeID int64
+	service.WithConfigSyncHook(func(nodeID int64, source, reason string) {
+		syncedNodeID = nodeID
+	})
+
+	_, err := service.EvaluateExistingAccess(context.Background(), user.ID)
+	if err == nil || !pkgerrors.IsForbidden(err) {
+		t.Fatalf("expected forbidden error for expired subscription, got %v", err)
+	}
+
+	var remainingProxies int64
+	if err := db.Model(&repository.Proxy{}).Where("user_id = ?", user.ID).Count(&remainingProxies).Error; err != nil {
+		t.Fatalf("failed to count remaining proxies: %v", err)
+	}
+	if remainingProxies != 0 {
+		t.Fatalf("expected expired subscription proxies to be removed, got %d", remainingProxies)
+	}
+
+	assignment, err := assignmentRepo.GetByUserID(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("failed to reload expired-subscription assignment: %v", err)
+	}
+	if assignment != nil {
+		t.Fatalf("expected expired subscription assignment cleanup, got %+v", assignment)
+	}
+	if syncedNodeID != node.ID {
+		t.Fatalf("expected config sync for node %d, got %d", node.ID, syncedNodeID)
+	}
+}
+
+func TestEvaluateExistingAccess_SkipsCleanupForPausedExpiredSubscription(t *testing.T) {
+	service, db := setupTestService(t)
+	user := createTestUser(t, db, "paused-subscription-user")
+	node := createTestNode(t, db, "paused-subscription-node")
+	nodeRef := node.ID
+	expiredAt := time.Now().Add(-2 * time.Hour)
+	user.ExpiresAt = &expiredAt
+	if err := db.Save(user).Error; err != nil {
+		t.Fatalf("failed to expire paused test user: %v", err)
+	}
+
+	proxyModel := &repository.Proxy{
+		UserID:   user.ID,
+		NodeID:   &nodeRef,
+		Name:     "paused-subscription-proxy",
+		Protocol: "vmess",
+		Port:     12004,
+		Host:     "127.0.0.1",
+		Enabled:  true,
+	}
+	if err := db.Create(proxyModel).Error; err != nil {
+		t.Fatalf("failed to create paused-subscription proxy: %v", err)
+	}
+
+	assignmentRepo := repository.NewUserNodeAssignmentRepository(db)
+	if err := assignmentRepo.Assign(context.Background(), user.ID, node.ID); err != nil {
+		t.Fatalf("failed to assign paused-subscription user: %v", err)
+	}
+
+	activePause := &repository.SubscriptionPause{
+		UserID:           user.ID,
+		PausedAt:         time.Now().Add(-time.Hour),
+		RemainingDays:    7,
+		RemainingTraffic: 1024,
+		AutoResumeAt:     time.Now().Add(24 * time.Hour),
+	}
+	if err := db.Create(activePause).Error; err != nil {
+		t.Fatalf("failed to create active pause: %v", err)
+	}
+
+	var syncedNodeID int64
+	service.WithConfigSyncHook(func(nodeID int64, source, reason string) {
+		syncedNodeID = nodeID
+	})
+
+	_, err := service.EvaluateExistingAccess(context.Background(), user.ID)
+	if err == nil || !pkgerrors.IsForbidden(err) {
+		t.Fatalf("expected forbidden error for paused expired subscription, got %v", err)
+	}
+
+	var remainingProxies int64
+	if err := db.Model(&repository.Proxy{}).Where("user_id = ?", user.ID).Count(&remainingProxies).Error; err != nil {
+		t.Fatalf("failed to count remaining proxies: %v", err)
+	}
+	if remainingProxies != 1 {
+		t.Fatalf("expected paused subscription proxy to remain, got %d", remainingProxies)
+	}
+
+	assignment, err := assignmentRepo.GetByUserID(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("failed to reload paused-subscription assignment: %v", err)
+	}
+	if assignment == nil || assignment.NodeID != node.ID {
+		t.Fatalf("expected paused subscription assignment to remain on node %d, got %+v", node.ID, assignment)
+	}
+	if syncedNodeID != 0 {
+		t.Fatalf("expected paused subscription cleanup to skip config sync, got %d", syncedNodeID)
+	}
+}
+
+func TestEvaluateExistingAccess_CleansRuntimeForDisabledUser(t *testing.T) {
+	service, db := setupTestService(t)
+	user := createTestUser(t, db, "disabled-user-cleanup")
+	node := createTestNode(t, db, "disabled-user-node")
+	nodeRef := node.ID
+	user.Enabled = false
+	if err := db.Save(user).Error; err != nil {
+		t.Fatalf("failed to disable test user: %v", err)
+	}
+
+	proxyModel := &repository.Proxy{
+		UserID:   user.ID,
+		NodeID:   &nodeRef,
+		Name:     "disabled-user-proxy",
+		Protocol: "vmess",
+		Port:     12005,
+		Host:     "127.0.0.1",
+		Enabled:  true,
+	}
+	if err := db.Create(proxyModel).Error; err != nil {
+		t.Fatalf("failed to create disabled-user proxy: %v", err)
+	}
+
+	assignmentRepo := repository.NewUserNodeAssignmentRepository(db)
+	if err := assignmentRepo.Assign(context.Background(), user.ID, node.ID); err != nil {
+		t.Fatalf("failed to assign disabled user: %v", err)
+	}
+
+	var syncedNodeID int64
+	service.WithConfigSyncHook(func(nodeID int64, source, reason string) {
+		syncedNodeID = nodeID
+	})
+
+	_, err := service.EvaluateExistingAccess(context.Background(), user.ID)
+	if err == nil || !pkgerrors.IsForbidden(err) {
+		t.Fatalf("expected forbidden error for disabled user, got %v", err)
+	}
+
+	var remainingProxies int64
+	if err := db.Model(&repository.Proxy{}).Where("user_id = ?", user.ID).Count(&remainingProxies).Error; err != nil {
+		t.Fatalf("failed to count remaining proxies: %v", err)
+	}
+	if remainingProxies != 0 {
+		t.Fatalf("expected disabled user proxies to be removed, got %d", remainingProxies)
+	}
+
+	assignment, err := assignmentRepo.GetByUserID(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("failed to reload disabled-user assignment: %v", err)
+	}
+	if assignment != nil {
+		t.Fatalf("expected disabled user assignment cleanup, got %+v", assignment)
+	}
+	if syncedNodeID != node.ID {
+		t.Fatalf("expected config sync for node %d, got %d", node.ID, syncedNodeID)
 	}
 }
 

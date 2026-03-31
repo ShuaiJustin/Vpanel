@@ -24,7 +24,7 @@
     <template v-else>
       <!-- 当前套餐信息 -->
       <el-card
-        v-if="currentPlan"
+        v-if="hasCurrentPlan"
         class="current-plan-card"
       >
         <template #header>
@@ -48,9 +48,29 @@
         </div>
       </el-card>
 
+      <el-card
+        v-else
+        class="empty-state-card"
+        shadow="never"
+      >
+        <el-empty description="当前还没有可升降级的有效套餐">
+          <template #description>
+            <p class="empty-state-desc">
+              请先购买一个套餐；购买成功后，再回到这里处理升级或降级。
+            </p>
+          </template>
+          <el-button
+            type="primary"
+            @click="goToPlans"
+          >
+            去选择套餐
+          </el-button>
+        </el-empty>
+      </el-card>
+
       <!-- 待执行的降级提示 -->
       <el-alert
-        v-if="pendingDowngrade"
+        v-if="hasCurrentPlan && pendingDowngrade"
         type="warning"
         :closable="false"
         class="pending-alert"
@@ -73,7 +93,10 @@
       </el-alert>
 
       <!-- 可选套餐列表 -->
-      <div class="plans-section">
+      <div
+        v-if="hasCurrentPlan"
+        class="plans-section"
+      >
         <h2 class="section-title">
           选择新套餐
         </h2>
@@ -146,7 +169,7 @@
 
       <!-- 价格计算结果 -->
       <el-card
-        v-if="changeResult"
+        v-if="hasCurrentPlan && changeResult"
         class="result-card"
       >
         <template #header>
@@ -248,6 +271,7 @@ const remainingDays = computed(() => {
 const availablePlans = computed(() => {
   return plans.value.filter(p => p.is_active)
 })
+const hasCurrentPlan = computed(() => Boolean(currentPlan.value?.id))
 
 // 方法
 const formatPrice = (price) => {
@@ -277,7 +301,27 @@ const formatDate = (dateStr) => {
   })
 }
 
+const goToPlans = () => {
+  router.push({ name: 'user-plans' }).catch(error => {
+    console.error('跳转到套餐页面失败:', error)
+  })
+}
+
+const ensureCurrentPlan = () => {
+  if (hasCurrentPlan.value) {
+    return true
+  }
+
+  ElMessage.info('当前没有可升降级的有效套餐，请先购买套餐')
+  goToPlans()
+  return false
+}
+
 const selectPlan = async (plan) => {
+  if (!ensureCurrentPlan()) {
+    return
+  }
+
   if (plan.id === currentPlan.value?.id) {
     ElMessage.info('这是您当前的套餐')
     return
@@ -304,6 +348,10 @@ const cancelSelection = () => {
 }
 
 const confirmUpgrade = async () => {
+  if (!ensureCurrentPlan()) {
+    return
+  }
+
   try {
     await ElMessageBox.confirm(
       `确定要升级到 ${selectedPlan.value.name} 吗？将从余额扣除 ¥${formatPrice(changeResult.value.price_difference)}`,
@@ -329,6 +377,10 @@ const confirmUpgrade = async () => {
 }
 
 const confirmDowngrade = async () => {
+  if (!ensureCurrentPlan()) {
+    return
+  }
+
   try {
     await ElMessageBox.confirm(
       `确定要降级到 ${selectedPlan.value.name} 吗？降级将在当前套餐到期后生效`,
@@ -378,28 +430,30 @@ const fetchPendingDowngrade = async () => {
 
 const fetchData = async () => {
   loading.value = true
+  currentPlan.value = null
+  selectedPlan.value = null
+  changeResult.value = null
+  pendingDowngrade.value = null
+
   try {
-    // 获取套餐列表
     const plansResponse = await plansApi.list()
     plans.value = Array.isArray(plansResponse.plans) ? plansResponse.plans : []
 
-    // 获取用户信息（包含当前套餐）
-    // 这里假设用户信息中有 plan_id 和 expires_at
-    const userInfo = userStore.userInfo
-    if (userInfo) {
-      expiresAt.value = userInfo.expires_at
-      // 根据用户的 plan_id 找到当前套餐
-      if (userInfo.plan_id) {
-        currentPlan.value = plans.value.find(p => p.id === userInfo.plan_id)
+    let userInfo = userStore.user
+    if (!userInfo) {
+      try {
+        userInfo = await userStore.fetchProfile({ silent: true })
+      } catch (profileError) {
+        console.warn('加载用户资料失败:', profileError)
       }
     }
 
-    // 如果没有找到当前套餐，使用第一个套餐作为示例
-    if (!currentPlan.value && plans.value.length > 0) {
-      currentPlan.value = plans.value[0]
+    expiresAt.value = userInfo?.expires_at || null
+
+    if (userInfo?.plan_id) {
+      currentPlan.value = plans.value.find(p => p.id === userInfo.plan_id) || null
     }
 
-    // 获取待执行的降级
     await fetchPendingDowngrade()
   } catch (error) {
     ElMessage.error(extractErrorMessage(error) || '加载数据失败')
@@ -445,6 +499,16 @@ onMounted(() => {
 
 .current-plan-card {
   margin-bottom: 24px;
+}
+
+.empty-state-card {
+  margin-bottom: 24px;
+}
+
+.empty-state-desc {
+  margin: 0;
+  color: #909399;
+  line-height: 1.6;
 }
 
 .card-header {

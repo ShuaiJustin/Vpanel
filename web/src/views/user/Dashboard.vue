@@ -6,12 +6,12 @@
         <h1 class="welcome-title">
           {{ greeting }}，{{ userStore.username || "用户" }}
         </h1>
-        <p class="welcome-subtitle">欢迎回来，这是您的账户概览</p>
+        <p class="welcome-subtitle">{{ welcomeSubtitle }}</p>
       </div>
       <div class="welcome-actions">
-        <el-button type="primary" @click="goToSubscription">
-          <el-icon><Link /></el-icon>
-          获取订阅
+        <el-button type="primary" @click="handlePrimaryAction">
+          <el-icon><component :is="primaryActionIcon" /></el-icon>
+          {{ primaryActionLabel }}
         </el-button>
       </div>
     </div>
@@ -44,20 +44,13 @@
           <div class="card-content">
             <div class="card-label">到期时间</div>
             <div class="card-value">
-              <template v-if="userStore.expiresAt">
-                {{ formatDate(userStore.expiresAt) }}
+{{ expiryDisplayText }}
                 <span
-                  v-if="userStore.daysUntilExpiry !== null"
+                  v-if="expiryHintText"
                   class="days-hint"
                 >
-                  ({{
-                    userStore.daysUntilExpiry > 0
-                      ? `剩余 ${userStore.daysUntilExpiry} 天`
-                      : "已过期"
-                  }})
+                  ({{ expiryHintText }})
                 </span>
-              </template>
-              <template v-else> 永久有效 </template>
             </div>
           </div>
         </div>
@@ -167,11 +160,11 @@
               </el-icon>
               <span class="action-label">节点列表</span>
             </div>
-            <div class="action-item" @click="goToSubscription">
+            <div class="action-item" @click="handlePrimaryAction">
               <el-icon class="action-icon">
-                <Link />
+                <component :is="primaryActionIcon" />
               </el-icon>
-              <span class="action-label">订阅管理</span>
+              <span class="action-label">{{ primaryActionQuickLabel }}</span>
             </div>
             <div class="action-item" @click="goToDownload">
               <el-icon class="action-icon">
@@ -276,6 +269,7 @@ import {
   QuestionFilled,
   Bell,
   ArrowRight,
+  ShoppingCart,
 } from "@element-plus/icons-vue";
 import { useUserPortalStore } from "@/stores/userPortal";
 import { usePortalAnnouncementsStore } from "@/stores/portalAnnouncements";
@@ -305,7 +299,17 @@ const greeting = computed(() => {
   return "晚上好";
 });
 
+const hasCurrentPlan = computed(() => Boolean(userStore.user?.plan_id));
+const isExpiredEntitlement = computed(() => hasCurrentPlan.value && userStore.status === "expired");
+
+const welcomeSubtitle = computed(() => {
+  if (!hasCurrentPlan.value) return "先购买套餐，即可获取订阅并开始使用节点";
+  if (isExpiredEntitlement.value) return "当前套餐已过期，续费后即可恢复订阅和节点使用";
+  return "欢迎回来，这是您的账户概览";
+});
+
 const accountStatusClass = computed(() => {
+  if (!hasCurrentPlan.value) return "inactive";
   const status = userStore.status;
   if (status === "active") return "active";
   if (status === "expired") return "expired";
@@ -313,6 +317,7 @@ const accountStatusClass = computed(() => {
 });
 
 const accountStatusType = computed(() => {
+  if (!hasCurrentPlan.value) return "info";
   const status = userStore.status;
   if (status === "active") return "success";
   if (status === "expired") return "warning";
@@ -320,11 +325,39 @@ const accountStatusType = computed(() => {
 });
 
 const accountStatusText = computed(() => {
+  if (!hasCurrentPlan.value) return "无有效订阅";
   const status = userStore.status;
   if (status === "active") return "正常";
   if (status === "expired") return "已过期";
   if (status === "disabled") return "已禁用";
   return "未知";
+});
+
+const expiryDisplayText = computed(() => {
+  if (!hasCurrentPlan.value) return "未开通套餐";
+  if (!userStore.expiresAt) return "永久有效";
+  return formatDate(userStore.expiresAt);
+});
+
+const expiryHintText = computed(() => {
+  if (!hasCurrentPlan.value || userStore.daysUntilExpiry === null) return "";
+  return userStore.daysUntilExpiry > 0 ? `剩余 ${userStore.daysUntilExpiry} 天` : "已过期";
+});
+
+const primaryActionLabel = computed(() => {
+  if (!hasCurrentPlan.value) return "购买套餐";
+  if (isExpiredEntitlement.value) return "续费套餐";
+  return "获取订阅";
+});
+
+const primaryActionQuickLabel = computed(() => {
+  if (!hasCurrentPlan.value) return "购买套餐";
+  if (isExpiredEntitlement.value) return "续费套餐";
+  return "订阅管理";
+});
+
+const primaryActionIcon = computed(() => {
+  return !hasCurrentPlan.value || isExpiredEntitlement.value ? ShoppingCart : Link;
 });
 
 const remainingTraffic = computed(() => {
@@ -429,6 +462,19 @@ function getCategoryLabel(category) {
 // 导航方法
 function goToNodes() {
   router.push("/user/nodes");
+}
+
+function handlePrimaryAction() {
+  if (!hasCurrentPlan.value || isExpiredEntitlement.value) {
+    goToPlans();
+    return;
+  }
+
+  goToSubscription();
+}
+
+function goToPlans() {
+  router.push("/user/plans");
 }
 
 function goToSubscription() {
@@ -598,6 +644,11 @@ onBeforeUnmount(() => {
   justify-content: center;
   font-size: 24px;
   margin-right: 16px;
+}
+
+.card-icon.inactive {
+  background: rgba(144, 147, 153, 0.1);
+  color: #909399;
 }
 
 .card-icon.active {

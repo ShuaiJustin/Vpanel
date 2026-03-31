@@ -45,7 +45,7 @@
               size="small"
             >
               <el-descriptions-item label="到期时间">
-                {{ expiresAt || '永久有效' }}
+                {{ expiryDisplayText }}
                 <span
                   v-if="daysUntilExpiry !== null"
                   class="days-hint"
@@ -65,17 +65,17 @@
             <div class="action-buttons">
               <el-button
                 type="primary"
-                @click="goToPlanUpgrade"
+                @click="handlePrimaryPlanAction"
               >
                 <el-icon><TrendCharts /></el-icon>
-                升级/降级套餐
+                {{ hasCurrentPlan ? '升级/降级套餐' : '选择套餐' }}
               </el-button>
               <el-button
                 type="success"
                 @click="goToPlans"
               >
                 <el-icon><ShoppingCart /></el-icon>
-                续费套餐
+                {{ secondaryPlanActionLabel }}
               </el-button>
             </div>
           </div>
@@ -196,7 +196,7 @@
           @click="goToPlans"
         >
           <el-icon><ShoppingCart /></el-icon>
-          购买/续费套餐
+          {{ secondaryPlanActionLabel }}
         </el-button>
       </el-empty>
     </el-card>
@@ -347,16 +347,23 @@ const subscriptionStatus = computed(() => {
   return { type: 'danger', label: '已禁用' }
 })
 
-const expiresAt = computed(() => {
-  if (!userStore.expiresAt) return null
+const hasCurrentPlan = computed(() => Boolean(userStore.user?.plan_id))
+const isExpiredEntitlement = computed(() => hasCurrentPlan.value && userStore.status === 'expired')
+const expiryDisplayText = computed(() => {
+  if (!hasCurrentPlan.value) return '未开通套餐'
+  if (!userStore.expiresAt) return '永久有效'
   return new Date(userStore.expiresAt).toLocaleDateString('zh-CN')
 })
-
 const daysUntilExpiry = computed(() => userStore.daysUntilExpiry)
 const trafficUsed = computed(() => userStore.trafficUsed)
 const trafficLimit = computed(() => userStore.trafficLimit)
 const availableNodes = computed(() => userStore.availableNodes || 0)
-const noEntitlementMessage = computed(() => getNoEntitlementMessage('subscription'))
+const secondaryPlanActionLabel = computed(() => (hasCurrentPlan.value ? '续费套餐' : '购买套餐'))
+const noEntitlementMessage = computed(() => {
+  if (!hasCurrentPlan.value) return '当前暂无可用订阅链接，请先购买套餐。'
+  if (isExpiredEntitlement.value) return '当前套餐已过期，续费后即可恢复订阅链接和节点使用。'
+  return getNoEntitlementMessage('subscription')
+})
 
 const subscriptionRefreshHint = computed(() => {
   const baseHint = '约每 30 秒自动刷新'
@@ -491,6 +498,15 @@ async function confirmReset() {
 
 function goToDownload() {
   router.push('/user/download')
+}
+
+function handlePrimaryPlanAction() {
+  if (hasCurrentPlan.value) {
+    goToPlanUpgrade()
+    return
+  }
+
+  goToPlans()
 }
 
 function goToPlanUpgrade() {

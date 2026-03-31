@@ -90,7 +90,17 @@
           </template>
         </el-alert>
 
+        <el-button
+          v-if="noSubscription"
+          type="primary"
+          class="action-btn"
+          @click="goToPlans"
+        >
+          <el-icon><ShoppingCart /></el-icon>
+          {{ entitlementActionLabel }}
+        </el-button>
         <el-button 
+          v-else
           type="warning" 
           class="action-btn"
           :disabled="!pauseStore.canPause"
@@ -143,14 +153,18 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { 
-  VideoPause, VideoPlay, Clock, CircleCheck, CircleCloseFilled
+  VideoPause, VideoPlay, Clock, CircleCheck, CircleCloseFilled, ShoppingCart
 } from '@element-plus/icons-vue'
 import { usePauseStore } from '@/stores/pause'
+import { useUserPortalStore } from '@/stores/userPortal'
 import { extractErrorMessage } from '@/utils/entitlement'
 
+const router = useRouter()
 const pauseStore = usePauseStore()
+const userStore = useUserPortalStore()
 
 // State
 const showPauseDialog = ref(false)
@@ -158,6 +172,12 @@ const pausing = ref(false)
 const resuming = ref(false)
 const noSubscriptionReason = '当前无有效订阅'
 const noSubscription = computed(() => !pauseStore.isPaused && pauseStore.cannotPauseReason === noSubscriptionReason)
+const entitlementActionLabel = computed(() => {
+  if (userStore.user?.plan_id && userStore.status === 'expired') {
+    return '去续费套餐'
+  }
+  return '去购买套餐'
+})
 
 // Methods
 function formatDate(dateStr) {
@@ -187,6 +207,12 @@ function formatTraffic(bytes) {
 function formatRemainingDays(days) {
   if (typeof days === 'number' && days < 0) return '永久'
   return `${days || 0} 天`
+}
+
+function goToPlans() {
+  router.push('/user/plans').catch(error => {
+    console.error('跳转到套餐页面失败:', error)
+  })
 }
 
 async function handlePause() {

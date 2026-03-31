@@ -19,7 +19,9 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 
 	"v/internal/auth"
+	trialsvc "v/internal/commercial/trial"
 	"v/internal/database/repository"
+	"v/internal/entitlement"
 	"v/internal/logger"
 )
 
@@ -56,7 +58,7 @@ func setupUserTestDB(t *testing.T) *gorm.DB {
 	}
 
 	// Auto migrate
-	if err := db.AutoMigrate(&repository.User{}, &repository.Proxy{}, &repository.Traffic{}); err != nil {
+	if err := db.AutoMigrate(&repository.User{}, &repository.Node{}, &repository.Proxy{}, &repository.Traffic{}, &repository.Trial{}, &repository.SubscriptionPause{}, &repository.UserNodeAssignment{}); err != nil {
 		t.Fatalf("Failed to migrate: %v", err)
 	}
 
@@ -411,5 +413,105 @@ func TestUserEnableDisable_LoginAfterStateChange(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Errorf("Step 5: Expected login to succeed after re-enable, got status %d", w.Code)
+	}
+}
+
+func TestUserEnableDisable_DisableEndpointCleansRuntimeResources(t *testing.T) {
+	db := setupUserTestDB(t)
+	authSvc := auth.NewService(auth.Config{
+		JWTSecret:   "test-secret-key-for-testing-12345",
+		TokenExpiry: time.Hour,
+	})
+	userRepo := repository.NewUserRepository(db)
+	trialRepo := repository.NewTrialRepository(db)
+	proxyRepo := repository.NewProxyRepository(db)
+	nodeRepo := repository.NewNodeRepository(db)
+	assignmentRepo := repository.NewUserNodeAssignmentRepository(db)
+	pauseRepo := repository.NewPauseRepository(db)
+	log := logger.NewNopLogger()
+
+	user := createTestUser(t, db, authSvc, "cleanupdisableuser", "password123", true)
+	node := &repository.Node{
+		Name:    "cleanup-node",
+		Address: "cleanup-node.example.com",
+		Token:   "cleanup-node-token",
+		Status:  repository.NodeStatusOnline,
+	}
+	if err := db.Create(node).Error; err != nil {
+		t.Fatalf("Failed to create node: %v", err)
+	}
+	nodeRef := node.ID
+	if err := db.Create(&repository.Proxy{
+		UserID:   user.ID,
+		NodeID:   &nodeRef,
+		Name:     "cleanup-proxy",
+		Protocol: "vmess",
+		Port:     23001,
+		Host:     "127.0.0.1",
+		Enabled:  true,
+	}).Error; err != nil {
+		t.Fatalf("Failed to create proxy: %v", err)
+	}
+	if err := assignmentRepo.Assign(context.Background(), user.ID, node.ID); err != nil {
+		t.Fatalf("Failed to create assignment: %v", err)
+	}
+
+	trialService := trialsvc.NewService(trialRepo, userRepo, log, nil)
+	entitlementService := entitlement.NewService(
+		userRepo,
+		trialRepo,
+		proxyRepo,
+		nodeRepo,
+		assignmentRepo,
+		trialService,
+		log,
+	).WithPauseRepository(pauseRepo)
+
+	var syncedNodeID int64
+	entitlementService.WithConfigSyncHook(func(nodeID int64, source, reason string) {
+		syncedNodeID = nodeID
+	})
+
+	handler := NewAuthHandler(authSvc, userRepo, nil, log).WithEntitlementService(entitlementService)
+
+	router := gin.New()
+	router.POST("/users/:id/disable", func(c *gin.Context) {
+		c.Set("user_id", int64(999))
+		handler.DisableUser(c)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/users/"+strconv.FormatInt(user.ID, 10)+"/disable", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected disable to succeed, got %d: %s", w.Code, w.Body.String())
+	}
+
+	updatedUser, err := userRepo.GetByID(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("Failed to reload user: %v", err)
+	}
+	if updatedUser.Enabled {
+		t.Fatal("Expected user to be disabled")
+	}
+
+	var proxyCount int64
+	if err := db.Model(&repository.Proxy{}).Where("user_id = ?", user.ID).Count(&proxyCount).Error; err != nil {
+		t.Fatalf("Failed to count proxies: %v", err)
+	}
+	if proxyCount != 0 {
+		t.Fatalf("Expected disabled user proxies to be cleaned up, got %d", proxyCount)
+	}
+
+	assignment, err := assignmentRepo.GetByUserID(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("Failed to reload assignment: %v", err)
+	}
+	if assignment != nil {
+		t.Fatalf("Expected disabled user assignment cleanup, got %+v", assignment)
+	}
+	if syncedNodeID != node.ID {
+		t.Fatalf("Expected config sync for node %d, got %d", node.ID, syncedNodeID)
 	}
 }

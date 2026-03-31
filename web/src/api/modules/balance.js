@@ -46,6 +46,21 @@ export const balanceApi = {
     listRechargeOrders: (params = {}) => api.get('/admin/balance/recharge-orders', { params }),
 
     /**
+     * 获取用户当前余额（管理员）
+     * @param {number|string} userId - 用户 ID
+     * @returns {Promise<Object>} 余额信息
+     */
+    getUserBalance: (userId) => api.get(`/admin/balance/users/${userId}`),
+
+    /**
+     * 获取用户余额流水（管理员）
+     * @param {number|string} userId - 用户 ID
+     * @param {Object} params - 查询参数
+     * @returns {Promise<Object>} 交易列表
+     */
+    getTransactions: (userId, params = {}) => api.get(`/admin/balance/users/${userId}/transactions`, { params }),
+
+    /**
      * 调整用户余额（管理员）
      * @param {Object} data - 调整数据
      * @param {number} data.user_id - 用户ID

@@ -63,6 +63,52 @@ type AdminRechargeOrderResponse struct {
 	CreatedAt string  `json:"created_at"`
 }
 
+func buildTransactionResponses(txs []*balance.Transaction) []TransactionResponse {
+	response := make([]TransactionResponse, len(txs))
+	for i, tx := range txs {
+		response[i] = TransactionResponse{
+			ID:          tx.ID,
+			Type:        tx.Type,
+			Amount:      tx.Amount,
+			Balance:     tx.Balance,
+			OrderID:     tx.OrderID,
+			Description: tx.Description,
+			Operator:    tx.Operator,
+			CreatedAt:   tx.CreatedAt,
+		}
+	}
+	return response
+}
+
+func parseTransactionFilter(c *gin.Context, userID *int64) (balance.TransactionFilter, int, int, bool) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	filter := balance.TransactionFilter{
+		UserID: userID,
+		Type:   strings.TrimSpace(c.Query("type")),
+	}
+
+	if startDate := strings.TrimSpace(c.Query("start_date")); startDate != "" {
+		parsed, err := parseOrderFilterTime(startDate, false)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid start date"})
+			return balance.TransactionFilter{}, 0, 0, false
+		}
+		filter.StartDate = &parsed
+	}
+
+	if endDate := strings.TrimSpace(c.Query("end_date")); endDate != "" {
+		parsed, err := parseOrderFilterTime(endDate, true)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid end date"})
+			return balance.TransactionFilter{}, 0, 0, false
+		}
+		filter.EndDate = &parsed
+	}
+
+	return filter, page, pageSize, true
+}
+
 // GetBalance returns the current user's balance.
 func (h *BalanceHandler) GetBalance(c *gin.Context) {
 	userID, exists := c.Get("user_id")
@@ -95,31 +141,20 @@ func (h *BalanceHandler) GetTransactions(c *gin.Context) {
 		return
 	}
 
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	uid := userID.(int64)
+	filter, page, pageSize, ok := parseTransactionFilter(c, &uid)
+	if !ok {
+		return
+	}
 
-	txs, total, err := h.balanceService.GetTransactions(c.Request.Context(), userID.(int64), page, pageSize)
+	txs, total, err := h.balanceService.ListTransactions(c.Request.Context(), filter, page, pageSize)
 	if err != nil {
 		h.logger.Error("Failed to get transactions", logger.Err(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get transactions"})
 		return
 	}
 
-	response := make([]TransactionResponse, len(txs))
-	for i, tx := range txs {
-		response[i] = TransactionResponse{
-			ID:          tx.ID,
-			Type:        tx.Type,
-			Amount:      tx.Amount,
-			Balance:     tx.Balance,
-			OrderID:     tx.OrderID,
-			Description: tx.Description,
-			Operator:    tx.Operator,
-			CreatedAt:   tx.CreatedAt,
-		}
-	}
-
-	c.JSON(http.StatusOK, gin.H{"transactions": response, "total": total, "page": page, "page_size": pageSize})
+	c.JSON(http.StatusOK, gin.H{"transactions": buildTransactionResponses(txs), "total": total, "page": page, "page_size": pageSize})
 }
 
 // CreateRecharge creates an online recharge payment.
@@ -342,6 +377,47 @@ func (h *BalanceHandler) ListAdminRechargeOrders(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"orders": response, "total": total, "page": page, "page_size": pageSize})
+}
+
+// AdminGetUserBalance returns a user's current balance (admin only).
+func (h *BalanceHandler) AdminGetUserBalance(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("userID"), 10, 64)
+	if err != nil || userID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	bal, err := h.balanceService.GetBalance(c.Request.Context(), userID)
+	if err != nil {
+		h.logger.Error("Failed to get user balance", logger.Err(err), logger.F("user_id", userID))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user balance"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"user_id": userID, "balance": bal})
+}
+
+// AdminGetUserTransactions returns a user's balance transactions (admin only).
+func (h *BalanceHandler) AdminGetUserTransactions(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("userID"), 10, 64)
+	if err != nil || userID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	filter, page, pageSize, ok := parseTransactionFilter(c, &userID)
+	if !ok {
+		return
+	}
+
+	txs, total, err := h.balanceService.ListTransactions(c.Request.Context(), filter, page, pageSize)
+	if err != nil {
+		h.logger.Error("Failed to get user transactions", logger.Err(err), logger.F("user_id", userID))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user transactions"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"transactions": buildTransactionResponses(txs), "total": total, "page": page, "page_size": pageSize})
 }
 
 // AdjustBalance adjusts a user's balance (admin only).

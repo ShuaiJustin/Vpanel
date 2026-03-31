@@ -138,7 +138,13 @@ export const systemApi = {
    * @param {string} id - 连接 ID
    * @returns {Promise<void>}
    */
-  killConnection: (id) => api.post(`/system/network/connections/${id}/kill`)
+  killConnection: (id) => api.post(`/system/network/connections/${id}/kill`),
+
+  /**
+   * 手动触发运行时巡检
+   * @returns {Promise<Object>} 巡检统计结果
+   */
+  triggerRuntimeReconcile: () => api.post('/admin/system/runtime-reconcile')
 }
 
 export default systemApi

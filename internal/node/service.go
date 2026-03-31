@@ -226,6 +226,7 @@ type NodeFilter struct {
 type Service struct {
 	nodeRepo       repository.NodeRepository
 	assignmentRepo repository.UserNodeAssignmentRepository
+	proxyRepo      repository.ProxyRepository
 	logger         logger.Logger
 }
 
@@ -233,11 +234,13 @@ type Service struct {
 func NewService(
 	nodeRepo repository.NodeRepository,
 	assignmentRepo repository.UserNodeAssignmentRepository,
+	proxyRepo repository.ProxyRepository,
 	log logger.Logger,
 ) *Service {
 	return &Service{
 		nodeRepo:       nodeRepo,
 		assignmentRepo: assignmentRepo,
+		proxyRepo:      proxyRepo,
 		logger:         log,
 	}
 }
@@ -704,6 +707,8 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 		return ErrNodeNotFound
 	}
 
+	deletedProxyCount := 0
+
 	// Get users assigned to this node
 	userIDs, err := s.assignmentRepo.GetUserIDsByNodeID(ctx, id)
 	if err != nil {
@@ -721,6 +726,14 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 					logger.F("node_id", id))
 				return fmt.Errorf("无法重分配用户: %w", err)
 			}
+		}
+
+		deletedProxyCount, err = s.deleteNodeBoundProxiesInTx(txCtx, id)
+		if err != nil {
+			s.logger.Error("Failed to delete node-bound proxies in transaction",
+				logger.Err(err),
+				logger.F("node_id", id))
+			return fmt.Errorf("无法清理节点代理: %w", err)
 		}
 
 		// Delete the node
@@ -744,8 +757,51 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 	s.logger.Info("Node deleted successfully",
 		logger.F("id", id),
 		logger.F("name", node.Name),
-		logger.F("reassigned_users", len(userIDs)))
+		logger.F("reassigned_users", len(userIDs)),
+		logger.F("deleted_proxies", deletedProxyCount))
 	return nil
+}
+
+func (s *Service) deleteNodeBoundProxiesInTx(ctx context.Context, nodeID int64) (int, error) {
+	if s == nil || s.proxyRepo == nil || nodeID <= 0 {
+		return 0, nil
+	}
+
+	const batchSize = 500
+	proxyIDs := make([]int64, 0)
+	offset := 0
+
+	for {
+		proxies, err := s.proxyRepo.List(ctx, batchSize, offset)
+		if err != nil {
+			return 0, err
+		}
+		if len(proxies) == 0 {
+			break
+		}
+
+		for _, proxyModel := range proxies {
+			if proxyModel == nil || proxyModel.NodeID == nil || *proxyModel.NodeID != nodeID {
+				continue
+			}
+			proxyIDs = append(proxyIDs, proxyModel.ID)
+		}
+
+		if len(proxies) < batchSize {
+			break
+		}
+		offset += len(proxies)
+	}
+
+	if len(proxyIDs) == 0 {
+		return 0, nil
+	}
+
+	if err := s.proxyRepo.DeleteByIDs(ctx, proxyIDs); err != nil {
+		return 0, err
+	}
+
+	return len(proxyIDs), nil
 }
 
 // reassignUsersFromNode reassigns users from a node to other healthy nodes.

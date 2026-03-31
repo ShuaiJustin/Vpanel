@@ -1,281 +1,311 @@
 <template>
   <div class="admin-reports-page">
     <div class="page-header">
-      <h1 class="page-title">
-        财务报表
-      </h1>
-      <el-date-picker
-        v-model="dateRange"
-        type="daterange"
-        :style="{ width: datePickerWidth }"
-        start-placeholder="开始日期"
-        end-placeholder="结束日期"
-        @change="fetchReports"
-      />
+      <div class="page-heading">
+        <h1 class="page-title">
+          商业化报表
+        </h1>
+        <p class="page-subtitle">
+          按订单收款、在线充值、余额消费和人工调整拆分查看，后台口径更清楚。
+        </p>
+      </div>
+      <div class="page-actions">
+        <el-date-picker
+          v-model="dateRange"
+          type="daterange"
+          value-format="YYYY-MM-DD"
+          :style="{ width: datePickerWidth }"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          range-separator="至"
+          @change="fetchReports"
+        />
+        <el-button
+          type="primary"
+          :loading="loadingOverview || loadingOperations"
+          @click="fetchReports"
+        >
+          <el-icon><Refresh /></el-icon>
+          刷新报表
+        </el-button>
+      </div>
     </div>
 
-    <!-- 统计卡片 -->
-    <div class="stats-grid">
-      <el-card
-        shadow="never"
-        class="stat-card"
-      >
-        <div class="stat-value">
-          ¥{{ formatPrice(stats.total_revenue) }}
-        </div>
-        <div class="stat-label">
-          总收入
-        </div>
-      </el-card>
-      <el-card
-        shadow="never"
-        class="stat-card"
-      >
-        <div class="stat-value">
-          {{ stats.total_orders }}
-        </div>
-        <div class="stat-label">
-          总订单数
-        </div>
-      </el-card>
-      <el-card
-        shadow="never"
-        class="stat-card"
-      >
-        <div class="stat-value">
-          {{ stats.paid_orders }}
-        </div>
-        <div class="stat-label">
-          已支付订单
-        </div>
-      </el-card>
-      <el-card
-        shadow="never"
-        class="stat-card"
-      >
-        <div class="stat-value">
-          {{ stats.refunded_orders }}
-        </div>
-        <div class="stat-label">
-          退款订单数
-        </div>
-      </el-card>
-    </div>
-
-    <!-- 支付失败统计 -->
     <el-card
       shadow="never"
-      class="failed-payments-card"
+      class="section-card"
     >
       <template #header>
         <div class="card-header">
-          <span>支付失败统计</span>
-          <el-button
-            type="primary"
-            size="small"
-            @click="fetchFailedPaymentStats"
-          >
-            <el-icon><Refresh /></el-icon>
-            刷新
-          </el-button>
+          <div>
+            <span>经营总览</span>
+            <p class="card-subtitle">
+              统计周期：{{ overviewPeriodLabel }}
+            </p>
+          </div>
+          <el-tag type="info" effect="plain">
+            仅统计真实业务数据
+          </el-tag>
         </div>
       </template>
-      <div class="failed-stats-grid">
-        <div class="failed-stat-item">
-          <div class="failed-stat-value error">
-            {{ failedPaymentStats.total_failed }}
-          </div>
-          <div class="failed-stat-label">
-            失败总数
-          </div>
+
+      <div
+        v-loading="loadingOverview"
+        class="overview-grid"
+      >
+        <div class="metric-card">
+          <span class="metric-label">总现金流入</span>
+          <strong class="metric-value is-primary">¥{{ formatPrice(totalCashIn) }}</strong>
+          <span class="metric-hint">订单收款 + 在线充值到账</span>
         </div>
-        <div class="failed-stat-item">
-          <div class="failed-stat-value warning">
-            {{ failedPaymentStats.pending_retry }}
-          </div>
-          <div class="failed-stat-label">
-            待重试
-          </div>
+        <div class="metric-card">
+          <span class="metric-label">订单收款</span>
+          <strong class="metric-value">¥{{ formatPrice(overview.orders.revenue) }}</strong>
+          <span class="metric-hint">{{ overview.orders.count }} 笔已收款订单</span>
         </div>
-        <div class="failed-stat-item">
-          <div class="failed-stat-value danger">
-            {{ failedPaymentStats.retry_exhausted }}
-          </div>
-          <div class="failed-stat-label">
-            重试耗尽
-          </div>
+        <div class="metric-card">
+          <span class="metric-label">在线充值到账</span>
+          <strong class="metric-value is-success">¥{{ formatPrice(overview.recharges.amount) }}</strong>
+          <span class="metric-hint">{{ overview.recharges.count }} 笔充值到账</span>
         </div>
-        <div class="failed-stat-item">
-          <div class="failed-stat-value success">
-            {{ failedPaymentStats.recovered_by_retry }}
-          </div>
-          <div class="failed-stat-label">
-            重试成功
-          </div>
-        </div>
-        <div class="failed-stat-item">
-          <div class="failed-stat-value">
-            {{ failedPaymentStats.failure_rate?.toFixed(2) || 0 }}%
-          </div>
-          <div class="failed-stat-label">
-            失败率
-          </div>
-        </div>
-        <div class="failed-stat-item">
-          <div class="failed-stat-value success">
-            {{ failedPaymentStats.recovery_rate?.toFixed(2) || 0 }}%
-          </div>
-          <div class="failed-stat-label">
-            恢复率
-          </div>
-        </div>
-        <div class="failed-stat-item">
-          <div class="failed-stat-value">
-            {{ failedPaymentStats.avg_retry_attempts?.toFixed(1) || 0 }}
-          </div>
-          <div class="failed-stat-label">
-            平均重试次数
-          </div>
+        <div class="metric-card">
+          <span class="metric-label">人工调整净额</span>
+          <strong :class="['metric-value', overview.adjustments.net_amount >= 0 ? 'is-warning' : 'is-danger']">
+            {{ formatSignedPrice(overview.adjustments.net_amount) }}
+          </strong>
+          <span class="metric-hint">{{ overview.adjustments.count }} 笔人工调整</span>
         </div>
       </div>
-      
-      <!-- 失败原因分布 -->
-      <div
-        v-if="Object.keys(failedPaymentStats.failures_by_reason || {}).length > 0"
-        class="failure-reasons"
+    </el-card>
+
+    <div class="content-grid">
+      <el-card
+        shadow="never"
+        class="section-card"
       >
-        <h4>失败原因分布</h4>
-        <div class="table-wrap">
+        <template #header>
+          <div class="card-header">
+            <div>
+              <span>订单收款</span>
+              <p class="card-subtitle">
+                只统计 `paid` / `completed` 状态的真实收款金额
+              </p>
+            </div>
+            <el-button link @click="openAdminPage('/admin/orders')">
+              查看订单管理
+            </el-button>
+          </div>
+        </template>
+
+        <div class="detail-list">
+          <div class="detail-row">
+            <span class="detail-label">已收款订单数</span>
+            <strong class="detail-value">{{ overview.orders.count }}</strong>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">订单收款金额</span>
+            <strong class="detail-value">¥{{ formatPrice(overview.orders.revenue) }}</strong>
+          </div>
+          <div class="detail-row detail-row--note">
+            <span class="detail-label">说明</span>
+            <span class="detail-note">这里看的是套餐订单的外部实收金额，不和充值流水混算。</span>
+          </div>
+        </div>
+      </el-card>
+
+      <el-card
+        shadow="never"
+        class="section-card"
+      >
+        <template #header>
+          <div class="card-header">
+            <div>
+              <span>余额商业化</span>
+              <p class="card-subtitle">
+                在线充值、余额消费、人工调整分开统计
+              </p>
+            </div>
+            <div class="link-actions">
+              <el-button link @click="openAdminPage('/admin/recharge-orders')">
+                查看充值订单
+              </el-button>
+              <el-button link @click="openAdminPage('/admin/balances')">
+                查看余额管理
+              </el-button>
+            </div>
+          </div>
+        </template>
+
+        <div class="detail-list">
+          <div class="detail-row">
+            <span class="detail-label">在线充值到账</span>
+            <div class="detail-pair">
+              <strong class="detail-value is-success">¥{{ formatPrice(overview.recharges.amount) }}</strong>
+              <span class="detail-meta">{{ overview.recharges.count }} 笔</span>
+            </div>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">余额支付消耗</span>
+            <div class="detail-pair">
+              <strong class="detail-value">¥{{ formatPrice(overview.balance_purchases.amount) }}</strong>
+              <span class="detail-meta">{{ overview.balance_purchases.count }} 笔</span>
+            </div>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">人工增加余额</span>
+            <div class="detail-pair">
+              <strong class="detail-value is-warning">¥{{ formatPrice(overview.adjustments.increase_amount) }}</strong>
+              <span class="detail-meta">{{ overview.adjustments.increase_count }} 笔</span>
+            </div>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">人工扣减余额</span>
+            <div class="detail-pair">
+              <strong class="detail-value is-danger">¥{{ formatPrice(overview.adjustments.decrease_amount) }}</strong>
+              <span class="detail-meta">{{ overview.adjustments.decrease_count }} 笔</span>
+            </div>
+          </div>
+          <div class="detail-row detail-row--highlight">
+            <span class="detail-label">调整净额</span>
+            <strong :class="['detail-value', overview.adjustments.net_amount >= 0 ? 'is-warning' : 'is-danger']">
+              {{ formatSignedPrice(overview.adjustments.net_amount) }}
+            </strong>
+          </div>
+        </div>
+      </el-card>
+    </div>
+
+    <div class="content-grid">
+      <el-card
+        shadow="never"
+        class="section-card"
+      >
+        <template #header>
+          <div class="card-header">
+            <div>
+              <span>支付稳定性</span>
+              <p class="card-subtitle">
+                用于判断支付链路是否稳定、是否存在大面积失败
+              </p>
+            </div>
+            <el-button link @click="openAdminPage('/admin/payment-settings')">
+              查看支付配置
+            </el-button>
+          </div>
+        </template>
+
+        <div
+          v-loading="loadingOperations"
+          class="compact-grid"
+        >
+          <div class="compact-item">
+            <span class="compact-label">失败总数</span>
+            <strong class="compact-value is-danger">{{ failedPaymentStats.total_failed }}</strong>
+          </div>
+          <div class="compact-item">
+            <span class="compact-label">待重试</span>
+            <strong class="compact-value is-warning">{{ failedPaymentStats.pending_retry }}</strong>
+          </div>
+          <div class="compact-item">
+            <span class="compact-label">重试成功</span>
+            <strong class="compact-value is-success">{{ failedPaymentStats.recovered_by_retry }}</strong>
+          </div>
+          <div class="compact-item">
+            <span class="compact-label">失败率</span>
+            <strong class="compact-value">{{ formatPercent(failedPaymentStats.failure_rate) }}</strong>
+          </div>
+          <div class="compact-item">
+            <span class="compact-label">恢复率</span>
+            <strong class="compact-value is-success">{{ formatPercent(failedPaymentStats.recovery_rate) }}</strong>
+          </div>
+          <div class="compact-item">
+            <span class="compact-label">平均重试次数</span>
+            <strong class="compact-value">{{ Number(failedPaymentStats.avg_retry_attempts || 0).toFixed(1) }}</strong>
+          </div>
+        </div>
+
+        <div
+          v-if="failureReasonsList.length > 0"
+          class="table-wrap"
+        >
           <el-table
             :data="failureReasonsList"
             size="small"
-            style="width: 100%"
           >
-            <el-table-column
-              prop="reason"
-              label="失败原因"
-            />
-            <el-table-column
-              prop="count"
-              label="次数"
-              width="100"
-            />
-            <el-table-column
-              label="占比"
-              width="150"
-            >
+            <el-table-column prop="reason" label="失败原因" min-width="180" />
+            <el-table-column prop="count" label="次数" width="90" />
+            <el-table-column label="占比" min-width="140">
               <template #default="{ row }">
-                <el-progress 
-                  :percentage="Math.round(row.count / failedPaymentStats.total_failed * 100)" 
-                  :stroke-width="6" 
+                <el-progress
+                  :percentage="Math.round((row.count / Math.max(failedPaymentStats.total_failed || 1, 1)) * 100)"
+                  :stroke-width="6"
                 />
               </template>
             </el-table-column>
           </el-table>
         </div>
-      </div>
-    </el-card>
+      </el-card>
 
-    <!-- 订阅暂停统计 -->
-    <el-card
-      shadow="never"
-      class="pause-stats-card"
-    >
-      <template #header>
-        <div class="card-header">
-          <span>订阅暂停统计</span>
-          <el-button
-            type="primary"
-            size="small"
-            @click="fetchPauseStats"
-          >
-            <el-icon><Refresh /></el-icon>
-            刷新
-          </el-button>
-        </div>
-      </template>
-      <div class="pause-stats-grid">
-        <div class="pause-stat-item">
-          <div class="pause-stat-value">
-            {{ pauseStats.total_pauses }}
-          </div>
-          <div class="pause-stat-label">
-            总暂停次数
-          </div>
-        </div>
-        <div class="pause-stat-item">
-          <div class="pause-stat-value warning">
-            {{ pauseStats.active_pauses }}
-          </div>
-          <div class="pause-stat-label">
-            当前暂停中
-          </div>
-        </div>
-        <div class="pause-stat-item">
-          <div class="pause-stat-value success">
-            {{ pauseStats.resumed_pauses }}
-          </div>
-          <div class="pause-stat-label">
-            已恢复
-          </div>
-        </div>
-        <div class="pause-stat-item">
-          <div class="pause-stat-value">
-            {{ pauseStats.auto_resumed }}
-          </div>
-          <div class="pause-stat-label">
-            自动恢复
-          </div>
-        </div>
-        <div class="pause-stat-item">
-          <div class="pause-stat-value">
-            {{ pauseStats.avg_pause_days?.toFixed(1) || 0 }}
-          </div>
-          <div class="pause-stat-label">
-            平均暂停天数
-          </div>
-        </div>
-        <div class="pause-stat-item">
-          <div class="pause-stat-value">
-            {{ pauseStats.pause_rate?.toFixed(1) || 0 }}%
-          </div>
-          <div class="pause-stat-label">
-            暂停率
-          </div>
-        </div>
-      </div>
-      
-      <!-- 暂停滥用检测 -->
-      <div
-        v-if="pauseStats.abuse_patterns?.length > 0"
-        class="abuse-patterns"
+      <el-card
+        shadow="never"
+        class="section-card"
       >
-        <h4>潜在滥用用户</h4>
-        <div class="table-wrap">
+        <template #header>
+          <div class="card-header">
+            <div>
+              <span>订阅暂停行为</span>
+              <p class="card-subtitle">
+                这是商业化运营数据，不再和财务数据混在一起理解
+              </p>
+            </div>
+            <el-button link @click="openAdminPage('/admin/subscriptions')">
+              查看订阅管理
+            </el-button>
+          </div>
+        </template>
+
+        <div
+          v-loading="loadingOperations"
+          class="compact-grid"
+        >
+          <div class="compact-item">
+            <span class="compact-label">总暂停次数</span>
+            <strong class="compact-value">{{ pauseStats.total_pauses }}</strong>
+          </div>
+          <div class="compact-item">
+            <span class="compact-label">当前暂停中</span>
+            <strong class="compact-value is-warning">{{ pauseStats.active_pauses }}</strong>
+          </div>
+          <div class="compact-item">
+            <span class="compact-label">已恢复</span>
+            <strong class="compact-value is-success">{{ pauseStats.resumed_pauses }}</strong>
+          </div>
+          <div class="compact-item">
+            <span class="compact-label">自动恢复</span>
+            <strong class="compact-value">{{ pauseStats.auto_resumed }}</strong>
+          </div>
+          <div class="compact-item">
+            <span class="compact-label">平均暂停天数</span>
+            <strong class="compact-value">{{ Number(pauseStats.avg_pause_days || 0).toFixed(1) }}</strong>
+          </div>
+          <div class="compact-item">
+            <span class="compact-label">暂停率</span>
+            <strong class="compact-value">{{ formatPercent(pauseStats.pause_rate) }}</strong>
+          </div>
+        </div>
+
+        <div
+          v-if="pauseStats.abuse_patterns?.length > 0"
+          class="table-wrap"
+        >
           <el-table
             :data="pauseStats.abuse_patterns"
             size="small"
-            style="width: 100%"
           >
-            <el-table-column
-              prop="user_id"
-              label="用户ID"
-              width="100"
-            />
-            <el-table-column
-              prop="pause_count"
-              label="暂停次数"
-              width="100"
-            />
-            <el-table-column
-              prop="total_pause_days"
-              label="总暂停天数"
-              width="120"
-            />
-            <el-table-column
-              label="操作"
-              width="100"
-            >
+            <el-table-column prop="user_id" label="用户 ID" width="100" />
+            <el-table-column prop="pause_count" label="暂停次数" width="100" />
+            <el-table-column prop="total_pause_days" label="总暂停天数" width="120" />
+            <el-table-column label="操作" width="100">
               <template #default="{ row }">
                 <el-button
                   type="primary"
@@ -289,37 +319,13 @@
             </el-table-column>
           </el-table>
         </div>
-      </div>
-    </el-card>
-
-    <el-card
-      shadow="never"
-      class="chart-card"
-    >
-      <template #header>
-        <span>趋势与排行</span>
-      </template>
-      <el-alert
-        title="当前后端只提供汇总类报表接口"
-        description="收入趋势、订单趋势和套餐销售排行仍缺少真实的按日/按套餐统计接口，页面不再展示伪造图表数据。"
-        type="info"
-        :closable="false"
-        show-icon
-      />
-    </el-card>
-
-    <!-- 套餐销售排行 -->
-    <el-card shadow="never">
-      <template #header>
-        <span>套餐销售排行</span>
-      </template>
-      <el-empty description="缺少真实套餐排行接口，暂不展示模拟数据" />
-    </el-card>
+      </el-card>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import api from '@/api'
@@ -328,13 +334,42 @@ import { extractErrorMessage } from '@/utils/entitlement'
 
 const { isMobile, isTablet } = useViewport()
 
-const dateRange = ref(null)
+const pad = value => String(value).padStart(2, '0')
+const formatDate = value => `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`
+const createDefaultDateRange = () => {
+  const end = new Date()
+  const start = new Date()
+  start.setDate(start.getDate() - 29)
+  return [formatDate(start), formatDate(end)]
+}
 
-const stats = reactive({
-  total_revenue: 0,
-  total_orders: 0,
-  paid_orders: 0,
-  refunded_orders: 0
+const loadingOverview = ref(false)
+const loadingOperations = ref(false)
+const dateRange = ref(createDefaultDateRange())
+
+const overview = reactive({
+  start: '',
+  end: '',
+  orders: {
+    revenue: 0,
+    count: 0
+  },
+  recharges: {
+    amount: 0,
+    count: 0
+  },
+  balance_purchases: {
+    amount: 0,
+    count: 0
+  },
+  adjustments: {
+    increase_amount: 0,
+    decrease_amount: 0,
+    net_amount: 0,
+    increase_count: 0,
+    decrease_count: 0,
+    count: 0
+  }
 })
 
 const failedPaymentStats = reactive({
@@ -345,7 +380,6 @@ const failedPaymentStats = reactive({
   failure_rate: 0,
   recovery_rate: 0,
   avg_retry_attempts: 0,
-  failures_by_method: {},
   failures_by_reason: {}
 })
 
@@ -358,9 +392,41 @@ const pauseStats = reactive({
   pause_rate: 0,
   abuse_patterns: []
 })
-const datePickerWidth = computed(() => (isMobile.value ? '100%' : isTablet.value ? '320px' : '360px'))
 
-const formatPrice = (price) => ((price || 0) / 100).toFixed(2)
+const datePickerWidth = computed(() => (isMobile.value ? '100%' : isTablet.value ? '320px' : '360px'))
+const overviewPeriodLabel = computed(() => `${overview.start || dateRange.value?.[0] || '-'} 至 ${overview.end || dateRange.value?.[1] || '-'}`)
+const totalCashIn = computed(() => Number(overview.orders.revenue || 0) + Number(overview.recharges.amount || 0))
+
+const failureReasonsList = computed(() => {
+  const reasons = failedPaymentStats.failures_by_reason || {}
+  return Object.entries(reasons)
+    .map(([reason, count]) => ({
+      reason: reason || '未知原因',
+      count
+    }))
+    .sort((first, second) => second.count - first.count)
+})
+
+const formatPrice = value => (Number(value || 0) / 100).toFixed(2)
+const formatSignedPrice = value => `${Number(value || 0) >= 0 ? '+' : '-'}¥${formatPrice(Math.abs(Number(value || 0)))}`
+const formatPercent = value => `${Number(value || 0).toFixed(1)}%`
+
+const resetOverview = () => {
+  overview.start = dateRange.value?.[0] || ''
+  overview.end = dateRange.value?.[1] || ''
+  Object.assign(overview.orders, { revenue: 0, count: 0 })
+  Object.assign(overview.recharges, { amount: 0, count: 0 })
+  Object.assign(overview.balance_purchases, { amount: 0, count: 0 })
+  Object.assign(overview.adjustments, {
+    increase_amount: 0,
+    decrease_amount: 0,
+    net_amount: 0,
+    increase_count: 0,
+    decrease_count: 0,
+    count: 0
+  })
+}
+
 const resetFailedPaymentStats = () => {
   Object.assign(failedPaymentStats, {
     total_failed: 0,
@@ -370,10 +436,10 @@ const resetFailedPaymentStats = () => {
     failure_rate: 0,
     recovery_rate: 0,
     avg_retry_attempts: 0,
-    failures_by_method: {},
     failures_by_reason: {}
   })
 }
+
 const resetPauseStats = () => {
   Object.assign(pauseStats, {
     total_pauses: 0,
@@ -386,21 +452,36 @@ const resetPauseStats = () => {
   })
 }
 
-// Convert failures_by_reason object to array for table display
-const failureReasonsList = computed(() => {
-  const reasons = failedPaymentStats.failures_by_reason || {}
-  return Object.entries(reasons).map(([reason, count]) => ({
-    reason: reason || '未知原因',
-    count
-  })).sort((a, b) => b.count - a.count)
-})
+const fetchCommercialOverview = async () => {
+  loadingOverview.value = true
+  try {
+    const response = await api.get('/admin/reports/overview', {
+      params: {
+        start: dateRange.value?.[0],
+        end: dateRange.value?.[1]
+      }
+    })
+
+    const data = response?.data || {}
+    overview.start = data.start || dateRange.value?.[0] || ''
+    overview.end = data.end || dateRange.value?.[1] || ''
+    Object.assign(overview.orders, data.orders || {})
+    Object.assign(overview.recharges, data.recharges || {})
+    Object.assign(overview.balance_purchases, data.balance_purchases || {})
+    Object.assign(overview.adjustments, data.adjustments || {})
+  } catch (error) {
+    resetOverview()
+    throw error
+  } finally {
+    loadingOverview.value = false
+  }
+}
 
 const fetchFailedPaymentStats = async () => {
   try {
     const response = await api.get('/admin/reports/failed-payments')
     Object.assign(failedPaymentStats, response?.stats || response?.data?.stats || {})
   } catch (error) {
-    console.error('Failed to fetch failed payment stats:', error)
     resetFailedPaymentStats()
   }
 }
@@ -410,178 +491,228 @@ const fetchPauseStats = async () => {
     const response = await api.get('/admin/reports/pause-stats')
     Object.assign(pauseStats, response?.stats || response?.data?.stats || response || {})
   } catch (error) {
-    console.error('Failed to fetch pause stats:', error)
     resetPauseStats()
   }
 }
 
-const viewUser = (userId) => {
-  window.open(`/admin/subscriptions?user_id=${userId}`, '_blank')
-}
-
 const fetchReports = async () => {
+  loadingOperations.value = true
   try {
-    // 获取日期范围
-    let startDate = ''
-    let endDate = ''
-    
-    if (dateRange.value && dateRange.value.length === 2) {
-      startDate = dateRange.value[0].toISOString().split('T')[0]
-      endDate = dateRange.value[1].toISOString().split('T')[0]
-    } else {
-      // 默认最近30天
-      const end = new Date()
-      const start = new Date()
-      start.setDate(start.getDate() - 30)
-      startDate = start.toISOString().split('T')[0]
-      endDate = end.toISOString().split('T')[0]
-    }
-
-    // 获取收入报表
-    const revenueResponse = await api.get('/admin/reports/revenue', {
-      params: { start: startDate, end: endDate }
-    })
-    
-    if (revenueResponse.code === 200 && revenueResponse.data) {
-      stats.total_revenue = revenueResponse.data.revenue || 0
-      stats.total_orders = revenueResponse.data.order_count || 0
-    }
-
-    // 获取订单统计
-    const orderStatsResponse = await api.get('/admin/reports/orders')
-    
-    if (orderStatsResponse.code === 200 && orderStatsResponse.data) {
-      stats.paid_orders = orderStatsResponse.data.paid || 0
-      stats.refunded_orders = orderStatsResponse.data.refunded || 0
-    }
-
     await Promise.all([
+      fetchCommercialOverview(),
       fetchFailedPaymentStats(),
       fetchPauseStats()
     ])
   } catch (error) {
-    console.error('Failed to fetch reports:', error)
-    ElMessage.error(`获取报表数据失败: ${extractErrorMessage(error) || '未知错误'}`)
+    ElMessage.error(extractErrorMessage(error) || '获取商业化报表失败')
+  } finally {
+    loadingOperations.value = false
   }
 }
 
-onMounted(() => {
-  fetchReports()
-})
+const openAdminPage = path => {
+  window.open(path, '_blank')
+}
+
+const viewUser = userId => {
+  window.open(`/admin/subscriptions?user_id=${userId}`, '_blank')
+}
+
+onMounted(fetchReports)
 </script>
 
 <style scoped>
-.admin-reports-page { padding: 20px; }
-.page-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
-.page-title { font-size: 24px; font-weight: 600; margin: 0; }
-.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 20px; }
-.stat-card { text-align: center; }
-.stat-value { font-size: 28px; font-weight: 600; color: #409eff; }
-.stat-label { font-size: 14px; color: #909399; margin-top: 8px; }
-.chart-card { margin-bottom: 20px; }
-.chart-container { height: 300px; }
+.admin-reports-page {
+  padding: 20px;
+}
 
-/* Failed payment stats styles */
-.failed-payments-card { margin-bottom: 20px; }
-.card-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
-.failed-stats-grid {
-  display: grid; 
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 16px; 
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
   margin-bottom: 20px;
-  padding: 16px;
-  background: var(--color-bg-page);
-  border-radius: 8px;
-}
-.failed-stat-item { text-align: center; }
-.failed-stat-value { 
-  font-size: 24px; 
-  font-weight: 600; 
-  color: #606266;
-}
-.failed-stat-value.error { color: #f56c6c; }
-.failed-stat-value.warning { color: #e6a23c; }
-.failed-stat-value.danger { color: #f56c6c; }
-.failed-stat-value.success { color: #67c23a; }
-.failed-stat-label { 
-  font-size: 12px; 
-  color: #909399; 
-  margin-top: 4px; 
-}
-.failure-reasons { margin-top: 16px; }
-.table-wrap { overflow-x: auto; }
-.table-wrap :deep(.el-table) { min-width: 480px; }
-.failure-reasons h4 { 
-  font-size: 14px; 
-  font-weight: 600; 
-  margin-bottom: 12px; 
-  color: var(--color-text-primary);
 }
 
-/* Pause stats styles */
-.pause-stats-card { margin-bottom: 20px; }
-.pause-stats-grid {
-  display: grid; 
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 16px; 
+.page-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.page-subtitle,
+.card-subtitle,
+.metric-hint,
+.detail-meta {
+  margin: 8px 0 0;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.section-card {
+  border-radius: 16px;
   margin-bottom: 20px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.link-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.overview-grid,
+.compact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.metric-card,
+.compact-item {
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 14px;
   padding: 16px;
-  background: var(--color-bg-page);
-  border-radius: 8px;
-}
-.pause-stat-item { text-align: center; }
-.pause-stat-value { 
-  font-size: 24px; 
-  font-weight: 600; 
-  color: #606266;
-}
-.pause-stat-value.warning { color: #e6a23c; }
-.pause-stat-value.success { color: #67c23a; }
-.pause-stat-label { 
-  font-size: 12px; 
-  color: #909399; 
-  margin-top: 4px; 
-}
-.abuse-patterns { margin-top: 16px; }
-.abuse-patterns h4 { 
-  font-size: 14px; 
-  font-weight: 600; 
-  margin-bottom: 12px; 
-  color: var(--color-text-primary);
+  background: var(--el-bg-color-page);
 }
 
-@media (max-width: 1280px) {
-  .admin-reports-page { padding: 16px; }
-}
-@media (max-width: 768px) {
-  .admin-reports-page { padding: 12px; }
-  .page-header { align-items: stretch; }
-  .stats-grid { grid-template-columns: 1fr 1fr; }
-  .failed-stats-grid { grid-template-columns: 1fr 1fr; }
-  .pause-stats-grid { grid-template-columns: 1fr 1fr; }
+.metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-@media (max-width: 640px) {
-  .stats-grid,
-  .failed-stats-grid,
-  .pause-stats-grid {
+.metric-label,
+.compact-label,
+.detail-label {
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
+
+.metric-value,
+.detail-value,
+.compact-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--el-text-color-primary);
+}
+
+.metric-value.is-primary {
+  color: var(--el-color-primary);
+}
+
+.metric-value.is-success,
+.detail-value.is-success,
+.compact-value.is-success {
+  color: var(--el-color-success);
+}
+
+.metric-value.is-warning,
+.detail-value.is-warning,
+.compact-value.is-warning {
+  color: var(--el-color-warning);
+}
+
+.metric-value.is-danger,
+.detail-value.is-danger,
+.compact-value.is-danger {
+  color: var(--el-color-danger);
+}
+
+.content-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-row--note {
+  align-items: flex-start;
+}
+
+.detail-row--highlight {
+  padding-top: 18px;
+}
+
+.detail-note {
+  max-width: 320px;
+  text-align: right;
+  color: var(--el-text-color-regular);
+  line-height: 1.6;
+}
+
+.detail-pair {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.table-wrap {
+  margin-top: 16px;
+  overflow-x: auto;
+}
+
+@media (max-width: 1080px) {
+  .content-grid {
     grid-template-columns: 1fr;
   }
 }
 
-/* ── dark mode ── */
-:global(.dark) .stat-value { color: #60a5fa; }
-:global(.dark) .stat-label { color: #94a3b8; }
+@media (max-width: 768px) {
+  .admin-reports-page {
+    padding: 12px;
+  }
 
-:global(.dark) .failed-stat-value { color: #cbd5e1; }
-:global(.dark) .failed-stat-value.error { color: #f87171; }
-:global(.dark) .failed-stat-value.warning { color: #fbbf24; }
-:global(.dark) .failed-stat-value.danger { color: #f87171; }
-:global(.dark) .failed-stat-value.success { color: #4ade80; }
-:global(.dark) .failed-stat-label { color: #94a3b8; }
+  .page-header,
+  .page-actions,
+  .card-header,
+  .link-actions,
+  .detail-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 
-:global(.dark) .pause-stat-value { color: #cbd5e1; }
-:global(.dark) .pause-stat-value.warning { color: #fbbf24; }
-:global(.dark) .pause-stat-value.success { color: #4ade80; }
-:global(.dark) .pause-stat-label { color: #94a3b8; }
+  .page-actions {
+    width: 100%;
+  }
+
+  .detail-note {
+    max-width: none;
+    text-align: left;
+  }
+}
 </style>
