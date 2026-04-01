@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -91,6 +92,7 @@ func (s *Service) GetGateway(name string) (PaymentGateway, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	name = strings.TrimSpace(name)
 	gateway, ok := s.gateways[name]
 	if !ok {
 		return nil, ErrGatewayNotFound
@@ -107,6 +109,7 @@ func (s *Service) ListGateways() []string {
 	for name := range s.gateways {
 		names = append(names, name)
 	}
+	sort.Strings(names)
 	if s.balanceSvc != nil {
 		names = append(names, "balance")
 	}
@@ -144,7 +147,8 @@ func (s *Service) CreateGatewayPayment(method string, paymentOrder *PaymentOrder
 	if paymentOrder == nil || strings.TrimSpace(paymentOrder.OrderNo) == "" || paymentOrder.Amount <= 0 {
 		return nil, fmt.Errorf("%w: invalid payment order", ErrPaymentFailed)
 	}
-	if strings.TrimSpace(method) == "balance" {
+	method = strings.TrimSpace(method)
+	if method == "balance" {
 		return nil, ErrGatewayNotFound
 	}
 

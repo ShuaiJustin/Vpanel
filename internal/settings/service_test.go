@@ -300,6 +300,33 @@ func TestSettingsService_PaymentSettingsPersistence(t *testing.T) {
 	assert.True(t, readSettings.PaymentWeChatSandbox)
 }
 
+func TestSettingsService_UpdateSystemSettingsWithOptions_SkipsPaymentSettings(t *testing.T) {
+	repo := newMockSettingsRepository()
+	service := NewService(repo)
+	ctx := context.Background()
+
+	err := service.UpdateSystemSettingsWithOptions(ctx, &SystemSettings{
+		SiteName:             "Only Base Settings",
+		PaymentAlipayEnabled: true,
+		PaymentAlipayAppID:   "should-not-persist",
+		PaymentWeChatEnabled: true,
+		PaymentWeChatAppID:   "should-not-persist",
+		PaymentWeChatMchID:   "should-not-persist",
+		PaymentWeChatAPIKey:  "should-not-persist",
+	}, UpdateOptions{IncludePaymentSettings: false})
+	require.NoError(t, err)
+
+	allSettings, err := service.GetAll(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "Only Base Settings", allSettings["site_name"])
+	assert.NotContains(t, allSettings, "payment_alipay_enabled")
+	assert.NotContains(t, allSettings, "payment_alipay_app_id")
+	assert.NotContains(t, allSettings, "payment_wechat_enabled")
+	assert.NotContains(t, allSettings, "payment_wechat_app_id")
+	assert.NotContains(t, allSettings, "payment_wechat_mch_id")
+	assert.NotContains(t, allSettings, "payment_wechat_api_key")
+}
+
 func TestSettingsService_SecuritySettingsPersistence(t *testing.T) {
 	repo := newMockSettingsRepository()
 	service := NewService(repo)

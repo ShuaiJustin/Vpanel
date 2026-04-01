@@ -59,6 +59,7 @@ type BalanceRechargeOrderRepository interface {
 	GetByOrderNo(ctx context.Context, orderNo string) (*BalanceRechargeOrder, error)
 	GetByPaymentNo(ctx context.Context, paymentNo string) (*BalanceRechargeOrder, error)
 	Update(ctx context.Context, order *BalanceRechargeOrder) error
+	Cancel(ctx context.Context, orderNo string) error
 	List(ctx context.Context, filter BalanceRechargeOrderFilter, limit, offset int) ([]*BalanceRechargeOrder, int64, error)
 	MarkPaidAndCredit(ctx context.Context, orderNo string, paymentNo string, paidAt time.Time, description string) (*BalanceRechargeOrder, error)
 }
@@ -100,6 +101,26 @@ func (r *balanceRechargeOrderRepository) GetByPaymentNo(ctx context.Context, pay
 // Update updates a recharge order.
 func (r *balanceRechargeOrderRepository) Update(ctx context.Context, order *BalanceRechargeOrder) error {
 	return r.db.WithContext(ctx).Save(order).Error
+}
+
+// Cancel marks a pending recharge order as cancelled.
+func (r *balanceRechargeOrderRepository) Cancel(ctx context.Context, orderNo string) error {
+	result := r.db.WithContext(ctx).
+		Model(&BalanceRechargeOrder{}).
+		Where("order_no = ? AND status = ?", orderNo, BalanceRechargeStatusPending).
+		Update("status", BalanceRechargeStatusCancelled)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		var order BalanceRechargeOrder
+		if err := r.db.WithContext(ctx).Where("order_no = ?", orderNo).First(&order).Error; err != nil {
+			return err
+		}
+		return gorm.ErrInvalidData
+	}
+
+	return nil
 }
 
 // List lists recharge orders with filter and pagination.

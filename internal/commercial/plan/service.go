@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"v/internal/database/repository"
 	"v/internal/logger"
@@ -13,11 +14,29 @@ import (
 
 // Common errors
 var (
-	ErrPlanNotFound   = errors.New("plan not found")
-	ErrPlanInactive   = errors.New("plan is not active")
-	ErrInvalidPlan    = errors.New("invalid plan data")
-	ErrGroupNotFound  = errors.New("plan group not found")
+	ErrPlanNotFound  = errors.New("plan not found")
+	ErrPlanInactive  = errors.New("plan is not active")
+	ErrInvalidPlan   = errors.New("invalid plan data")
+	ErrGroupNotFound = errors.New("plan group not found")
 )
+
+const (
+	defaultPlanType   = "monthly"
+	defaultResetCycle = "monthly"
+)
+
+var validPlanTypes = map[string]struct{}{
+	"monthly":   {},
+	"quarterly": {},
+	"yearly":    {},
+	"traffic":   {},
+}
+
+var validResetCycles = map[string]struct{}{
+	"monthly":     {},
+	"on_purchase": {},
+	"never":       {},
+}
 
 // Plan represents a commercial plan with all its attributes.
 type Plan struct {
@@ -106,37 +125,87 @@ func NewService(planRepo repository.PlanRepository, log logger.Logger) *Service 
 	}
 }
 
-// Create creates a new plan.
-func (s *Service) Create(ctx context.Context, req *CreatePlanRequest) (*Plan, error) {
-	if req.Name == "" {
-		return nil, fmt.Errorf("%w: name is required", ErrInvalidPlan)
+func normalizePlanType(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return defaultPlanType
 	}
-	if req.Duration <= 0 {
-		return nil, fmt.Errorf("%w: duration must be positive", ErrInvalidPlan)
+	return value
+}
+
+func normalizeResetCycle(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return defaultResetCycle
 	}
-	if req.Price < 0 {
-		return nil, fmt.Errorf("%w: price cannot be negative", ErrInvalidPlan)
+	return value
+}
+
+func validatePlanCore(name string, duration int, price int64, trafficLimit int64, ipLimit int) error {
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("%w: name is required", ErrInvalidPlan)
+	}
+	if duration <= 0 {
+		return fmt.Errorf("%w: duration must be positive", ErrInvalidPlan)
+	}
+	if price < 0 {
+		return fmt.Errorf("%w: price cannot be negative", ErrInvalidPlan)
+	}
+	if trafficLimit < 0 {
+		return fmt.Errorf("%w: traffic limit cannot be negative", ErrInvalidPlan)
+	}
+	if ipLimit < 0 {
+		return fmt.Errorf("%w: ip limit cannot be negative", ErrInvalidPlan)
 	}
 
-	// Set defaults
-	if req.PlanType == "" {
-		req.PlanType = "monthly"
+	return nil
+}
+
+func validatePlanType(value string) error {
+	if _, ok := validPlanTypes[value]; !ok {
+		return fmt.Errorf("%w: invalid plan type", ErrInvalidPlan)
 	}
-	if req.ResetCycle == "" {
-		req.ResetCycle = "monthly"
+	return nil
+}
+
+func validateResetCycle(value string) error {
+	if _, ok := validResetCycles[value]; !ok {
+		return fmt.Errorf("%w: invalid reset cycle", ErrInvalidPlan)
+	}
+	return nil
+}
+
+// Create creates a new plan.
+func (s *Service) Create(ctx context.Context, req *CreatePlanRequest) (*Plan, error) {
+	if req == nil {
+		return nil, fmt.Errorf("%w: request is required", ErrInvalidPlan)
+	}
+
+	name := strings.TrimSpace(req.Name)
+	planType := normalizePlanType(req.PlanType)
+	resetCycle := normalizeResetCycle(req.ResetCycle)
+
+	if err := validatePlanCore(name, req.Duration, req.Price, req.TrafficLimit, req.IPLimit); err != nil {
+		return nil, err
+	}
+	if err := validatePlanType(planType); err != nil {
+		return nil, err
+	}
+	if err := validateResetCycle(resetCycle); err != nil {
+		return nil, err
 	}
 
 	paymentMethodsJSON, _ := json.Marshal(req.PaymentMethods)
 	featuresJSON, _ := json.Marshal(req.Features)
 
 	repoPlan := &repository.CommercialPlan{
-		Name:           req.Name,
+		Name:           name,
 		Description:    req.Description,
 		TrafficLimit:   req.TrafficLimit,
 		Duration:       req.Duration,
 		Price:          req.Price,
-		PlanType:       req.PlanType,
-		ResetCycle:     req.ResetCycle,
+		PlanType:       planType,
+		ResetCycle:     resetCycle,
 		IPLimit:        req.IPLimit,
 		SortOrder:      req.SortOrder,
 		IsActive:       req.IsActive,
@@ -171,7 +240,7 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdatePlanRequest) 
 	}
 
 	if req.Name != nil {
-		repoPlan.Name = *req.Name
+		repoPlan.Name = strings.TrimSpace(*req.Name)
 	}
 	if req.Description != nil {
 		repoPlan.Description = *req.Description
@@ -186,10 +255,18 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdatePlanRequest) 
 		repoPlan.Price = *req.Price
 	}
 	if req.PlanType != nil {
-		repoPlan.PlanType = *req.PlanType
+		planType := normalizePlanType(*req.PlanType)
+		if err := validatePlanType(planType); err != nil {
+			return nil, err
+		}
+		repoPlan.PlanType = planType
 	}
 	if req.ResetCycle != nil {
-		repoPlan.ResetCycle = *req.ResetCycle
+		resetCycle := normalizeResetCycle(*req.ResetCycle)
+		if err := validateResetCycle(resetCycle); err != nil {
+			return nil, err
+		}
+		repoPlan.ResetCycle = resetCycle
 	}
 	if req.IPLimit != nil {
 		repoPlan.IPLimit = *req.IPLimit
@@ -213,6 +290,10 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdatePlanRequest) 
 	if req.Features != nil {
 		featuresJSON, _ := json.Marshal(*req.Features)
 		repoPlan.Features = string(featuresJSON)
+	}
+
+	if err := validatePlanCore(repoPlan.Name, repoPlan.Duration, repoPlan.Price, repoPlan.TrafficLimit, repoPlan.IPLimit); err != nil {
+		return nil, err
 	}
 
 	if err := s.planRepo.Update(ctx, repoPlan); err != nil {

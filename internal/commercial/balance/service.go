@@ -497,6 +497,26 @@ func (s *Service) GetRechargePaymentDetails(ctx context.Context, orderNo string)
 	return order.Amount, order.PaymentNo, order.Status, nil
 }
 
+// CancelRechargeOrder marks a pending recharge order as cancelled.
+func (s *Service) CancelRechargeOrder(ctx context.Context, orderNo string) error {
+	if s.rechargeRepo == nil {
+		return ErrRechargeUnavailable
+	}
+
+	err := s.rechargeRepo.Cancel(ctx, strings.TrimSpace(orderNo))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrRechargeOrderNotFound
+		}
+		if errors.Is(err, gorm.ErrInvalidData) {
+			return ErrRechargeOrderNotReady
+		}
+		return err
+	}
+
+	return nil
+}
+
 // MarkRechargePaid marks a recharge order as paid and credits the user's balance.
 func (s *Service) MarkRechargePaid(ctx context.Context, orderNo string, paymentNo string, paidAt time.Time) error {
 	if s.rechargeRepo == nil {

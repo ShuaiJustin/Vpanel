@@ -196,6 +196,13 @@ func (h *BalanceHandler) CreateRecharge(c *gin.Context) {
 		})
 		return
 	}
+	if _, err := h.paymentService.GetGateway(method); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    "PAYMENT_METHOD_UNAVAILABLE",
+			"message": "当前支付方式暂不可用，请选择其他支付方式。",
+		})
+		return
+	}
 
 	rechargeOrder, err := h.balanceService.CreateRechargeOrder(c.Request.Context(), userID.(int64), req.Amount, method)
 	if err != nil {
@@ -230,6 +237,12 @@ func (h *BalanceHandler) CreateRecharge(c *gin.Context) {
 
 	result, err := h.paymentService.CreateGatewayPayment(method, paymentOrder)
 	if err != nil {
+		if cancelErr := h.balanceService.CancelRechargeOrder(c.Request.Context(), rechargeOrder.OrderNo); cancelErr != nil {
+			h.logger.Warn("Failed to cancel recharge order after payment creation failure",
+				logger.Err(cancelErr),
+				logger.F("orderNo", rechargeOrder.OrderNo),
+			)
+		}
 		h.logger.Error("Failed to create recharge payment", logger.Err(err), logger.F("orderNo", rechargeOrder.OrderNo))
 		status, payload := getCreatePaymentErrorResponse(err)
 		if code, ok := payload["code"].(string); ok && code == "PAYMENT_ERROR" {

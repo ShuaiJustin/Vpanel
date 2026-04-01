@@ -236,6 +236,77 @@ func TestService_Update(t *testing.T) {
 	}
 }
 
+func TestService_Update_ValidationErrors(t *testing.T) {
+	repo := newMockPlanRepository()
+	log := logger.NewNopLogger()
+	svc := NewService(repo, log)
+	ctx := context.Background()
+
+	created, err := svc.Create(ctx, &CreatePlanRequest{
+		Name:     "Valid Plan",
+		Duration: 30,
+		Price:    1000,
+	})
+	if err != nil {
+		t.Fatalf("failed to create plan: %v", err)
+	}
+
+	negativePrice := int64(-1)
+	if _, err := svc.Update(ctx, created.ID, &UpdatePlanRequest{Price: &negativePrice}); err == nil {
+		t.Fatal("expected negative price update to fail")
+	}
+
+	zeroDuration := 0
+	if _, err := svc.Update(ctx, created.ID, &UpdatePlanRequest{Duration: &zeroDuration}); err == nil {
+		t.Fatal("expected zero duration update to fail")
+	}
+
+	negativeTraffic := int64(-1024)
+	if _, err := svc.Update(ctx, created.ID, &UpdatePlanRequest{TrafficLimit: &negativeTraffic}); err == nil {
+		t.Fatal("expected negative traffic limit update to fail")
+	}
+
+	negativeIPLimit := -1
+	if _, err := svc.Update(ctx, created.ID, &UpdatePlanRequest{IPLimit: &negativeIPLimit}); err == nil {
+		t.Fatal("expected negative ip limit update to fail")
+	}
+
+	invalidPlanType := "weekly"
+	if _, err := svc.Update(ctx, created.ID, &UpdatePlanRequest{PlanType: &invalidPlanType}); err == nil {
+		t.Fatal("expected invalid plan type update to fail")
+	}
+
+	invalidResetCycle := "daily"
+	if _, err := svc.Update(ctx, created.ID, &UpdatePlanRequest{ResetCycle: &invalidResetCycle}); err == nil {
+		t.Fatal("expected invalid reset cycle update to fail")
+	}
+}
+
+func TestService_Create_RejectsInvalidPlanOptions(t *testing.T) {
+	repo := newMockPlanRepository()
+	log := logger.NewNopLogger()
+	svc := NewService(repo, log)
+	ctx := context.Background()
+
+	if _, err := svc.Create(ctx, &CreatePlanRequest{
+		Name:     "Bad Type",
+		Duration: 30,
+		Price:    1000,
+		PlanType: "weekly",
+	}); err == nil {
+		t.Fatal("expected invalid plan type to fail")
+	}
+
+	if _, err := svc.Create(ctx, &CreatePlanRequest{
+		Name:       "Bad Reset",
+		Duration:   30,
+		Price:      1000,
+		ResetCycle: "daily",
+	}); err == nil {
+		t.Fatal("expected invalid reset cycle to fail")
+	}
+}
+
 func TestService_SetActive(t *testing.T) {
 	repo := newMockPlanRepository()
 	log := logger.NewNopLogger()

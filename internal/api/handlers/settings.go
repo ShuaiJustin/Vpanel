@@ -126,6 +126,54 @@ type UpdateSettingsRequest struct {
 	XrayConfigTemplate *string `json:"xray_config_template"`
 }
 
+func hasPersistedPaymentSettings(values map[string]string) bool {
+	for _, key := range []string{
+		"payment_alipay_enabled",
+		"payment_alipay_app_id",
+		"payment_alipay_private_key",
+		"payment_alipay_public_key",
+		"payment_alipay_notify_url",
+		"payment_alipay_return_url",
+		"payment_alipay_sandbox",
+		"payment_wechat_enabled",
+		"payment_wechat_app_id",
+		"payment_wechat_mch_id",
+		"payment_wechat_api_key",
+		"payment_wechat_notify_url",
+		"payment_wechat_sandbox",
+	} {
+		if _, ok := values[key]; ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+func shouldPersistPaymentSettings(req *UpdateSettingsRequest, currentValues map[string]string) bool {
+	if req == nil {
+		return hasPersistedPaymentSettings(currentValues)
+	}
+
+	if req.PaymentAlipayEnabled != nil ||
+		req.PaymentAlipayAppID != nil ||
+		req.PaymentAlipayPrivateKey != nil ||
+		req.PaymentAlipayPublicKey != nil ||
+		req.PaymentAlipayNotifyURL != nil ||
+		req.PaymentAlipayReturnURL != nil ||
+		req.PaymentAlipaySandbox != nil ||
+		req.PaymentWeChatEnabled != nil ||
+		req.PaymentWeChatAppID != nil ||
+		req.PaymentWeChatMchID != nil ||
+		req.PaymentWeChatAPIKey != nil ||
+		req.PaymentWeChatNotifyURL != nil ||
+		req.PaymentWeChatSandbox != nil {
+		return true
+	}
+
+	return hasPersistedPaymentSettings(currentValues)
+}
+
 // UpdateSettings updates system settings.
 func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -135,6 +183,13 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 		middleware.RespondWithError(c, errors.NewValidationError("invalid request", map[string]interface{}{
 			"error": err.Error(),
 		}))
+		return
+	}
+
+	currentValues, err := h.settingsService.GetAll(ctx)
+	if err != nil {
+		h.logger.Error("Failed to get current raw settings", logger.F("error", err))
+		middleware.RespondWithError(c, errors.NewDatabaseError("get settings", err))
 		return
 	}
 
@@ -322,7 +377,9 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 	}
 
 	// Save updated settings
-	if err := h.settingsService.UpdateSystemSettings(ctx, currentSettings); err != nil {
+	if err := h.settingsService.UpdateSystemSettingsWithOptions(ctx, currentSettings, settings.UpdateOptions{
+		IncludePaymentSettings: shouldPersistPaymentSettings(&req, currentValues),
+	}); err != nil {
 		h.logger.Error("Failed to update settings", logger.F("error", err))
 		middleware.RespondWithError(c, errors.NewDatabaseError("update settings", err))
 		return

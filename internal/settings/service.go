@@ -99,6 +99,11 @@ type Service struct {
 	cacheMu sync.RWMutex
 }
 
+// UpdateOptions controls how system settings are persisted.
+type UpdateOptions struct {
+	IncludePaymentSettings bool
+}
+
 // NewService creates a new settings service.
 func NewService(repo repository.SettingsRepository) *Service {
 	return &Service{
@@ -340,6 +345,11 @@ func (s *Service) GetSystemSettings(ctx context.Context) (*SystemSettings, error
 
 // UpdateSystemSettings updates system settings from a structured object.
 func (s *Service) UpdateSystemSettings(ctx context.Context, settings *SystemSettings) error {
+	return s.UpdateSystemSettingsWithOptions(ctx, settings, UpdateOptions{IncludePaymentSettings: true})
+}
+
+// UpdateSystemSettingsWithOptions persists system settings with selective field groups.
+func (s *Service) UpdateSystemSettingsWithOptions(ctx context.Context, settings *SystemSettings, options UpdateOptions) error {
 	updates := make(map[string]string)
 
 	updates["site_name"] = settings.SiteName
@@ -398,19 +408,21 @@ func (s *Service) UpdateSystemSettings(ctx context.Context, settings *SystemSett
 		updates["rate_limit_window"] = string(data)
 	}
 
-	updates["payment_alipay_enabled"] = boolToString(settings.PaymentAlipayEnabled)
-	updates["payment_alipay_app_id"] = settings.PaymentAlipayAppID
-	updates["payment_alipay_private_key"] = settings.PaymentAlipayPrivateKey
-	updates["payment_alipay_public_key"] = settings.PaymentAlipayPublicKey
-	updates["payment_alipay_notify_url"] = settings.PaymentAlipayNotifyURL
-	updates["payment_alipay_return_url"] = settings.PaymentAlipayReturnURL
-	updates["payment_alipay_sandbox"] = boolToString(settings.PaymentAlipaySandbox)
-	updates["payment_wechat_enabled"] = boolToString(settings.PaymentWeChatEnabled)
-	updates["payment_wechat_app_id"] = settings.PaymentWeChatAppID
-	updates["payment_wechat_mch_id"] = settings.PaymentWeChatMchID
-	updates["payment_wechat_api_key"] = settings.PaymentWeChatAPIKey
-	updates["payment_wechat_notify_url"] = settings.PaymentWeChatNotifyURL
-	updates["payment_wechat_sandbox"] = boolToString(settings.PaymentWeChatSandbox)
+	if options.IncludePaymentSettings {
+		updates["payment_alipay_enabled"] = boolToString(settings.PaymentAlipayEnabled)
+		updates["payment_alipay_app_id"] = settings.PaymentAlipayAppID
+		updates["payment_alipay_private_key"] = settings.PaymentAlipayPrivateKey
+		updates["payment_alipay_public_key"] = settings.PaymentAlipayPublicKey
+		updates["payment_alipay_notify_url"] = settings.PaymentAlipayNotifyURL
+		updates["payment_alipay_return_url"] = settings.PaymentAlipayReturnURL
+		updates["payment_alipay_sandbox"] = boolToString(settings.PaymentAlipaySandbox)
+		updates["payment_wechat_enabled"] = boolToString(settings.PaymentWeChatEnabled)
+		updates["payment_wechat_app_id"] = settings.PaymentWeChatAppID
+		updates["payment_wechat_mch_id"] = settings.PaymentWeChatMchID
+		updates["payment_wechat_api_key"] = settings.PaymentWeChatAPIKey
+		updates["payment_wechat_notify_url"] = settings.PaymentWeChatNotifyURL
+		updates["payment_wechat_sandbox"] = boolToString(settings.PaymentWeChatSandbox)
+	}
 
 	updates["xray_config_template"] = settings.XrayConfigTemplate
 
