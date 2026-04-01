@@ -144,6 +144,9 @@
                     {{ trafficPeriodLabel }}总流量
                   </div>
                   <div class="traffic-meta-list">
+                    <div class="traffic-meta-hint">
+                      {{ trafficPeriodSummaryHint }}
+                    </div>
                     <div class="traffic-meta-item">
                       <span>用户总额度</span>
                       <strong>{{
@@ -343,7 +346,7 @@ const systemInfo = ref({
 });
 
 // 流量统计数据
-const trafficPeriod = ref("today");
+const trafficPeriod = ref("week");
 const trafficStats = ref({
   total: 0,
   up: 0,
@@ -429,6 +432,31 @@ const trafficLimitHint = computed(() => {
     return "当前按在线节点总额度计算流量进度";
   }
   return "当前未配置可用于进度计算的总额度";
+});
+
+const trafficPeriodLabel = computed(() => {
+  switch (trafficPeriod.value) {
+    case "today":
+      return "今日";
+    case "week":
+      return "本周";
+    case "month":
+      return "本月";
+    default:
+      return "当前";
+  }
+});
+
+const trafficPeriodSummaryHint = computed(() => {
+  if (Number(trafficStats.value.total || 0) > 0) {
+    return `当前展示${trafficPeriodLabel.value.toLowerCase()}聚合流量`;
+  }
+
+  if (trafficPeriod.value === "today") {
+    return "今日暂无新流量，可切换到本周或本月查看历史聚合";
+  }
+
+  return `当前所选${trafficPeriodLabel.value}暂无流量记录`;
 });
 
 const trafficProgressPercentage = computed(() => {
