@@ -905,6 +905,42 @@ echo "✓ 清理完成"
 	return s.executeCommandWithTimeout(ctx, client, stopScript, serviceCommandTimeout, logBuffer)
 }
 
+// CleanupAgent stops and disables the remote agent service and removes stale config.
+func (s *RemoteDeployService) CleanupAgent(ctx context.Context, config *DeployConfig) error {
+	if config == nil {
+		return fmt.Errorf("deploy config is required")
+	}
+	if strings.TrimSpace(config.Host) == "" {
+		return fmt.Errorf("服务器地址不能为空")
+	}
+	if strings.TrimSpace(config.Username) == "" {
+		return fmt.Errorf("用户名不能为空")
+	}
+	if strings.TrimSpace(config.Password) == "" && strings.TrimSpace(config.PrivateKey) == "" {
+		return fmt.Errorf("必须提供密码或私钥")
+	}
+
+	client, err := s.connectSSH(config)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	var logBuffer bytes.Buffer
+	logBuffer.WriteString("开始清理远端 Agent...\n")
+
+	if err := s.stopOldAgentProcesses(ctx, client, &logBuffer); err != nil {
+		return fmt.Errorf("清理远端 Agent 失败: %w", err)
+	}
+
+	s.logger.Info("Remote agent cleanup completed",
+		logger.F("node_id", config.NodeID),
+		logger.F("host", config.Host),
+		logger.F("username", config.Username))
+
+	return nil
+}
+
 func (s *RemoteDeployService) resolveAgentHealthPort(ctx context.Context, config *DeployConfig) int {
 	const defaultAgentHealthPort = 18443
 	if config == nil {

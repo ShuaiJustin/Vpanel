@@ -154,3 +154,53 @@ func TestServiceDelete_RemovesNodeBoundProxies(t *testing.T) {
 		t.Fatalf("expected target-node proxy to remain, got %q", remaining[0].Name)
 	}
 }
+
+func TestServiceUpdateSSHConfigPersistsFields(t *testing.T) {
+	db := setupNodeServiceDeleteTestDB(t)
+	ctx := context.Background()
+
+	nodeRepo := repository.NewNodeRepository(db)
+	assignmentRepo := repository.NewUserNodeAssignmentRepository(db)
+	proxyRepo := repository.NewProxyRepository(db)
+	service := NewService(nodeRepo, assignmentRepo, proxyRepo, logger.NewNopLogger())
+
+	nodeModel := &repository.Node{
+		Name:    "ssh-node",
+		Address: "198.51.100.10",
+		Token:   "ssh-node-token",
+		Status:  repository.NodeStatusOnline,
+	}
+	if err := db.Create(nodeModel).Error; err != nil {
+		t.Fatalf("failed to create node: %v", err)
+	}
+
+	if err := service.UpdateSSHConfig(ctx, nodeModel.ID, "198.51.100.20", 2222, "admin", "secret-password", ""); err != nil {
+		t.Fatalf("expected UpdateSSHConfig to succeed, got %v", err)
+	}
+
+	reloaded, err := service.GetByID(ctx, nodeModel.ID)
+	if err != nil {
+		t.Fatalf("failed to reload node: %v", err)
+	}
+
+	rawNode, err := nodeRepo.GetByID(ctx, nodeModel.ID)
+	if err != nil {
+		t.Fatalf("failed to reload raw node: %v", err)
+	}
+
+	if reloaded.SSHHost != "198.51.100.20" {
+		t.Fatalf("expected SSHHost to be persisted, got %q", reloaded.SSHHost)
+	}
+	if reloaded.SSHPort != 2222 {
+		t.Fatalf("expected SSHPort 2222, got %d", reloaded.SSHPort)
+	}
+	if reloaded.SSHUser != "admin" {
+		t.Fatalf("expected SSHUser admin, got %q", reloaded.SSHUser)
+	}
+	if reloaded.SSHPassword != "secret-password" {
+		t.Fatalf("expected SSHPassword to be persisted, got %q", reloaded.SSHPassword)
+	}
+	if rawNode.SSHPassword == "secret-password" {
+		t.Fatal("expected raw SSHPassword to be encrypted at rest")
+	}
+}

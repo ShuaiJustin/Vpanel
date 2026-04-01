@@ -273,11 +273,12 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import { useNodeStore } from '@/stores/node'
+import { debounce } from '@/utils/debounce'
 import { extractErrorMessage } from '@/utils/entitlement'
 
 const router = useRouter()
@@ -416,12 +417,18 @@ const fetchNodes = async () => {
       limit: pagination.pageSize,
       offset: (pagination.page - 1) * pagination.pageSize,
       status: filters.status || undefined,
-      region: filters.region || undefined
+      region: filters.region || undefined,
+      search: filters.search.trim() || undefined
     })
   } catch (error) {
     ElMessage.error(extractErrorMessage(error) || '获取节点运维列表失败')
   }
 }
+
+const debouncedSearchNodes = debounce(async () => {
+  pagination.page = 1
+  await fetchNodes()
+}, 300)
 
 const handleFilterChange = async () => {
   pagination.page = 1
@@ -456,6 +463,17 @@ const editNode = (node) => {
 
 onMounted(async () => {
   await fetchNodes()
+})
+
+watch(
+  () => filters.search,
+  () => {
+    debouncedSearchNodes()
+  }
+)
+
+onUnmounted(() => {
+  debouncedSearchNodes.cancel?.()
 })
 </script>
 

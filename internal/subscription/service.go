@@ -36,6 +36,8 @@ const TokenLength = 32
 // ShortCodeLength is the length for short subscription codes.
 const ShortCodeLength = 8
 
+const maxSubscriptionTokenAttempts = 5
+
 // ContentOptions represents options for content generation.
 type ContentOptions struct {
 	Protocols      []string // Filter by protocols
@@ -135,6 +137,42 @@ func (s *Service) GenerateShortCode() (string, error) {
 	return string(bytes), nil
 }
 
+func (s *Service) generateUniqueToken(ctx context.Context) (string, error) {
+	for attempt := 0; attempt < maxSubscriptionTokenAttempts; attempt++ {
+		token, err := s.GenerateToken()
+		if err != nil {
+			return "", err
+		}
+		_, err = s.subscriptionRepo.GetByToken(ctx, token)
+		if errors.IsNotFound(err) {
+			return token, nil
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return "", fmt.Errorf("failed to generate unique subscription token after %d attempts", maxSubscriptionTokenAttempts)
+}
+
+func (s *Service) generateUniqueShortCode(ctx context.Context) (string, error) {
+	for attempt := 0; attempt < maxSubscriptionTokenAttempts; attempt++ {
+		shortCode, err := s.GenerateShortCode()
+		if err != nil {
+			return "", err
+		}
+		_, err = s.subscriptionRepo.GetByShortCode(ctx, shortCode)
+		if errors.IsNotFound(err) {
+			return shortCode, nil
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return "", fmt.Errorf("failed to generate unique subscription short code after %d attempts", maxSubscriptionTokenAttempts)
+}
+
 // ValidateToken validates a subscription token and returns the subscription if valid.
 func (s *Service) ValidateToken(ctx context.Context, token string) (*repository.Subscription, error) {
 	subscription, err := s.subscriptionRepo.GetByToken(ctx, token)
@@ -173,12 +211,12 @@ func (s *Service) GetOrCreateSubscription(ctx context.Context, userID int64) (*r
 	}
 
 	// Generate new token and short code
-	token, err := s.GenerateToken()
+	token, err := s.generateUniqueToken(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	shortCode, err := s.GenerateShortCode()
+	shortCode, err := s.generateUniqueShortCode(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -197,6 +235,11 @@ func (s *Service) GetOrCreateSubscription(ctx context.Context, userID int64) (*r
 	return subscription, nil
 }
 
+// GetSubscriptionByUserID returns an existing subscription for a user without creating one.
+func (s *Service) GetSubscriptionByUserID(ctx context.Context, userID int64) (*repository.Subscription, error) {
+	return s.subscriptionRepo.GetByUserID(ctx, userID)
+}
+
 // RegenerateToken regenerates the subscription token for a user.
 // This invalidates the old token immediately.
 func (s *Service) RegenerateToken(ctx context.Context, userID int64) (*repository.Subscription, error) {
@@ -211,13 +254,13 @@ func (s *Service) RegenerateToken(ctx context.Context, userID int64) (*repositor
 	}
 
 	// Generate new token
-	newToken, err := s.GenerateToken()
+	newToken, err := s.generateUniqueToken(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	// Generate new short code
-	newShortCode, err := s.GenerateShortCode()
+	newShortCode, err := s.generateUniqueShortCode(ctx)
 	if err != nil {
 		return nil, err
 	}

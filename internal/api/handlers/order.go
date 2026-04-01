@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"v/internal/commercial/coupon"
 	"v/internal/commercial/order"
 	"v/internal/commercial/refund"
 	"v/internal/logger"
@@ -62,6 +63,39 @@ type CreateOrderRequest struct {
 	CouponCode string `json:"coupon_code"`
 }
 
+func buildCreateOrderErrorResponse(err error) (int, gin.H) {
+	switch {
+	case errors.Is(err, order.ErrPlanNotFound):
+		return http.StatusNotFound, gin.H{"code": "PLAN_NOT_FOUND", "message": "套餐不存在，请刷新后重试。"}
+	case errors.Is(err, order.ErrPlanInactive):
+		return http.StatusBadRequest, gin.H{"code": "PLAN_INACTIVE", "message": "该套餐当前不可购买，请选择其他套餐。"}
+	case errors.Is(err, order.ErrInvalidOrder):
+		return http.StatusBadRequest, gin.H{"code": "VALIDATION_ERROR", "message": err.Error()}
+	case errors.Is(err, coupon.ErrCouponNotFound),
+		errors.Is(err, coupon.ErrCouponExpired),
+		errors.Is(err, coupon.ErrCouponInactive),
+		errors.Is(err, coupon.ErrCouponNotStarted),
+		errors.Is(err, coupon.ErrCouponLimitReached),
+		errors.Is(err, coupon.ErrCouponUserLimit),
+		errors.Is(err, coupon.ErrCouponMinAmount),
+		errors.Is(err, coupon.ErrCouponPlanMismatch):
+		return http.StatusBadRequest, gin.H{"code": "COUPON_ERROR", "message": err.Error()}
+	default:
+		return http.StatusBadRequest, gin.H{"code": "ORDER_ERROR", "message": "Failed to create order"}
+	}
+}
+
+func buildCancelOrderErrorResponse(err error) (int, gin.H) {
+	switch {
+	case errors.Is(err, order.ErrOrderNotFound):
+		return http.StatusNotFound, gin.H{"code": "NOT_FOUND", "message": "Order not found"}
+	case errors.Is(err, order.ErrOrderCannotCancel):
+		return http.StatusBadRequest, gin.H{"code": "ORDER_NOT_CANCELABLE", "message": "当前订单状态不允许取消。"}
+	default:
+		return http.StatusBadRequest, gin.H{"code": "ORDER_ERROR", "message": err.Error()}
+	}
+}
+
 // CreateOrder creates a new order.
 func (h *OrderHandler) CreateOrder(c *gin.Context) {
 	userID, exists := c.Get("user_id")
@@ -91,10 +125,8 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 	o, err := h.orderService.Create(c.Request.Context(), createReq)
 	if err != nil {
 		h.logger.Error("Failed to create order", logger.Err(err))
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    "ORDER_ERROR",
-			"message": "Failed to create order",
-		})
+		status, payload := buildCreateOrderErrorResponse(err)
+		c.JSON(status, payload)
 		return
 	}
 
@@ -233,7 +265,8 @@ func (h *OrderHandler) CancelOrder(c *gin.Context) {
 
 	if err := h.orderService.Cancel(c.Request.Context(), id); err != nil {
 		h.logger.Error("Failed to cancel order", logger.Err(err), logger.F("id", id))
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		status, payload := buildCancelOrderErrorResponse(err)
+		c.JSON(status, payload)
 		return
 	}
 

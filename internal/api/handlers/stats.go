@@ -621,23 +621,36 @@ func (h *StatsHandler) GetDetailedStats(c *gin.Context) {
 
 // getPeriodRange returns the start and end time for a given period.
 func getPeriodRange(period string) (start, end time.Time) {
-	now := time.Now()
+	return getPeriodRangeAt(time.Now(), period)
+}
+
+func getPeriodRangeAt(now time.Time, period string) (start, end time.Time) {
 	end = now
 
 	switch period {
 	case "today":
 		start = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	case "week":
-		start = now.AddDate(0, 0, -7)
+		start = startOfWeek(now)
 	case "month":
-		start = now.AddDate(0, -1, 0)
+		start = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
 	case "year":
-		start = now.AddDate(-1, 0, 0)
+		start = time.Date(now.Year(), time.January, 1, 0, 0, 0, 0, now.Location())
 	default:
 		start = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	}
 
 	return start, end
+}
+
+func startOfWeek(now time.Time) time.Time {
+	weekday := int(now.Weekday())
+	if weekday == 0 {
+		weekday = 7
+	}
+
+	date := now.AddDate(0, 0, -(weekday - 1))
+	return time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
 }
 
 // getIntervalForPeriod returns the appropriate interval for timeline data.

@@ -346,8 +346,8 @@ const systemInfo = ref({
 const trafficPeriod = ref("today");
 const trafficStats = ref({
   total: 0,
-  up: 0,
-  down: 0,
+  upload: 0,
+  download: 0,
   limit: 0,
   userLimit: 0,
   nodeLimit: 0,
@@ -388,14 +388,14 @@ const buildProtocolTraffic = (stats) => {
 
 // 计算上传流量百分比
 const getUpPercentage = computed(() => {
-  const total = trafficStats.value.up + trafficStats.value.down;
-  return total > 0 ? Math.round((trafficStats.value.up / total) * 100) : 50;
+  const total = trafficStats.value.upload + trafficStats.value.download;
+  return total > 0 ? Math.round((trafficStats.value.upload / total) * 100) : 50;
 });
 
 // 计算下载流量百分比
 const getDownPercentage = computed(() => {
-  const total = trafficStats.value.up + trafficStats.value.down;
-  return total > 0 ? Math.round((trafficStats.value.down / total) * 100) : 50;
+  const total = trafficStats.value.upload + trafficStats.value.download;
+  return total > 0 ? Math.round((trafficStats.value.download / total) * 100) : 50;
 });
 
 const hasTrafficLimit = computed(
@@ -517,7 +517,6 @@ const getProtocolColor = (protocol) => {
 const loadSystemStatus = async () => {
   try {
     const response = await systemApi.getSystemStatus();
-    console.log("System status response:", response);
 
     // 后端直接返回数据，不是 {code, data} 格式
     // 检查响应格式
@@ -574,8 +573,8 @@ const loadStats = async () => {
     if (trafficData) {
       trafficStats.value = {
         total: trafficData.total || 0,
-        up: trafficData.up || 0,
-        down: trafficData.down || 0,
+        upload: trafficData.upload || 0,
+        download: trafficData.download || 0,
         limit: trafficData.limit || 0,
         userLimit: trafficData.user_limit || 0,
         nodeLimit: trafficData.node_limit || 0,
@@ -614,8 +613,8 @@ const changeTrafficPeriod = async (period) => {
     if (trafficData) {
       trafficStats.value = {
         total: trafficData.total || 0,
-        up: trafficData.up || 0,
-        down: trafficData.down || 0,
+        upload: trafficData.upload || 0,
+        download: trafficData.download || 0,
         limit: trafficData.limit || 0,
         userLimit: trafficData.user_limit || 0,
         nodeLimit: trafficData.node_limit || 0,

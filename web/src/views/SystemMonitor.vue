@@ -508,9 +508,7 @@ const refreshData = async () => {
   apiError.value = false
   
   try {
-    console.log('Fetching system status from backend...')
     const response = await systemApi.getSystemStatus()
-    console.log('API Response:', response)
 
     const data = response?.code === 200 && response?.data ? response.data : response
 
@@ -520,7 +518,6 @@ const refreshData = async () => {
 
     // 更新系统信息
     if (data.systemInfo) {
-      console.log('Updating system info with:', data.systemInfo)
       systemInfo.value = data.systemInfo
 
       if (!systemInfo.value.load || systemInfo.value.load === null) {

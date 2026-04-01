@@ -3,6 +3,7 @@ package stats
 
 import (
 	"testing"
+	"time"
 
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
@@ -53,6 +54,82 @@ func TestValidatePeriod(t *testing.T) {
 			t.Errorf("ValidatePeriod(%s) = %s, expected %s", tt.input, result, tt.expected)
 		}
 	}
+}
+
+func TestResolveRangeUsesCalendarBoundaries(t *testing.T) {
+	loc := time.FixedZone("CST", 8*60*60)
+	now := time.Date(2026, time.March, 31, 21, 30, 0, 0, loc)
+
+	t.Run("day", func(t *testing.T) {
+		period, start, end, err := resolveRangeAt(now, "day", "", "")
+		if err != nil {
+			t.Fatalf("resolveRangeAt day returned error: %v", err)
+		}
+		if period != "day" {
+			t.Fatalf("expected period day, got %s", period)
+		}
+		expectedStart := time.Date(2026, time.March, 31, 0, 0, 0, 0, loc)
+		if !start.Equal(expectedStart) {
+			t.Fatalf("expected day start %v, got %v", expectedStart, start)
+		}
+		if !end.Equal(now) {
+			t.Fatalf("expected day end %v, got %v", now, end)
+		}
+	})
+
+	t.Run("week", func(t *testing.T) {
+		_, start, end, err := resolveRangeAt(now, "week", "", "")
+		if err != nil {
+			t.Fatalf("resolveRangeAt week returned error: %v", err)
+		}
+		expectedStart := time.Date(2026, time.March, 30, 0, 0, 0, 0, loc)
+		if !start.Equal(expectedStart) {
+			t.Fatalf("expected week start %v, got %v", expectedStart, start)
+		}
+		if !end.Equal(now) {
+			t.Fatalf("expected week end %v, got %v", now, end)
+		}
+	})
+
+	t.Run("month", func(t *testing.T) {
+		_, start, _, err := resolveRangeAt(now, "month", "", "")
+		if err != nil {
+			t.Fatalf("resolveRangeAt month returned error: %v", err)
+		}
+		expectedStart := time.Date(2026, time.March, 1, 0, 0, 0, 0, loc)
+		if !start.Equal(expectedStart) {
+			t.Fatalf("expected month start %v, got %v", expectedStart, start)
+		}
+	})
+
+	t.Run("year", func(t *testing.T) {
+		_, start, _, err := resolveRangeAt(now, "year", "", "")
+		if err != nil {
+			t.Fatalf("resolveRangeAt year returned error: %v", err)
+		}
+		expectedStart := time.Date(2026, time.January, 1, 0, 0, 0, 0, loc)
+		if !start.Equal(expectedStart) {
+			t.Fatalf("expected year start %v, got %v", expectedStart, start)
+		}
+	})
+
+	t.Run("custom", func(t *testing.T) {
+		period, start, end, err := resolveRangeAt(now, "custom", "2026-03-10", "2026-03-12")
+		if err != nil {
+			t.Fatalf("resolveRangeAt custom returned error: %v", err)
+		}
+		if period != "custom" {
+			t.Fatalf("expected period custom, got %s", period)
+		}
+		expectedStart := time.Date(2026, time.March, 10, 0, 0, 0, 0, loc)
+		expectedEnd := time.Date(2026, time.March, 12, 23, 59, 59, int(time.Second-time.Nanosecond), loc)
+		if !start.Equal(expectedStart) {
+			t.Fatalf("expected custom start %v, got %v", expectedStart, start)
+		}
+		if !end.Equal(expectedEnd) {
+			t.Fatalf("expected custom end %v, got %v", expectedEnd, end)
+		}
+	})
 }
 
 func TestGetPeriodDays(t *testing.T) {

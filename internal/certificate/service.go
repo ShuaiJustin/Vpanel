@@ -26,6 +26,7 @@ import (
 
 	"v/internal/database/repository"
 	"v/internal/logger"
+	nodepkg "v/internal/node"
 	apperrors "v/pkg/errors"
 )
 
@@ -1490,12 +1491,16 @@ func (s *Service) deployViaSSH(node *repository.Node, domain string, certData, k
 	}
 
 	// 密码认证
-	if node.SSHPassword != "" {
-		authMethods = append(authMethods, ssh.Password(node.SSHPassword))
+	sshPassword, err := nodepkg.DecryptSSHPassword(node.SSHPassword)
+	if err != nil {
+		return fmt.Errorf("解密 SSH 密码失败: %w", err)
+	}
+	if sshPassword != "" {
+		authMethods = append(authMethods, ssh.Password(sshPassword))
 		authMethods = append(authMethods, ssh.KeyboardInteractive(func(user, instruction string, questions []string, echos []bool) ([]string, error) {
 			answers := make([]string, len(questions))
 			for i := range answers {
-				answers[i] = node.SSHPassword
+				answers[i] = sshPassword
 			}
 			return answers, nil
 		}))

@@ -3,6 +3,7 @@ package middleware
 
 import (
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 
@@ -36,7 +37,7 @@ func NewSubscriptionRateLimiter(requestsPerHour int) *SubscriptionRateLimiter {
 	rl := &SubscriptionRateLimiter{
 		clients:         make(map[string]*subscriptionClient),
 		requestsPerHour: requestsPerHour,
-		maxClients:      10000, // Limit memory usage
+		maxClients:      10000,           // Limit memory usage
 		cleanupInterval: 5 * time.Minute, // More frequent cleanup
 		stopCh:          make(chan struct{}),
 	}
@@ -83,7 +84,7 @@ func (rl *SubscriptionRateLimiter) allow(clientKey string) bool {
 		if !exists && len(rl.clients) >= rl.maxClients {
 			rl.evictOldest()
 		}
-		
+
 		// New window
 		rl.clients[clientKey] = &subscriptionClient{
 			requests:  1,
@@ -109,26 +110,22 @@ func (rl *SubscriptionRateLimiter) evictOldest() {
 	if toRemove < 100 {
 		toRemove = 100
 	}
-	
+
 	type entry struct {
 		key      string
 		lastSeen time.Time
 	}
-	
+
 	entries := make([]entry, 0, len(rl.clients))
 	for key, client := range rl.clients {
 		entries = append(entries, entry{key: key, lastSeen: client.lastSeen})
 	}
-	
+
 	// Sort by lastSeen (oldest first)
-	for i := 0; i < len(entries)-1; i++ {
-		for j := i + 1; j < len(entries); j++ {
-			if entries[i].lastSeen.After(entries[j].lastSeen) {
-				entries[i], entries[j] = entries[j], entries[i]
-			}
-		}
-	}
-	
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].lastSeen.Before(entries[j].lastSeen)
+	})
+
 	// Remove oldest entries
 	for i := 0; i < toRemove && i < len(entries); i++ {
 		delete(rl.clients, entries[i].key)

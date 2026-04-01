@@ -1074,7 +1074,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted } from "vue";
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
@@ -1092,6 +1092,7 @@ import { useNodeStore } from "@/stores/node";
 import { certificatesApi } from "@/api";
 import { nodesApi } from "@/api/modules/nodes";
 import { copyText } from "@/utils/clipboard";
+import { debounce } from "@/utils/debounce";
 import { useViewport } from "@/composables/useViewport";
 import { extractErrorMessage } from "@/utils/entitlement";
 import {
@@ -1773,11 +1774,17 @@ const fetchNodes = async () => {
       offset: (pagination.page - 1) * pagination.pageSize,
       status: nodeStore.filters.status || undefined,
       region: nodeStore.filters.region || undefined,
+      search: normalizeText(nodeStore.filters.search) || undefined,
     });
   } catch (e) {
     ElMessage.error(e.message || "获取节点列表失败");
   }
 };
+
+const debouncedSearchNodes = debounce(async () => {
+  pagination.page = 1;
+  await fetchNodes();
+}, 300);
 
 const resetFilters = async () => {
   nodeStore.clearFilters();
@@ -2288,7 +2295,15 @@ onMounted(async () => {
   await Promise.all([fetchNodes(), fetchCertificates()]);
 });
 
+watch(
+  () => nodeStore.filters.search,
+  () => {
+    debouncedSearchNodes();
+  },
+);
+
 onUnmounted(() => {
+  debouncedSearchNodes.cancel?.();
   clearInstallStatusPolling();
 });
 </script>

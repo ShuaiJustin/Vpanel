@@ -175,6 +175,9 @@ func (s *Service) Create(ctx context.Context, req *CreateOrderRequest) (*Order, 
 	if req.PlanID <= 0 {
 		return nil, fmt.Errorf("%w: plan ID is required", ErrInvalidOrder)
 	}
+	if req.CouponCode != "" {
+		return nil, fmt.Errorf("%w: coupon_code is not supported in current order flow", ErrInvalidOrder)
+	}
 
 	// Get plan
 	plan, err := s.planRepo.GetByID(ctx, req.PlanID)

@@ -121,7 +121,7 @@
               <el-radio-group
                 v-model="trafficPeriod"
                 size="small"
-                @change="loadTrafficStats"
+                @change="refreshData"
               >
                 <el-radio-button label="today">
                   今日
@@ -521,7 +521,7 @@ const loadDashboardStats = async () => {
 // 加载协议统计
 const loadProtocolStats = async () => {
   try {
-    const response = await statsApi.getProtocolStats()
+    const response = await statsApi.getProtocolStats({ period: trafficPeriod.value })
     if (response.code === 200) {
       protocolStats.value = response.data || []
       totalTraffic.value = protocolStats.value.reduce((sum, item) => sum + item.traffic, 0)
@@ -557,7 +557,7 @@ const loadTrafficStats = async () => {
 // 加载用户统计
 const loadUserStats = async () => {
   try {
-    const response = await statsApi.getUserStats()
+    const response = await statsApi.getUserStats({ period: trafficPeriod.value })
     if (response.code === 200) {
       userStats.value = response.data || []
     }

@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -15,6 +16,21 @@ import (
 type TrialHandler struct {
 	trialService *trial.Service
 	logger       logger.Logger
+}
+
+func (h *TrialHandler) respondTrialError(c *gin.Context, err error, fallback string) {
+	switch {
+	case errors.Is(err, trial.ErrTrialNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": "Trial not found"})
+	case errors.Is(err, trial.ErrTrialDisabled),
+		errors.Is(err, trial.ErrTrialAlreadyUsed),
+		errors.Is(err, trial.ErrEmailNotVerified),
+		errors.Is(err, trial.ErrActiveSubscription):
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	default:
+		h.logger.Error(fallback, logger.Err(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fallback})
+	}
 }
 
 // NewTrialHandler creates a new TrialHandler.
@@ -196,8 +212,7 @@ func (h *TrialHandler) AdminGrantTrial(c *gin.Context) {
 
 	t, err := h.trialService.GrantTrial(c.Request.Context(), req.UserID, duration)
 	if err != nil {
-		h.logger.Error("Failed to grant trial", logger.Err(err), logger.F("user_id", req.UserID))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to grant trial"})
+		h.respondTrialError(c, err, "Failed to grant trial")
 		return
 	}
 
@@ -237,7 +252,7 @@ func (h *TrialHandler) AdminGetTrialByUser(c *gin.Context) {
 
 	t, err := h.trialService.GetTrial(c.Request.Context(), userID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "No trial found for this user"})
+		h.respondTrialError(c, err, "Failed to get trial")
 		return
 	}
 

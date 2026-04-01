@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,6 +24,32 @@ type PanelClientConfig struct {
 	ConnectTimeout    time.Duration
 	ReconnectInterval time.Duration
 	MaxReconnectDelay time.Duration
+}
+
+// PanelHTTPError represents a non-200 response from the panel.
+type PanelHTTPError struct {
+	Operation  string
+	StatusCode int
+	Body       string
+}
+
+func (e *PanelHTTPError) Error() string {
+	if e == nil {
+		return "panel request failed"
+	}
+	if e.Body == "" {
+		return fmt.Sprintf("%s failed with status %d", e.Operation, e.StatusCode)
+	}
+	return fmt.Sprintf("%s failed with status %d: %s", e.Operation, e.StatusCode, e.Body)
+}
+
+func isPermanentAuthError(err error) bool {
+	var httpErr *PanelHTTPError
+	if !errors.As(err, &httpErr) {
+		return false
+	}
+
+	return httpErr.StatusCode == http.StatusUnauthorized
 }
 
 // PanelClient handles communication with the Panel Server.
@@ -84,7 +111,11 @@ func (c *PanelClient) Register(ctx context.Context, req *RegisterRequest) (*Regi
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("registration failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, &PanelHTTPError{
+			Operation:  "registration",
+			StatusCode: resp.StatusCode,
+			Body:       string(bodyBytes),
+		}
 	}
 
 	var result RegisterResponse
@@ -123,7 +154,11 @@ func (c *PanelClient) Heartbeat(ctx context.Context, req *HeartbeatRequest) (*He
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("heartbeat failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, &PanelHTTPError{
+			Operation:  "heartbeat",
+			StatusCode: resp.StatusCode,
+			Body:       string(bodyBytes),
+		}
 	}
 
 	var result HeartbeatResponse
@@ -162,7 +197,11 @@ func (c *PanelClient) ReportCommandResult(ctx context.Context, result *CommandRe
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("report failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+		return &PanelHTTPError{
+			Operation:  "report",
+			StatusCode: resp.StatusCode,
+			Body:       string(bodyBytes),
+		}
 	}
 
 	return nil
@@ -187,7 +226,11 @@ func (c *PanelClient) SyncConfig(ctx context.Context, nodeID int64) (json.RawMes
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("config sync failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, &PanelHTTPError{
+			Operation:  "config sync",
+			StatusCode: resp.StatusCode,
+			Body:       string(bodyBytes),
+		}
 	}
 
 	bodyBytes, err := io.ReadAll(resp.Body)

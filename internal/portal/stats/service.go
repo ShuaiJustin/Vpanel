@@ -310,6 +310,21 @@ func (s *Service) ExportTrafficCSV(ctx context.Context, userID int64, days int) 
 		return nil, err
 	}
 
+	return buildTrafficCSV(daily)
+}
+
+// ExportTrafficCSVInRange exports traffic data as CSV for an explicit range.
+func (s *Service) ExportTrafficCSVInRange(ctx context.Context, userID int64, start, end time.Time) ([]byte, error) {
+	daily, err := s.GetDailyTrafficInRange(ctx, userID, start, end)
+	if err != nil {
+		return nil, err
+	}
+
+	return buildTrafficCSV(daily)
+}
+
+func buildTrafficCSV(daily []*DailyTraffic) ([]byte, error) {
+
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
 
@@ -364,8 +379,11 @@ func newTrafficSummary(upload, download int64) *TrafficSummary {
 
 // ResolveRange validates and resolves a period or explicit date range.
 func ResolveRange(period, startDate, endDate string) (string, time.Time, time.Time, error) {
+	return resolveRangeAt(time.Now(), period, startDate, endDate)
+}
+
+func resolveRangeAt(now time.Time, period, startDate, endDate string) (string, time.Time, time.Time, error) {
 	period = ValidatePeriod(period)
-	now := time.Now()
 
 	switch period {
 	case "custom":
@@ -383,14 +401,24 @@ func ResolveRange(period, startDate, endDate string) (string, time.Time, time.Ti
 		start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 		return period, start, now, nil
 	case "week":
-		return period, now.AddDate(0, 0, -7), now, nil
+		return period, portalStartOfWeek(now), now, nil
 	case "month":
-		return period, now.AddDate(0, 0, -30), now, nil
+		return period, time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()), now, nil
 	case "year":
-		return period, now.AddDate(0, 0, -365), now, nil
+		return period, time.Date(now.Year(), time.January, 1, 0, 0, 0, 0, now.Location()), now, nil
 	default:
-		return "month", now.AddDate(0, 0, -30), now, nil
+		return "month", time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()), now, nil
 	}
+}
+
+func portalStartOfWeek(now time.Time) time.Time {
+	weekday := int(now.Weekday())
+	if weekday == 0 {
+		weekday = 7
+	}
+
+	date := now.AddDate(0, 0, -(weekday - 1))
+	return time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
 }
 
 // FormatBytes formats bytes into human-readable string.

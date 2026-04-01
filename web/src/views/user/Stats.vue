@@ -47,6 +47,7 @@
         v-model="customRange"
         type="daterange"
         :style="{ width: customRangeWidth }"
+        value-format="YYYY-MM-DD"
         range-separator="至"
         start-placeholder="开始日期"
         end-placeholder="结束日期"
@@ -415,7 +416,7 @@ function formatTraffic(bytes) {
 }
 
 function handleCustomRange(range) {
-  if (range) {
+  if (range?.length === 2) {
     timeRange.value = 'custom'
     loadStats()
   }
@@ -433,9 +434,9 @@ async function loadStats(options = {}) {
     statsRefreshInFlight.value = true
 
     const params = { period: timeRange.value }
-    if (timeRange.value === 'custom' && customRange.value) {
-      params.start_date = customRange.value[0].toISOString().split('T')[0]
-      params.end_date = customRange.value[1].toISOString().split('T')[0]
+    if (timeRange.value === 'custom' && customRange.value?.length === 2) {
+      params.start_date = customRange.value[0]
+      params.end_date = customRange.value[1]
     }
 
     const data = await statsStore.fetchStats(params)
@@ -570,13 +571,10 @@ function renderProtocolChart() {
 async function exportData() {
   exporting.value = true
   try {
-    const params = {}
+    const params = { period: timeRange.value }
     if (timeRange.value === 'custom' && customRange.value?.length === 2) {
-      const dayMs = 24 * 60 * 60 * 1000
-      params.days = Math.max(1, Math.ceil((customRange.value[1] - customRange.value[0]) / dayMs) + 1)
-    } else {
-      const daysMap = { day: 1, week: 7, month: 30, year: 365 }
-      params.days = daysMap[timeRange.value] || 30
+      params.start_date = customRange.value[0]
+      params.end_date = customRange.value[1]
     }
     await statsStore.exportStats(params)
     ElMessage.success('数据导出成功')

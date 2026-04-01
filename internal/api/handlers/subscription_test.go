@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -74,6 +75,12 @@ func (m *mockSubscriptionRepo) GetByUserID(ctx context.Context, userID int64) (*
 }
 
 func (m *mockSubscriptionRepo) Update(ctx context.Context, sub *repository.Subscription) error {
+	for token, existing := range m.subscriptions {
+		if existing.ID == sub.ID && token != sub.Token {
+			delete(m.subscriptions, token)
+			break
+		}
+	}
 	sub.UpdatedAt = time.Now()
 	m.subscriptions[sub.Token] = sub
 	m.byUserID[sub.UserID] = sub
@@ -407,7 +414,11 @@ func TestSubscriptionHandlerDetectFormatAliases(t *testing.T) {
 			}
 			c.Request = req
 
-			if got := handler.detectFormat(c); got != tt.expected {
+			got, err := handler.detectFormat(c)
+			if err != nil {
+				t.Fatalf("detectFormat() returned error: %v", err)
+			}
+			if got != tt.expected {
 				t.Fatalf("detectFormat() = %v, want %v", got, tt.expected)
 			}
 		})
@@ -628,7 +639,7 @@ func TestProperty16_ResponseHeadersPresence(t *testing.T) {
 	log := logger.NewNopLogger()
 
 	// Create active user
-	expiresAt := time.Date(2026, time.March, 31, 12, 0, 0, 0, time.UTC)
+	expiresAt := time.Now().Add(30 * 24 * time.Hour).UTC()
 	user := &repository.User{
 		ID:           1,
 		Username:     "testuser",
@@ -701,7 +712,7 @@ func TestProperty16_ResponseHeadersPresence(t *testing.T) {
 		t.Errorf("unexpected Support-URL header: got %q want %q", got, expectedSupportURL)
 	}
 
-	expectedUserinfo := "upload=0; download=26843545600; total=107374182400; expire=1774958400"
+	expectedUserinfo := "upload=0; download=26843545600; total=107374182400; expire=" + strconv.FormatInt(expiresAt.Unix(), 10)
 	if got := w.Header().Get("Subscription-Userinfo"); got != expectedUserinfo {
 		t.Errorf("unexpected Subscription-Userinfo header: got %q want %q", got, expectedUserinfo)
 	}
@@ -759,7 +770,7 @@ func TestGetLink(t *testing.T) {
 	log := logger.NewNopLogger()
 
 	// Create user
-	expiresAt := time.Date(2026, time.March, 31, 12, 0, 0, 0, time.UTC)
+	expiresAt := time.Now().Add(30 * 24 * time.Hour).UTC()
 	user := &repository.User{
 		ID:           1,
 		Username:     "testuser",
@@ -801,6 +812,65 @@ func TestGetLink(t *testing.T) {
 
 	if response.Link == "" {
 		t.Error("expected link to be set")
+	}
+}
+
+func TestGetContent_InvalidExplicitFormatReturnsBadRequest(t *testing.T) {
+	subRepo := newMockSubscriptionRepo()
+	userRepo := newMockUserRepo()
+	proxyRepo := newMockProxyRepo()
+	log := logger.NewNopLogger()
+
+	expiresAt := time.Now().Add(30 * 24 * time.Hour).UTC()
+	userRepo.users[1] = &repository.User{
+		ID:           1,
+		Username:     "format-user",
+		Enabled:      true,
+		TrafficLimit: 100,
+		TrafficUsed:  0,
+		ExpiresAt:    &expiresAt,
+	}
+
+	sub := &repository.Subscription{ID: 1, UserID: 1, Token: "token-format-12345678901234567890", ShortCode: "fmt12345"}
+	subRepo.subscriptions[sub.Token] = sub
+	subRepo.byUserID[1] = sub
+
+	service := subscription.NewService(subRepo, userRepo, proxyRepo, log, "http://localhost:8080")
+	handler := NewSubscriptionHandler(service, log)
+
+	router := gin.New()
+	router.GET("/api/subscription/:token", handler.GetContent)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/subscription/"+sub.Token+"?format=unknown-client", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestAdminResetStats_MissingSubscriptionReturnsNotFound(t *testing.T) {
+	subRepo := newMockSubscriptionRepo()
+	userRepo := newMockUserRepo()
+	proxyRepo := newMockProxyRepo()
+	log := logger.NewNopLogger()
+
+	service := subscription.NewService(subRepo, userRepo, proxyRepo, log, "http://localhost:8080")
+	handler := NewSubscriptionHandler(service, log)
+
+	router := gin.New()
+	router.POST("/api/admin/subscriptions/:user_id/reset-stats", handler.AdminResetStats)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/subscriptions/42/reset-stats", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+	if len(subRepo.subscriptions) != 0 {
+		t.Fatalf("expected no subscription to be created, got %d", len(subRepo.subscriptions))
 	}
 }
 

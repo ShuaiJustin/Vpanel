@@ -35,7 +35,6 @@
           class="toolbar-search"
           placeholder="搜索用户名或邮箱"
           clearable
-          @input="handleFilterChange"
         >
           <template #prefix>
             <el-icon><Search /></el-icon>
@@ -319,11 +318,12 @@
 </template>
 
 <script setup>
-import { computed, h, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, h, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { MoreFilled, Search } from '@element-plus/icons-vue'
 import { usersApi } from '@/api'
 import { useViewport } from '@/composables/useViewport'
+import { debounce } from '@/utils/debounce'
 import { extractErrorMessage } from '@/utils/entitlement'
 
 const { isMobile, viewportWidth } = useViewport()
@@ -354,7 +354,6 @@ const rules = {
     { min: 3, max: 20, message: '长度在 3 到 20 个字符', trigger: 'blur' }
   ],
   email: [
-    { required: true, message: '请输入邮箱地址', trigger: 'blur' },
     { type: 'email', message: '请输入正确的邮箱地址', trigger: 'blur' }
   ],
   password: [
@@ -379,6 +378,8 @@ const formatDateTime = (value) => {
   return date.toLocaleString('zh-CN', { hour12: false })
 }
 
+const totalUsers = ref(0)
+
 const normalizeUser = (user) => ({
   id: user.id,
   username: user.username,
@@ -389,30 +390,13 @@ const normalizeUser = (user) => ({
   lastLogin: formatDateTime(user.last_login || user.last_login_at || user.lastLogin)
 })
 
-const filteredUsers = computed(() => {
-  const query = searchQuery.value.trim().toLowerCase()
-
-  return users.value.filter((user) => {
-    const matchesQuery = !query || user.username.toLowerCase().includes(query) || user.email.toLowerCase().includes(query)
-    const matchesRole = !roleFilter.value || user.role === roleFilter.value
-    const matchesStatus = !statusFilter.value || (statusFilter.value === 'enabled' ? user.status : !user.status)
-
-    return matchesQuery && matchesRole && matchesStatus
-  })
-})
-
-const displayTotal = computed(() => filteredUsers.value.length)
+const displayTotal = computed(() => totalUsers.value)
 const hasActiveFilters = computed(() => Boolean(searchQuery.value.trim() || roleFilter.value || statusFilter.value))
 const isCompact = computed(() => viewportWidth.value <= 1366)
-const adminUserCount = computed(() => filteredUsers.value.filter((user) => user.role === 'admin').length)
-const enabledUserCount = computed(() => filteredUsers.value.filter((user) => user.status).length)
-const disabledUserCount = computed(() => filteredUsers.value.filter((user) => !user.status).length)
-
-const paginatedUsers = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  const end = start + pageSize.value
-  return filteredUsers.value.slice(start, end)
-})
+const adminUserCount = computed(() => users.value.filter((user) => user.role === 'admin').length)
+const enabledUserCount = computed(() => users.value.filter((user) => user.status).length)
+const disabledUserCount = computed(() => users.value.filter((user) => !user.status).length)
+const paginatedUsers = computed(() => users.value)
 
 const syncCurrentPage = () => {
   const maxPage = Math.max(1, Math.ceil(displayTotal.value / pageSize.value))
@@ -441,18 +425,31 @@ const getUserHint = (user) => {
 const fetchUsers = async () => {
   loading.value = true
   try {
-    const response = await usersApi.list()
+    const response = await usersApi.list({
+      page: currentPage.value,
+      page_size: pageSize.value,
+      search: searchQuery.value.trim() || undefined,
+      role: roleFilter.value || undefined,
+      status: statusFilter.value || undefined
+    })
     const list = Array.isArray(response) ? response : response?.users || response?.list || []
     users.value = list.map(normalizeUser)
+    totalUsers.value = Number(response?.total || list.length)
     syncCurrentPage()
   } catch (error) {
     console.error('Failed to fetch users:', error)
     ElMessage.error(extractErrorMessage(error) || '获取用户列表失败')
     users.value = []
+    totalUsers.value = 0
   } finally {
     loading.value = false
   }
 }
+
+const debouncedFetchUsers = debounce(async () => {
+  currentPage.value = 1
+  await fetchUsers()
+}, 300)
 
 const showAddDialog = async () => {
   dialogType.value = 'add'
@@ -613,7 +610,7 @@ const handleRowCommand = (command, row) => {
 
 const handleFilterChange = () => {
   currentPage.value = 1
-  syncCurrentPage()
+  fetchUsers()
 }
 
 const resetFilters = () => {
@@ -621,18 +618,29 @@ const resetFilters = () => {
   roleFilter.value = ''
   statusFilter.value = ''
   currentPage.value = 1
+  fetchUsers()
 }
 
 const handleSizeChange = (value) => {
   pageSize.value = value
-  syncCurrentPage()
+  currentPage.value = 1
+  fetchUsers()
 }
 
 const handleCurrentChange = (value) => {
   currentPage.value = value
+  fetchUsers()
 }
 
+watch(searchQuery, () => {
+  debouncedFetchUsers()
+})
+
 onMounted(fetchUsers)
+
+onUnmounted(() => {
+  debouncedFetchUsers.cancel?.()
+})
 </script>
 
 <style scoped>

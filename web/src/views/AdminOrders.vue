@@ -83,6 +83,7 @@
           v-model="filter.dateRange"
           class="toolbar-field toolbar-field--date"
           type="daterange"
+          range-separator="至"
           start-placeholder="开始日期"
           end-placeholder="结束日期"
           unlink-panels
@@ -627,26 +628,35 @@ onMounted(() => {
 }
 
 .orders-toolbar {
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   width: 100%;
-  align-items: center;
+  align-items: stretch;
 }
 
 .toolbar-field {
   min-width: 0;
+  flex: 1 1 180px;
 }
 
 .toolbar-field--status,
-.toolbar-field--method,
-.toolbar-field--amount {
-  grid-column: span 2;
+.toolbar-field--method {
+  flex: 0 1 168px;
 }
 
-.toolbar-field--search,
 .toolbar-field--date {
-  grid-column: span 3;
+  flex: 1.35 1 340px;
+  min-width: 320px;
+}
+
+.toolbar-field--search {
+  flex: 1.15 1 260px;
+}
+
+.toolbar-field--amount {
+  flex: 1.15 1 300px;
+  min-width: 280px;
 }
 
 .search-input {
@@ -670,6 +680,15 @@ onMounted(() => {
   min-width: 0;
 }
 
+.orders-toolbar :deep(.el-date-editor.el-input__wrapper) {
+  min-height: 44px;
+}
+
+.orders-toolbar :deep(.el-date-editor .el-range-input) {
+  min-width: 0;
+  font-size: 13px;
+}
+
 .orders-toolbar :deep(.el-select),
 .orders-toolbar :deep(.el-input),
 .orders-toolbar :deep(.el-date-editor),
@@ -678,9 +697,14 @@ onMounted(() => {
   max-width: 100%;
 }
 
+.orders-toolbar :deep(.amount-input .el-input__wrapper) {
+  padding-right: 34px;
+}
+
 .orders-toolbar :deep(.el-input-number__increase),
 .orders-toolbar :deep(.el-input-number__decrease) {
   background: transparent;
+  width: 28px;
 }
 
 .filter-actions {
@@ -688,7 +712,7 @@ onMounted(() => {
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
-  grid-column: 1 / -1;
+  margin-left: auto;
 }
 
 .toolbar-actions--summary {
@@ -724,19 +748,22 @@ onMounted(() => {
 }
 
 @media (max-width: 1280px) {
-  .orders-toolbar {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+  .filter-actions {
+    width: 100%;
+    margin-left: 0;
   }
 
   .toolbar-field--status,
-  .toolbar-field--method,
-  .toolbar-field--amount {
-    grid-column: span 2;
+  .toolbar-field--method {
+    flex-basis: 180px;
   }
 
-  .toolbar-field--search,
   .toolbar-field--date {
-    grid-column: span 3;
+    min-width: 280px;
+  }
+
+  .toolbar-field--amount {
+    min-width: 260px;
   }
 }
 
@@ -745,17 +772,13 @@ onMounted(() => {
     padding: 12px;
   }
 
-  .orders-toolbar {
-    grid-template-columns: 1fr;
-  }
-
   .toolbar-field--status,
   .toolbar-field--method,
   .toolbar-field--search,
   .toolbar-field--date,
-  .toolbar-field--amount,
-  .filter-actions {
-    grid-column: auto;
+  .toolbar-field--amount {
+    flex: 1 1 100%;
+    min-width: 0;
   }
 
   .amount-range-field {
@@ -771,8 +794,10 @@ onMounted(() => {
   }
 
   .filter-actions {
+    width: 100%;
     display: grid;
     grid-template-columns: 1fr 1fr;
+    margin-left: 0;
   }
 }
 </style>

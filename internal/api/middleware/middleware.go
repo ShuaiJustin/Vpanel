@@ -70,7 +70,9 @@ func Logger(log logger.Logger) gin.HandlerFunc {
 			fields = append(fields, logger.F("errors", c.Errors.String()))
 		}
 
-		if status >= 500 {
+		if shouldLogNodeAuthFailureAsDebug(path, status) {
+			log.Debug("request completed", fields...)
+		} else if status >= 500 {
 			log.Error("request completed", fields...)
 		} else if status >= 400 {
 			log.Warn("request completed", fields...)
@@ -122,7 +124,10 @@ func LoggerWithService(log logger.Logger, logService *logservice.Service) gin.Ha
 
 		// Determine log level based on status
 		var level string
-		if status >= 500 {
+		if shouldLogNodeAuthFailureAsDebug(path, status) {
+			level = "debug"
+			log.Debug("request completed", fields...)
+		} else if status >= 500 {
 			level = "error"
 			log.Error("request completed", fields...)
 		} else if status >= 400 {
@@ -210,6 +215,15 @@ func shouldPersistHTTPRequestLog(method, requestPath string, status int) bool {
 	}
 
 	return true
+}
+
+func shouldLogNodeAuthFailureAsDebug(requestPath string, status int) bool {
+	if status != http.StatusUnauthorized {
+		return false
+	}
+
+	normalizedPath := strings.TrimSpace(requestPath)
+	return normalizedPath == "/api/node/register" || normalizedPath == "/api/node/heartbeat"
 }
 
 // CORS returns a middleware that handles CORS.

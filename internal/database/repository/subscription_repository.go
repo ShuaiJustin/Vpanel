@@ -3,6 +3,8 @@ package repository
 
 import (
 	"context"
+	"strconv"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -34,13 +36,16 @@ func (Subscription) TableName() string {
 
 // SubscriptionFilter represents filter options for listing subscriptions.
 type SubscriptionFilter struct {
-	UserID       *int64
-	MinAccessCount *int64
-	MaxAccessCount *int64
-	LastAccessAfter *time.Time
+	UserID           *int64
+	MinAccessCount   *int64
+	MaxAccessCount   *int64
+	LastAccessAfter  *time.Time
 	LastAccessBefore *time.Time
-	Limit        int
-	Offset       int
+	Keyword          string
+	Activity         string
+	Sort             string
+	Limit            int
+	Offset           int
 }
 
 // SubscriptionRepository defines the interface for subscription data access.
@@ -227,11 +232,46 @@ func (r *subscriptionRepository) ListAll(ctx context.Context, filter *Subscripti
 		if filter.LastAccessBefore != nil {
 			query = query.Where("last_access_at <= ?", *filter.LastAccessBefore)
 		}
+		if filter.Activity != "" {
+			switch filter.Activity {
+			case "never":
+				query = query.Where("access_count = 0")
+			case "recent":
+				query = query.Where("access_count > 0").Where("last_access_at >= ?", time.Now().Add(-7*24*time.Hour))
+			case "stale":
+				query = query.Where("access_count > 0").Where("last_access_at IS NULL OR last_access_at < ?", time.Now().Add(-30*24*time.Hour))
+			}
+		}
+		if keyword := strings.ToLower(strings.TrimSpace(filter.Keyword)); keyword != "" {
+			like := "%" + keyword + "%"
+			query = query.Joins("LEFT JOIN users ON users.id = subscriptions.user_id").
+				Where(
+					"LOWER(subscriptions.token) LIKE ? OR LOWER(COALESCE(subscriptions.short_code, '')) LIKE ? OR LOWER(COALESCE(subscriptions.last_ip, '')) LIKE ? OR LOWER(COALESCE(users.username, '')) LIKE ?",
+					like, like, like, like,
+				)
+
+			if numericID, err := strconv.ParseInt(keyword, 10, 64); err == nil {
+				query = query.Or("subscriptions.user_id = ? OR subscriptions.id = ?", numericID, numericID)
+			}
+		}
 	}
 
 	// Count total
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, errors.NewDatabaseError("failed to count subscriptions", err)
+	}
+
+	if filter != nil {
+		switch filter.Sort {
+		case "access_desc":
+			query = query.Order("access_count DESC").Order("last_access_at DESC").Order("created_at DESC")
+		case "created_desc":
+			query = query.Order("created_at DESC")
+		case "user_desc":
+			query = query.Order("user_id DESC")
+		default:
+			query = query.Order("CASE WHEN last_access_at IS NULL THEN 1 ELSE 0 END").Order("last_access_at DESC").Order("created_at DESC")
+		}
 	}
 
 	// Apply pagination
@@ -245,7 +285,7 @@ func (r *subscriptionRepository) ListAll(ctx context.Context, filter *Subscripti
 	}
 
 	// Preload User relation and fetch results
-	if err := query.Preload("User").Order("created_at DESC").Find(&subscriptions).Error; err != nil {
+	if err := query.Preload("User").Find(&subscriptions).Error; err != nil {
 		return nil, 0, errors.NewDatabaseError("failed to list subscriptions", err)
 	}
 

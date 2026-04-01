@@ -335,7 +335,7 @@ const selectPlan = async (plan) => {
       current_plan_id: currentPlan.value.id,
       new_plan_id: plan.id
     })
-    changeResult.value = response.data
+    changeResult.value = response?.data || response
   } catch (error) {
     ElMessage.error(extractErrorMessage(error) || '计算价格失败')
     selectedPlan.value = null
@@ -422,7 +422,7 @@ const cancelDowngrade = async () => {
 const fetchPendingDowngrade = async () => {
   try {
     const response = await planChangeApi.getPendingDowngrade()
-    pendingDowngrade.value = response.data
+    pendingDowngrade.value = response?.data || response || null
   } catch {
     pendingDowngrade.value = null
   }

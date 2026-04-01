@@ -140,7 +140,7 @@ func (h *NodeAgentHandler) Register(c *gin.Context) {
 	// Validate token
 	nodeData, err := h.nodeService.ValidateToken(c.Request.Context(), req.Token)
 	if err != nil {
-		h.logger.Warn("Node registration failed: invalid token",
+		h.logger.Debug("Node registration failed: invalid token",
 			logger.F("token_prefix", truncateToken(req.Token)),
 			logger.F("error", err.Error()))
 		c.JSON(http.StatusUnauthorized, RegisterResponse{
@@ -193,7 +193,7 @@ func (h *NodeAgentHandler) Heartbeat(c *gin.Context) {
 	// Validate token
 	nodeData, err := h.nodeService.ValidateToken(c.Request.Context(), req.Token)
 	if err != nil {
-		h.logger.Warn("Heartbeat failed: invalid token",
+		h.logger.Debug("Heartbeat failed: invalid token",
 			logger.F("node_id", req.NodeID),
 			logger.F("error", err.Error()))
 		c.JSON(http.StatusUnauthorized, HeartbeatResponse{

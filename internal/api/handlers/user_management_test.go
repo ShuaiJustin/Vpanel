@@ -397,6 +397,65 @@ func TestListUsers_ReturnsTotalAndLastLogin(t *testing.T) {
 	}
 }
 
+func TestListUsers_AppliesServerSideFiltersAndPagination(t *testing.T) {
+	handler, userRepo, authSvc := newUserManagementTestHandler(t)
+	createManagedTestUser(t, userRepo, authSvc, &repository.User{
+		Username: "alpha-admin",
+		Email:    "alpha@example.com",
+		Role:     "admin",
+		Enabled:  true,
+	})
+	disabledUser := createManagedTestUser(t, userRepo, authSvc, &repository.User{
+		Username: "beta-user",
+		Email:    "beta@example.com",
+		Role:     "user",
+		Enabled:  false,
+	})
+	disabledUser.Enabled = false
+	if err := userRepo.Update(context.Background(), disabledUser); err != nil {
+		t.Fatalf("failed to disable beta-user: %v", err)
+	}
+	createManagedTestUser(t, userRepo, authSvc, &repository.User{
+		Username: "gamma-user",
+		Email:    "gamma@example.com",
+		Role:     "user",
+		Enabled:  true,
+	})
+
+	router := gin.New()
+	router.GET("/users", func(c *gin.Context) {
+		c.Set("user_id", int64(999))
+		handler.ListUsers(c)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/users?page=1&page_size=1&search=user&role=user&status=enabled", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var payload struct {
+		Users []UserResponse `json:"users"`
+		Total int            `json:"total"`
+		Page  int            `json:"page"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	if payload.Total != 1 {
+		t.Fatalf("expected filtered total 1, got %d", payload.Total)
+	}
+	if payload.Page != 1 {
+		t.Fatalf("expected page 1, got %d", payload.Page)
+	}
+	if len(payload.Users) != 1 || payload.Users[0].Username != "gamma-user" {
+		t.Fatalf("expected gamma-user only, got %+v", payload.Users)
+	}
+}
+
 func TestLogin_UpdatesLastLoginMetadata(t *testing.T) {
 	handler, userRepo, authSvc := newUserManagementTestHandler(t)
 	user := createManagedTestUser(t, userRepo, authSvc, &repository.User{

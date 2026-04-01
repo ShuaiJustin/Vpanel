@@ -39,6 +39,36 @@ func setupStatsTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+func TestGetPeriodRangeAtUsesCalendarBoundaries(t *testing.T) {
+	loc := time.FixedZone("CST", 8*60*60)
+	now := time.Date(2026, time.March, 31, 21, 30, 0, 0, loc)
+
+	t.Run("today", func(t *testing.T) {
+		start, end := getPeriodRangeAt(now, "today")
+		expectedStart := time.Date(2026, time.March, 31, 0, 0, 0, 0, loc)
+		assert.Equal(t, expectedStart, start)
+		assert.Equal(t, now, end)
+	})
+
+	t.Run("week", func(t *testing.T) {
+		start, _ := getPeriodRangeAt(now, "week")
+		expectedStart := time.Date(2026, time.March, 30, 0, 0, 0, 0, loc)
+		assert.Equal(t, expectedStart, start)
+	})
+
+	t.Run("month", func(t *testing.T) {
+		start, _ := getPeriodRangeAt(now, "month")
+		expectedStart := time.Date(2026, time.March, 1, 0, 0, 0, 0, loc)
+		assert.Equal(t, expectedStart, start)
+	})
+
+	t.Run("year", func(t *testing.T) {
+		start, _ := getPeriodRangeAt(now, "year")
+		expectedStart := time.Date(2026, time.January, 1, 0, 0, 0, 0, loc)
+		assert.Equal(t, expectedStart, start)
+	})
+}
+
 // TestStatisticsAccuracy_TotalUsers tests that total_users matches COUNT(users).
 func TestStatisticsAccuracy_TotalUsers(t *testing.T) {
 	properties := gopter.NewProperties(gopter.DefaultTestParameters())

@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -120,6 +121,10 @@ func buildUserResponse(user *repository.User) UserResponse {
 
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func normalizeUsername(username string) string {
+	return strings.TrimSpace(username)
 }
 
 func (h *AuthHandler) emailBelongsToAnotherUser(ctx context.Context, email string, userID int64) (bool, error) {
@@ -582,34 +587,85 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 
 // ListUsers returns all users (admin only).
 func (h *AuthHandler) ListUsers(c *gin.Context) {
-	total, err := h.userRepo.Count(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count users"})
-		return
+	page := 1
+	pageSize := 20
+	if value := c.Query("page"); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil && parsed > 0 {
+			page = parsed
+		}
+	}
+	if value := c.Query("page_size"); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil && parsed > 0 && parsed <= 200 {
+			pageSize = parsed
+		}
+	} else if value := c.Query("pageSize"); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil && parsed > 0 && parsed <= 200 {
+			pageSize = parsed
+		}
 	}
 
-	if total == 0 {
-		c.JSON(http.StatusOK, gin.H{
-			"users": []UserResponse{},
-			"total": 0,
-		})
-		return
-	}
+	search := strings.ToLower(normalizeUsername(c.Query("search")))
+	roleFilter := strings.TrimSpace(c.Query("role"))
+	statusFilter := strings.TrimSpace(c.Query("status"))
 
-	users, err := h.userRepo.List(c.Request.Context(), int(total), 0)
+	users, err := h.listAllUsers(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list users"})
 		return
 	}
 
-	response := make([]UserResponse, len(users))
-	for i, user := range users {
+	filteredUsers := make([]*repository.User, 0, len(users))
+	for _, user := range users {
+		if user == nil {
+			continue
+		}
+		if roleFilter != "" && user.Role != roleFilter {
+			continue
+		}
+		if statusFilter == "enabled" && !user.Enabled {
+			continue
+		}
+		if statusFilter == "disabled" && user.Enabled {
+			continue
+		}
+		if search != "" {
+			username := strings.ToLower(normalizeUsername(user.Username))
+			email := strings.ToLower(strings.TrimSpace(user.Email))
+			if !strings.Contains(username, search) && !strings.Contains(email, search) {
+				continue
+			}
+		}
+		filteredUsers = append(filteredUsers, user)
+	}
+
+	sort.Slice(filteredUsers, func(i, j int) bool {
+		if filteredUsers[i].CreatedAt.Equal(filteredUsers[j].CreatedAt) {
+			return filteredUsers[i].ID > filteredUsers[j].ID
+		}
+		return filteredUsers[i].CreatedAt.After(filteredUsers[j].CreatedAt)
+	})
+
+	total := len(filteredUsers)
+	start := (page - 1) * pageSize
+	if start > total {
+		start = total
+	}
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+	pagedUsers := filteredUsers[start:end]
+
+	response := make([]UserResponse, len(pagedUsers))
+	for i, user := range pagedUsers {
 		response[i] = buildUserResponse(user)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"users": response,
-		"total": total,
+		"users":     response,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
 	})
 }
 
@@ -626,6 +682,16 @@ func (h *AuthHandler) CreateUser(c *gin.Context) {
 	var req CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	req.Username = normalizeUsername(req.Username)
+	if req.Username == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Username cannot be empty"})
+		return
+	}
+	if len(req.Username) < 3 || len(req.Username) > 50 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Username length must be between 3 and 50 characters"})
 		return
 	}
 
@@ -650,9 +716,13 @@ func (h *AuthHandler) CreateUser(c *gin.Context) {
 	}
 
 	// Check if username exists
-	existing, _ := h.userRepo.GetByUsername(c.Request.Context(), req.Username)
-	if existing != nil {
+	existing, err := h.userRepo.GetByUsername(c.Request.Context(), req.Username)
+	if err == nil && existing != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": "Username already exists"})
+		return
+	}
+	if err != nil && !errors.IsNotFound(err) {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate username uniqueness"})
 		return
 	}
 
@@ -664,7 +734,7 @@ func (h *AuthHandler) CreateUser(c *gin.Context) {
 	}
 
 	// Set default role
-	role := req.Role
+	role := strings.TrimSpace(req.Role)
 	if role == "" {
 		role = "user"
 	}
@@ -742,16 +812,24 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 
 	// Update fields
 	if req.Username != nil {
-		username := strings.TrimSpace(*req.Username)
+		username := normalizeUsername(*req.Username)
 		if username == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Username cannot be empty"})
 			return
 		}
+		if len(username) < 3 || len(username) > 50 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Username length must be between 3 and 50 characters"})
+			return
+		}
 
 		// Check if new username is already taken
-		existing, _ := h.userRepo.GetByUsername(c.Request.Context(), username)
-		if existing != nil && existing.ID != id {
+		existing, err := h.userRepo.GetByUsername(c.Request.Context(), username)
+		if err == nil && existing != nil && existing.ID != id {
 			c.JSON(http.StatusConflict, errors.NewConflictError("user", "username", username).ToResponse(""))
+			return
+		}
+		if err != nil && !errors.IsNotFound(err) {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate username uniqueness"})
 			return
 		}
 
@@ -1013,118 +1091,6 @@ func (h *AuthHandler) GetUserExtended(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, errors.NewDatabaseError("Failed to get user", err).ToResponse(""))
 		return
 	}
-
-	response := ExtendedUserResponse{
-		ID:                  user.ID,
-		Username:            user.Username,
-		Email:               user.Email,
-		Role:                user.Role,
-		Enabled:             user.Enabled,
-		TrafficLimit:        user.TrafficLimit,
-		TrafficUsed:         user.TrafficUsed,
-		ForcePasswordChange: user.ForcePasswordChange,
-		CreatedAt:           user.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		UpdatedAt:           user.UpdatedAt.Format("2006-01-02T15:04:05Z"),
-	}
-
-	if user.ExpiresAt != nil {
-		expiresAt := user.ExpiresAt.Format("2006-01-02T15:04:05Z")
-		response.ExpiresAt = &expiresAt
-	}
-
-	c.JSON(http.StatusOK, response)
-}
-
-// UpdateUserExtendedRequest represents an extended update user request.
-type UpdateUserExtendedRequest struct {
-	Email        string  `json:"email"`
-	Role         string  `json:"role"`
-	Password     string  `json:"password"`
-	Enabled      *bool   `json:"enabled"`
-	TrafficLimit *int64  `json:"traffic_limit"`
-	ExpiresAt    *string `json:"expires_at"`
-}
-
-// UpdateUserExtended updates a user with extended fields (admin only).
-func (h *AuthHandler) UpdateUserExtended(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, errors.NewValidationError("Invalid user ID", nil).ToResponse(""))
-		return
-	}
-
-	var req UpdateUserExtendedRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, errors.NewValidationError("Invalid request body", nil).ToResponse(""))
-		return
-	}
-
-	user, err := h.userRepo.GetByID(c.Request.Context(), id)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			c.JSON(http.StatusNotFound, errors.NewNotFoundError("user", id).ToResponse(""))
-			return
-		}
-		c.JSON(http.StatusInternalServerError, errors.NewDatabaseError("Failed to get user", err).ToResponse(""))
-		return
-	}
-
-	// Update fields
-	if req.Email != "" {
-		user.Email = req.Email
-	}
-	if req.Role != "" {
-		if !h.ensureEnabledAdminRemains(c, user, req.Role, user.Enabled, "demote") {
-			return
-		}
-
-		user.Role = req.Role
-	}
-	if req.Password != "" {
-		if len(req.Password) < 6 {
-			c.JSON(http.StatusBadRequest, errors.NewValidationError("Password must be at least 6 characters", nil).ToResponse(""))
-			return
-		}
-
-		passwordHash, err := h.authService.HashPassword(req.Password)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, errors.NewInternalError("Failed to hash password", err).ToResponse(""))
-			return
-		}
-		user.PasswordHash = passwordHash
-	}
-	if req.Enabled != nil {
-		if !h.ensureEnabledAdminRemains(c, user, user.Role, *req.Enabled, "disable") {
-			return
-		}
-
-		user.Enabled = *req.Enabled
-	}
-	if req.TrafficLimit != nil {
-		user.TrafficLimit = *req.TrafficLimit
-	}
-	if req.ExpiresAt != nil {
-		if *req.ExpiresAt == "" {
-			user.ExpiresAt = nil
-		} else {
-			expiresAt, err := time.Parse("2006-01-02T15:04:05Z", *req.ExpiresAt)
-			if err != nil {
-				c.JSON(http.StatusBadRequest, errors.NewValidationError("Invalid expires_at format", nil).ToResponse(""))
-				return
-			}
-			user.ExpiresAt = &expiresAt
-		}
-	}
-
-	if err := h.userRepo.Update(c.Request.Context(), user); err != nil {
-		c.JSON(http.StatusInternalServerError, errors.NewDatabaseError("Failed to update user", err).ToResponse(""))
-		return
-	}
-	if !user.Enabled || (user.ExpiresAt != nil && time.Now().After(*user.ExpiresAt)) {
-		h.reconcileRevokedUserRuntime(c.Request.Context(), id)
-	}
-
-	h.logger.Info("user updated (extended)", logger.F("user_id", id))
 
 	response := ExtendedUserResponse{
 		ID:                  user.ID,

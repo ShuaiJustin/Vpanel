@@ -25,6 +25,14 @@ type SubscriptionHandler struct {
 	profileUpdateIntervalHours int
 }
 
+type invalidSubscriptionFormatError struct {
+	value string
+}
+
+func (e invalidSubscriptionFormatError) Error() string {
+	return fmt.Sprintf("unsupported subscription format: %s", e.value)
+}
+
 // NewSubscriptionHandler creates a new SubscriptionHandler.
 func NewSubscriptionHandler(service *subscription.Service, log logger.Logger, profileUpdateIntervalHours ...int) *SubscriptionHandler {
 	interval := 24
@@ -355,7 +363,11 @@ func (h *SubscriptionHandler) serveSubscriptionContent(c *gin.Context, sub *repo
 	}
 
 	// Detect format from query param or User-Agent
-	format := h.detectFormat(c)
+	format, err := h.detectFormat(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
 	// Parse content options from query params
 	options := h.parseContentOptions(c)
@@ -383,29 +395,31 @@ func (h *SubscriptionHandler) serveSubscriptionContent(c *gin.Context, sub *repo
 }
 
 // detectFormat detects the subscription format from query param or User-Agent.
-func (h *SubscriptionHandler) detectFormat(c *gin.Context) subscription.ClientFormat {
+func (h *SubscriptionHandler) detectFormat(c *gin.Context) (subscription.ClientFormat, error) {
 	// Check explicit format parameter first
 	if formatParam := c.Query("format"); formatParam != "" {
 		switch strings.ToLower(formatParam) {
 		case "v2ray", "v2rayn", "v2rayng", "base64", "raw":
-			return subscription.FormatV2rayN
+			return subscription.FormatV2rayN, nil
 		case "clash":
-			return subscription.FormatClash
+			return subscription.FormatClash, nil
 		case "clashmeta", "clash.meta", "mihomo":
-			return subscription.FormatClashMeta
+			return subscription.FormatClashMeta, nil
 		case "shadowrocket":
-			return subscription.FormatShadowrocket
+			return subscription.FormatShadowrocket, nil
 		case "surge":
-			return subscription.FormatSurge
+			return subscription.FormatSurge, nil
 		case "quantumultx", "quantumult":
-			return subscription.FormatQuantumultX
+			return subscription.FormatQuantumultX, nil
 		case "singbox", "sing-box":
-			return subscription.FormatSingbox
+			return subscription.FormatSingbox, nil
+		default:
+			return subscription.FormatAuto, invalidSubscriptionFormatError{value: formatParam}
 		}
 	}
 
 	// Fall back to User-Agent detection
-	return h.service.DetectClientFormat(c.Request.UserAgent())
+	return h.service.DetectClientFormat(c.Request.UserAgent()), nil
 }
 
 // parseContentOptions parses content options from query parameters.
@@ -545,6 +559,15 @@ func (h *SubscriptionHandler) AdminList(c *gin.Context) {
 			filter.MaxAccessCount = &maxAccessCount
 		}
 	}
+	if keyword := strings.TrimSpace(c.Query("keyword")); keyword != "" {
+		filter.Keyword = keyword
+	}
+	if activity := strings.TrimSpace(c.Query("activity")); activity != "" {
+		filter.Activity = activity
+	}
+	if sortKey := strings.TrimSpace(c.Query("sort")); sortKey != "" {
+		filter.Sort = sortKey
+	}
 
 	// Get subscriptions
 	subscriptions, total, err := h.service.ListAllSubscriptions(c.Request.Context(), filter)
@@ -618,7 +641,7 @@ func (h *SubscriptionHandler) AdminResetStats(c *gin.Context) {
 	}
 
 	// Get subscription by user ID first
-	sub, err := h.service.GetOrCreateSubscription(c.Request.Context(), userID)
+	sub, err := h.service.GetSubscriptionByUserID(c.Request.Context(), userID)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Subscription not found"})

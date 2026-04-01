@@ -42,12 +42,14 @@
       <div class="toolbar-grid">
         <el-input
           v-model="filter.search"
+          class="toolbar-field toolbar-field--search"
           clearable
           placeholder="搜索订单号 / 流水号 / 用户名 / 用户ID"
           @keyup.enter="applyFilters"
         />
         <el-select
           v-model="filter.status"
+          class="toolbar-field toolbar-field--status"
           clearable
           placeholder="订单状态"
         >
@@ -58,6 +60,7 @@
         </el-select>
         <el-select
           v-model="filter.method"
+          class="toolbar-field toolbar-field--method"
           clearable
           placeholder="支付方式"
         >
@@ -66,26 +69,32 @@
         </el-select>
         <el-date-picker
           v-model="filter.dateRange"
+          class="toolbar-field toolbar-field--date"
           type="daterange"
           value-format="YYYY-MM-DD"
           start-placeholder="开始日期"
           end-placeholder="结束日期"
           range-separator="至"
         />
-        <el-input-number
-          v-model="filter.minAmount"
-          :min="0"
-          :precision="2"
-          controls-position="right"
-          placeholder="最低金额"
-        />
-        <el-input-number
-          v-model="filter.maxAmount"
-          :min="0"
-          :precision="2"
-          controls-position="right"
-          placeholder="最高金额"
-        />
+        <div class="toolbar-field toolbar-field--amount amount-range-field">
+          <el-input-number
+            v-model="filter.minAmount"
+            class="amount-input"
+            :min="0"
+            :precision="2"
+            controls-position="right"
+            placeholder="最低金额"
+          />
+          <span class="amount-range-separator">-</span>
+          <el-input-number
+            v-model="filter.maxAmount"
+            class="amount-input"
+            :min="0"
+            :precision="2"
+            controls-position="right"
+            placeholder="最高金额"
+          />
+        </div>
       </div>
       <div class="toolbar-actions">
         <el-button @click="resetFilters">
@@ -396,9 +405,79 @@ onMounted(fetchOrders)
 }
 
 .toolbar-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 12px;
+  width: 100%;
+  align-items: stretch;
+}
+
+.toolbar-field {
+  min-width: 0;
+  flex: 1 1 180px;
+}
+
+.toolbar-field--status,
+.toolbar-field--method {
+  flex: 0 1 168px;
+}
+
+.toolbar-field--date {
+  flex: 1.35 1 340px;
+  min-width: 320px;
+}
+
+.toolbar-field--search {
+  flex: 1.15 1 260px;
+}
+
+.toolbar-field--amount {
+  flex: 1.15 1 300px;
+  min-width: 280px;
+}
+
+.amount-range-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.amount-range-separator {
+  color: var(--admin-text-muted, var(--el-text-color-secondary));
+  font-size: 14px;
+  text-align: center;
+}
+
+.amount-input {
+  min-width: 0;
+}
+
+.toolbar-grid :deep(.el-date-editor.el-input__wrapper) {
+  min-height: 44px;
+}
+
+.toolbar-grid :deep(.el-date-editor .el-range-input) {
+  min-width: 0;
+  font-size: 13px;
+}
+
+.toolbar-grid :deep(.el-input),
+.toolbar-grid :deep(.el-select),
+.toolbar-grid :deep(.el-date-editor),
+.toolbar-grid :deep(.el-input-number) {
+  width: 100%;
+  max-width: 100%;
+}
+
+.toolbar-grid :deep(.amount-input .el-input__wrapper) {
+  padding-right: 34px;
+}
+
+.toolbar-grid :deep(.el-input-number__increase),
+.toolbar-grid :deep(.el-input-number__decrease) {
+  background: transparent;
+  width: 28px;
 }
 
 .toolbar-actions {
@@ -433,6 +512,16 @@ onMounted(fetchOrders)
   margin-top: 16px;
 }
 
+@media (max-width: 1280px) {
+  .toolbar-field--date {
+    min-width: 280px;
+  }
+
+  .toolbar-field--amount {
+    min-width: 260px;
+  }
+}
+
 @media (max-width: 768px) {
   .admin-recharge-orders-page {
     padding: 12px;
@@ -446,6 +535,25 @@ onMounted(fetchOrders)
 
   .toolbar-actions {
     justify-content: stretch;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .toolbar-field--status,
+  .toolbar-field--method,
+  .toolbar-field--search,
+  .toolbar-field--date,
+  .toolbar-field--amount {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .amount-range-field {
+    grid-template-columns: 1fr;
+  }
+
+  .amount-range-separator {
+    display: none;
   }
 }
 </style>

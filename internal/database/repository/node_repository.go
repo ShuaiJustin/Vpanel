@@ -4,6 +4,7 @@ package repository
 import (
 	"context"
 	"sort"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -132,6 +133,7 @@ const (
 type NodeFilter struct {
 	Status  string
 	Region  string
+	Search  string
 	Tags    []string
 	GroupID *int64
 	Limit   int
@@ -249,6 +251,10 @@ func (r *nodeRepository) List(ctx context.Context, filter *NodeFilter) ([]*Node,
 		if filter.Region != "" {
 			query = query.Where("region = ?", filter.Region)
 		}
+		if filter.Search != "" {
+			like := "%" + strings.ToLower(strings.TrimSpace(filter.Search)) + "%"
+			query = query.Where("LOWER(name) LIKE ? OR LOWER(address) LIKE ? OR LOWER(region) LIKE ?", like, like, like)
+		}
 		if filter.GroupID != nil {
 			query = query.Joins("JOIN node_group_members ON node_group_members.node_id = nodes.id").
 				Where("node_group_members.group_id = ?", *filter.GroupID)
@@ -279,6 +285,10 @@ func (r *nodeRepository) Count(ctx context.Context, filter *NodeFilter) (int64, 
 		}
 		if filter.Region != "" {
 			query = query.Where("region = ?", filter.Region)
+		}
+		if filter.Search != "" {
+			like := "%" + strings.ToLower(strings.TrimSpace(filter.Search)) + "%"
+			query = query.Where("LOWER(name) LIKE ? OR LOWER(address) LIKE ? OR LOWER(region) LIKE ?", like, like, like)
 		}
 		if filter.GroupID != nil {
 			query = query.Joins("JOIN node_group_members ON node_group_members.node_id = nodes.id").

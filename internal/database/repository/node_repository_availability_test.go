@@ -98,3 +98,49 @@ func TestNodeRepository_GetAvailable_PrioritizesLowerTrafficPressure(t *testing.
 		t.Fatalf("expected higher-usage node last, got %d", available[2].ID)
 	}
 }
+
+func TestNodeRepository_ListAndCount_WithSearchFilter(t *testing.T) {
+	db := setupNodeRepositoryTestDB(t)
+	repo := NewNodeRepository(db)
+	ctx := context.Background()
+
+	fixtures := []*Node{
+		{ID: 21, Name: "Tokyo Edge", Address: "jp.example.com", Region: "Japan", Token: "token-21", Status: NodeStatusOnline},
+		{ID: 22, Name: "Singapore Core", Address: "sg.example.com", Region: "Singapore", Token: "token-22", Status: NodeStatusOnline},
+		{ID: 23, Name: "US West", Address: "us.example.com", Region: "United States", Token: "token-23", Status: NodeStatusOffline},
+	}
+	for _, node := range fixtures {
+		if err := repo.Create(ctx, node); err != nil {
+			t.Fatalf("failed to create node %d: %v", node.ID, err)
+		}
+	}
+
+	filter := &NodeFilter{Search: "singapore", Limit: 50}
+	nodes, err := repo.List(ctx, filter)
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(nodes))
+	}
+	if nodes[0].ID != 22 {
+		t.Fatalf("expected node 22 to match search, got %d", nodes[0].ID)
+	}
+
+	count, err := repo.Count(ctx, filter)
+	if err != nil {
+		t.Fatalf("Count returned error: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected count 1, got %d", count)
+	}
+
+	addressFilter := &NodeFilter{Search: "us.example.com", Limit: 50}
+	addressCount, err := repo.Count(ctx, addressFilter)
+	if err != nil {
+		t.Fatalf("Count with address filter returned error: %v", err)
+	}
+	if addressCount != 1 {
+		t.Fatalf("expected address count 1, got %d", addressCount)
+	}
+}

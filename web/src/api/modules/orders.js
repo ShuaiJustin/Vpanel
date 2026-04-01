@@ -9,8 +9,7 @@ export const ordersApi = {
    * 创建订单
    * @param {Object} data - 订单数据
    * @param {number} data.plan_id - 套餐ID
-   * @param {string} data.coupon_code - 优惠券码（可选）
-   * @param {boolean} data.use_balance - 是否使用余额（可选）
+   * @param {string} data.coupon_code - 预留字段，当前下单流程未启用
    * @returns {Promise<Object>} 创建的订单
    */
   create: (data) => api.post('/orders', data),

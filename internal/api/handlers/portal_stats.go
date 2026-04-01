@@ -103,15 +103,39 @@ func (h *PortalStatsHandler) ExportStats(c *gin.Context) {
 		return
 	}
 
-	// Parse days parameter
-	days := 30
-	if d := c.Query("days"); d != "" {
-		if parsed, err := strconv.Atoi(d); err == nil && parsed > 0 && parsed <= 365 {
-			days = parsed
+	period, hasPeriod := c.GetQuery("period")
+	startDate, hasStart := c.GetQuery("start_date")
+	endDate, hasEnd := c.GetQuery("end_date")
+
+	var (
+		csvData []byte
+		err     error
+	)
+
+	if hasPeriod || hasStart || hasEnd {
+		if period == "" {
+			period = "custom"
 		}
+
+		_, start, end, rangeErr := stats.ResolveRange(period, startDate, endDate)
+		if rangeErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": rangeErr.Error()})
+			return
+		}
+
+		csvData, err = h.statsService.ExportTrafficCSVInRange(c.Request.Context(), userID.(int64), start, end)
+	} else {
+		// Backward compatible fallback: Parse days parameter
+		days := 30
+		if d := c.Query("days"); d != "" {
+			if parsed, convErr := strconv.Atoi(d); convErr == nil && parsed > 0 && parsed <= 365 {
+				days = parsed
+			}
+		}
+
+		csvData, err = h.statsService.ExportTrafficCSV(c.Request.Context(), userID.(int64), days)
 	}
 
-	csvData, err := h.statsService.ExportTrafficCSV(c.Request.Context(), userID.(int64), days)
 	if err != nil {
 		if handleRequestContextError(c, err) {
 			return

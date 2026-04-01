@@ -2,8 +2,10 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -57,6 +59,35 @@ type CreatePlanRequest struct {
 	IsActive      bool     `json:"is_active"`
 	IsRecommended bool     `json:"is_recommended"`
 	Features      []string `json:"features"`
+}
+
+type UpdatePlanRequest struct {
+	Name          *string   `json:"name"`
+	Description   *string   `json:"description"`
+	TrafficLimit  *int64    `json:"traffic_limit"`
+	Duration      *int      `json:"duration"`
+	Price         *int64    `json:"price"`
+	PlanType      *string   `json:"plan_type"`
+	ResetCycle    *string   `json:"reset_cycle"`
+	IPLimit       *int      `json:"ip_limit"`
+	SortOrder     *int      `json:"sort_order"`
+	IsActive      *bool     `json:"is_active"`
+	IsRecommended *bool     `json:"is_recommended"`
+	Features      *[]string `json:"features"`
+}
+
+func (h *PlanHandler) respondPlanError(c *gin.Context, err error, fallback string) {
+	switch {
+	case errors.Is(err, plan.ErrPlanNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": "Plan not found"})
+	case errors.Is(err, plan.ErrInvalidPlan):
+		message := err.Error()
+		message = strings.TrimPrefix(message, plan.ErrInvalidPlan.Error()+": ")
+		c.JSON(http.StatusBadRequest, gin.H{"error": message})
+	default:
+		h.logger.Error(fallback, logger.Err(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fallback})
+	}
 }
 
 // ListActivePlans returns all active plans (public endpoint).
@@ -118,8 +149,7 @@ func (h *PlanHandler) CreatePlan(c *gin.Context) {
 
 	p, err := h.planService.Create(c.Request.Context(), createReq)
 	if err != nil {
-		h.logger.Error("Failed to create plan", logger.Err(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create plan"})
+		h.respondPlanError(c, err, "Failed to create plan")
 		return
 	}
 
@@ -134,31 +164,30 @@ func (h *PlanHandler) UpdatePlan(c *gin.Context) {
 		return
 	}
 
-	var req CreatePlanRequest
+	var req UpdatePlanRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
 	updateReq := &plan.UpdatePlanRequest{
-		Name:          &req.Name,
-		Description:   &req.Description,
-		TrafficLimit:  &req.TrafficLimit,
-		Duration:      &req.Duration,
-		Price:         &req.Price,
-		PlanType:      &req.PlanType,
-		ResetCycle:    &req.ResetCycle,
-		IPLimit:       &req.IPLimit,
-		SortOrder:     &req.SortOrder,
-		IsActive:      &req.IsActive,
-		IsRecommended: &req.IsRecommended,
-		Features:      &req.Features,
+		Name:          req.Name,
+		Description:   req.Description,
+		TrafficLimit:  req.TrafficLimit,
+		Duration:      req.Duration,
+		Price:         req.Price,
+		PlanType:      req.PlanType,
+		ResetCycle:    req.ResetCycle,
+		IPLimit:       req.IPLimit,
+		SortOrder:     req.SortOrder,
+		IsActive:      req.IsActive,
+		IsRecommended: req.IsRecommended,
+		Features:      req.Features,
 	}
 
 	p, err := h.planService.Update(c.Request.Context(), id, updateReq)
 	if err != nil {
-		h.logger.Error("Failed to update plan", logger.Err(err), logger.F("id", id))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update plan"})
+		h.respondPlanError(c, err, "Failed to update plan")
 		return
 	}
 
@@ -174,8 +203,7 @@ func (h *PlanHandler) DeletePlan(c *gin.Context) {
 	}
 
 	if err := h.planService.Delete(c.Request.Context(), id); err != nil {
-		h.logger.Error("Failed to delete plan", logger.Err(err), logger.F("id", id))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete plan"})
+		h.respondPlanError(c, err, "Failed to delete plan")
 		return
 	}
 
@@ -199,8 +227,7 @@ func (h *PlanHandler) TogglePlanStatus(c *gin.Context) {
 	}
 
 	if err := h.planService.SetActive(c.Request.Context(), id, req.IsActive); err != nil {
-		h.logger.Error("Failed to toggle plan status", logger.Err(err), logger.F("id", id))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update plan status"})
+		h.respondPlanError(c, err, "Failed to update plan status")
 		return
 	}
 
@@ -211,8 +238,15 @@ func (h *PlanHandler) TogglePlanStatus(c *gin.Context) {
 func (h *PlanHandler) ListAllPlans(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	includeInactive := c.DefaultQuery("include_inactive", "false") == "true"
 
-	plans, total, err := h.planService.List(c.Request.Context(), plan.PlanFilter{}, page, pageSize)
+	filter := plan.PlanFilter{}
+	if !includeInactive {
+		active := true
+		filter.IsActive = &active
+	}
+
+	plans, total, err := h.planService.List(c.Request.Context(), filter, page, pageSize)
 	if err != nil {
 		h.logger.Error("Failed to list plans", logger.Err(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list plans"})

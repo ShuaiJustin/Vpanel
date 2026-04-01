@@ -23,7 +23,7 @@
     <div class="overview-strip">
       <div class="overview-card">
         <span class="overview-label">当前匹配</span>
-        <strong class="overview-value">{{ filteredSubscriptions.length }}</strong>
+        <strong class="overview-value">{{ total }}</strong>
       </div>
       <div class="overview-card">
         <span class="overview-label">已访问</span>
@@ -120,18 +120,18 @@
         </el-button>
       </div>
       <div class="toolbar-summary">
-        总记录 {{ total }} 条，当前筛选 {{ filteredSubscriptions.length }} 条
+        总记录 {{ total }} 条，当前页 {{ subscriptions.length }} 条
       </div>
     </div>
 
     <el-table
       v-loading="loading"
-      :data="paginatedSubscriptions"
+      :data="subscriptions"
       border
       stripe
       class="subscriptions-table"
       row-key="id"
-      :empty-text="filteredSubscriptions.length ? '当前页暂无数据' : (hasActiveFilters ? '暂无匹配的订阅' : '暂无订阅记录')"
+      :empty-text="subscriptions.length ? '当前页暂无数据' : (hasActiveFilters ? '暂无匹配的订阅' : '暂无订阅记录')"
     >
       <el-table-column
         label="订阅对象"
@@ -262,7 +262,7 @@
         v-model:page-size="pageSize"
         :page-sizes="[10, 20, 50, 100]"
         layout="total, sizes, prev, pager, next, jumper"
-        :total="filteredSubscriptions.length"
+        :total="total"
         @size-change="handleSizeChange"
         @current-change="handleCurrentChange"
       />
@@ -271,11 +271,12 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { DocumentCopy, RefreshRight, Search } from '@element-plus/icons-vue'
 import { subscriptionApi } from '@/api/index'
+import { debounce } from '@/utils/debounce'
 import { extractErrorMessage } from '@/utils/entitlement'
 
 const route = useRoute()
@@ -383,92 +384,9 @@ const normalizeSubscription = (item = {}) => {
   }
 }
 
-const matchesAccessRange = (count, range) => {
-  if (!range) return true
-  if (range === '0') return count === 0
-  if (range === '1-10') return count >= 1 && count <= 10
-  if (range === '11-100') return count >= 11 && count <= 100
-  if (range === '100+') return count >= 101
-  return true
-}
-
-const filteredSubscriptions = computed(() => {
-  const keyword = normalizeString(filters.keyword).toLowerCase()
-
-  return subscriptions.value.filter((row) => {
-    if (!matchesAccessRange(row.access_count, filters.accessRange)) {
-      return false
-    }
-
-    if (filters.activity === 'never' && row.access_count > 0) {
-      return false
-    }
-
-    if (filters.activity === 'recent' && !isWithinDays(row.last_access_at, 7)) {
-      return false
-    }
-
-    if (
-      filters.activity === 'stale' &&
-      (row.access_count === 0 || !row.last_access_at || isWithinDays(row.last_access_at, 30))
-    ) {
-      return false
-    }
-
-    if (!keyword) {
-      return true
-    }
-
-    const searchableText = [
-      row.id,
-      row.user_id,
-      row.username_display,
-      row.short_code,
-      row.last_ip,
-      row.token,
-      row.created_at_display,
-      row.last_access_display,
-      row.activity_label
-    ].join(' ').toLowerCase()
-
-    return searchableText.includes(keyword)
-  })
-})
-
-const sortedSubscriptions = computed(() => {
-  const rows = [...filteredSubscriptions.value]
-
-  if (sortKey.value === 'access_desc') {
-    return rows.sort((a, b) => b.access_count - a.access_count || b.user_id - a.user_id)
-  }
-
-  if (sortKey.value === 'created_desc') {
-    return rows.sort((a, b) => toTimestamp(b.created_at) - toTimestamp(a.created_at) || b.user_id - a.user_id)
-  }
-
-  if (sortKey.value === 'user_desc') {
-    return rows.sort((a, b) => Number(b.user_id || 0) - Number(a.user_id || 0))
-  }
-
-  return rows.sort((a, b) => {
-    const recentDiff = toTimestamp(b.last_access_at) - toTimestamp(a.last_access_at)
-    if (recentDiff !== 0) return recentDiff
-
-    const accessDiff = b.access_count - a.access_count
-    if (accessDiff !== 0) return accessDiff
-
-    return toTimestamp(b.created_at) - toTimestamp(a.created_at)
-  })
-})
-
-const paginatedSubscriptions = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  return sortedSubscriptions.value.slice(start, start + pageSize.value)
-})
-
-const visitedCount = computed(() => filteredSubscriptions.value.filter((item) => item.access_count > 0).length)
-const neverVisitedCount = computed(() => filteredSubscriptions.value.filter((item) => item.access_count === 0).length)
-const recentActiveCount = computed(() => filteredSubscriptions.value.filter((item) => isWithinDays(item.last_access_at, 7)).length)
+const visitedCount = computed(() => subscriptions.value.filter((item) => item.access_count > 0).length)
+const neverVisitedCount = computed(() => subscriptions.value.filter((item) => item.access_count === 0).length)
+const recentActiveCount = computed(() => subscriptions.value.filter((item) => isWithinDays(item.last_access_at, 7)).length)
 const hasActiveFilters = computed(() => Boolean(
   normalizeString(filters.keyword) || filters.accessRange || filters.activity || sortKey.value !== 'recent_access'
 ))
@@ -478,16 +396,25 @@ const resetFilters = () => {
   filters.accessRange = ''
   filters.activity = ''
   sortKey.value = 'recent_access'
+  currentPage.value = 1
+  fetchSubscriptions()
 }
 
 const handleSizeChange = (value) => {
   pageSize.value = value
   currentPage.value = 1
+  fetchSubscriptions()
 }
 
 const handleCurrentChange = (value) => {
   currentPage.value = value
+  fetchSubscriptions()
 }
+
+const debouncedFetchSubscriptions = debounce(() => {
+  currentPage.value = 1
+  fetchSubscriptions()
+}, 300)
 
 const copyValue = async (value, label) => {
   const text = normalizeString(value)
@@ -523,50 +450,34 @@ const fetchSubscriptions = async () => {
   loading.value = true
 
   try {
-    const pageLimit = 100
-    const allRows = []
-    let expectedTotal = 0
-    let page = 1
-    let requestCount = 0
-
-    while (requestCount < 50) {
-      const response = await subscriptionApi.admin.list({
-        page,
-        page_size: pageLimit
-      })
-      const payload = unwrapPayload(response)
-      const list = Array.isArray(payload) ? payload : (payload?.subscriptions || [])
-
-      if (!Array.isArray(list) || list.length === 0) {
-        if (!Array.isArray(payload)) {
-          expectedTotal = Number(payload?.total || allRows.length)
-        }
-        break
-      }
-
-      allRows.push(...list)
-      requestCount += 1
-
-      if (Array.isArray(payload)) {
-        if (list.length < pageLimit) {
-          break
-        }
-      } else {
-        expectedTotal = Number(payload?.total || allRows.length)
-        if (allRows.length >= expectedTotal || list.length < pageLimit) {
-          break
-        }
-      }
-
-      page += 1
+    const query = {
+      page: currentPage.value,
+      page_size: pageSize.value,
+      keyword: normalizeString(filters.keyword) || undefined,
+      activity: filters.activity || undefined,
+      sort: sortKey.value || undefined
     }
 
-    const dedupedRows = Array.from(
-      new Map(allRows.map((item) => [String(item.id), normalizeSubscription(item)])).values()
-    )
+    if (filters.accessRange === '0') {
+      query.max_access_count = 0
+    } else if (filters.accessRange === '1-10') {
+      query.min_access_count = 1
+      query.max_access_count = 10
+    } else if (filters.accessRange === '11-100') {
+      query.min_access_count = 11
+      query.max_access_count = 100
+    } else if (filters.accessRange === '100+') {
+      query.min_access_count = 101
+    }
 
-    subscriptions.value = dedupedRows
-    total.value = expectedTotal || dedupedRows.length
+    const response = await subscriptionApi.admin.list(query)
+    const payload = unwrapPayload(response)
+    const list = Array.isArray(payload) ? payload : (payload?.subscriptions || [])
+
+    subscriptions.value = Array.isArray(list)
+      ? list.map((item) => normalizeSubscription(item))
+      : []
+    total.value = Number(Array.isArray(payload) ? subscriptions.value.length : (payload?.total || 0))
   } catch (error) {
     console.error('获取订阅列表失败:', error)
     ElMessage.error(extractErrorMessage(error) || '获取订阅列表失败')
@@ -634,19 +545,21 @@ watch(() => route.query.user_id, (value) => {
   filters.keyword = normalizeString(value)
 }, { immediate: true })
 
-watch(() => [filters.keyword, filters.accessRange, filters.activity, sortKey.value], () => {
-  currentPage.value = 1
+watch(() => filters.keyword, () => {
+  debouncedFetchSubscriptions()
 })
 
-watch(filteredSubscriptions, (rows) => {
-  const maxPage = Math.max(1, Math.ceil(rows.length / pageSize.value))
-  if (currentPage.value > maxPage) {
-    currentPage.value = maxPage
-  }
+watch(() => [filters.accessRange, filters.activity, sortKey.value], () => {
+  currentPage.value = 1
+  fetchSubscriptions()
 })
 
 onMounted(() => {
   fetchSubscriptions()
+})
+
+onUnmounted(() => {
+  debouncedFetchSubscriptions.cancel?.()
 })
 </script>
 

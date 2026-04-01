@@ -44,6 +44,8 @@ type Agent struct {
 	running             bool
 	registered          bool
 	nodeID              int64
+	authFailureStop     bool
+	authFailureReason   string
 	lastXrayHealAttempt time.Time
 	xrayHealInProgress  bool
 
@@ -317,6 +319,14 @@ func (a *Agent) heartbeatLoop() {
 
 // sendHeartbeat sends a heartbeat to the Panel.
 func (a *Agent) sendHeartbeat() {
+	a.mu.RLock()
+	authFailureStop := a.authFailureStop
+	a.mu.RUnlock()
+
+	if authFailureStop {
+		return
+	}
+
 	// 读取当前状态（避免长时间持有锁）
 	a.mu.RLock()
 	registered := a.registered
@@ -331,6 +341,10 @@ func (a *Agent) sendHeartbeat() {
 				return // Context cancelled
 			}
 			if err := a.register(); err != nil {
+				if isPermanentAuthError(err) {
+					a.markPermanentAuthFailure(err)
+					return
+				}
 				a.logger.Warn("registration failed during heartbeat",
 					logger.F("error", err.Error()),
 					logger.F("consecutive_fails", a.panelClient.GetConsecutiveFails()))
@@ -368,6 +382,10 @@ func (a *Agent) sendHeartbeat() {
 
 	resp, err := a.panelClient.Heartbeat(a.ctx, req)
 	if err != nil {
+		if isPermanentAuthError(err) {
+			a.markPermanentAuthFailure(err)
+			return
+		}
 		a.logger.Error("heartbeat failed",
 			logger.F("error", err.Error()),
 			logger.F("node_id", nodeID),
@@ -400,6 +418,25 @@ func (a *Agent) sendHeartbeat() {
 	if len(resp.Commands) > 0 {
 		a.processCommands(resp.Commands)
 	}
+}
+
+func (a *Agent) markPermanentAuthFailure(err error) {
+	if err == nil {
+		return
+	}
+
+	a.mu.Lock()
+	if a.authFailureStop {
+		a.mu.Unlock()
+		return
+	}
+	a.authFailureStop = true
+	a.authFailureReason = err.Error()
+	a.registered = false
+	a.mu.Unlock()
+
+	a.logger.Error("permanent authentication failure detected; stop retrying panel registration",
+		logger.F("error", err.Error()))
 }
 
 // collectMetrics collects current node metrics.

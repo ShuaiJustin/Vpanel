@@ -71,8 +71,8 @@ type RecordTrafficRequest struct {
 	NodeID   int64  `json:"node_id" binding:"required"`
 	UserID   int64  `json:"user_id" binding:"required"`
 	ProxyID  *int64 `json:"proxy_id"`
-	Upload   int64  `json:"upload" binding:"required"`
-	Download int64  `json:"download" binding:"required"`
+	Upload   int64  `json:"upload"`
+	Download int64  `json:"download"`
 }
 
 // RecordTrafficBatchRequest represents a request to record multiple traffic entries.

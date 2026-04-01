@@ -17,10 +17,10 @@ import (
 
 // NodeNetworkOptimizationHandler handles node network optimization APIs.
 type NodeNetworkOptimizationHandler struct {
-	nodeRepo         repository.NodeRepository
-	deployService    *node.RemoteDeployService
-	recoveryTracker  *NodeRecoveryTracker
-	logger           logger.Logger
+	nodeRepo        repository.NodeRepository
+	deployService   *node.RemoteDeployService
+	recoveryTracker *NodeRecoveryTracker
+	logger          logger.Logger
 }
 
 // NewNodeNetworkOptimizationHandler creates a new handler.
@@ -74,10 +74,10 @@ func (h *NodeNetworkOptimizationHandler) GetProfile(c *gin.Context) {
 		"saved_settings":       savedSettings,
 		"recommended_settings": node.RecommendedNetworkOptimizationSettings(),
 		"ssh_defaults": gin.H{
-			"host":             defaultHost,
-			"port":             defaultPort,
-			"username":         defaultUser,
-			"has_saved_password": strings.TrimSpace(nodeData.SSHPassword) != "",
+			"host":                  defaultHost,
+			"port":                  defaultPort,
+			"username":              defaultUser,
+			"has_saved_password":    strings.TrimSpace(nodeData.SSHPassword) != "",
 			"has_saved_private_key": strings.TrimSpace(nodeData.SSHKeyPath) != "",
 		},
 		"backup_path": node.NetworkOptimizationBackupPath,
@@ -171,7 +171,7 @@ func (h *NodeNetworkOptimizationHandler) Apply(c *gin.Context) {
 	if err := h.nodeRepo.Update(c.Request.Context(), nodeData); err != nil {
 		h.logger.Error("Failed to persist node network optimization settings", logger.Err(err), logger.F("node_id", nodeData.ID))
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "远端优化已执行，但保存面板配置失败",
+			"error":  "远端优化已执行，但保存面板配置失败",
 			"result": result,
 		})
 		return
@@ -180,10 +180,10 @@ func (h *NodeNetworkOptimizationHandler) Apply(c *gin.Context) {
 	command, queued := h.queueConfigSync(nodeData.ID, "管理员应用节点网络优化后同步配置")
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":       "节点网络优化已应用",
-		"result":        result,
-		"sync_queued":   queued,
-		"command_id":    command.ID,
+		"message":        "节点网络优化已应用",
+		"result":         result,
+		"sync_queued":    queued,
+		"command_id":     command.ID,
 		"saved_settings": settings,
 	})
 }
@@ -224,7 +224,7 @@ func (h *NodeNetworkOptimizationHandler) Rollback(c *gin.Context) {
 	if err := h.nodeRepo.Update(c.Request.Context(), nodeData); err != nil {
 		h.logger.Error("Failed to clear node network optimization settings", logger.Err(err), logger.F("node_id", nodeData.ID))
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "远端回滚已执行，但面板配置清理失败",
+			"error":  "远端回滚已执行，但面板配置清理失败",
 			"result": result,
 		})
 		return
@@ -269,7 +269,10 @@ func buildNodeDeployConfig(nodeData *repository.Node, input *nodeNetworkOptimiza
 	}
 
 	host, port, username := defaultNodeSSH(nodeData)
-	password := strings.TrimSpace(nodeData.SSHPassword)
+	password, err := node.DecryptSSHPassword(strings.TrimSpace(nodeData.SSHPassword))
+	if err != nil {
+		return nil, fmt.Errorf("解密节点 SSH 密码失败: %w", err)
+	}
 	privateKey := ""
 
 	if strings.TrimSpace(nodeData.SSHKeyPath) != "" {

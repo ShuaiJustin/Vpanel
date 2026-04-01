@@ -44,7 +44,6 @@ export const useSubscriptionStore = defineStore('subscription', () => {
     } catch (err) {
       console.error('Fetch subscription link error:', err)
       const normalizedError = createStoreError(err, '获取订阅链接失败')
-      subscriptionInfo.value = null
       error.value = normalizedError.message
       throw normalizedError
     } finally {
@@ -63,7 +62,6 @@ export const useSubscriptionStore = defineStore('subscription', () => {
     } catch (err) {
       console.error('Fetch subscription info error:', err)
       const normalizedError = createStoreError(err, '获取订阅信息失败')
-      subscriptionInfo.value = null
       error.value = normalizedError.message
       throw normalizedError
     } finally {
@@ -82,7 +80,6 @@ export const useSubscriptionStore = defineStore('subscription', () => {
     } catch (err) {
       console.error('Regenerate subscription error:', err)
       const normalizedError = createStoreError(err, '重新生成订阅链接失败')
-      subscriptionInfo.value = null
       error.value = normalizedError.message
       throw normalizedError
     } finally {

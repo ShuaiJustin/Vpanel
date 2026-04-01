@@ -11,6 +11,10 @@ import (
 	"v/pkg/errors"
 )
 
+func normalizeUsername(username string) string {
+	return strings.TrimSpace(username)
+}
+
 // userRepository implements UserRepository.
 type userRepository struct {
 	db *gorm.DB
@@ -23,6 +27,7 @@ func NewUserRepository(db *gorm.DB) UserRepository {
 
 // Create creates a new user.
 func (r *userRepository) Create(ctx context.Context, user *User) error {
+	user.Username = normalizeUsername(user.Username)
 	if user.Email != "" {
 		user.Email = strings.ToLower(strings.TrimSpace(user.Email))
 	}
@@ -49,10 +54,11 @@ func (r *userRepository) GetByID(ctx context.Context, id int64) (*User, error) {
 // GetByUsername retrieves a user by username.
 func (r *userRepository) GetByUsername(ctx context.Context, username string) (*User, error) {
 	var user User
-	result := r.db.WithContext(ctx).Where("username = ?", username).First(&user)
+	normalizedUsername := strings.ToLower(normalizeUsername(username))
+	result := r.db.WithContext(ctx).Where("LOWER(TRIM(username)) = ?", normalizedUsername).First(&user)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
-			return nil, errors.NewNotFoundError("user", username)
+			return nil, errors.NewNotFoundError("user", normalizedUsername)
 		}
 		return nil, errors.NewDatabaseError("failed to get user", result.Error)
 	}
@@ -75,6 +81,7 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*User, e
 
 // Update updates a user.
 func (r *userRepository) Update(ctx context.Context, user *User) error {
+	user.Username = normalizeUsername(user.Username)
 	if user.Email != "" {
 		user.Email = strings.ToLower(strings.TrimSpace(user.Email))
 	}
@@ -105,7 +112,14 @@ func (r *userRepository) Delete(ctx context.Context, id int64) error {
 // List retrieves users with pagination.
 func (r *userRepository) List(ctx context.Context, limit, offset int) ([]*User, error) {
 	var users []*User
-	result := r.db.WithContext(ctx).Limit(limit).Offset(offset).Find(&users)
+	query := r.db.WithContext(ctx).Order("created_at DESC")
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	if offset > 0 {
+		query = query.Offset(offset)
+	}
+	result := query.Find(&users)
 	if result.Error != nil {
 		return nil, errors.NewDatabaseError("failed to list users", result.Error)
 	}

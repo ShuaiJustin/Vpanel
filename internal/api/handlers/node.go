@@ -5,6 +5,7 @@ import (
 	"context"
 	stderrors "errors"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -204,6 +205,9 @@ type UpdateNodeRequest struct {
 	Weight      *int      `json:"weight"`
 	MaxUsers    *int      `json:"max_users"`
 	IPWhitelist *[]string `json:"ip_whitelist"`
+
+	// SSH 自动安装配置（可选）
+	SSH *SSHConfig `json:"ssh,omitempty"`
 
 	// 流量和速率
 	TrafficLimit   *int64  `json:"traffic_limit"`
@@ -456,6 +460,7 @@ func (h *NodeHandler) List(c *gin.Context) {
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 	status := c.Query("status")
 	region := c.Query("region")
+	search := c.Query("search")
 
 	// Cap limit to prevent database resource exhaustion
 	if limit <= 0 {
@@ -471,6 +476,7 @@ func (h *NodeHandler) List(c *gin.Context) {
 	filter := node.NodeFilter{
 		Status: status,
 		Region: region,
+		Search: search,
 		Limit:  limit,
 		Offset: offset,
 	}
@@ -683,6 +689,17 @@ func (h *NodeHandler) Create(c *gin.Context) {
 
 	h.logger.Info("Node created", logger.F("node_id", n.ID), logger.F("name", n.Name))
 
+	if req.SSH != nil {
+		if err := h.nodeService.UpdateSSHConfig(c.Request.Context(), n.ID, req.SSH.Host, req.SSH.Port, req.SSH.Username, req.SSH.Password, ""); err != nil {
+			h.logger.Warn("Failed to persist node SSH metadata after create", logger.Err(err), logger.F("node_id", n.ID))
+		} else {
+			n, err = h.nodeService.GetByID(c.Request.Context(), n.ID)
+			if err != nil {
+				h.logger.Warn("Failed to reload node after persisting SSH metadata", logger.Err(err), logger.F("node_id", n.ID))
+			}
+		}
+	}
+
 	resp := &NodeWithTokenResponse{
 		NodeResponse: *h.buildNodeResponse(c.Request.Context(), n),
 		Token:        n.Token,
@@ -877,6 +894,17 @@ func (h *NodeHandler) Update(c *gin.Context) {
 		}
 	}
 
+	if req.SSH != nil {
+		if err := h.nodeService.UpdateSSHConfig(c.Request.Context(), id, req.SSH.Host, req.SSH.Port, req.SSH.Username, req.SSH.Password, ""); err != nil {
+			h.logger.Warn("Failed to persist node SSH metadata after update", logger.Err(err), logger.F("node_id", id))
+		} else {
+			n, err = h.nodeService.GetByID(c.Request.Context(), id)
+			if err != nil {
+				h.logger.Warn("Failed to reload node after persisting SSH metadata on update", logger.Err(err), logger.F("node_id", id))
+			}
+		}
+	}
+
 	h.logger.Info("Node updated", logger.F("node_id", id))
 
 	c.JSON(http.StatusOK, h.buildNodeResponse(c.Request.Context(), n))
@@ -891,6 +919,19 @@ func (h *NodeHandler) Delete(c *gin.Context) {
 		return
 	}
 
+	nodeData, err := h.nodeService.GetByID(c.Request.Context(), id)
+	if err != nil {
+		if err == node.ErrNodeNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Node not found"})
+			return
+		}
+		h.logger.Error("Failed to load node before delete", logger.Err(err), logger.F("id", id))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete node"})
+		return
+	}
+
+	cleanupConfig := h.buildNodeCleanupDeployConfig(nodeData)
+
 	if err := h.nodeService.Delete(c.Request.Context(), id); err != nil {
 		if err == node.ErrNodeNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Node not found"})
@@ -903,7 +944,78 @@ func (h *NodeHandler) Delete(c *gin.Context) {
 
 	h.logger.Info("Node deleted", logger.F("node_id", id))
 
+	if cleanupConfig != nil && h.deployService != nil {
+		go func(nodeID int64, nodeName string, cfg *node.DeployConfig) {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+
+			if err := h.deployService.CleanupAgent(ctx, cfg); err != nil {
+				h.logger.Warn("Failed to cleanup remote agent after node delete",
+					logger.Err(err),
+					logger.F("node_id", nodeID),
+					logger.F("node_name", nodeName),
+					logger.F("host", cfg.Host))
+				return
+			}
+
+			h.logger.Info("Remote agent cleanup triggered after node delete",
+				logger.F("node_id", nodeID),
+				logger.F("node_name", nodeName),
+				logger.F("host", cfg.Host))
+		}(nodeData.ID, nodeData.Name, cleanupConfig)
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "Node deleted successfully"})
+}
+
+func (h *NodeHandler) buildNodeCleanupDeployConfig(nodeData *node.Node) *node.DeployConfig {
+	if nodeData == nil {
+		return nil
+	}
+
+	host := strings.TrimSpace(nodeData.SSHHost)
+	if host == "" {
+		host = strings.TrimSpace(nodeData.Address)
+	}
+	if host == "" {
+		return nil
+	}
+
+	username := strings.TrimSpace(nodeData.SSHUser)
+	if username == "" {
+		username = "root"
+	}
+
+	port := nodeData.SSHPort
+	if port == 0 {
+		port = 22
+	}
+
+	password := strings.TrimSpace(nodeData.SSHPassword)
+	privateKey := ""
+	if keyPath := strings.TrimSpace(nodeData.SSHKeyPath); keyPath != "" {
+		if data, err := os.ReadFile(keyPath); err == nil {
+			privateKey = string(data)
+		} else if password == "" {
+			h.logger.Warn("Failed to read saved SSH private key for node cleanup",
+				logger.Err(err),
+				logger.F("node_id", nodeData.ID),
+				logger.F("key_path", keyPath))
+		}
+	}
+
+	if password == "" && privateKey == "" {
+		return nil
+	}
+
+	return &node.DeployConfig{
+		NodeID:     nodeData.ID,
+		Host:       host,
+		Port:       port,
+		Username:   username,
+		Password:   password,
+		PrivateKey: privateKey,
+	}
 }
 
 // GenerateToken generates a new token for a node.

@@ -58,6 +58,11 @@ export const usePortalStatsStore = defineStore('portalStats', () => {
       
       // 安全地提取数据
       const daily = Array.isArray(trafficResponse?.daily) ? trafficResponse.daily : []
+      trafficStats.value = daily
+      usageStats.value = {
+        by_node: Array.isArray(usageResponse?.by_node) ? usageResponse.by_node : [],
+        by_protocol: Array.isArray(usageResponse?.by_protocol) ? usageResponse.by_protocol : []
+      }
       
       // 组合数据
       const data = {
@@ -135,7 +140,7 @@ export const usePortalStatsStore = defineStore('portalStats', () => {
     error.value = null
     try {
       const response = await statsApi.getDashboardStats()
-      dashboardStats.value = response
+      dashboardStats.value = response?.data || response
       return response
     } catch (err) {
       const normalizedError = toNormalizedError(err, '获取仪表板统计失败')
@@ -157,8 +162,10 @@ export const usePortalStatsStore = defineStore('portalStats', () => {
       // 创建下载链接
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
+      const now = new Date()
+      const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
       link.href = url
-      link.download = `traffic-stats-${new Date().toISOString().split('T')[0]}.csv`
+      link.download = `traffic-stats-${localDate}.csv`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)

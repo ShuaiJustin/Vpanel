@@ -110,6 +110,12 @@ type Node struct {
 	// 证书关联
 	CertificateID *int64 `json:"certificate_id,omitempty"`
 
+	SSHHost     string `json:"-"`
+	SSHPort     int    `json:"-"`
+	SSHUser     string `json:"-"`
+	SSHPassword string `json:"-"`
+	SSHKeyPath  string `json:"-"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -216,6 +222,7 @@ type UpdateNodeRequest struct {
 type NodeFilter struct {
 	Status  string
 	Region  string
+	Search  string
 	Tags    []string
 	GroupID *int64
 	Limit   int
@@ -482,6 +489,43 @@ func (s *Service) GetByID(ctx context.Context, id int64) (*Node, error) {
 		return nil, ErrNodeNotFound
 	}
 	return s.toNode(repoNode), nil
+}
+
+// UpdateSSHConfig persists SSH metadata for later remote operations.
+func (s *Service) UpdateSSHConfig(ctx context.Context, id int64, host string, port int, username, password, keyPath string) error {
+	repoNode, err := s.nodeRepo.GetByID(ctx, id)
+	if err != nil {
+		return ErrNodeNotFound
+	}
+
+	trimmedHost := strings.TrimSpace(host)
+	if trimmedHost != "" {
+		repoNode.SSHHost = trimmedHost
+	}
+	if port > 0 {
+		repoNode.SSHPort = port
+	}
+	trimmedUser := strings.TrimSpace(username)
+	if trimmedUser != "" {
+		repoNode.SSHUser = trimmedUser
+	}
+	if password != "" {
+		encryptedPassword, encryptErr := EncryptSSHPassword(password)
+		if encryptErr != nil {
+			return encryptErr
+		}
+		repoNode.SSHPassword = encryptedPassword
+	}
+	trimmedKeyPath := strings.TrimSpace(keyPath)
+	if trimmedKeyPath != "" {
+		repoNode.SSHKeyPath = trimmedKeyPath
+	}
+
+	if err := s.nodeRepo.Update(ctx, repoNode); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Update updates a node.
@@ -866,6 +910,7 @@ func (s *Service) List(ctx context.Context, filter NodeFilter) ([]*Node, int64, 
 	repoFilter := &repository.NodeFilter{
 		Status:  filter.Status,
 		Region:  filter.Region,
+		Search:  filter.Search,
 		Tags:    filter.Tags,
 		GroupID: filter.GroupID,
 		Limit:   filter.Limit,
@@ -1048,14 +1093,14 @@ func (s *Service) ValidateToken(ctx context.Context, token string) (*Node, error
 	}
 
 	// 记录验证的 token（用于调试）
-	s.logger.Info("Validating token",
+	s.logger.Debug("Validating token",
 		logger.F("token_length", len(token)),
 		logger.F("token_prefix", token[:min(8, len(token))]),
 		logger.F("token_suffix", token[max(0, len(token)-8):]))
 
 	repoNode, err := s.nodeRepo.GetByToken(ctx, token)
 	if err != nil {
-		s.logger.Warn("Token not found in database",
+		s.logger.Debug("Token not found in database",
 			logger.F("token_prefix", token[:min(8, len(token))]),
 			logger.Err(err))
 		return nil, ErrInvalidToken
@@ -1069,11 +1114,11 @@ func (s *Service) ValidateToken(ctx context.Context, token string) (*Node, error
 
 	// Constant-time comparison to prevent timing attacks
 	if subtle.ConstantTimeCompare([]byte(repoNode.Token), []byte(token)) != 1 {
-		s.logger.Warn("Token mismatch (constant-time check)", logger.F("node_id", repoNode.ID))
+		s.logger.Debug("Token mismatch (constant-time check)", logger.F("node_id", repoNode.ID))
 		return nil, ErrInvalidToken
 	}
 
-	s.logger.Info("Token validated successfully",
+	s.logger.Debug("Token validated successfully",
 		logger.F("node_id", repoNode.ID),
 		logger.F("node_name", repoNode.Name))
 
@@ -1184,6 +1229,11 @@ func (s *Service) toNode(rn *repository.Node) *Node {
 		_ = json.Unmarshal([]byte(rn.InstallSteps), &installSteps)
 	}
 
+	sshPassword, err := DecryptSSHPassword(rn.SSHPassword)
+	if err != nil {
+		s.logger.Warn("Failed to decrypt node SSH password", logger.Err(err), logger.F("node_id", rn.ID))
+	}
+
 	return &Node{
 		ID:                rn.ID,
 		Name:              rn.Name,
@@ -1257,6 +1307,12 @@ func (s *Service) toNode(rn *repository.Node) *Node {
 
 		// 证书关联
 		CertificateID: rn.CertificateID,
+
+		SSHHost:     rn.SSHHost,
+		SSHPort:     rn.SSHPort,
+		SSHUser:     rn.SSHUser,
+		SSHPassword: sshPassword,
+		SSHKeyPath:  rn.SSHKeyPath,
 
 		CreatedAt: rn.CreatedAt,
 		UpdatedAt: rn.UpdatedAt,
