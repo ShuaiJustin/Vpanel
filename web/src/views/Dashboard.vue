@@ -346,8 +346,8 @@ const systemInfo = ref({
 const trafficPeriod = ref("today");
 const trafficStats = ref({
   total: 0,
-  upload: 0,
-  download: 0,
+  up: 0,
+  down: 0,
   limit: 0,
   userLimit: 0,
   nodeLimit: 0,
@@ -365,6 +365,19 @@ const unwrapApiData = (response) => {
     return response.data;
   }
   return response;
+};
+
+const normalizeTrafficStats = (payload, fallback = trafficStats.value) => {
+  const data = payload || {};
+  return {
+    total: Number(data.total || 0),
+    up: Number(data.up ?? data.upload ?? fallback?.up ?? 0),
+    down: Number(data.down ?? data.download ?? fallback?.down ?? 0),
+    limit: Number(data.limit || 0),
+    userLimit: Number(data.user_limit ?? data.userLimit ?? 0),
+    nodeLimit: Number(data.node_limit ?? data.nodeLimit ?? 0),
+    percentage: Number(data.percentage || 0),
+  };
 };
 
 const buildProtocolTraffic = (stats) => {
@@ -388,14 +401,14 @@ const buildProtocolTraffic = (stats) => {
 
 // 计算上传流量百分比
 const getUpPercentage = computed(() => {
-  const total = trafficStats.value.upload + trafficStats.value.download;
-  return total > 0 ? Math.round((trafficStats.value.upload / total) * 100) : 50;
+  const total = trafficStats.value.up + trafficStats.value.down;
+  return total > 0 ? Math.round((trafficStats.value.up / total) * 100) : 50;
 });
 
 // 计算下载流量百分比
 const getDownPercentage = computed(() => {
-  const total = trafficStats.value.upload + trafficStats.value.download;
-  return total > 0 ? Math.round((trafficStats.value.download / total) * 100) : 50;
+  const total = trafficStats.value.up + trafficStats.value.down;
+  return total > 0 ? Math.round((trafficStats.value.down / total) * 100) : 50;
 });
 
 const hasTrafficLimit = computed(
@@ -556,78 +569,98 @@ const loadSystemStatus = async () => {
       }
       systemStats.value.disk = formatPercent(data.diskUsage || 0);
     }
+    return true;
   } catch (error) {
     console.error("Failed to load system status:", error);
+    return false;
   }
 };
 
 // 加载统计数据
 const loadStats = async () => {
-  try {
-    const [trafficResponse, protocolResponse] = await Promise.all([
-      statsApi.getTrafficStats({ period: trafficPeriod.value }),
-      statsApi.getProtocolStats({ period: trafficPeriod.value }),
-    ]);
+  const [trafficResult, protocolResult] = await Promise.allSettled([
+    statsApi.getTrafficStats({ period: trafficPeriod.value }),
+    statsApi.getProtocolStats({ period: trafficPeriod.value }),
+  ]);
 
-    const trafficData = unwrapApiData(trafficResponse);
-    if (trafficData) {
-      trafficStats.value = {
-        total: trafficData.total || 0,
-        upload: trafficData.upload || 0,
-        download: trafficData.download || 0,
-        limit: trafficData.limit || 0,
-        userLimit: trafficData.user_limit || 0,
-        nodeLimit: trafficData.node_limit || 0,
-        percentage: trafficData.percentage || 0,
-      };
-    }
+  let successCount = 0;
 
-    const protocolData = unwrapApiData(protocolResponse);
+  if (trafficResult.status === "fulfilled") {
+    const trafficData = unwrapApiData(trafficResult.value);
+    trafficStats.value = normalizeTrafficStats(trafficData, trafficStats.value);
+    successCount++;
+  } else {
+    console.error("Failed to load traffic stats:", trafficResult.reason);
+  }
+
+  if (protocolResult.status === "fulfilled") {
+    const protocolData = unwrapApiData(protocolResult.value);
     protocolStats.value = Array.isArray(protocolData) ? protocolData : [];
     protocolTraffic.value = buildProtocolTraffic(protocolStats.value);
-  } catch (error) {
-    console.error("Failed to load stats:", error);
+    successCount++;
+  } else {
+    console.error("Failed to load protocol stats:", protocolResult.reason);
   }
+
+  return {
+    success: successCount > 0,
+    partial: successCount === 1,
+  };
 };
 
 // 加载所有数据
 const loadData = async () => {
-  await Promise.all([loadSystemStatus(), loadStats()]);
+  const [systemOk, statsResult] = await Promise.all([
+    loadSystemStatus(),
+    loadStats(),
+  ]);
+
+  const successCount = Number(systemOk) + Number(statsResult?.success);
+  return {
+    success: successCount > 0,
+    partial: successCount > 0 && (systemOk === false || statsResult?.partial),
+  };
 };
 
 // 刷新统计数据
-const refreshStats = () => {
-  loadData();
-  ElMessage.success("数据已刷新");
+const refreshStats = async () => {
+  const result = await loadData();
+  if (result.success && !result.partial) {
+    ElMessage.success("数据已刷新");
+    return;
+  }
+  if (result.success) {
+    ElMessage.warning("部分数据刷新成功");
+    return;
+  }
+  ElMessage.error("刷新失败");
 };
 
 // 切换流量统计周期
 const changeTrafficPeriod = async (period) => {
-  try {
-    const [trafficResponse, protocolResponse] = await Promise.all([
-      statsApi.getTrafficStats({ period }),
-      statsApi.getProtocolStats({ period }),
-    ]);
+  const previousPeriod = trafficPeriod.value;
+  const previousTrafficStats = { ...trafficStats.value };
+  const previousProtocolStats = [...protocolStats.value];
+  const previousProtocolTraffic = [...protocolTraffic.value];
+  trafficPeriod.value = period;
+  const result = await loadStats();
 
-    const trafficData = unwrapApiData(trafficResponse);
-    if (trafficData) {
-      trafficStats.value = {
-        total: trafficData.total || 0,
-        upload: trafficData.upload || 0,
-        download: trafficData.download || 0,
-        limit: trafficData.limit || 0,
-        userLimit: trafficData.user_limit || 0,
-        nodeLimit: trafficData.node_limit || 0,
-        percentage: trafficData.percentage || 0,
-      };
-    }
-
-    const protocolData = unwrapApiData(protocolResponse);
-    protocolStats.value = Array.isArray(protocolData) ? protocolData : [];
-    protocolTraffic.value = buildProtocolTraffic(protocolStats.value);
-  } catch (error) {
-    console.error("Failed to load traffic data:", error);
+  if (result.success && !result.partial) {
+    return;
   }
+  if (result.success) {
+    trafficPeriod.value = previousPeriod;
+    trafficStats.value = previousTrafficStats;
+    protocolStats.value = previousProtocolStats;
+    protocolTraffic.value = previousProtocolTraffic;
+    ElMessage.warning("部分请求失败，已保留原统计周期数据");
+    return;
+  }
+  trafficPeriod.value = previousPeriod;
+  trafficStats.value = previousTrafficStats;
+  protocolStats.value = previousProtocolStats;
+  protocolTraffic.value = previousProtocolTraffic;
+  ElMessage.error("统计数据更新失败");
 };
 
 // 定时刷新

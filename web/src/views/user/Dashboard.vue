@@ -520,8 +520,10 @@ async function refreshTrafficData({ silent = true } = {}) {
     trafficRefreshInFlight.value = true;
     await userStore.fetchProfile({ silent });
     trafficUpdatedAt.value = new Date();
+    return true;
   } catch (error) {
     console.error("Failed to refresh traffic data:", error);
+    return false;
   } finally {
     trafficRefreshInFlight.value = false;
   }
@@ -550,10 +552,28 @@ function handleVisibilityChange() {
 
 // 加载数据
 async function loadDashboardData() {
-  try {
-    await refreshTrafficData({ silent: false });
-    await announcementsStore.fetchAnnouncements();
-    const devicesResp = await api.get("/user/devices");
+  const [trafficResult, announcementsResult, devicesResult] =
+    await Promise.allSettled([
+      refreshTrafficData({ silent: false }),
+      announcementsStore.fetchAnnouncements(),
+      api.get("/user/devices"),
+    ]);
+
+  if (trafficResult.status === "rejected") {
+    console.error("Failed to load dashboard traffic data:", trafficResult.reason);
+  } else if (trafficResult.value === false) {
+    console.error("Failed to load dashboard traffic data: refresh returned false");
+  }
+
+  if (announcementsResult.status === "rejected") {
+    console.error(
+      "Failed to load dashboard announcements:",
+      announcementsResult.reason,
+    );
+  }
+
+  if (devicesResult.status === "fulfilled") {
+    const devicesResp = devicesResult.value;
     const devicesData = devicesResp?.data ?? devicesResp ?? {};
     const devices = Array.isArray(devicesData.devices)
       ? devicesData.devices
@@ -564,8 +584,8 @@ async function loadDashboardData() {
     maxDevices.value = Number(
       devicesData.max_devices ?? devicesData.maxDevices ?? 0,
     );
-  } catch (error) {
-    console.error("Failed to load dashboard data:", error);
+  } else {
+    console.error("Failed to load dashboard devices:", devicesResult.reason);
   }
 }
 

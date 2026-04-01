@@ -151,8 +151,14 @@ func (h *StatsHandler) GetDashboardStats(c *gin.Context) {
 		stats.TotalTraffic = upload + download
 	}
 
-	// Online count is based on recent activity (placeholder for now)
-	stats.OnlineCount = 0
+	if h.repos != nil && h.repos.Node != nil {
+		statusCounts, err := h.repos.Node.CountByStatus(ctx)
+		if err != nil {
+			h.logger.Warn("failed to count nodes by status", logger.F("error", err))
+		} else {
+			stats.OnlineCount = int(statusCounts[repository.NodeStatusOnline])
+		}
+	}
 
 	// Cache the result
 	if h.cache != nil {

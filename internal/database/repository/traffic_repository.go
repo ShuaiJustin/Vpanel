@@ -316,7 +316,7 @@ func (r *trafficRepository) GetTrafficTimeline(ctx context.Context, start, end t
 		}
 	}
 
-	return results, nil
+	return fillTrafficTimelineGaps(start, end, interval, results), nil
 }
 
 // GetTrafficTimelineByUser retrieves traffic data points for timeline charts filtered by user ID.
@@ -357,7 +357,98 @@ func (r *trafficRepository) GetTrafficTimelineByUser(ctx context.Context, userID
 		}
 	}
 
-	return results, nil
+	return fillTrafficTimelineGaps(start, end, interval, results), nil
+}
+
+func fillTrafficTimelineGaps(start, end time.Time, interval string, points []*TrafficTimelinePoint) []*TrafficTimelinePoint {
+	if start.IsZero() || end.IsZero() || end.Before(start) {
+		return points
+	}
+
+	location := start.Location()
+	if location == nil {
+		location = time.Local
+	}
+
+	startBucket := alignTimelineBucket(start.In(location), interval)
+	endBucket := alignTimelineBucket(end.In(location), interval)
+	if endBucket.Before(startBucket) {
+		return points
+	}
+
+	pointsByBucket := make(map[string]*TrafficTimelinePoint, len(points))
+	for _, point := range points {
+		if point == nil {
+			continue
+		}
+		bucketTime := alignTimelineBucket(point.Time.In(location), interval)
+		pointsByBucket[timelineBucketKey(bucketTime, interval)] = &TrafficTimelinePoint{
+			Time:     bucketTime,
+			Upload:   point.Upload,
+			Download: point.Download,
+		}
+	}
+
+	filled := make([]*TrafficTimelinePoint, 0)
+	for current := startBucket; !current.After(endBucket); current = advanceTimelineBucket(current, interval) {
+		key := timelineBucketKey(current, interval)
+		if point, exists := pointsByBucket[key]; exists {
+			filled = append(filled, point)
+			continue
+		}
+
+		filled = append(filled, &TrafficTimelinePoint{
+			Time:     current,
+			Upload:   0,
+			Download: 0,
+		})
+	}
+
+	return filled
+}
+
+func alignTimelineBucket(ts time.Time, interval string) time.Time {
+	location := ts.Location()
+	if location == nil {
+		location = time.Local
+	}
+
+	switch interval {
+	case "day":
+		return time.Date(ts.Year(), ts.Month(), ts.Day(), 0, 0, 0, 0, location)
+	case "month":
+		return time.Date(ts.Year(), ts.Month(), 1, 0, 0, 0, 0, location)
+	case "hour":
+		fallthrough
+	default:
+		return time.Date(ts.Year(), ts.Month(), ts.Day(), ts.Hour(), 0, 0, 0, location)
+	}
+}
+
+func advanceTimelineBucket(ts time.Time, interval string) time.Time {
+	switch interval {
+	case "day":
+		return ts.AddDate(0, 0, 1)
+	case "month":
+		return ts.AddDate(0, 1, 0)
+	case "hour":
+		fallthrough
+	default:
+		return ts.Add(time.Hour)
+	}
+}
+
+func timelineBucketKey(ts time.Time, interval string) string {
+	switch interval {
+	case "day":
+		return ts.Format("2006-01-02")
+	case "month":
+		return ts.Format("2006-01")
+	case "hour":
+		fallthrough
+	default:
+		return ts.Format("2006-01-02 15:00:00")
+	}
 }
 
 func parseTimelineBucket(raw, interval string) time.Time {

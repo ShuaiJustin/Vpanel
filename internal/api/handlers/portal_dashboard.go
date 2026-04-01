@@ -37,14 +37,14 @@ func NewPortalDashboardHandler(
 
 // GetDashboard returns dashboard data for the current user.
 func (h *PortalDashboardHandler) GetDashboard(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
+	userID, ok := currentUserIDFromContext(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证"})
 		return
 	}
 
 	// Get user info
-	user, err := h.userRepo.GetByID(c.Request.Context(), userID.(int64))
+	user, err := h.userRepo.GetByID(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
 		return
@@ -53,13 +53,19 @@ func (h *PortalDashboardHandler) GetDashboard(c *gin.Context) {
 	// Get traffic summary
 	var trafficSummary *stats.TrafficSummary
 	if h.statsService != nil {
-		trafficSummary, _ = h.statsService.GetTrafficSummary(c.Request.Context(), userID.(int64))
+		trafficSummary, err = h.statsService.GetTrafficSummary(c.Request.Context(), userID)
+		if err != nil {
+			h.logger.Warn("failed to get portal dashboard traffic summary", logger.F("error", err), logger.F("user_id", userID))
+		}
 	}
 
 	// Get unread announcement count
 	var unreadCount int64
 	if h.announcementService != nil {
-		unreadCount, _ = h.announcementService.GetUnreadCount(c.Request.Context(), userID.(int64))
+		unreadCount, err = h.announcementService.GetUnreadCount(c.Request.Context(), userID)
+		if err != nil {
+			h.logger.Warn("failed to get portal dashboard unread announcement count", logger.F("error", err), logger.F("user_id", userID))
+		}
 	}
 
 	// Calculate traffic percentage
@@ -91,8 +97,8 @@ func (h *PortalDashboardHandler) GetDashboard(c *gin.Context) {
 
 // GetTrafficSummary returns traffic summary for the current user.
 func (h *PortalDashboardHandler) GetTrafficSummary(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
+	userID, ok := currentUserIDFromContext(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证"})
 		return
 	}
@@ -102,7 +108,7 @@ func (h *PortalDashboardHandler) GetTrafficSummary(c *gin.Context) {
 		return
 	}
 
-	summary, err := h.statsService.GetTrafficSummary(c.Request.Context(), userID.(int64))
+	summary, err := h.statsService.GetTrafficSummary(c.Request.Context(), userID)
 	if err != nil {
 		h.logger.Error("failed to get traffic summary", logger.F("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取流量统计失败"})
@@ -114,8 +120,8 @@ func (h *PortalDashboardHandler) GetTrafficSummary(c *gin.Context) {
 
 // GetRecentAnnouncements returns recent announcements.
 func (h *PortalDashboardHandler) GetRecentAnnouncements(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
+	userID, ok := currentUserIDFromContext(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证"})
 		return
 	}
@@ -125,7 +131,7 @@ func (h *PortalDashboardHandler) GetRecentAnnouncements(c *gin.Context) {
 		return
 	}
 
-	announcements, _, err := h.announcementService.ListAnnouncements(c.Request.Context(), userID.(int64), 5, 0)
+	announcements, _, err := h.announcementService.ListAnnouncements(c.Request.Context(), userID, 5, 0)
 	if err != nil {
 		h.logger.Error("failed to get announcements", logger.F("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取公告失败"})

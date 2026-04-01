@@ -836,3 +836,35 @@ func TestStatsHandler_GetProtocolStatsSupportsCustomRangeAndUnknownTraffic(t *te
 	assert.Equal(t, int64(0), unknown.Count)
 	assert.Equal(t, int64(110), unknown.Traffic)
 }
+
+func TestStatsHandler_GetDashboardStatsIncludesOnlineNodeCount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupStatsTestDB(t)
+	repos := repository.NewRepositories(db)
+	handler := NewStatsHandler(logger.NewNopLogger(), repos, nil)
+
+	for _, nodeData := range []*repository.Node{
+		{ID: 1, Name: "online-1", Address: "1.1.1.1", Token: "token-1", Status: repository.NodeStatusOnline},
+		{ID: 2, Name: "online-2", Address: "1.1.1.2", Token: "token-2", Status: repository.NodeStatusOnline},
+		{ID: 3, Name: "offline-1", Address: "1.1.1.3", Token: "token-3", Status: repository.NodeStatusOffline},
+	} {
+		require.NoError(t, db.Create(nodeData).Error)
+	}
+
+	router := gin.New()
+	router.GET("/stats/dashboard", handler.GetDashboardStats)
+
+	req := httptest.NewRequest(http.MethodGet, "/stats/dashboard", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var response struct {
+		Code int            `json:"code"`
+		Data DashboardStats `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Equal(t, 200, response.Code)
+	assert.Equal(t, 2, response.Data.OnlineCount)
+}

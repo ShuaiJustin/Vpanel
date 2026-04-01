@@ -84,12 +84,12 @@
                 {{ dashboardStats.online_count }}
               </div>
               <div class="stat-label">
-                在线连接
+                在线节点
               </div>
             </div>
           </div>
           <div class="stat-footer">
-            <span>实时连接数</span>
+            <span>当前在线节点数</span>
           </div>
         </el-card>
       </el-col>

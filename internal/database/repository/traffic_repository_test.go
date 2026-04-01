@@ -121,6 +121,77 @@ func TestTrafficRepository_GetTrafficTimelineByUser_SQLite(t *testing.T) {
 	}
 }
 
+func TestTrafficRepository_GetTrafficTimeline_FillsMissingBuckets(t *testing.T) {
+	db := setupTrafficRepositoryTestDB(t)
+	repo := NewTrafficRepository(db)
+
+	for _, record := range []*Traffic{
+		{UserID: 7, ProxyID: 11, Upload: 100, Download: 200, RecordedAt: time.Date(2026, 3, 18, 8, 15, 0, 0, time.UTC)},
+		{UserID: 7, ProxyID: 11, Upload: 500, Download: 600, RecordedAt: time.Date(2026, 3, 20, 9, 0, 0, 0, time.UTC)},
+	} {
+		if err := db.Create(record).Error; err != nil {
+			t.Fatalf("failed to seed traffic record: %v", err)
+		}
+	}
+
+	points, err := repo.GetTrafficTimeline(
+		context.Background(),
+		time.Date(2026, 3, 18, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 3, 20, 23, 59, 59, 0, time.UTC),
+		"day",
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if len(points) != 3 {
+		t.Fatalf("expected 3 timeline points with zero-filled gap, got %d", len(points))
+	}
+
+	if points[1].Time.Format("2006-01-02") != "2026-03-19" {
+		t.Fatalf("expected middle bucket for 2026-03-19, got %s", points[1].Time.Format(time.RFC3339))
+	}
+	if points[1].Upload != 0 || points[1].Download != 0 {
+		t.Fatalf("expected zero-filled middle bucket, got upload=%d download=%d", points[1].Upload, points[1].Download)
+	}
+}
+
+func TestTrafficRepository_GetTrafficTimelineByUser_FillsMissingBuckets(t *testing.T) {
+	db := setupTrafficRepositoryTestDB(t)
+	repo := NewTrafficRepository(db)
+
+	for _, record := range []*Traffic{
+		{UserID: 7, ProxyID: 11, Upload: 100, Download: 200, RecordedAt: time.Date(2026, 3, 18, 8, 15, 0, 0, time.UTC)},
+		{UserID: 7, ProxyID: 11, Upload: 500, Download: 600, RecordedAt: time.Date(2026, 3, 20, 9, 0, 0, 0, time.UTC)},
+	} {
+		if err := db.Create(record).Error; err != nil {
+			t.Fatalf("failed to seed traffic record: %v", err)
+		}
+	}
+
+	points, err := repo.GetTrafficTimelineByUser(
+		context.Background(),
+		7,
+		time.Date(2026, 3, 18, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 3, 20, 23, 59, 59, 0, time.UTC),
+		"day",
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if len(points) != 3 {
+		t.Fatalf("expected 3 user timeline points with zero-filled gap, got %d", len(points))
+	}
+
+	if points[1].Time.Format("2006-01-02") != "2026-03-19" {
+		t.Fatalf("expected middle user bucket for 2026-03-19, got %s", points[1].Time.Format(time.RFC3339))
+	}
+	if points[1].Upload != 0 || points[1].Download != 0 {
+		t.Fatalf("expected zero-filled middle user bucket, got upload=%d download=%d", points[1].Upload, points[1].Download)
+	}
+}
+
 func TestTrafficRepository_GetTrafficByUser_SQLite(t *testing.T) {
 	db := setupTrafficRepositoryTestDB(t)
 	seedTrafficRecords(t, db)
