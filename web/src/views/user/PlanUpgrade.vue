@@ -245,6 +245,7 @@ import { Check } from '@element-plus/icons-vue'
 import { planChangeApi, plansApi } from '@/api'
 import { useUserPortalStore } from '@/stores/userPortal'
 import { extractErrorMessage } from '@/utils/entitlement'
+import { formatTrafficLimit } from '@/utils/traffic'
 
 const router = useRouter()
 const userStore = useUserPortalStore()
@@ -279,17 +280,7 @@ const formatPrice = (price) => {
   return (price / 100).toFixed(2)
 }
 
-const formatTraffic = (bytes) => {
-  if (!bytes || bytes === 0) return '无限制'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let i = 0
-  let size = bytes
-  while (size >= 1024 && i < units.length - 1) {
-    size /= 1024
-    i++
-  }
-  return `${size.toFixed(0)} ${units[i]}`
-}
+const formatTraffic = (bytes) => formatTrafficLimit(bytes, 0)
 
 const formatDate = (dateStr) => {
   if (!dateStr) return ''

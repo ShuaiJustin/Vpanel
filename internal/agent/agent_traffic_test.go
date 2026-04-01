@@ -16,6 +16,7 @@ import (
 type stubHeartbeatTrafficReporter struct {
 	snapshot     *TrafficSnapshot
 	records      []TrafficRecord
+	committed    map[string]int64
 	prepareCalls int
 	commitCalls  int
 }
@@ -27,6 +28,17 @@ func (s *stubHeartbeatTrafficReporter) PrepareDelta(ctx context.Context) (*Traff
 
 func (s *stubHeartbeatTrafficReporter) Commit(snapshot *TrafficSnapshot) {
 	s.commitCalls++
+	if snapshot != nil {
+		s.committed = cloneCommittedCounters(snapshot.counters)
+	}
+}
+
+func (s *stubHeartbeatTrafficReporter) ExportCommittedCounters() map[string]int64 {
+	return cloneCommittedCounters(s.committed)
+}
+
+func (s *stubHeartbeatTrafficReporter) RestoreCommittedCounters(counters map[string]int64) {
+	s.committed = cloneCommittedCounters(counters)
 }
 
 func TestAgentSendHeartbeatReusesPendingTrafficBatchUntilAcknowledged(t *testing.T) {
@@ -157,5 +169,84 @@ func TestAgentSendHeartbeatReusesPendingTrafficBatchUntilAcknowledged(t *testing
 	}
 	if !reflect.DeepEqual(heartbeatRequests[0].Traffic, heartbeatRequests[1].Traffic) {
 		t.Fatalf("expected retry heartbeat to resend identical traffic batch, got %+v and %+v", heartbeatRequests[0].Traffic, heartbeatRequests[1].Traffic)
+	}
+}
+
+func TestAgentPersistsTrafficStateAcrossRestart(t *testing.T) {
+	tempDir := t.TempDir()
+	proxyID := int64(17)
+
+	reporter := &stubHeartbeatTrafficReporter{
+		committed: map[string]int64{
+			"user>>>user-7-proxy-17>>>traffic>>>uplink": 111,
+		},
+	}
+
+	agent := &Agent{
+		config: &Config{
+			Node: NodeConfig{Token: "node-token"},
+			Panel: PanelConfig{URL: "https://panel.example.com"},
+			Xray: XrayConfig{BackupDir: tempDir, ConfigPath: tempDir + "/xray.json"},
+		},
+		logger:         logger.NewNopLogger(),
+		trafficReporter: reporter,
+		pendingTraffic: &pendingTrafficBatch{
+			batchID: "batch-1",
+			snapshot: &TrafficSnapshot{counters: map[string]int64{
+				"user>>>user-7-proxy-17>>>traffic>>>uplink": 222,
+			}},
+			records: []TrafficRecord{{UserID: 7, ProxyID: &proxyID, Upload: 50, Download: 10}},
+		},
+	}
+
+	agent.persistTrafficState()
+
+	restoredReporter := &stubHeartbeatTrafficReporter{}
+	restored := &Agent{
+		config: &Config{
+			Node: NodeConfig{Token: "node-token"},
+			Panel: PanelConfig{URL: "https://panel.example.com"},
+			Xray: XrayConfig{BackupDir: tempDir, ConfigPath: tempDir + "/xray.json"},
+		},
+		logger:         logger.NewNopLogger(),
+		trafficReporter: restoredReporter,
+	}
+
+	restored.restoreTrafficState()
+
+	if restored.pendingTraffic == nil {
+		t.Fatal("expected pending traffic batch to be restored")
+	}
+	if restored.pendingTraffic.batchID != "batch-1" {
+		t.Fatalf("expected restored batch id batch-1, got %q", restored.pendingTraffic.batchID)
+	}
+	if len(restored.pendingTraffic.records) != 1 || restored.pendingTraffic.records[0].Upload != 50 {
+		t.Fatalf("expected restored records to match persisted state, got %+v", restored.pendingTraffic.records)
+	}
+	if restoredReporter.committed["user>>>user-7-proxy-17>>>traffic>>>uplink"] != 111 {
+		t.Fatalf("expected committed counters to be restored, got %+v", restoredReporter.committed)
+	}
+
+	restored.acknowledgeHeartbeatTraffic("batch-1", restored.pendingTraffic.snapshot)
+	if restored.pendingTraffic != nil {
+		t.Fatal("expected pending traffic batch to be cleared after acknowledgement")
+	}
+
+	finalReporter := &stubHeartbeatTrafficReporter{}
+	finalAgent := &Agent{
+		config: &Config{
+			Node: NodeConfig{Token: "node-token"},
+			Panel: PanelConfig{URL: "https://panel.example.com"},
+			Xray: XrayConfig{BackupDir: tempDir, ConfigPath: tempDir + "/xray.json"},
+		},
+		logger:         logger.NewNopLogger(),
+		trafficReporter: finalReporter,
+	}
+	finalAgent.restoreTrafficState()
+	if finalAgent.pendingTraffic != nil {
+		t.Fatalf("expected no pending traffic after acknowledgement, got %+v", finalAgent.pendingTraffic)
+	}
+	if finalReporter.committed["user>>>user-7-proxy-17>>>traffic>>>uplink"] != 222 {
+		t.Fatalf("expected committed counters to advance to acknowledged snapshot, got %+v", finalReporter.committed)
 	}
 }

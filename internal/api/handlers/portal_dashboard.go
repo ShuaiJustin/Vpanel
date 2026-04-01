@@ -2,21 +2,29 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	"v/internal/database/repository"
+	"v/internal/entitlement"
 	"v/internal/logger"
 	"v/internal/portal/announcement"
 	"v/internal/portal/stats"
+	pkgerrors "v/pkg/errors"
 )
+
+type portalDashboardEntitlement interface {
+	EvaluateAccess(ctx context.Context, userID int64) (*entitlement.AccessState, error)
+}
 
 // PortalDashboardHandler handles portal dashboard requests.
 type PortalDashboardHandler struct {
 	userRepo            repository.UserRepository
 	statsService        *stats.Service
 	announcementService *announcement.Service
+	entitlement         portalDashboardEntitlement
 	logger              logger.Logger
 }
 
@@ -33,6 +41,12 @@ func NewPortalDashboardHandler(
 		announcementService: announcementService,
 		logger:              log,
 	}
+}
+
+// WithEntitlementService configures entitlement-aware dashboard traffic data.
+func (h *PortalDashboardHandler) WithEntitlementService(entitlementService portalDashboardEntitlement) *PortalDashboardHandler {
+	h.entitlement = entitlementService
+	return h
 }
 
 // GetDashboard returns dashboard data for the current user.
@@ -59,6 +73,22 @@ func (h *PortalDashboardHandler) GetDashboard(c *gin.Context) {
 		}
 	}
 
+	effectiveTrafficLimit := user.TrafficLimit
+	effectiveTrafficUsed := user.TrafficUsed
+	if h.entitlement != nil {
+		accessState, accessErr := h.entitlement.EvaluateAccess(c.Request.Context(), userID)
+		if accessState != nil {
+			effectiveTrafficLimit = accessState.EffectiveTrafficLimit
+			effectiveTrafficUsed = accessState.EffectiveTrafficUsed
+		}
+		if accessErr != nil && !pkgerrors.IsForbidden(accessErr) {
+			h.logger.Warn("failed to evaluate portal dashboard entitlement",
+				logger.F("user_id", userID),
+				logger.F("error", accessErr),
+			)
+		}
+	}
+
 	// Get unread announcement count
 	var unreadCount int64
 	if h.announcementService != nil {
@@ -70,8 +100,13 @@ func (h *PortalDashboardHandler) GetDashboard(c *gin.Context) {
 
 	// Calculate traffic percentage
 	var trafficPercentage float64
-	if user.TrafficLimit > 0 {
-		trafficPercentage = float64(user.TrafficUsed) / float64(user.TrafficLimit) * 100
+	if effectiveTrafficLimit > 0 {
+		trafficPercentage = float64(effectiveTrafficUsed) / float64(effectiveTrafficLimit) * 100
+	}
+
+	trafficLimitDisplay := stats.FormatBytes(effectiveTrafficLimit)
+	if effectiveTrafficLimit <= 0 {
+		trafficLimitDisplay = "不限流量"
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -84,11 +119,11 @@ func (h *PortalDashboardHandler) GetDashboard(c *gin.Context) {
 			"two_factor_enabled": user.TwoFactorEnabled,
 		},
 		"traffic": gin.H{
-			"used":       user.TrafficUsed,
-			"limit":      user.TrafficLimit,
+			"used":       effectiveTrafficUsed,
+			"limit":      effectiveTrafficLimit,
 			"percentage": trafficPercentage,
-			"used_str":   stats.FormatBytes(user.TrafficUsed),
-			"limit_str":  stats.FormatBytes(user.TrafficLimit),
+			"used_str":   stats.FormatBytes(effectiveTrafficUsed),
+			"limit_str":  trafficLimitDisplay,
 		},
 		"summary":              trafficSummary,
 		"unread_announcements": unreadCount,

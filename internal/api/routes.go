@@ -1380,7 +1380,8 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 	portalAuthHandler := handlers.NewPortalAuthHandler(portalAuthService, r.authService, r.repos.User, r.repos.Proxy, r.logger).
 		WithEmailSender(r.notificationService, r.config.GetBaseURL()).
 		WithEntitlementService(r.entitlementService)
-	portalDashboardHandler := handlers.NewPortalDashboardHandler(r.repos.User, statsService, announcementService, r.logger)
+	portalDashboardHandler := handlers.NewPortalDashboardHandler(r.repos.User, statsService, announcementService, r.logger).
+		WithEntitlementService(r.entitlementService)
 	portalNodeHandler := handlers.NewPortalNodeHandler(portalNodeService, r.nodeRecoveryTracker, r.logger)
 	portalTicketHandler := handlers.NewPortalTicketHandler(ticketService, r.logger)
 	portalAnnouncementHandler := handlers.NewPortalAnnouncementHandler(announcementService, r.logger)

@@ -122,6 +122,11 @@ func (s *Service) GetTrafficSummaryInRange(ctx context.Context, userID int64, st
 
 // GetDailyTraffic retrieves daily traffic for a user within a date range.
 func (s *Service) GetDailyTraffic(ctx context.Context, userID int64, days int) ([]*DailyTraffic, error) {
+	start, end := resolveRollingTrafficWindowAt(time.Now(), days)
+	return s.GetDailyTrafficInRange(ctx, userID, start, end)
+}
+
+func resolveRollingTrafficWindowAt(now time.Time, days int) (time.Time, time.Time) {
 	if days <= 0 {
 		days = 30
 	}
@@ -129,9 +134,17 @@ func (s *Service) GetDailyTraffic(ctx context.Context, userID int64, days int) (
 		days = 365
 	}
 
-	end := time.Now()
-	start := end.AddDate(0, 0, -days)
-	return s.GetDailyTrafficInRange(ctx, userID, start, end)
+	current := now
+	location := current.Location()
+	if location == nil {
+		location = time.Local
+		current = current.In(location)
+	}
+
+	start := time.Date(current.Year(), current.Month(), current.Day(), 0, 0, 0, 0, location).
+		AddDate(0, 0, -(days - 1))
+
+	return start, now
 }
 
 // GetDailyTrafficInRange retrieves daily traffic for a user within a time range.

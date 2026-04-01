@@ -632,7 +632,14 @@ func accessRevocationReason(err error) string {
 }
 
 func normalizeTrafficRecords(records []*TrafficRecord) []*TrafficRecord {
-	normalized := make([]*TrafficRecord, 0, len(records))
+	type trafficRecordKey struct {
+		nodeID  int64
+		userID  int64
+		proxyID int64
+	}
+
+	normalizedByKey := make(map[trafficRecordKey]*TrafficRecord, len(records))
+	orderedKeys := make([]trafficRecordKey, 0, len(records))
 	for _, record := range records {
 		if record == nil || record.UserID <= 0 || record.NodeID <= 0 {
 			continue
@@ -650,17 +657,37 @@ func normalizeTrafficRecords(records []*TrafficRecord) []*TrafficRecord {
 			continue
 		}
 
-		normalizedRecord := &TrafficRecord{
-			NodeID:   record.NodeID,
-			UserID:   record.UserID,
-			Upload:   upload,
-			Download: download,
-		}
+		proxyID := int64(0)
 		if record.ProxyID != nil && *record.ProxyID > 0 {
-			proxyID := *record.ProxyID
-			normalizedRecord.ProxyID = &proxyID
+			proxyID = *record.ProxyID
 		}
-		normalized = append(normalized, normalizedRecord)
+		key := trafficRecordKey{
+			nodeID:  record.NodeID,
+			userID:  record.UserID,
+			proxyID: proxyID,
+		}
+
+		normalizedRecord, exists := normalizedByKey[key]
+		if !exists {
+			normalizedRecord = &TrafficRecord{
+				NodeID: record.NodeID,
+				UserID: record.UserID,
+			}
+			if proxyID > 0 {
+				proxyIDCopy := proxyID
+				normalizedRecord.ProxyID = &proxyIDCopy
+			}
+			normalizedByKey[key] = normalizedRecord
+			orderedKeys = append(orderedKeys, key)
+		}
+
+		normalizedRecord.Upload += upload
+		normalizedRecord.Download += download
+	}
+
+	normalized := make([]*TrafficRecord, 0, len(orderedKeys))
+	for _, key := range orderedKeys {
+		normalized = append(normalized, normalizedByKey[key])
 	}
 	return normalized
 }

@@ -131,15 +131,11 @@
               </div>
               <div class="traffic-item">
                 <span class="item-label">总流量</span>
-                <span class="item-value">{{
-                  formatTraffic(userStore.trafficLimit)
-                }}</span>
+                <span class="item-value">{{ totalTrafficDisplay }}</span>
               </div>
               <div class="traffic-item">
                 <span class="item-label">剩余流量</span>
-                <span class="item-value">{{
-                  formatTraffic(remainingTraffic)
-                }}</span>
+                <span class="item-value">{{ remainingTrafficDisplay }}</span>
               </div>
             </div>
           </div>
@@ -276,6 +272,12 @@ import { usePortalAnnouncementsStore } from "@/stores/portalAnnouncements";
 import PauseCard from "@/components/user/PauseCard.vue";
 import TrialCard from "@/components/user/TrialCard.vue";
 import api from "@/api/base";
+import {
+  formatRemainingTraffic,
+  formatTrafficBytes,
+  formatTrafficLimit,
+  isUnlimitedTrafficLimit,
+} from "@/utils/traffic";
 
 const router = useRouter();
 const userStore = useUserPortalStore();
@@ -360,12 +362,18 @@ const primaryActionIcon = computed(() => {
   return !hasCurrentPlan.value || isExpiredEntitlement.value ? ShoppingCart : Link;
 });
 
-const remainingTraffic = computed(() => {
-  return Math.max(0, userStore.trafficLimit - userStore.trafficUsed);
+const isUnlimitedTraffic = computed(() => isUnlimitedTrafficLimit(userStore.trafficLimit));
+
+const totalTrafficDisplay = computed(() => {
+  return formatTrafficLimit(userStore.trafficLimit);
+});
+
+const remainingTrafficDisplay = computed(() => {
+  return formatRemainingTraffic(userStore.trafficLimit, userStore.trafficUsed);
 });
 
 const rawTrafficPercent = computed(() => {
-  if (!userStore.trafficLimit) return 0;
+  if (isUnlimitedTraffic.value || !userStore.trafficLimit) return 0;
   return Math.min(100, (userStore.trafficUsed / userStore.trafficLimit) * 100);
 });
 
@@ -376,6 +384,8 @@ const trafficPercentValue = computed(() => {
 });
 
 const trafficPercentDisplay = computed(() => {
+  if (isUnlimitedTraffic.value) return "不限";
+
   const percent = rawTrafficPercent.value;
   if (percent <= 0) return "0%";
   if (percent < 0.1) return "<0.1%";
@@ -400,6 +410,8 @@ const trafficRefreshHint = computed(() => {
 });
 
 const trafficProgressColor = computed(() => {
+  if (isUnlimitedTraffic.value) return "#67c23a";
+
   const percent = rawTrafficPercent.value;
   if (percent >= 90) return "#f56c6c";
   if (percent >= 70) return "#e6a23c";
@@ -427,17 +439,7 @@ function formatDate(dateStr) {
   });
 }
 
-function formatTraffic(bytes) {
-  if (!bytes || bytes === 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let i = 0;
-  let size = bytes;
-  while (size >= 1024 && i < units.length - 1) {
-    size /= 1024;
-    i++;
-  }
-  return `${size.toFixed(2)} ${units[i]}`;
-}
+const formatTraffic = formatTrafficBytes;
 
 function getCategoryType(category) {
   const types = {

@@ -162,6 +162,30 @@ func TestResolveRangeUsesCalendarBoundaries(t *testing.T) {
 	})
 }
 
+func TestResolveRollingTrafficWindowAtUsesExactDayCount(t *testing.T) {
+	loc := time.FixedZone("CST", 8*60*60)
+	now := time.Date(2026, time.March, 31, 21, 30, 0, 0, loc)
+
+	t.Run("single day includes today only", func(t *testing.T) {
+		start, end := resolveRollingTrafficWindowAt(now, 1)
+		expectedStart := time.Date(2026, time.March, 31, 0, 0, 0, 0, loc)
+		if !start.Equal(expectedStart) {
+			t.Fatalf("expected start %v, got %v", expectedStart, start)
+		}
+		if !end.Equal(now) {
+			t.Fatalf("expected end %v, got %v", now, end)
+		}
+	})
+
+	t.Run("seven days includes today and previous six days", func(t *testing.T) {
+		start, _ := resolveRollingTrafficWindowAt(now, 7)
+		expectedStart := time.Date(2026, time.March, 25, 0, 0, 0, 0, loc)
+		if !start.Equal(expectedStart) {
+			t.Fatalf("expected start %v, got %v", expectedStart, start)
+		}
+	})
+}
+
 func TestGetPeriodDays(t *testing.T) {
 	tests := []struct {
 		period   string

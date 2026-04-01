@@ -496,6 +496,8 @@ func (g *ConfigGenerator) generateTrojanSettings(proxy *repository.Proxy, settin
 func (g *ConfigGenerator) generateShadowsocksSettings(proxy *repository.Proxy, settings map[string]any) map[string]any {
 	result := map[string]any{
 		"network": "tcp,udp",
+		"level":   0,
+		"email":   fmt.Sprintf("user-%d-proxy-%d", proxy.UserID, proxy.ID),
 	}
 
 	// Extract method and password

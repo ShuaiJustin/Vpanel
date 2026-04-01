@@ -378,6 +378,73 @@ func TestTrafficService_RecordTrafficBatchPersistsGlobalTrafficWithoutProxyID(t 
 	}
 }
 
+func TestTrafficService_RecordTrafficBatchAggregatesDuplicateRecords(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+	nodeID := int64(52)
+	proxyID := int64(19)
+
+	service := NewTrafficService(
+		db,
+		repository.NewNodeTrafficRepository(db),
+		repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db),
+		repository.NewUserRepository(db),
+		repository.NewNodeRepository(db),
+		nil,
+		logger.NewNopLogger(),
+	)
+
+	if err := db.Create(&repository.Node{ID: nodeID, Name: "aggregate-node", Address: "127.0.0.1", Status: repository.NodeStatusOnline}).Error; err != nil {
+		t.Fatalf("failed to seed node: %v", err)
+	}
+	if err := db.Create(&repository.User{ID: 1, Username: "aggregate-user", PasswordHash: "x"}).Error; err != nil {
+		t.Fatalf("failed to seed user: %v", err)
+	}
+
+	records := []*TrafficRecord{
+		{NodeID: nodeID, UserID: 1, ProxyID: &proxyID, Upload: 100, Download: 20},
+		{NodeID: nodeID, UserID: 1, ProxyID: &proxyID, Upload: 50, Download: 10},
+	}
+	if err := service.RecordTrafficBatch(ctx, records); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	var nodeTrafficRows int64
+	if err := db.Model(&repository.NodeTraffic{}).Count(&nodeTrafficRows).Error; err != nil {
+		t.Fatalf("failed to count node traffic rows: %v", err)
+	}
+	if nodeTrafficRows != 1 {
+		t.Fatalf("expected 1 aggregated node traffic row, got %d", nodeTrafficRows)
+	}
+
+	var globalTrafficRows int64
+	if err := db.Model(&repository.Traffic{}).Count(&globalTrafficRows).Error; err != nil {
+		t.Fatalf("failed to count traffic rows: %v", err)
+	}
+	if globalTrafficRows != 1 {
+		t.Fatalf("expected 1 aggregated global traffic row, got %d", globalTrafficRows)
+	}
+
+	userRepo := repository.NewUserRepository(db)
+	updatedUser, err := userRepo.GetByID(ctx, 1)
+	if err != nil {
+		t.Fatalf("failed to load updated user: %v", err)
+	}
+	if updatedUser.TrafficUsed != 180 {
+		t.Fatalf("expected traffic_used 180, got %d", updatedUser.TrafficUsed)
+	}
+
+	nodeRepo := repository.NewNodeRepository(db)
+	updatedNode, err := nodeRepo.GetByID(ctx, nodeID)
+	if err != nil {
+		t.Fatalf("failed to load updated node: %v", err)
+	}
+	if updatedNode.TrafficTotal != 180 {
+		t.Fatalf("expected traffic_total 180, got %d", updatedNode.TrafficTotal)
+	}
+}
+
 func TestTrafficService_ProcessMonthlyTrafficResets_InitializesMissingResetAt(t *testing.T) {
 	db := setupTrafficServiceTestDB(t)
 	ctx := context.Background()

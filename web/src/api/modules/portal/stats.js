@@ -29,14 +29,6 @@ export function getUsageStats(params = {}) {
 }
 
 /**
- * 获取仪表板统计摘要
- * @returns {Promise}
- */
-export function getDashboardStats() {
-  return api.get('/portal/dashboard')
-}
-
-/**
  * 导出统计数据
  * @param {Object} [params] - 查询参数
  * @param {string} [params.format] - 导出格式 (csv, json)
@@ -55,6 +47,5 @@ export function exportStats(params = {}) {
 export default {
   getTrafficStats,
   getUsageStats,
-  getDashboardStats,
   exportStats
 }

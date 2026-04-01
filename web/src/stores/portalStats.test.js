@@ -4,7 +4,6 @@ import { createPinia, setActivePinia } from 'pinia'
 const portalStatsMocks = vi.hoisted(() => ({
   getTrafficStats: vi.fn(),
   getUsageStats: vi.fn(),
-  getDashboardStats: vi.fn(),
   exportStats: vi.fn(),
 }))
 
@@ -12,7 +11,6 @@ vi.mock('@/api/modules/portal', () => ({
   stats: {
     getTrafficStats: portalStatsMocks.getTrafficStats,
     getUsageStats: portalStatsMocks.getUsageStats,
-    getDashboardStats: portalStatsMocks.getDashboardStats,
     exportStats: portalStatsMocks.exportStats,
   },
 }))

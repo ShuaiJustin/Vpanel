@@ -7,7 +7,7 @@
           使用统计
         </h1>
         <p class="page-subtitle">
-          查看您的流量使用情况和历史记录
+          查看您的流量使用情况和每日汇总记录
         </p>
         <p class="page-hint">
           {{ statsRefreshHint }}
@@ -26,8 +26,8 @@
     <!-- 时间范围选择 -->
     <div class="time-selector">
       <el-radio-group
-        v-model="timeRange"
-        @change="loadStats"
+        v-model="presetTimeRange"
+        @change="handlePresetRangeChange"
       >
         <el-radio-button value="day">
           今日
@@ -268,7 +268,7 @@
       shadow="never"
     >
       <template #header>
-        <span>详细记录</span>
+        <span>每日汇总</span>
       </template>
 
       <div class="table-wrap">
@@ -321,6 +321,7 @@ import { usePortalStatsStore } from '@/stores/portalStats'
 import Chart from 'chart.js/auto'
 import { extractErrorMessage } from '@/utils/entitlement'
 import { useViewport } from '@/composables/useViewport'
+import { buildPortalStatsParams, formatTrafficBytes } from '@/utils/traffic'
 
 const statsStore = usePortalStatsStore()
 const { isMobile } = useViewport()
@@ -334,7 +335,7 @@ let protocolChartInstance = null
 // 状态
 const loading = ref(false)
 const exporting = ref(false)
-const timeRange = ref('week')
+const presetTimeRange = ref('week')
 const customRange = ref(null)
 const chartType = ref('line')
 const statsUpdatedAt = ref(null)
@@ -403,23 +404,24 @@ const dateShortcuts = [
 ]
 
 // 方法
-function formatTraffic(bytes) {
-  if (!bytes || bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let i = 0
-  let size = bytes
-  while (size >= 1024 && i < units.length - 1) {
-    size /= 1024
-    i++
-  }
-  return `${size.toFixed(2)} ${units[i]}`
+const formatTraffic = formatTrafficBytes
+
+function buildStatsQueryParams() {
+  return buildPortalStatsParams(presetTimeRange.value, customRange.value)
 }
 
 function handleCustomRange(range) {
   if (range?.length === 2) {
-    timeRange.value = 'custom'
     loadStats()
+    return
   }
+
+  loadStats()
+}
+
+function handlePresetRangeChange() {
+  customRange.value = null
+  loadStats()
 }
 
 async function loadStats(options = {}) {
@@ -433,11 +435,7 @@ async function loadStats(options = {}) {
   try {
     statsRefreshInFlight.value = true
 
-    const params = { period: timeRange.value }
-    if (timeRange.value === 'custom' && customRange.value?.length === 2) {
-      params.start_date = customRange.value[0]
-      params.end_date = customRange.value[1]
-    }
+    const params = buildStatsQueryParams()
 
     const data = await statsStore.fetchStats(params)
 
@@ -527,7 +525,13 @@ function renderTrafficChart() {
 }
 
 function renderProtocolChart() {
-  if (!protocolChart.value || protocolUsage.value.length === 0) return
+  if (!protocolChart.value || protocolUsage.value.length === 0) {
+    if (protocolChartInstance) {
+      protocolChartInstance.destroy()
+      protocolChartInstance = null
+    }
+    return
+  }
 
   if (protocolChartInstance) {
     protocolChartInstance.destroy()
@@ -571,12 +575,7 @@ function renderProtocolChart() {
 async function exportData() {
   exporting.value = true
   try {
-    const params = { period: timeRange.value }
-    if (timeRange.value === 'custom' && customRange.value?.length === 2) {
-      params.start_date = customRange.value[0]
-      params.end_date = customRange.value[1]
-    }
-    await statsStore.exportStats(params)
+    await statsStore.exportStats(buildStatsQueryParams())
     ElMessage.success('数据导出成功')
   } catch (error) {
     ElMessage.error(extractErrorMessage(error) || '导出失败')

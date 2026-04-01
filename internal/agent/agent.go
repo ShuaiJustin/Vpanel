@@ -32,10 +32,28 @@ type heartbeatTrafficReporter interface {
 	Commit(snapshot *TrafficSnapshot)
 }
 
+type heartbeatTrafficStateReporter interface {
+	heartbeatTrafficReporter
+	ExportCommittedCounters() map[string]int64
+	RestoreCommittedCounters(map[string]int64)
+}
+
 type pendingTrafficBatch struct {
 	batchID  string
 	snapshot *TrafficSnapshot
 	records  []TrafficRecord
+}
+
+type persistedTrafficState struct {
+	CommittedCounters map[string]int64               `json:"committed_counters,omitempty"`
+	PendingBatch      *persistedPendingTrafficBatch  `json:"pending_batch,omitempty"`
+}
+
+type persistedPendingTrafficBatch struct {
+	BatchID  string          `json:"batch_id"`
+	Snapshot *TrafficSnapshot `json:"-"`
+	Counters map[string]int64 `json:"counters,omitempty"`
+	Records  []TrafficRecord `json:"records,omitempty"`
 }
 
 // Agent represents the Node Agent that runs on each Xray node.
@@ -175,6 +193,7 @@ func New(cfg *Config, log logger.Logger) (*Agent, error) {
 	// Initialize command executor
 	agent.commandExecutor = NewCommandExecutor(agent, log)
 	agent.trafficReporter = newTrafficReporter(cfg.Xray, log)
+	agent.restoreTrafficState()
 
 	return agent, nil
 }
@@ -461,6 +480,7 @@ func (a *Agent) prepareHeartbeatTraffic(nodeID int64) (*TrafficSnapshot, []Traff
 	a.mu.Lock()
 	a.pendingTraffic = pending
 	a.mu.Unlock()
+	a.persistTrafficState()
 
 	return snapshot, cloneTrafficRecords(records), batchID, nil
 }
@@ -480,6 +500,7 @@ func (a *Agent) acknowledgeHeartbeatTraffic(batchID string, snapshot *TrafficSna
 		a.pendingTraffic = nil
 	}
 	a.mu.Unlock()
+	a.persistTrafficState()
 }
 
 func (a *Agent) loadPendingTrafficBatch() *pendingTrafficBatch {
@@ -577,6 +598,150 @@ func cloneTrafficRecords(records []TrafficRecord) []TrafficRecord {
 		}
 	}
 	return cloned
+}
+
+func cloneTrafficSnapshot(snapshot *TrafficSnapshot) *TrafficSnapshot {
+	if snapshot == nil {
+		return nil
+	}
+
+	clonedCounters := make(map[string]int64, len(snapshot.counters))
+	for name, value := range snapshot.counters {
+		clonedCounters[name] = value
+	}
+
+	return &TrafficSnapshot{counters: clonedCounters}
+}
+
+func cloneCommittedCounters(counters map[string]int64) map[string]int64 {
+	if len(counters) == 0 {
+		return nil
+	}
+
+	cloned := make(map[string]int64, len(counters))
+	for name, value := range counters {
+		cloned[name] = value
+	}
+	return cloned
+}
+
+func (a *Agent) trafficStatePath() string {
+	if a == nil || a.config == nil {
+		return ""
+	}
+
+	stateDir := strings.TrimSpace(a.config.Xray.BackupDir)
+	if stateDir == "" {
+		stateDir = filepath.Dir(a.config.Xray.ConfigPath)
+	}
+	if strings.TrimSpace(stateDir) == "" {
+		return ""
+	}
+
+	return filepath.Join(stateDir, "traffic-state.json")
+}
+
+func (a *Agent) restoreTrafficState() {
+	stateReporter, ok := a.trafficReporter.(heartbeatTrafficStateReporter)
+	if a == nil || !ok {
+		return
+	}
+
+	path := a.trafficStatePath()
+	if path == "" {
+		return
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			a.logger.Warn("failed to read persisted traffic state", logger.F("path", path), logger.F("error", err.Error()))
+		}
+		return
+	}
+
+	var state persistedTrafficState
+	if err := json.Unmarshal(data, &state); err != nil {
+		a.logger.Warn("failed to parse persisted traffic state", logger.F("path", path), logger.F("error", err.Error()))
+		return
+	}
+
+	stateReporter.RestoreCommittedCounters(state.CommittedCounters)
+	if state.PendingBatch != nil {
+		a.pendingTraffic = &pendingTrafficBatch{
+			batchID: state.PendingBatch.BatchID,
+			snapshot: &TrafficSnapshot{
+				counters: cloneCommittedCounters(state.PendingBatch.Counters),
+			},
+			records: cloneTrafficRecords(state.PendingBatch.Records),
+		}
+		if len(state.PendingBatch.Counters) == 0 {
+			a.pendingTraffic.snapshot = nil
+		}
+	}
+
+	a.logger.Info("restored persisted traffic state",
+		logger.F("path", path),
+		logger.F("committed_counters", len(state.CommittedCounters)),
+		logger.F("has_pending_batch", state.PendingBatch != nil),
+	)
+}
+
+func (a *Agent) persistTrafficState() {
+	stateReporter, ok := a.trafficReporter.(heartbeatTrafficStateReporter)
+	if a == nil || !ok {
+		return
+	}
+
+	path := a.trafficStatePath()
+	if path == "" {
+		return
+	}
+
+	state := persistedTrafficState{
+		CommittedCounters: cloneCommittedCounters(stateReporter.ExportCommittedCounters()),
+	}
+
+	pending := a.loadPendingTrafficBatch()
+	if pending != nil {
+		counters := map[string]int64(nil)
+		if pending.snapshot != nil {
+			counters = cloneCommittedCounters(pending.snapshot.counters)
+		}
+		state.PendingBatch = &persistedPendingTrafficBatch{
+			BatchID:  pending.batchID,
+			Counters: counters,
+			Records:  cloneTrafficRecords(pending.records),
+		}
+	}
+
+	if len(state.CommittedCounters) == 0 && state.PendingBatch == nil {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			a.logger.Warn("failed to remove persisted traffic state", logger.F("path", path), logger.F("error", err.Error()))
+		}
+		return
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		a.logger.Warn("failed to ensure traffic state directory", logger.F("path", path), logger.F("error", err.Error()))
+		return
+	}
+
+	data, err := json.Marshal(state)
+	if err != nil {
+		a.logger.Warn("failed to marshal traffic state", logger.F("path", path), logger.F("error", err.Error()))
+		return
+	}
+
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0o600); err != nil {
+		a.logger.Warn("failed to write temporary traffic state", logger.F("path", tmpPath), logger.F("error", err.Error()))
+		return
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		_ = os.Remove(tmpPath)
+		a.logger.Warn("failed to persist traffic state", logger.F("path", path), logger.F("error", err.Error()))
+	}
 }
 
 func (a *Agent) markPermanentAuthFailure(err error) {

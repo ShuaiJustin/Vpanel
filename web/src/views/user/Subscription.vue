@@ -54,7 +54,7 @@
                 </span>
               </el-descriptions-item>
               <el-descriptions-item label="已用流量">
-                {{ formatTraffic(trafficUsed) }} / {{ formatTraffic(trafficLimit) }}
+                {{ trafficUsageDisplay }}
               </el-descriptions-item>
               <el-descriptions-item label="可用节点">
                 {{ availableNodes }} 个
@@ -290,6 +290,7 @@ import QRCode from 'qrcode'
 import { copyText } from '@/utils/clipboard'
 import { useViewport } from '@/composables/useViewport'
 import { extractErrorMessage, getNoEntitlementMessage, isNoEntitlementError } from '@/utils/entitlement'
+import { formatTrafficBytes, formatTrafficLimit } from '@/utils/traffic'
 
 const router = useRouter()
 const userStore = useUserPortalStore()
@@ -357,6 +358,7 @@ const expiryDisplayText = computed(() => {
 const daysUntilExpiry = computed(() => userStore.daysUntilExpiry)
 const trafficUsed = computed(() => userStore.trafficUsed)
 const trafficLimit = computed(() => userStore.trafficLimit)
+const trafficUsageDisplay = computed(() => `${formatTrafficBytes(trafficUsed.value)} / ${formatTrafficLimit(trafficLimit.value)}`)
 const availableNodes = computed(() => userStore.availableNodes || 0)
 const secondaryPlanActionLabel = computed(() => (hasCurrentPlan.value ? '续费套餐' : '购买套餐'))
 const noEntitlementMessage = computed(() => {
@@ -381,18 +383,6 @@ const subscriptionRefreshHint = computed(() => {
 })
 
 // 方法
-function formatTraffic(bytes) {
-  if (!bytes || bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let i = 0
-  let size = bytes
-  while (size >= 1024 && i < units.length - 1) {
-    size /= 1024
-    i++
-  }
-  return `${size.toFixed(2)} ${units[i]}`
-}
-
 async function loadSubscription(options = {}) {
   if (subscriptionRefreshInFlight.value) return
 

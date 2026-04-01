@@ -11,12 +11,8 @@ export const usePortalStatsStore = defineStore('portalStats', () => {
   // 状态
   const trafficStats = ref([])
   const usageStats = ref({ by_node: [], by_protocol: [] })
-  const dashboardStats = ref(null)
   const loading = ref(false)
   const error = ref(null)
-
-  // 时间周期
-  const period = ref('day') // day, week, month
 
   // 计算属性
   const totalUpload = computed(() => {
@@ -114,69 +110,9 @@ export const usePortalStatsStore = defineStore('portalStats', () => {
     }
   }
 
-  async function fetchTrafficStats(params = {}) {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await statsApi.getTrafficStats({
-        period: period.value,
-        ...params
-      })
-      // 确保 trafficStats 是数组
-      const data = response.data || response
-      trafficStats.value = Array.isArray(data?.daily) ? data.daily : []
-      return response
-    } catch (err) {
-      const normalizedError = toNormalizedError(err, '获取流量统计失败')
-      error.value = normalizedError.message
-      trafficStats.value = []
-      throw normalizedError
-    } finally {
-      loading.value = false
-    }
-  }
-
-  async function fetchUsageStats(params = {}) {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await statsApi.getUsageStats({
-        period: period.value,
-        ...params
-      })
-      usageStats.value = response.data || response
-      return response
-    } catch (err) {
-      const normalizedError = toNormalizedError(err, '获取使用统计失败')
-      error.value = normalizedError.message
-      usageStats.value = { by_node: [], by_protocol: [] }
-      throw normalizedError
-    } finally {
-      loading.value = false
-    }
-  }
-
-  async function fetchDashboardStats() {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await statsApi.getDashboardStats()
-      dashboardStats.value = response?.data || response
-      return response
-    } catch (err) {
-      const normalizedError = toNormalizedError(err, '获取仪表板统计失败')
-      error.value = normalizedError.message
-      dashboardStats.value = null
-      throw normalizedError
-    } finally {
-      loading.value = false
-    }
-  }
-
   async function exportStats(params = {}) {
     try {
       const blob = await statsApi.exportStats({
-        period: period.value,
         format: 'csv',
         ...params
       })
@@ -198,47 +134,12 @@ export const usePortalStatsStore = defineStore('portalStats', () => {
     }
   }
 
-  function setPeriod(newPeriod) {
-    period.value = newPeriod
-  }
-
-  function formatBytes(bytes) {
-    if (bytes === 0) return '0 B'
-    const k = 1024
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-  }
-
-  function getChartData() {
-    const stats = Array.isArray(trafficStats.value) ? trafficStats.value : []
-    return {
-      labels: stats.map(item => item.date || item.time),
-      datasets: [
-        {
-          label: '上传',
-          data: stats.map(item => item.upload || 0),
-          borderColor: '#67c23a',
-          backgroundColor: 'rgba(103, 194, 58, 0.1)'
-        },
-        {
-          label: '下载',
-          data: stats.map(item => item.download || 0),
-          borderColor: '#409eff',
-          backgroundColor: 'rgba(64, 158, 255, 0.1)'
-        }
-      ]
-    }
-  }
-
   return {
     // 状态
     trafficStats,
     usageStats,
-    dashboardStats,
     loading,
     error,
-    period,
     // 计算属性
     totalUpload,
     totalDownload,
@@ -246,12 +147,6 @@ export const usePortalStatsStore = defineStore('portalStats', () => {
     peakUsage,
     // 方法
     fetchStats,
-    fetchTrafficStats,
-    fetchUsageStats,
-    fetchDashboardStats,
-    exportStats,
-    setPeriod,
-    formatBytes,
-    getChartData
+    exportStats
   }
 })

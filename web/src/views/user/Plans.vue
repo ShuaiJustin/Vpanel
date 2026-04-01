@@ -72,7 +72,7 @@
 
         <!-- 功能列表 -->
         <ul class="plan-features">
-          <li v-if="plan.traffic_limit">
+          <li>
             <el-icon><Check /></el-icon>
             流量 {{ formatTraffic(plan.traffic_limit) }}
           </li>
@@ -117,6 +117,7 @@ import { ElMessage } from 'element-plus'
 import { Star, Check } from '@element-plus/icons-vue'
 import { usePlanStore } from '@/stores/plan'
 import { extractErrorMessage } from '@/utils/entitlement'
+import { formatTrafficLimit } from '@/utils/traffic'
 
 const router = useRouter()
 const planStore = usePlanStore()
@@ -134,17 +135,7 @@ const formatMonthlyPrice = (plan) => {
   return formatPrice(Math.round(price / (plan.duration / 30)))
 }
 
-const formatTraffic = (bytes) => {
-  if (!bytes || bytes === 0) return '无限制'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let i = 0
-  let size = bytes
-  while (size >= 1024 && i < units.length - 1) {
-    size /= 1024
-    i++
-  }
-  return `${size.toFixed(0)} ${units[i]}`
-}
+const formatTraffic = (bytes) => formatTrafficLimit(bytes, 0)
 
 const selectPlan = (plan) => {
   router.push({

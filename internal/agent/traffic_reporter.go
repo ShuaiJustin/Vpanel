@@ -39,6 +39,27 @@ type trafficReporter struct {
 	lastCommitted map[string]int64
 }
 
+func (r *trafficReporter) ExportCommittedCounters() map[string]int64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	cloned := make(map[string]int64, len(r.lastCommitted))
+	for name, value := range r.lastCommitted {
+		cloned[name] = value
+	}
+	return cloned
+}
+
+func (r *trafficReporter) RestoreCommittedCounters(counters map[string]int64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.lastCommitted = make(map[string]int64, len(counters))
+	for name, value := range counters {
+		r.lastCommitted[name] = value
+	}
+}
+
 type xrayRuntimeConfig struct {
 	API *struct {
 		Tag string `json:"tag"`

@@ -49,6 +49,27 @@ func TestGenerateInbounds_UsesResolvedAPIPort(t *testing.T) {
 	assert.Equal(t, 63004, inbounds[0].Port)
 }
 
+func TestGenerateShadowsocksSettings_EnablesPerUserStatsIdentity(t *testing.T) {
+	generator := &ConfigGenerator{logger: logger.NewNopLogger()}
+	proxy := &repository.Proxy{
+		ID:       9,
+		UserID:   21,
+		Protocol: "shadowsocks",
+		Port:     8388,
+		Settings: map[string]any{
+			"method":   "aes-256-gcm",
+			"password": "secret",
+		},
+	}
+
+	settings := generator.generateShadowsocksSettings(proxy, proxy.Settings)
+
+	assert.Equal(t, "aes-256-gcm", settings["method"])
+	assert.Equal(t, "secret", settings["password"])
+	assert.Equal(t, 0, settings["level"])
+	assert.Equal(t, "user-21-proxy-9", settings["email"])
+}
+
 func TestGenerateOutbounds_UsesDirectAsDefaultOutbound(t *testing.T) {
 	generator := &ConfigGenerator{logger: logger.NewNopLogger()}
 
