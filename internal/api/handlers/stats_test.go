@@ -755,3 +755,84 @@ func TestTrafficPeriodFiltering_EmptyRange(t *testing.T) {
 	assert.Equal(t, int64(0), upload, "Empty range should have 0 upload")
 	assert.Equal(t, int64(0), download, "Empty range should have 0 download")
 }
+
+func TestStatsHandler_GetTrafficStatsRejectsEndBeforeStart(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupStatsTestDB(t)
+	repos := repository.NewRepositories(db)
+	handler := NewStatsHandler(logger.NewNopLogger(), repos, nil)
+
+	router := gin.New()
+	router.GET("/stats/traffic", handler.GetTrafficStats)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/stats/traffic?start=2026-03-21T10:00:00Z&end=2026-03-21T09:00:00Z",
+		nil,
+	)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestStatsHandler_GetProtocolStatsSupportsCustomRangeAndUnknownTraffic(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupStatsTestDB(t)
+	repos := repository.NewRepositories(db)
+	handler := NewStatsHandler(logger.NewNopLogger(), repos, nil)
+
+	require.NoError(t, db.Create(&repository.Proxy{
+		ID:       1,
+		UserID:   1,
+		Name:     "vmess-proxy",
+		Protocol: "vmess",
+		Port:     10001,
+		Enabled:  true,
+	}).Error)
+
+	inRange := time.Date(2026, time.March, 21, 12, 0, 0, 0, time.UTC)
+	outOfRange := time.Date(2026, time.March, 22, 12, 0, 0, 0, time.UTC)
+	for _, record := range []*repository.Traffic{
+		{UserID: 1, ProxyID: 1, Upload: 100, Download: 200, RecordedAt: inRange},
+		{UserID: 1, ProxyID: 1, Upload: 900, Download: 900, RecordedAt: outOfRange},
+		{UserID: 1, ProxyID: 0, Upload: 50, Download: 60, RecordedAt: inRange},
+	} {
+		require.NoError(t, db.Create(record).Error)
+	}
+
+	router := gin.New()
+	router.GET("/stats/protocol", handler.GetProtocolStats)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/stats/protocol?start=2026-03-21T00:00:00Z&end=2026-03-21T23:59:59Z",
+		nil,
+	)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var response struct {
+		Code int             `json:"code"`
+		Data []ProtocolStats `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Equal(t, 200, response.Code)
+
+	statsByProtocol := make(map[string]ProtocolStats)
+	for _, item := range response.Data {
+		statsByProtocol[item.Protocol] = item
+	}
+
+	vmess, ok := statsByProtocol["vmess"]
+	require.True(t, ok, "expected vmess protocol bucket")
+	assert.Equal(t, int64(1), vmess.Count)
+	assert.Equal(t, int64(300), vmess.Traffic)
+
+	unknown, ok := statsByProtocol["unknown"]
+	require.True(t, ok, "expected unknown protocol bucket")
+	assert.Equal(t, int64(0), unknown.Count)
+	assert.Equal(t, int64(110), unknown.Traffic)
+}

@@ -60,6 +60,23 @@ func (User) TableName() string {
 	return "users"
 }
 
+// UserListFilter describes supported filters for admin user listing.
+type UserListFilter struct {
+	Search string
+	Role   string
+	Status string
+	Limit  int
+	Offset int
+}
+
+// UserListSummary contains aggregated counts for admin user list filters.
+type UserListSummary struct {
+	Total    int64
+	Admin    int64
+	Enabled  int64
+	Disabled int64
+}
+
 // BeforeDelete cleans up user-owned runtime resources before the user row is removed.
 func (u *User) BeforeDelete(tx *gorm.DB) error {
 	if u == nil || u.ID == 0 {
@@ -231,6 +248,7 @@ type TrafficRepository interface {
 	GetByDateRange(ctx context.Context, start, end time.Time) ([]*Traffic, error)
 	GetTotalByUser(ctx context.Context, userID int64) (upload, download int64, err error)
 	GetTotalByProxy(ctx context.Context, proxyID int64) (upload, download int64, err error)
+	DeleteOlderThan(ctx context.Context, before time.Time) (int64, error)
 	// Statistics methods
 	GetTotalTraffic(ctx context.Context) (upload, download int64, err error)
 	GetTotalTrafficByPeriod(ctx context.Context, start, end time.Time) (upload, download int64, err error)

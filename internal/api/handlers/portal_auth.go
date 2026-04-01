@@ -309,10 +309,11 @@ func (h *PortalAuthHandler) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"token": result.Token,
 		"user": gin.H{
-			"id":       result.UserID,
-			"username": result.Username,
-			"email":    result.Email,
-			"role":     result.Role,
+			"id":                    result.UserID,
+			"username":              result.Username,
+			"email":                 result.Email,
+			"role":                  result.Role,
+			"force_password_change": result.ForcePasswordChange,
 		},
 	})
 }
@@ -520,18 +521,19 @@ func (h *PortalAuthHandler) GetProfile(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"id":                 user.ID,
-		"username":           user.Username,
-		"email":              user.Email,
-		"role":               user.Role,
-		"enabled":            user.Enabled,
-		"status":             status,
-		"traffic_limit":      effectiveTrafficLimit,
-		"traffic_used":       effectiveTrafficUsed,
-		"expires_at":         effectiveExpiresAt,
-		"two_factor_enabled": user.TwoFactorEnabled,
-		"available_nodes":    availableNodes,
-		"created_at":         user.CreatedAt,
+		"id":                    user.ID,
+		"username":              user.Username,
+		"email":                 user.Email,
+		"role":                  user.Role,
+		"enabled":               user.Enabled,
+		"status":                status,
+		"force_password_change": user.ForcePasswordChange,
+		"traffic_limit":         effectiveTrafficLimit,
+		"traffic_used":          effectiveTrafficUsed,
+		"expires_at":            effectiveExpiresAt,
+		"two_factor_enabled":    user.TwoFactorEnabled,
+		"available_nodes":       availableNodes,
+		"created_at":            user.CreatedAt,
 	})
 }
 
@@ -698,10 +700,11 @@ func (h *PortalAuthHandler) Verify2FALogin(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"token": result.Token,
 		"user": gin.H{
-			"id":       result.UserID,
-			"username": result.Username,
-			"email":    result.Email,
-			"role":     result.Role,
+			"id":                    result.UserID,
+			"username":              result.Username,
+			"email":                 result.Email,
+			"role":                  result.Role,
+			"force_password_change": result.ForcePasswordChange,
 		},
 	})
 }

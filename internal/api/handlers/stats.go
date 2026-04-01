@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -52,9 +53,9 @@ func getRequestID(c *gin.Context) string {
 }
 
 func parseStatsRange(c *gin.Context) (string, time.Time, time.Time, bool, *errors.AppError) {
-	period := c.DefaultQuery("period", "today")
-	startStr := c.Query("start")
-	endStr := c.Query("end")
+	period := strings.TrimSpace(c.DefaultQuery("period", "today"))
+	startStr := strings.TrimSpace(c.Query("start"))
+	endStr := strings.TrimSpace(c.Query("end"))
 
 	if period == "custom" || startStr != "" || endStr != "" {
 		start, err := time.Parse(time.RFC3339, startStr)
@@ -64,6 +65,9 @@ func parseStatsRange(c *gin.Context) (string, time.Time, time.Time, bool, *error
 		end, err := time.Parse(time.RFC3339, endStr)
 		if err != nil {
 			return "", time.Time{}, time.Time{}, false, errors.NewValidationError("invalid end date", err)
+		}
+		if end.Before(start) {
+			return "", time.Time{}, time.Time{}, false, errors.NewValidationError("end date must be after start date", nil)
 		}
 		return "custom", start, end, false, nil
 	}
@@ -174,14 +178,96 @@ type ProtocolStats struct {
 	Status   string `json:"status"`
 }
 
+func buildProtocolStats(protocolCounts []*repository.ProtocolCount, trafficStats []*repository.ProtocolTrafficStats) []ProtocolStats {
+	statsByProtocol := make(map[string]ProtocolStats, len(protocolCounts)+len(trafficStats))
+
+	for _, pc := range protocolCounts {
+		if pc == nil {
+			continue
+		}
+		statsByProtocol[pc.Protocol] = ProtocolStats{
+			Protocol: pc.Protocol,
+			Count:    pc.Count,
+			Status:   "active",
+		}
+	}
+
+	for _, ts := range trafficStats {
+		if ts == nil {
+			continue
+		}
+		ps := statsByProtocol[ts.Protocol]
+		if ps.Protocol == "" {
+			ps.Protocol = ts.Protocol
+			ps.Status = "active"
+		}
+		ps.Traffic = ts.Upload + ts.Download
+		statsByProtocol[ts.Protocol] = ps
+	}
+
+	defaultProtocols := []string{"vmess", "vless", "trojan", "shadowsocks"}
+	for _, protocol := range defaultProtocols {
+		if _, exists := statsByProtocol[protocol]; !exists {
+			statsByProtocol[protocol] = ProtocolStats{
+				Protocol: protocol,
+				Count:    0,
+				Traffic:  0,
+				Status:   "active",
+			}
+		}
+	}
+
+	protocolOrder := make([]string, 0, len(statsByProtocol))
+	seen := make(map[string]struct{}, len(statsByProtocol))
+	for _, protocol := range defaultProtocols {
+		if _, exists := statsByProtocol[protocol]; exists {
+			protocolOrder = append(protocolOrder, protocol)
+			seen[protocol] = struct{}{}
+		}
+	}
+	for _, pc := range protocolCounts {
+		if pc == nil {
+			continue
+		}
+		if _, exists := seen[pc.Protocol]; exists {
+			continue
+		}
+		protocolOrder = append(protocolOrder, pc.Protocol)
+		seen[pc.Protocol] = struct{}{}
+	}
+	for _, ts := range trafficStats {
+		if ts == nil {
+			continue
+		}
+		if _, exists := seen[ts.Protocol]; exists {
+			continue
+		}
+		protocolOrder = append(protocolOrder, ts.Protocol)
+		seen[ts.Protocol] = struct{}{}
+	}
+
+	stats := make([]ProtocolStats, 0, len(protocolOrder))
+	for _, protocol := range protocolOrder {
+		stats = append(stats, statsByProtocol[protocol])
+	}
+	return stats
+}
+
 // GetProtocolStats returns protocol statistics.
 func (h *StatsHandler) GetProtocolStats(c *gin.Context) {
 	ctx := c.Request.Context()
-	period := c.DefaultQuery("period", "today")
+	period, start, end, cacheable, rangeErr := parseStatsRange(c)
+	if rangeErr != nil {
+		c.JSON(http.StatusBadRequest, rangeErr.ToResponse(getRequestID(c)))
+		return
+	}
 
 	// Try to get from cache first
-	cacheKey := fmt.Sprintf("%s:%s", protocolStatsCacheKey, period)
-	if h.cache != nil {
+	cacheKey := ""
+	if cacheable {
+		cacheKey = fmt.Sprintf("%s:%s", protocolStatsCacheKey, period)
+	}
+	if cacheKey != "" && h.cache != nil {
 		if cached, err := h.cache.Get(ctx, cacheKey); err == nil && cached != nil {
 			var stats []ProtocolStats
 			if err := json.Unmarshal(cached, &stats); err == nil {
@@ -194,8 +280,6 @@ func (h *StatsHandler) GetProtocolStats(c *gin.Context) {
 			}
 		}
 	}
-
-	start, end := getPeriodRange(period)
 
 	// Get proxy counts by protocol
 	protocolCounts, err := h.repos.Proxy.CountByProtocol(ctx)
@@ -215,47 +299,13 @@ func (h *StatsHandler) GetProtocolStats(c *gin.Context) {
 			return
 		}
 		h.logger.Error("failed to get traffic by protocol", logger.F("error", err))
+		trafficStats = []*repository.ProtocolTrafficStats{}
 	}
 
-	// Build traffic map for quick lookup
-	trafficMap := make(map[string]*repository.ProtocolTrafficStats)
-	for _, ts := range trafficStats {
-		trafficMap[ts.Protocol] = ts
-	}
-
-	// Combine counts and traffic
-	stats := make([]ProtocolStats, 0, len(protocolCounts))
-	for _, pc := range protocolCounts {
-		ps := ProtocolStats{
-			Protocol: pc.Protocol,
-			Count:    pc.Count,
-			Status:   "active",
-		}
-		if ts, ok := trafficMap[pc.Protocol]; ok {
-			ps.Traffic = ts.Upload + ts.Download
-		}
-		stats = append(stats, ps)
-	}
-
-	// Add default protocols if not present
-	defaultProtocols := []string{"vmess", "vless", "trojan", "shadowsocks"}
-	existingProtocols := make(map[string]bool)
-	for _, s := range stats {
-		existingProtocols[s.Protocol] = true
-	}
-	for _, p := range defaultProtocols {
-		if !existingProtocols[p] {
-			stats = append(stats, ProtocolStats{
-				Protocol: p,
-				Count:    0,
-				Traffic:  0,
-				Status:   "active",
-			})
-		}
-	}
+	stats := buildProtocolStats(protocolCounts, trafficStats)
 
 	// Cache the result
-	if h.cache != nil {
+	if cacheKey != "" && h.cache != nil {
 		if data, err := json.Marshal(stats); err == nil {
 			if err := h.cache.Set(ctx, cacheKey, data, statsCacheTTL); err != nil {
 				h.logger.Warn("failed to cache protocol stats", logger.F("error", err))
@@ -548,21 +598,8 @@ func (h *StatsHandler) GetDetailedStats(c *gin.Context) {
 			}
 			h.logger.Error("failed to get traffic by protocol", logger.F("error", trafficErr))
 		} else {
-			trafficMap := make(map[string]*repository.ProtocolTrafficStats)
-			for _, ts := range trafficByProtocol {
-				trafficMap[ts.Protocol] = ts
-			}
-
-			for _, pc := range protocolCounts {
-				ps := ProtocolStats{
-					Protocol: pc.Protocol,
-					Count:    pc.Count,
-					Status:   "active",
-				}
-				if ts, ok := trafficMap[pc.Protocol]; ok {
-					ps.Traffic = ts.Upload + ts.Download
-				}
-				stats.ByProtocol = append(stats.ByProtocol, ps)
+			for _, protocolStat := range buildProtocolStats(protocolCounts, trafficByProtocol) {
+				stats.ByProtocol = append(stats.ByProtocol, protocolStat)
 			}
 		}
 	}

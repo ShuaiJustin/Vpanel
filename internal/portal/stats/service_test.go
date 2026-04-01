@@ -2,12 +2,17 @@
 package stats
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
 	"github.com/leanovate/gopter/prop"
+	"gorm.io/gorm"
+
+	"v/internal/database/repository"
 )
 
 // Unit tests
@@ -130,6 +135,31 @@ func TestResolveRangeUsesCalendarBoundaries(t *testing.T) {
 			t.Fatalf("expected custom end %v, got %v", expectedEnd, end)
 		}
 	})
+
+	t.Run("implicit custom when dates provided", func(t *testing.T) {
+		period, start, end, err := resolveRangeAt(now, "", "2026-03-10", "2026-03-12")
+		if err != nil {
+			t.Fatalf("resolveRangeAt implicit custom returned error: %v", err)
+		}
+		if period != "custom" {
+			t.Fatalf("expected period custom, got %s", period)
+		}
+		expectedStart := time.Date(2026, time.March, 10, 0, 0, 0, 0, loc)
+		expectedEnd := time.Date(2026, time.March, 12, 23, 59, 59, int(time.Second-time.Nanosecond), loc)
+		if !start.Equal(expectedStart) {
+			t.Fatalf("expected custom start %v, got %v", expectedStart, start)
+		}
+		if !end.Equal(expectedEnd) {
+			t.Fatalf("expected custom end %v, got %v", expectedEnd, end)
+		}
+	})
+
+	t.Run("custom end before start rejected", func(t *testing.T) {
+		_, _, _, err := resolveRangeAt(now, "custom", "2026-03-12", "2026-03-10")
+		if err == nil {
+			t.Fatal("expected error when custom end date is before start date")
+		}
+	})
 }
 
 func TestGetPeriodDays(t *testing.T) {
@@ -177,6 +207,86 @@ func TestAggregateDaily_Empty(t *testing.T) {
 
 	if summary.Upload != 0 || summary.Download != 0 || summary.Total != 0 {
 		t.Error("Expected all zeros for empty input")
+	}
+}
+
+func setupPortalStatsServiceTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to open test database: %v", err)
+	}
+	if err := db.AutoMigrate(
+		&repository.User{},
+		&repository.Proxy{},
+		&repository.Traffic{},
+		&repository.Node{},
+		&repository.NodeTraffic{},
+	); err != nil {
+		t.Fatalf("failed to migrate portal stats test tables: %v", err)
+	}
+	return db
+}
+
+func TestService_GetUsageStatsPreservesDeletedNodeAndProxyTraffic(t *testing.T) {
+	db := setupPortalStatsServiceTestDB(t)
+	service := NewService(
+		db,
+		repository.NewTrafficRepository(db),
+		repository.NewNodeTrafficRepository(db),
+		repository.NewUserRepository(db),
+	)
+	ctx := context.Background()
+
+	if err := db.Create(&repository.User{ID: 1, Username: "tester", PasswordHash: "x"}).Error; err != nil {
+		t.Fatalf("failed to seed user: %v", err)
+	}
+
+	recordedAt := time.Date(2026, time.March, 21, 8, 0, 0, 0, time.UTC)
+	if err := db.Create(&repository.Traffic{
+		UserID:     1,
+		ProxyID:    999,
+		Upload:     100,
+		Download:   200,
+		RecordedAt: recordedAt,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed traffic: %v", err)
+	}
+	if err := db.Create(&repository.NodeTraffic{
+		UserID:     1,
+		NodeID:     888,
+		Upload:     100,
+		Download:   200,
+		RecordedAt: recordedAt,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed node traffic: %v", err)
+	}
+
+	summary, byNode, byProtocol, err := service.GetUsageStats(ctx, 1, "custom", "2026-03-21", "2026-03-21")
+	if err != nil {
+		t.Fatalf("GetUsageStats returned error: %v", err)
+	}
+	if summary == nil || summary.Total != 300 {
+		t.Fatalf("expected summary total 300, got %+v", summary)
+	}
+	if len(byNode) != 1 {
+		t.Fatalf("expected 1 node usage row, got %d", len(byNode))
+	}
+	if byNode[0].NodeName != "deleted-node-888" {
+		t.Fatalf("expected deleted-node-888, got %q", byNode[0].NodeName)
+	}
+	if byNode[0].Traffic != 300 {
+		t.Fatalf("expected node traffic 300, got %d", byNode[0].Traffic)
+	}
+	if len(byProtocol) != 1 {
+		t.Fatalf("expected 1 protocol usage row, got %d", len(byProtocol))
+	}
+	if byProtocol[0].Protocol != "unknown" {
+		t.Fatalf("expected unknown protocol, got %q", byProtocol[0].Protocol)
+	}
+	if byProtocol[0].Traffic != 300 {
+		t.Fatalf("expected protocol traffic 300, got %d", byProtocol[0].Traffic)
 	}
 }
 

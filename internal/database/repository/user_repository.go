@@ -15,6 +15,36 @@ func normalizeUsername(username string) string {
 	return strings.TrimSpace(username)
 }
 
+func applyUserListFilter(query *gorm.DB, filter UserListFilter) *gorm.DB {
+	if query == nil {
+		return query
+	}
+
+	search := strings.ToLower(strings.TrimSpace(filter.Search))
+	if search != "" {
+		likePattern := "%" + search + "%"
+		query = query.Where(
+			"LOWER(TRIM(username)) LIKE ? OR LOWER(TRIM(COALESCE(email, ''))) LIKE ?",
+			likePattern,
+			likePattern,
+		)
+	}
+
+	role := strings.TrimSpace(filter.Role)
+	if role != "" {
+		query = query.Where("role = ?", role)
+	}
+
+	switch strings.TrimSpace(filter.Status) {
+	case "enabled":
+		query = query.Where("enabled = ?", true)
+	case "disabled":
+		query = query.Where("enabled = ?", false)
+	}
+
+	return query
+}
+
 // userRepository implements UserRepository.
 type userRepository struct {
 	db *gorm.DB
@@ -148,4 +178,65 @@ func (r *userRepository) CountActive(ctx context.Context) (int64, error) {
 		return 0, errors.NewDatabaseError("failed to count active users", result.Error)
 	}
 	return count, nil
+}
+
+// ListFiltered retrieves users with admin-facing filters and pagination.
+func (r *userRepository) ListFiltered(ctx context.Context, filter UserListFilter) ([]*User, int64, error) {
+	var total int64
+	baseQuery := applyUserListFilter(r.db.WithContext(ctx).Model(&User{}), filter)
+	if err := baseQuery.Count(&total).Error; err != nil {
+		return nil, 0, errors.NewDatabaseError("failed to count filtered users", err)
+	}
+
+	users := make([]*User, 0)
+	if total == 0 {
+		return users, 0, nil
+	}
+
+	query := applyUserListFilter(r.db.WithContext(ctx).Model(&User{}), filter).
+		Order("created_at DESC").
+		Order("id DESC")
+	if filter.Limit > 0 {
+		query = query.Limit(filter.Limit)
+	}
+	if filter.Offset > 0 {
+		query = query.Offset(filter.Offset)
+	}
+
+	if err := query.Find(&users).Error; err != nil {
+		return nil, 0, errors.NewDatabaseError("failed to list filtered users", err)
+	}
+
+	return users, total, nil
+}
+
+// GetFilteredSummary returns aggregated counts for a filtered admin user list.
+func (r *userRepository) GetFilteredSummary(ctx context.Context, filter UserListFilter) (UserListSummary, error) {
+	summary := UserListSummary{}
+	baseQuery := applyUserListFilter(r.db.WithContext(ctx).Model(&User{}), filter)
+
+	if err := baseQuery.Count(&summary.Total).Error; err != nil {
+		return summary, errors.NewDatabaseError("failed to count filtered users", err)
+	}
+	if summary.Total == 0 {
+		return summary, nil
+	}
+
+	if err := applyUserListFilter(r.db.WithContext(ctx).Model(&User{}), filter).
+		Where("role = ?", "admin").
+		Count(&summary.Admin).Error; err != nil {
+		return summary, errors.NewDatabaseError("failed to count admin users", err)
+	}
+	if err := applyUserListFilter(r.db.WithContext(ctx).Model(&User{}), filter).
+		Where("enabled = ?", true).
+		Count(&summary.Enabled).Error; err != nil {
+		return summary, errors.NewDatabaseError("failed to count enabled users", err)
+	}
+	if err := applyUserListFilter(r.db.WithContext(ctx).Model(&User{}), filter).
+		Where("enabled = ?", false).
+		Count(&summary.Disabled).Error; err != nil {
+		return summary, errors.NewDatabaseError("failed to count disabled users", err)
+	}
+
+	return summary, nil
 }

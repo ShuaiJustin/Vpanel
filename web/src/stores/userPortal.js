@@ -231,6 +231,10 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     error.value = null
     try {
       await authApi.changePassword(data)
+      if (user.value) {
+        user.value = { ...user.value, force_password_change: false, forcePasswordChange: false }
+        syncUserInfoStorage(user.value)
+      }
     } catch (err) {
       const normalizedError = toNormalizedError(err, '修改密码失败')
       error.value = normalizedError.message

@@ -3,6 +3,8 @@ package agent
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -25,6 +27,17 @@ const (
 	xraySelfHealTimeout  = 45 * time.Second
 )
 
+type heartbeatTrafficReporter interface {
+	PrepareDelta(ctx context.Context) (*TrafficSnapshot, []TrafficRecord, error)
+	Commit(snapshot *TrafficSnapshot)
+}
+
+type pendingTrafficBatch struct {
+	batchID  string
+	snapshot *TrafficSnapshot
+	records  []TrafficRecord
+}
+
 // Agent represents the Node Agent that runs on each Xray node.
 type Agent struct {
 	config     *Config
@@ -37,13 +50,14 @@ type Agent struct {
 	panelClient      *PanelClient
 	metricsCollector *MetricsCollector
 	commandExecutor  *CommandExecutor
-	trafficReporter  *trafficReporter
+	trafficReporter  heartbeatTrafficReporter
 
 	// State
 	mu                  sync.RWMutex
 	running             bool
 	registered          bool
 	nodeID              int64
+	pendingTraffic      *pendingTrafficBatch
 	authFailureStop     bool
 	authFailureReason   string
 	lastXrayHealAttempt time.Time
@@ -89,10 +103,11 @@ type RegisterResponse struct {
 
 // HeartbeatRequest represents a heartbeat request to the Panel.
 type HeartbeatRequest struct {
-	NodeID  int64           `json:"node_id"`
-	Token   string          `json:"token"`
-	Metrics *NodeMetrics    `json:"metrics"`
-	Traffic []TrafficRecord `json:"traffic,omitempty"`
+	NodeID         int64           `json:"node_id"`
+	Token          string          `json:"token"`
+	Metrics        *NodeMetrics    `json:"metrics"`
+	Traffic        []TrafficRecord `json:"traffic,omitempty"`
+	TrafficBatchID string          `json:"traffic_batch_id,omitempty"`
 }
 
 // HeartbeatResponse represents a heartbeat response from the Panel.
@@ -361,8 +376,9 @@ func (a *Agent) sendHeartbeat() {
 	metrics := a.collectMetrics()
 	var trafficSnapshot *TrafficSnapshot
 	var trafficRecords []TrafficRecord
+	var trafficBatchID string
 	if a.trafficReporter != nil {
-		snapshot, records, err := a.trafficReporter.PrepareDelta(a.ctx)
+		snapshot, records, batchID, err := a.prepareHeartbeatTraffic(nodeID)
 		if err != nil {
 			a.logger.Warn("failed to collect xray traffic stats",
 				logger.F("node_id", nodeID),
@@ -370,14 +386,16 @@ func (a *Agent) sendHeartbeat() {
 		} else {
 			trafficSnapshot = snapshot
 			trafficRecords = records
+			trafficBatchID = batchID
 		}
 	}
 
 	req := &HeartbeatRequest{
-		NodeID:  nodeID,
-		Token:   a.config.Node.Token,
-		Metrics: metrics,
-		Traffic: trafficRecords,
+		NodeID:         nodeID,
+		Token:          a.config.Node.Token,
+		Metrics:        metrics,
+		Traffic:        trafficRecords,
+		TrafficBatchID: trafficBatchID,
 	}
 
 	resp, err := a.panelClient.Heartbeat(a.ctx, req)
@@ -411,13 +429,154 @@ func (a *Agent) sendHeartbeat() {
 		logger.F("traffic_records", len(trafficRecords)))
 
 	if trafficSnapshot != nil {
-		a.trafficReporter.Commit(trafficSnapshot)
+		a.acknowledgeHeartbeatTraffic(trafficBatchID, trafficSnapshot)
 	}
 
 	// Process any commands from the response
 	if len(resp.Commands) > 0 {
 		a.processCommands(resp.Commands)
 	}
+}
+
+func (a *Agent) prepareHeartbeatTraffic(nodeID int64) (*TrafficSnapshot, []TrafficRecord, string, error) {
+	if pending := a.loadPendingTrafficBatch(); pending != nil {
+		return pending.snapshot, pending.records, pending.batchID, nil
+	}
+
+	snapshot, records, err := a.trafficReporter.PrepareDelta(a.ctx)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	if len(records) == 0 {
+		return snapshot, nil, "", nil
+	}
+
+	batchID := buildTrafficBatchID(nodeID, snapshot, records)
+	pending := &pendingTrafficBatch{
+		batchID:  batchID,
+		snapshot: snapshot,
+		records:  cloneTrafficRecords(records),
+	}
+
+	a.mu.Lock()
+	a.pendingTraffic = pending
+	a.mu.Unlock()
+
+	return snapshot, cloneTrafficRecords(records), batchID, nil
+}
+
+func (a *Agent) acknowledgeHeartbeatTraffic(batchID string, snapshot *TrafficSnapshot) {
+	if snapshot == nil || a.trafficReporter == nil {
+		return
+	}
+
+	a.trafficReporter.Commit(snapshot)
+	if batchID == "" {
+		return
+	}
+
+	a.mu.Lock()
+	if a.pendingTraffic != nil && a.pendingTraffic.batchID == batchID {
+		a.pendingTraffic = nil
+	}
+	a.mu.Unlock()
+}
+
+func (a *Agent) loadPendingTrafficBatch() *pendingTrafficBatch {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	if a.pendingTraffic == nil {
+		return nil
+	}
+
+	return &pendingTrafficBatch{
+		batchID:  a.pendingTraffic.batchID,
+		snapshot: a.pendingTraffic.snapshot,
+		records:  cloneTrafficRecords(a.pendingTraffic.records),
+	}
+}
+
+func buildTrafficBatchID(nodeID int64, snapshot *TrafficSnapshot, records []TrafficRecord) string {
+	type batchRecord struct {
+		UserID   int64 `json:"user_id"`
+		ProxyID  int64 `json:"proxy_id"`
+		Upload   int64 `json:"upload"`
+		Download int64 `json:"download"`
+	}
+	type batchCounter struct {
+		Name  string `json:"name"`
+		Value int64  `json:"value"`
+	}
+
+	normalizedRecords := make([]batchRecord, 0, len(records))
+	for _, record := range records {
+		proxyID := int64(0)
+		if record.ProxyID != nil {
+			proxyID = *record.ProxyID
+		}
+		normalizedRecords = append(normalizedRecords, batchRecord{
+			UserID:   record.UserID,
+			ProxyID:  proxyID,
+			Upload:   record.Upload,
+			Download: record.Download,
+		})
+	}
+	sort.Slice(normalizedRecords, func(i, j int) bool {
+		if normalizedRecords[i].UserID != normalizedRecords[j].UserID {
+			return normalizedRecords[i].UserID < normalizedRecords[j].UserID
+		}
+		if normalizedRecords[i].ProxyID != normalizedRecords[j].ProxyID {
+			return normalizedRecords[i].ProxyID < normalizedRecords[j].ProxyID
+		}
+		if normalizedRecords[i].Upload != normalizedRecords[j].Upload {
+			return normalizedRecords[i].Upload < normalizedRecords[j].Upload
+		}
+		return normalizedRecords[i].Download < normalizedRecords[j].Download
+	})
+
+	counters := make([]batchCounter, 0)
+	if snapshot != nil {
+		counters = make([]batchCounter, 0, len(snapshot.counters))
+		for name, value := range snapshot.counters {
+			counters = append(counters, batchCounter{Name: name, Value: value})
+		}
+		sort.Slice(counters, func(i, j int) bool {
+			return counters[i].Name < counters[j].Name
+		})
+	}
+
+	payload, err := json.Marshal(struct {
+		NodeID   int64          `json:"node_id"`
+		Records  []batchRecord  `json:"records"`
+		Counters []batchCounter `json:"counters"`
+	}{
+		NodeID:   nodeID,
+		Records:  normalizedRecords,
+		Counters: counters,
+	})
+	if err != nil {
+		payload = []byte(fmt.Sprintf("%d:%d:%d", nodeID, len(normalizedRecords), len(counters)))
+	}
+
+	digest := sha256.Sum256(payload)
+	return hex.EncodeToString(digest[:])
+}
+
+func cloneTrafficRecords(records []TrafficRecord) []TrafficRecord {
+	if len(records) == 0 {
+		return nil
+	}
+
+	cloned := make([]TrafficRecord, len(records))
+	for i, record := range records {
+		cloned[i] = record
+		if record.ProxyID != nil {
+			proxyID := *record.ProxyID
+			cloned[i].ProxyID = &proxyID
+		}
+	}
+	return cloned
 }
 
 func (a *Agent) markPermanentAuthFailure(err error) {

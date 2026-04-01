@@ -2,6 +2,13 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
 
+const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8081'
+const usePolling = /^(1|true)$/i.test(process.env.VITE_USE_POLLING || '')
+const pollingInterval = Number(process.env.VITE_POLLING_INTERVAL || process.env.CHOKIDAR_INTERVAL || 300)
+const hmrHost = process.env.VITE_HMR_HOST || undefined
+const hmrClientPort = Number(process.env.VITE_HMR_CLIENT_PORT || 0) || undefined
+const openBrowser = process.env.VITE_OPEN_BROWSER !== 'false'
+
 export default defineConfig({
   plugins: [vue()],
   resolve: {
@@ -13,14 +20,20 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
-    open: true,
+    open: openBrowser,
     cors: true,
     hmr: {
       overlay: false,
+      ...(hmrHost ? { host: hmrHost } : {}),
+      ...(hmrClientPort ? { clientPort: hmrClientPort } : {}),
+    },
+    watch: {
+      usePolling,
+      interval: pollingInterval,
     },
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8081',
+        target: apiProxyTarget,
         changeOrigin: true,
         secure: false,
         ws: true,

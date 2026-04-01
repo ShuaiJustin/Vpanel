@@ -69,6 +69,19 @@ function getStoredItem(key) {
   return sessionStorage.getItem(key) || localStorage.getItem(key)
 }
 
+function getStoredUserInfo() {
+  const raw = getStoredItem('userInfo')
+  if (!raw) {
+    return null
+  }
+
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
 const routes = [
   // 根路径 - 默认跳转到用户门户
   {
@@ -497,6 +510,8 @@ router.beforeEach((to, from, next) => {
   const isAuthenticated = getStoredItem('token')
   const isUserAuthenticated = getStoredItem('userToken')
   const userRole = getStoredItem('userRole') || 'user'
+  const userInfo = getStoredUserInfo()
+  const forcePasswordChange = Boolean(userInfo?.force_password_change ?? userInfo?.forcePasswordChange)
   
   // 处理根路径 - 根据登录状态和角色智能跳转
   if (to.path === '/') {
@@ -537,6 +552,11 @@ router.beforeEach((to, from, next) => {
     // 未登录访问管理后台，跳转到用户登录页（仅允许本站路径）
     const redirect = to.fullPath.startsWith('/') && !to.fullPath.startsWith('//') ? to.fullPath : undefined
     next({ name: 'UserLogin', query: redirect ? { redirect } : {} })
+    return
+  }
+
+  if (to.meta.requiresAuth && isAuthenticated && forcePasswordChange && to.path !== '/admin/change-password') {
+    next('/admin/change-password')
     return
   }
   

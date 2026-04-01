@@ -13,6 +13,8 @@ import (
 	"v/internal/database/repository"
 )
 
+const unknownProtocolName = "unknown"
+
 // Service provides statistics operations for the user portal.
 type Service struct {
 	db              *gorm.DB
@@ -228,10 +230,10 @@ func (s *Service) getNodeUsage(ctx context.Context, userID int64, start, end tim
 	rangeArgs := repository.BuildTimeRangeArgs(dialect, start, end)
 	if err := s.db.WithContext(ctx).
 		Table("node_traffic nt").
-		Select("nt.node_id, n.name as node_name, COALESCE(SUM(nt.upload), 0) as upload, COALESCE(SUM(nt.download), 0) as download").
-		Joins("JOIN nodes n ON n.id = nt.node_id").
+		Select("nt.node_id, COALESCE(n.name, '') as node_name, COALESCE(SUM(nt.upload), 0) as upload, COALESCE(SUM(nt.download), 0) as download").
+		Joins("LEFT JOIN nodes n ON n.id = nt.node_id").
 		Where("nt.user_id = ? AND "+repository.BuildTimeRangeCondition(dialect, "nt.recorded_at"), append([]any{userID}, rangeArgs...)...).
-		Group("nt.node_id, n.name").
+		Group("nt.node_id, COALESCE(n.name, '')").
 		Order("(COALESCE(SUM(nt.upload), 0) + COALESCE(SUM(nt.download), 0)) DESC").
 		Scan(&rows).Error; err != nil {
 		return nil, err
@@ -246,7 +248,7 @@ func (s *Service) getNodeUsage(ctx context.Context, userID int64, start, end tim
 		}
 		result = append(result, &NodeUsage{
 			NodeID:     row.NodeID,
-			NodeName:   row.NodeName,
+			NodeName:   normalizeNodeUsageName(row.NodeID, row.NodeName),
 			Upload:     row.Upload,
 			Download:   row.Download,
 			Traffic:    traffic,
@@ -274,10 +276,10 @@ func (s *Service) getProtocolUsage(ctx context.Context, userID int64, start, end
 	rangeArgs := repository.BuildTimeRangeArgs(dialect, start, end)
 	if err := s.db.WithContext(ctx).
 		Table("traffic t").
-		Select("p.protocol, COUNT(DISTINCT t.proxy_id) as count, COALESCE(SUM(t.upload), 0) as upload, COALESCE(SUM(t.download), 0) as download").
-		Joins("JOIN proxies p ON p.id = t.proxy_id").
+		Select("COALESCE(p.protocol, ?) as protocol, COUNT(DISTINCT CASE WHEN p.id IS NOT NULL THEN t.proxy_id END) as count, COALESCE(SUM(t.upload), 0) as upload, COALESCE(SUM(t.download), 0) as download", unknownProtocolName).
+		Joins("LEFT JOIN proxies p ON p.id = t.proxy_id").
 		Where("t.user_id = ? AND "+repository.BuildTimeRangeCondition(dialect, "t.recorded_at"), append([]any{userID}, rangeArgs...)...).
-		Group("p.protocol").
+		Group("COALESCE(p.protocol, 'unknown')").
 		Order("(COALESCE(SUM(t.upload), 0) + COALESCE(SUM(t.download), 0)) DESC").
 		Scan(&rows).Error; err != nil {
 		return nil, err
@@ -301,6 +303,13 @@ func (s *Service) getProtocolUsage(ctx context.Context, userID int64, start, end
 	}
 
 	return result, nil
+}
+
+func normalizeNodeUsageName(nodeID int64, nodeName string) string {
+	if nodeName != "" {
+		return nodeName
+	}
+	return fmt.Sprintf("deleted-node-%d", nodeID)
 }
 
 // ExportTrafficCSV exports traffic data as CSV.
@@ -383,10 +392,19 @@ func ResolveRange(period, startDate, endDate string) (string, time.Time, time.Ti
 }
 
 func resolveRangeAt(now time.Time, period, startDate, endDate string) (string, time.Time, time.Time, error) {
+	if startDate != "" || endDate != "" {
+		period = "custom"
+	}
 	period = ValidatePeriod(period)
 
 	switch period {
 	case "custom":
+		if startDate == "" {
+			return "", time.Time{}, time.Time{}, fmt.Errorf("invalid start date")
+		}
+		if endDate == "" {
+			return "", time.Time{}, time.Time{}, fmt.Errorf("invalid end date")
+		}
 		start, err := time.ParseInLocation("2006-01-02", startDate, now.Location())
 		if err != nil {
 			return "", time.Time{}, time.Time{}, fmt.Errorf("invalid start date")
@@ -394,6 +412,9 @@ func resolveRangeAt(now time.Time, period, startDate, endDate string) (string, t
 		end, err := time.ParseInLocation("2006-01-02", endDate, now.Location())
 		if err != nil {
 			return "", time.Time{}, time.Time{}, fmt.Errorf("invalid end date")
+		}
+		if end.Before(start) {
+			return "", time.Time{}, time.Time{}, fmt.Errorf("end date must not be before start date")
 		}
 		end = end.Add(24*time.Hour - time.Nanosecond)
 		return period, start, end, nil

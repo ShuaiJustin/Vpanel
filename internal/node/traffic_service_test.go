@@ -320,6 +320,64 @@ func TestTrafficService_RecordTrafficBatchMarksNodeUnhealthyWhenLimitExceeded(t 
 	}
 }
 
+func TestTrafficService_RecordTrafficBatchPersistsGlobalTrafficWithoutProxyID(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+	nodeID := int64(51)
+
+	service := NewTrafficService(
+		db,
+		repository.NewNodeTrafficRepository(db),
+		repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db),
+		repository.NewUserRepository(db),
+		repository.NewNodeRepository(db),
+		nil,
+		logger.NewNopLogger(),
+	)
+
+	if err := db.Create(&repository.Node{
+		ID:      nodeID,
+		Name:    "global-traffic-node",
+		Address: "127.0.0.1",
+		Status:  repository.NodeStatusOnline,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed node: %v", err)
+	}
+	if err := db.Create(&repository.User{ID: 1, Username: "global-traffic-user", PasswordHash: "x"}).Error; err != nil {
+		t.Fatalf("failed to seed user: %v", err)
+	}
+
+	if err := service.RecordTrafficBatch(ctx, []*TrafficRecord{{NodeID: nodeID, UserID: 1, Upload: 128, Download: 256}}); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	trafficRepo := repository.NewTrafficRepository(db)
+	upload, download, err := trafficRepo.GetTotalTraffic(context.Background())
+	if err != nil {
+		t.Fatalf("failed to get total traffic: %v", err)
+	}
+	if upload != 128 || download != 256 {
+		t.Fatalf("expected global traffic 128/256, got %d/%d", upload, download)
+	}
+
+	userStats, err := trafficRepo.GetTrafficByUser(
+		ctx,
+		time.Now().Add(-time.Hour),
+		time.Now().Add(time.Hour),
+		10,
+	)
+	if err != nil {
+		t.Fatalf("failed to get user traffic stats: %v", err)
+	}
+	if len(userStats) != 1 {
+		t.Fatalf("expected 1 user traffic row, got %d", len(userStats))
+	}
+	if userStats[0].ProxyCount != 0 {
+		t.Fatalf("expected proxy count 0, got %d", userStats[0].ProxyCount)
+	}
+}
+
 func TestTrafficService_ProcessMonthlyTrafficResets_InitializesMissingResetAt(t *testing.T) {
 	db := setupTrafficServiceTestDB(t)
 	ctx := context.Background()
@@ -370,6 +428,65 @@ func TestTrafficService_ProcessMonthlyTrafficResets_InitializesMissingResetAt(t 
 	}
 	if updated.TrafficUp != 100 || updated.TrafficDown != 200 || updated.TrafficTotal != 300 {
 		t.Fatalf("expected traffic counters to remain unchanged, got up=%d down=%d total=%d", updated.TrafficUp, updated.TrafficDown, updated.TrafficTotal)
+	}
+}
+
+func TestTrafficService_CleanupOldRecordsDeletesNodeAndGlobalTraffic(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+
+	service := NewTrafficService(
+		db,
+		repository.NewNodeTrafficRepository(db),
+		repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db),
+		repository.NewUserRepository(db),
+		repository.NewNodeRepository(db),
+		nil,
+		logger.NewNopLogger(),
+	)
+
+	oldRecordedAt := time.Now().Add(-40 * 24 * time.Hour)
+	newRecordedAt := time.Now().Add(-2 * time.Hour)
+	for _, record := range []*repository.NodeTraffic{
+		{NodeID: 1, UserID: 1, Upload: 10, Download: 20, RecordedAt: oldRecordedAt},
+		{NodeID: 1, UserID: 1, Upload: 30, Download: 40, RecordedAt: newRecordedAt},
+	} {
+		if err := db.Create(record).Error; err != nil {
+			t.Fatalf("failed to seed node traffic: %v", err)
+		}
+	}
+	for _, record := range []*repository.Traffic{
+		{UserID: 1, ProxyID: 1, Upload: 10, Download: 20, RecordedAt: oldRecordedAt},
+		{UserID: 1, ProxyID: 1, Upload: 30, Download: 40, RecordedAt: newRecordedAt},
+	} {
+		if err := db.Create(record).Error; err != nil {
+			t.Fatalf("failed to seed traffic: %v", err)
+		}
+	}
+
+	deleted, err := service.CleanupOldRecords(ctx, 30*24*time.Hour)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if deleted != 2 {
+		t.Fatalf("expected 2 deleted traffic rows, got %d", deleted)
+	}
+
+	var nodeTrafficRemaining int64
+	if err := db.Model(&repository.NodeTraffic{}).Count(&nodeTrafficRemaining).Error; err != nil {
+		t.Fatalf("failed to count node traffic rows: %v", err)
+	}
+	if nodeTrafficRemaining != 1 {
+		t.Fatalf("expected 1 remaining node traffic row, got %d", nodeTrafficRemaining)
+	}
+
+	var trafficRemaining int64
+	if err := db.Model(&repository.Traffic{}).Count(&trafficRemaining).Error; err != nil {
+		t.Fatalf("failed to count traffic rows: %v", err)
+	}
+	if trafficRemaining != 1 {
+		t.Fatalf("expected 1 remaining traffic row, got %d", trafficRemaining)
 	}
 }
 

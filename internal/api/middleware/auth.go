@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"v/internal/auth"
+	"v/internal/database/repository"
 	"v/internal/logger"
 	"v/pkg/errors"
 )
@@ -23,6 +24,7 @@ const (
 // AuthMiddlewareHandler provides authentication middleware methods.
 type AuthMiddlewareHandler struct {
 	authService *auth.Service
+	userRepo    repository.UserRepository
 	logger      logger.Logger
 }
 
@@ -32,6 +34,47 @@ func NewAuthMiddleware(authService *auth.Service, log logger.Logger) *AuthMiddle
 		authService: authService,
 		logger:      log,
 	}
+}
+
+// WithUserRepository enables runtime user state verification for authenticated requests.
+func (h *AuthMiddlewareHandler) WithUserRepository(userRepo repository.UserRepository) *AuthMiddlewareHandler {
+	h.userRepo = userRepo
+	return h
+}
+
+func (h *AuthMiddlewareHandler) enrichClaimsWithCurrentUser(c *gin.Context, claims *auth.Claims) (*auth.Claims, bool) {
+	if h == nil || h.userRepo == nil || claims == nil {
+		return claims, true
+	}
+
+	user, err := h.userRepo.GetByID(c.Request.Context(), claims.UserID)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    errors.ErrCodeUnauthorized,
+				"message": "user no longer exists",
+			},
+		})
+		c.Abort()
+		return nil, false
+	}
+
+	if !user.Enabled {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    errors.ErrCodeForbidden,
+				"message": "user account is disabled",
+			},
+		})
+		c.Abort()
+		return nil, false
+	}
+
+	claims.Username = user.Username
+	claims.Role = user.Role
+	return claims, true
 }
 
 // Authenticate returns a middleware that validates JWT tokens.
@@ -78,6 +121,11 @@ func (h *AuthMiddlewareHandler) Authenticate() gin.HandlerFunc {
 				},
 			})
 			c.Abort()
+			return
+		}
+
+		claims, ok := h.enrichClaimsWithCurrentUser(c, claims)
+		if !ok {
 			return
 		}
 

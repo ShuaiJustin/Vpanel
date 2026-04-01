@@ -10,6 +10,15 @@
       </p>
     </div>
 
+    <el-alert
+      v-if="showForcedPasswordAlert"
+      title="当前账户需要先完成密码修改，修改完成后才能继续正常使用其他页面。"
+      type="warning"
+      :closable="false"
+      class="forced-password-alert"
+      show-icon
+    />
+
     <el-tabs
       v-model="activeTab"
       class="settings-tabs"
@@ -451,7 +460,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { User } from '@element-plus/icons-vue'
 import { useUserPortalStore } from '@/stores/userPortal'
@@ -461,6 +470,7 @@ import { copyText } from '@/utils/clipboard'
 import { extractErrorMessage } from '@/utils/entitlement'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserPortalStore()
 const { themeMode, setTheme } = useTheme()
 const { isMobile } = useViewport()
@@ -489,6 +499,9 @@ const processingTwoFactor = ref(false)
 const emailVerified = ref(true)
 const twoFactorEnabled = computed(() => userStore.twoFactorEnabled)
 const telegramBound = ref(false)
+const showForcedPasswordAlert = computed(() => {
+  return route.query.forced === '1' || Boolean(userStore.user?.force_password_change ?? userStore.user?.forcePasswordChange)
+})
 
 // 表单数据
 const profileForm = reactive({
@@ -526,6 +539,14 @@ watch(() => preferences.theme, (newTheme) => {
     setTheme(newTheme)
   }
 })
+
+watch(
+  () => route.query.tab,
+  (tab) => {
+    activeTab.value = tab === 'security' ? 'security' : 'profile'
+  },
+  { immediate: true }
+)
 
 // 两步验证相关
 const twoFactorSecret = ref('JBSWY3DPEHPK3PXP')
@@ -600,6 +621,9 @@ async function changePassword() {
     
     ElMessage.success('密码已修改')
     passwordFormRef.value.resetFields()
+    if (route.query.forced === '1' || route.query.tab === 'security') {
+      router.replace({ path: '/user/settings', query: { tab: 'security' } })
+    }
   } catch (error) {
     if (error !== false) {
       ElMessage.error(extractErrorMessage(error) || '修改失败')
@@ -746,6 +770,10 @@ onMounted(() => {
   font-size: 14px;
   color: var(--el-text-color-secondary);
   margin: 0;
+}
+
+.forced-password-alert {
+  margin-bottom: 20px;
 }
 
 .settings-tabs {

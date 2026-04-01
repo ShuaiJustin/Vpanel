@@ -502,3 +502,139 @@ func TestLogin_UpdatesLastLoginMetadata(t *testing.T) {
 		t.Fatal("expected login response to include last_login")
 	}
 }
+
+func TestRefreshToken_RejectsDisabledUser(t *testing.T) {
+	handler, userRepo, authSvc := newUserManagementTestHandler(t)
+	user := createManagedTestUser(t, userRepo, authSvc, &repository.User{
+		Username: "refresh-disabled-user",
+		Email:    "refresh-disabled@example.com",
+		Role:     "admin",
+		Enabled:  true,
+	})
+
+	refreshToken, err := authSvc.GenerateRefreshToken(user.ID)
+	if err != nil {
+		t.Fatalf("failed to generate refresh token: %v", err)
+	}
+
+	user.Enabled = false
+	if err := userRepo.Update(context.Background(), user); err != nil {
+		t.Fatalf("failed to disable user: %v", err)
+	}
+
+	router := gin.New()
+	router.POST("/refresh", handler.RefreshToken)
+
+	body, _ := json.Marshal(map[string]string{
+		"refresh_token": refreshToken,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/refresh", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected status 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestChangePassword_ClearsForcePasswordChangeFlag(t *testing.T) {
+	handler, userRepo, authSvc := newUserManagementTestHandler(t)
+	user := createManagedTestUser(t, userRepo, authSvc, &repository.User{
+		Username:            "force-change-user",
+		Email:               "force-change@example.com",
+		Role:                "admin",
+		Enabled:             true,
+		ForcePasswordChange: true,
+	})
+
+	router := gin.New()
+	router.PUT("/auth/password", func(c *gin.Context) {
+		c.Set("user_id", user.ID)
+		handler.ChangePassword(c)
+	})
+
+	body, _ := json.Marshal(map[string]string{
+		"old_password": "password123",
+		"new_password": "newpassword123",
+	})
+	req := httptest.NewRequest(http.MethodPut, "/auth/password", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	updatedUser, err := userRepo.GetByID(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("failed to reload user: %v", err)
+	}
+	if updatedUser.ForcePasswordChange {
+		t.Fatal("expected force_password_change to be cleared after password change")
+	}
+	if !authSvc.VerifyPassword("newpassword123", updatedUser.PasswordHash) {
+		t.Fatal("expected new password to be persisted")
+	}
+}
+
+func TestListUsers_ReturnsFilteredSummaryCounts(t *testing.T) {
+	handler, userRepo, authSvc := newUserManagementTestHandler(t)
+	createManagedTestUser(t, userRepo, authSvc, &repository.User{
+		Username: "summary-admin",
+		Email:    "summary-admin@example.com",
+		Role:     "admin",
+		Enabled:  true,
+	})
+	createManagedTestUser(t, userRepo, authSvc, &repository.User{
+		Username: "summary-user-enabled",
+		Email:    "summary-enabled@example.com",
+		Role:     "user",
+		Enabled:  true,
+	})
+	disabledUser := createManagedTestUser(t, userRepo, authSvc, &repository.User{
+		Username: "summary-user-disabled",
+		Email:    "summary-disabled@example.com",
+		Role:     "user",
+		Enabled:  false,
+	})
+	disabledUser.Enabled = false
+	if err := userRepo.Update(context.Background(), disabledUser); err != nil {
+		t.Fatalf("failed to disable summary user: %v", err)
+	}
+
+	router := gin.New()
+	router.GET("/users", func(c *gin.Context) {
+		c.Set("user_id", int64(999))
+		handler.ListUsers(c)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/users?search=summary", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var payload struct {
+		Total         int   `json:"total"`
+		AdminTotal    int   `json:"admin_total"`
+		EnabledTotal  int   `json:"enabled_total"`
+		DisabledTotal int   `json:"disabled_total"`
+		CurrentUserID int64 `json:"current_user_id"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if payload.Total != 3 || payload.AdminTotal != 1 || payload.EnabledTotal != 2 || payload.DisabledTotal != 1 {
+		t.Fatalf("unexpected summary counts: %+v", payload)
+	}
+	if payload.CurrentUserID != 999 {
+		t.Fatalf("expected current_user_id 999, got %d", payload.CurrentUserID)
+	}
+}

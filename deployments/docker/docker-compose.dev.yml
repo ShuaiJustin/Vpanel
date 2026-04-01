@@ -1,0 +1,79 @@
+services:
+  backend:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile
+      target: backend-dev
+      args:
+        ALPINE_MIRROR: ${ALPINE_MIRROR:-mirrors.aliyun.com}
+        GO_PROXY: ${GO_PROXY:-https://goproxy.cn|direct}
+    container_name: v-panel-backend-dev
+    working_dir: /workspace
+    command: ["sh", "/workspace/deployments/docker/dev-backend.sh"]
+    environment:
+      TZ: ${TZ:-UTC}
+      GO_PROXY: ${GO_PROXY:-https://goproxy.cn|direct}
+      V_SERVER_HOST: 0.0.0.0
+      V_SERVER_PORT: 8081
+      V_SERVER_MODE: debug
+      V_SERVER_STATIC_PATH: /workspace/web/dist
+      VPANEL_CONFIG_PATH: /workspace/configs/config.yaml
+      VPANEL_DATA_DIR: /workspace/data
+      VPANEL_LOG_DIR: /workspace/logs
+      VPANEL_XRAY_DIR: /workspace/xray
+      V_DB_PATH: /workspace/data/v.db
+      V_JWT_SECRET: ${DEV_JWT_SECRET:-dev-jwt-secret-change-me-please-1234567890}
+      V_ADMIN_USER: ${DEV_ADMIN_USER:-admin}
+      V_ADMIN_PASS: ${DEV_ADMIN_PASS:-DevAdmin123!}
+      V_LOG_LEVEL: ${DEV_LOG_LEVEL:-debug}
+      V_LOG_FORMAT: ${DEV_LOG_FORMAT:-text}
+    ports:
+      - "${DEV_API_PORT:-8081}:8081"
+    volumes:
+      - ../..:/workspace
+      - vpanel-dev-go-mod:/go/pkg/mod
+      - vpanel-dev-go-build:/root/.cache/go-build
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8081/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  frontend:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile
+      target: frontend-dev
+      args:
+        ALPINE_MIRROR: ${ALPINE_MIRROR:-mirrors.aliyun.com}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com/}
+    container_name: v-panel-frontend-dev
+    working_dir: /workspace/web
+    command: ["sh", "/workspace/deployments/docker/dev-frontend.sh"]
+    environment:
+      TZ: ${TZ:-UTC}
+      VITE_API_PROXY_TARGET: http://backend:8081
+      VITE_OPEN_BROWSER: "false"
+      VITE_USE_POLLING: ${VITE_USE_POLLING:-true}
+      VITE_POLLING_INTERVAL: ${VITE_POLLING_INTERVAL:-300}
+      CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-true}
+      CHOKIDAR_INTERVAL: ${CHOKIDAR_INTERVAL:-300}
+    depends_on:
+      - backend
+    ports:
+      - "${DEV_FRONTEND_PORT:-5173}:5173"
+    volumes:
+      - ../..:/workspace
+      - vpanel-dev-web-node-modules:/workspace/web/node_modules
+      - vpanel-dev-npm-cache:/root/.npm
+
+volumes:
+  vpanel-dev-go-mod:
+    name: vpanel-dev-go-mod
+  vpanel-dev-go-build:
+    name: vpanel-dev-go-build
+  vpanel-dev-web-node-modules:
+    name: vpanel-dev-web-node-modules
+  vpanel-dev-npm-cache:
+    name: vpanel-dev-npm-cache

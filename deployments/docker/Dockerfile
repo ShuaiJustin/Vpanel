@@ -28,6 +28,13 @@ COPY web/public ./public
 COPY web/src ./src
 RUN npm run build
 
+FROM frontend-base AS frontend-dev
+ARG NPM_REGISTRY
+
+RUN npm config set registry "${NPM_REGISTRY}"
+
+WORKDIR /workspace/web
+
 FROM golang:1.24-alpine AS backend-base
 ARG ALPINE_MIRROR
 ARG GO_PROXY
@@ -76,6 +83,16 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=linux GOARCH=arm go build \
       -ldflags="-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME} -X main.gitCommit=${GIT_COMMIT}" \
       -o /out/bin/vpanel-agent-arm ./cmd/agent/main.go
+
+FROM backend-base AS backend-dev
+
+RUN apk add --no-cache wget
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go install github.com/air-verse/air@v1.61.7
+
+WORKDIR /workspace
 
 FROM alpine:3.19 AS runtime
 ARG ALPINE_MIRROR

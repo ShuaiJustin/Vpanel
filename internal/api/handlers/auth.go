@@ -93,23 +93,25 @@ type LoginResponse struct {
 
 // UserResponse represents a user in API responses.
 type UserResponse struct {
-	ID        int64  `json:"id"`
-	Username  string `json:"username"`
-	Email     string `json:"email,omitempty"`
-	Role      string `json:"role"`
-	Status    bool   `json:"status"`
-	CreatedAt string `json:"created_at"`
-	LastLogin string `json:"last_login,omitempty"`
+	ID                  int64  `json:"id"`
+	Username            string `json:"username"`
+	Email               string `json:"email,omitempty"`
+	Role                string `json:"role"`
+	Status              bool   `json:"status"`
+	CreatedAt           string `json:"created_at"`
+	LastLogin           string `json:"last_login,omitempty"`
+	ForcePasswordChange bool   `json:"force_password_change"`
 }
 
 func buildUserResponse(user *repository.User) UserResponse {
 	response := UserResponse{
-		ID:        user.ID,
-		Username:  user.Username,
-		Email:     user.Email,
-		Role:      user.Role,
-		Status:    user.Enabled,
-		CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		ID:                  user.ID,
+		Username:            user.Username,
+		Email:               user.Email,
+		Role:                user.Role,
+		Status:              user.Enabled,
+		CreatedAt:           user.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		ForcePasswordChange: user.ForcePasswordChange,
 	}
 
 	if user.LastLoginAt != nil {
@@ -154,6 +156,32 @@ func (h *AuthHandler) listAllUsers(ctx context.Context) ([]*repository.User, err
 	return h.userRepo.List(ctx, int(total), 0)
 }
 
+type filteredUserRepository interface {
+	ListFiltered(ctx context.Context, filter repository.UserListFilter) ([]*repository.User, int64, error)
+}
+
+type filteredUserSummaryRepository interface {
+	GetFilteredSummary(ctx context.Context, filter repository.UserListFilter) (repository.UserListSummary, error)
+}
+
+func currentUserIDFromContext(c *gin.Context) (int64, bool) {
+	if c == nil {
+		return 0, false
+	}
+
+	value, exists := c.Get("user_id")
+	if !exists {
+		return 0, false
+	}
+
+	userID, ok := value.(int64)
+	if !ok || userID <= 0 {
+		return 0, false
+	}
+
+	return userID, true
+}
+
 func (h *AuthHandler) countEnabledAdmins(ctx context.Context) (int, error) {
 	users, err := h.listAllUsers(ctx)
 	if err != nil {
@@ -187,6 +215,19 @@ func (h *AuthHandler) ensureEnabledAdminRemains(ctx *gin.Context, user *reposito
 	}
 
 	return true
+}
+
+func (h *AuthHandler) reconcileRestoredUserRuntime(ctx context.Context, userID int64) {
+	if h == nil || h.entitlementService == nil || userID <= 0 {
+		return
+	}
+
+	if _, _, err := h.entitlementService.GetAccessibleProxies(ctx, userID); err != nil && !errors.IsForbidden(err) {
+		h.logger.Warn("failed to reconcile restored user runtime resources",
+			logger.Err(err),
+			logger.UserID(userID),
+		)
+	}
 }
 
 func (h *AuthHandler) updateLastLogin(ctx context.Context, user *repository.User, ip string) {
@@ -430,6 +471,10 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		middleware.HandleUnauthorized(c, errors.MsgUserNotFound)
 		return
 	}
+	if !user.Enabled {
+		middleware.HandleForbidden(c, errors.MsgUserDisabled)
+		return
+	}
 
 	// Generate new tokens
 	token, expiresIn, err := h.issueAccessToken(user, policy.tokenExpiry)
@@ -471,13 +516,13 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 
 // GetCurrentUser returns the current authenticated user.
 func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
+	userID, ok := currentUserIDFromContext(c)
+	if !ok {
 		middleware.HandleUnauthorized(c, errors.MsgUnauthorized)
 		return
 	}
 
-	user, err := h.userRepo.GetByID(c.Request.Context(), userID.(int64))
+	user, err := h.userRepo.GetByID(c.Request.Context(), userID)
 	if err != nil {
 		middleware.HandleNotFound(c, "user", userID)
 		return
@@ -499,13 +544,13 @@ func (h *AuthHandler) UpdateCurrentUser(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
-	if !exists {
+	userID, ok := currentUserIDFromContext(c)
+	if !ok {
 		middleware.HandleUnauthorized(c, errors.MsgUnauthorized)
 		return
 	}
 
-	user, err := h.userRepo.GetByID(c.Request.Context(), userID.(int64))
+	user, err := h.userRepo.GetByID(c.Request.Context(), userID)
 	if err != nil {
 		middleware.HandleNotFound(c, "user", userID)
 		return
@@ -554,8 +599,13 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	userID, _ := c.Get("user_id")
-	user, err := h.userRepo.GetByID(c.Request.Context(), userID.(int64))
+	userID, ok := currentUserIDFromContext(c)
+	if !ok {
+		middleware.HandleUnauthorized(c, errors.MsgUnauthorized)
+		return
+	}
+
+	user, err := h.userRepo.GetByID(c.Request.Context(), userID)
 	if err != nil {
 		middleware.HandleNotFound(c, "user", userID)
 		return
@@ -576,6 +626,7 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 
 	// Update password
 	user.PasswordHash = newHash
+	user.ForcePasswordChange = false
 	if err := h.userRepo.Update(c.Request.Context(), user); err != nil {
 		middleware.HandleInternalError(c, "密码修改失败，请稍后重试", err)
 		return
@@ -608,64 +659,137 @@ func (h *AuthHandler) ListUsers(c *gin.Context) {
 	roleFilter := strings.TrimSpace(c.Query("role"))
 	statusFilter := strings.TrimSpace(c.Query("status"))
 
-	users, err := h.listAllUsers(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list users"})
-		return
-	}
+	filteredUserCount := 0
+	enabledUserCount := 0
+	disabledUserCount := 0
+	adminUserCount := 0
 
-	filteredUsers := make([]*repository.User, 0, len(users))
-	for _, user := range users {
-		if user == nil {
-			continue
+	var (
+		pagedUsers []*repository.User
+		total      int64
+		err        error
+	)
+
+	if repo, ok := h.userRepo.(filteredUserRepository); ok {
+		filter := repository.UserListFilter{
+			Search: search,
+			Role:   roleFilter,
+			Status: statusFilter,
+			Limit:  pageSize,
+			Offset: (page - 1) * pageSize,
 		}
-		if roleFilter != "" && user.Role != roleFilter {
-			continue
+		pagedUsers, total, err = repo.ListFiltered(c.Request.Context(), filter)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list users"})
+			return
 		}
-		if statusFilter == "enabled" && !user.Enabled {
-			continue
-		}
-		if statusFilter == "disabled" && user.Enabled {
-			continue
-		}
-		if search != "" {
-			username := strings.ToLower(normalizeUsername(user.Username))
-			email := strings.ToLower(strings.TrimSpace(user.Email))
-			if !strings.Contains(username, search) && !strings.Contains(email, search) {
-				continue
+		if summaryRepo, ok := h.userRepo.(filteredUserSummaryRepository); ok {
+			summary, summaryErr := summaryRepo.GetFilteredSummary(c.Request.Context(), repository.UserListFilter{
+				Search: search,
+				Role:   roleFilter,
+				Status: statusFilter,
+			})
+			if summaryErr != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to summarize users"})
+				return
+			}
+			filteredUserCount = int(summary.Total)
+			enabledUserCount = int(summary.Enabled)
+			disabledUserCount = int(summary.Disabled)
+			adminUserCount = int(summary.Admin)
+		} else {
+			filteredUserCount = int(total)
+			for _, user := range pagedUsers {
+				if user == nil {
+					continue
+				}
+				if user.Enabled {
+					enabledUserCount++
+				} else {
+					disabledUserCount++
+				}
+				if user.Role == "admin" {
+					adminUserCount++
+				}
 			}
 		}
-		filteredUsers = append(filteredUsers, user)
-	}
-
-	sort.Slice(filteredUsers, func(i, j int) bool {
-		if filteredUsers[i].CreatedAt.Equal(filteredUsers[j].CreatedAt) {
-			return filteredUsers[i].ID > filteredUsers[j].ID
+	} else {
+		users, listErr := h.listAllUsers(c.Request.Context())
+		if listErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list users"})
+			return
 		}
-		return filteredUsers[i].CreatedAt.After(filteredUsers[j].CreatedAt)
-	})
 
-	total := len(filteredUsers)
-	start := (page - 1) * pageSize
-	if start > total {
-		start = total
+		filteredUsers := make([]*repository.User, 0, len(users))
+		for _, user := range users {
+			if user == nil {
+				continue
+			}
+			if roleFilter != "" && user.Role != roleFilter {
+				continue
+			}
+			if statusFilter == "enabled" && !user.Enabled {
+				continue
+			}
+			if statusFilter == "disabled" && user.Enabled {
+				continue
+			}
+			if search != "" {
+				username := strings.ToLower(normalizeUsername(user.Username))
+				email := strings.ToLower(strings.TrimSpace(user.Email))
+				if !strings.Contains(username, search) && !strings.Contains(email, search) {
+					continue
+				}
+			}
+			filteredUsers = append(filteredUsers, user)
+		}
+
+		sort.Slice(filteredUsers, func(i, j int) bool {
+			if filteredUsers[i].CreatedAt.Equal(filteredUsers[j].CreatedAt) {
+				return filteredUsers[i].ID > filteredUsers[j].ID
+			}
+			return filteredUsers[i].CreatedAt.After(filteredUsers[j].CreatedAt)
+		})
+
+		for _, user := range filteredUsers {
+			filteredUserCount++
+			if user.Enabled {
+				enabledUserCount++
+			} else {
+				disabledUserCount++
+			}
+			if user.Role == "admin" {
+				adminUserCount++
+			}
+		}
+
+		total = int64(filteredUserCount)
+		start := (page - 1) * pageSize
+		if start > filteredUserCount {
+			start = filteredUserCount
+		}
+		end := start + pageSize
+		if end > filteredUserCount {
+			end = filteredUserCount
+		}
+		pagedUsers = filteredUsers[start:end]
 	}
-	end := start + pageSize
-	if end > total {
-		end = total
-	}
-	pagedUsers := filteredUsers[start:end]
 
 	response := make([]UserResponse, len(pagedUsers))
 	for i, user := range pagedUsers {
 		response[i] = buildUserResponse(user)
 	}
 
+	currentUserID, _ := currentUserIDFromContext(c)
 	c.JSON(http.StatusOK, gin.H{
-		"users":     response,
-		"total":     total,
-		"page":      page,
-		"page_size": pageSize,
+		"users":           response,
+		"total":           total,
+		"page":            page,
+		"page_size":       pageSize,
+		"admin_total":     adminUserCount,
+		"enabled_total":   enabledUserCount,
+		"disabled_total":  disabledUserCount,
+		"current_user_id": currentUserID,
 	})
 }
 
@@ -899,8 +1023,8 @@ func (h *AuthHandler) DeleteUser(c *gin.Context) {
 	}
 
 	// Prevent self-deletion
-	currentUserID, _ := c.Get("user_id")
-	if currentUserID.(int64) == id {
+	currentUserID, ok := currentUserIDFromContext(c)
+	if ok && currentUserID == id {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot delete yourself"})
 		return
 	}
@@ -960,6 +1084,7 @@ func (h *AuthHandler) EnableUser(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, errors.NewDatabaseError("Failed to enable user", err).ToResponse(""))
 		return
 	}
+	h.reconcileRestoredUserRuntime(c.Request.Context(), id)
 
 	h.logger.Info("user enabled", logger.F("user_id", id))
 	c.JSON(http.StatusOK, gin.H{"message": "User enabled successfully"})
@@ -974,8 +1099,8 @@ func (h *AuthHandler) DisableUser(c *gin.Context) {
 	}
 
 	// Prevent self-disable
-	currentUserID, _ := c.Get("user_id")
-	if currentUserID.(int64) == id {
+	currentUserID, ok := currentUserIDFromContext(c)
+	if ok && currentUserID == id {
 		c.JSON(http.StatusBadRequest, errors.NewValidationError("Cannot disable yourself", nil).ToResponse(""))
 		return
 	}

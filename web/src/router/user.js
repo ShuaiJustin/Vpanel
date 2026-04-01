@@ -47,6 +47,19 @@ function getStoredItem(key) {
   return sessionStorage.getItem(key) || localStorage.getItem(key)
 }
 
+function getStoredUserInfo() {
+  const raw = getStoredItem('userInfo')
+  if (!raw) {
+    return null
+  }
+
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
 /**
  * 用户前台路由配置
  */
@@ -354,6 +367,8 @@ export function userRouteGuard(to, from, next) {
   const isUserAuthenticated = getStoredItem('userToken')
   const isAdminAuthenticated = getStoredItem('token')
   const userRole = getStoredItem('userRole') || 'user'
+  const userInfo = getStoredUserInfo()
+  const forcePasswordChange = Boolean(userInfo?.force_password_change ?? userInfo?.forcePasswordChange)
   
   // 更新页面标题
   if (to.meta.title) {
@@ -363,6 +378,16 @@ export function userRouteGuard(to, from, next) {
   // 需要用户认证的页面
   if (to.meta.requiresUserAuth && !isUserAuthenticated) {
     next({ name: 'UserLogin', query: { redirect: to.fullPath } })
+    return
+  }
+
+  if (
+    to.meta.requiresUserAuth &&
+    isUserAuthenticated &&
+    forcePasswordChange &&
+    (to.path !== '/user/settings' || to.query.tab !== 'security')
+  ) {
+    next({ path: '/user/settings', query: { tab: 'security', forced: '1' } })
     return
   }
   

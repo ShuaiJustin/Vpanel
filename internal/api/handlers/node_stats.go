@@ -4,6 +4,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -80,31 +81,49 @@ type RecordTrafficBatchRequest struct {
 	Records []RecordTrafficRequest `json:"records" binding:"required"`
 }
 
-// parseTimeRange parses start and end time from query parameters.
-func parseTimeRange(c *gin.Context) (time.Time, time.Time) {
+func formatAPITime(t time.Time) string {
+	return t.UTC().Format(time.RFC3339)
+}
+
+// parseTimeRange parses and validates start and end time from query parameters.
+func parseTimeRange(c *gin.Context) (time.Time, time.Time, bool) {
 	// Default to last 24 hours
 	end := time.Now()
 	start := end.Add(-24 * time.Hour)
 
 	if startStr := c.Query("start"); startStr != "" {
-		if parsed, err := time.Parse(time.RFC3339, startStr); err == nil {
-			start = parsed
+		parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(startStr))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid start time, must be RFC3339"})
+			return time.Time{}, time.Time{}, false
 		}
+		start = parsed
 	}
 
 	if endStr := c.Query("end"); endStr != "" {
-		if parsed, err := time.Parse(time.RFC3339, endStr); err == nil {
-			end = parsed
+		parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(endStr))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid end time, must be RFC3339"})
+			return time.Time{}, time.Time{}, false
 		}
+		end = parsed
 	}
 
-	return start, end
+	if end.Before(start) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "End time must be after start time"})
+		return time.Time{}, time.Time{}, false
+	}
+
+	return start, end, true
 }
 
 // GetTotalTraffic returns total traffic across all nodes.
 // GET /api/admin/nodes/traffic/total
 func (h *NodeStatsHandler) GetTotalTraffic(c *gin.Context) {
-	start, end := parseTimeRange(c)
+	start, end, ok := parseTimeRange(c)
+	if !ok {
+		return
+	}
 
 	stats, err := h.trafficService.GetTotalTraffic(c.Request.Context(), start, end)
 	if err != nil {
@@ -114,8 +133,8 @@ func (h *NodeStatsHandler) GetTotalTraffic(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"start": start.Format("2006-01-02T15:04:05Z"),
-		"end":   end.Format("2006-01-02T15:04:05Z"),
+		"start": formatAPITime(start),
+		"end":   formatAPITime(end),
 		"stats": &TrafficStatsResponse{
 			Upload:   stats.Upload,
 			Download: stats.Download,
@@ -133,7 +152,10 @@ func (h *NodeStatsHandler) GetTrafficByNode(c *gin.Context) {
 		return
 	}
 
-	start, end := parseTimeRange(c)
+	start, end, ok := parseTimeRange(c)
+	if !ok {
+		return
+	}
 
 	stats, err := h.trafficService.GetTrafficByNode(c.Request.Context(), id, start, end)
 	if err != nil {
@@ -143,8 +165,8 @@ func (h *NodeStatsHandler) GetTrafficByNode(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"start": start.Format("2006-01-02T15:04:05Z"),
-		"end":   end.Format("2006-01-02T15:04:05Z"),
+		"start": formatAPITime(start),
+		"end":   formatAPITime(end),
 		"stats": &NodeTrafficStatsResponse{
 			NodeID:   stats.NodeID,
 			Upload:   stats.Upload,
@@ -163,7 +185,10 @@ func (h *NodeStatsHandler) GetTrafficByUser(c *gin.Context) {
 		return
 	}
 
-	start, end := parseTimeRange(c)
+	start, end, ok := parseTimeRange(c)
+	if !ok {
+		return
+	}
 
 	stats, err := h.trafficService.GetTrafficByUser(c.Request.Context(), id, start, end)
 	if err != nil {
@@ -173,8 +198,8 @@ func (h *NodeStatsHandler) GetTrafficByUser(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"start": start.Format("2006-01-02T15:04:05Z"),
-		"end":   end.Format("2006-01-02T15:04:05Z"),
+		"start": formatAPITime(start),
+		"end":   formatAPITime(end),
 		"stats": &UserTrafficStatsResponse{
 			UserID:   stats.UserID,
 			Upload:   stats.Upload,
@@ -193,7 +218,10 @@ func (h *NodeStatsHandler) GetUserTrafficBreakdown(c *gin.Context) {
 		return
 	}
 
-	start, end := parseTimeRange(c)
+	start, end, ok := parseTimeRange(c)
+	if !ok {
+		return
+	}
 
 	breakdown, err := h.trafficService.GetUserTrafficBreakdownByNode(c.Request.Context(), id, start, end)
 	if err != nil {
@@ -214,8 +242,8 @@ func (h *NodeStatsHandler) GetUserTrafficBreakdown(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"start":     start.Format("2006-01-02T15:04:05Z"),
-		"end":       end.Format("2006-01-02T15:04:05Z"),
+		"start":     formatAPITime(start),
+		"end":       formatAPITime(end),
 		"breakdown": response,
 	})
 }
@@ -229,7 +257,10 @@ func (h *NodeStatsHandler) GetTrafficByGroup(c *gin.Context) {
 		return
 	}
 
-	start, end := parseTimeRange(c)
+	start, end, ok := parseTimeRange(c)
+	if !ok {
+		return
+	}
 
 	stats, err := h.trafficService.GetTrafficByGroup(c.Request.Context(), id, start, end)
 	if err != nil {
@@ -239,8 +270,8 @@ func (h *NodeStatsHandler) GetTrafficByGroup(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"start": start.Format("2006-01-02T15:04:05Z"),
-		"end":   end.Format("2006-01-02T15:04:05Z"),
+		"start": formatAPITime(start),
+		"end":   formatAPITime(end),
 		"stats": &GroupTrafficStatsResponse{
 			GroupID:  stats.GroupID,
 			Upload:   stats.Upload,
@@ -253,7 +284,10 @@ func (h *NodeStatsHandler) GetTrafficByGroup(c *gin.Context) {
 // GetTrafficStatsByNode returns traffic statistics grouped by node.
 // GET /api/admin/nodes/traffic/by-node
 func (h *NodeStatsHandler) GetTrafficStatsByNode(c *gin.Context) {
-	start, end := parseTimeRange(c)
+	start, end, ok := parseTimeRange(c)
+	if !ok {
+		return
+	}
 
 	stats, err := h.trafficService.GetTrafficStatsByNode(c.Request.Context(), start, end)
 	if err != nil {
@@ -273,8 +307,8 @@ func (h *NodeStatsHandler) GetTrafficStatsByNode(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"start": start.Format("2006-01-02T15:04:05Z"),
-		"end":   end.Format("2006-01-02T15:04:05Z"),
+		"start": formatAPITime(start),
+		"end":   formatAPITime(end),
 		"stats": response,
 	})
 }
@@ -282,7 +316,10 @@ func (h *NodeStatsHandler) GetTrafficStatsByNode(c *gin.Context) {
 // GetTrafficStatsByGroup returns traffic statistics grouped by node group.
 // GET /api/admin/nodes/traffic/by-group
 func (h *NodeStatsHandler) GetTrafficStatsByGroup(c *gin.Context) {
-	start, end := parseTimeRange(c)
+	start, end, ok := parseTimeRange(c)
+	if !ok {
+		return
+	}
 
 	stats, err := h.trafficService.GetTrafficStatsByGroup(c.Request.Context(), start, end)
 	if err != nil {
@@ -302,8 +339,8 @@ func (h *NodeStatsHandler) GetTrafficStatsByGroup(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"start": start.Format("2006-01-02T15:04:05Z"),
-		"end":   end.Format("2006-01-02T15:04:05Z"),
+		"start": formatAPITime(start),
+		"end":   formatAPITime(end),
 		"stats": response,
 	})
 }
@@ -318,7 +355,16 @@ func (h *NodeStatsHandler) GetTopUsersByTraffic(c *gin.Context) {
 	}
 
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
-	start, end := parseTimeRange(c)
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	start, end, ok := parseTimeRange(c)
+	if !ok {
+		return
+	}
 
 	stats, err := h.trafficService.GetTopUsersByTraffic(c.Request.Context(), id, start, end, limit)
 	if err != nil {
@@ -339,8 +385,8 @@ func (h *NodeStatsHandler) GetTopUsersByTraffic(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"start":     start.Format("2006-01-02T15:04:05Z"),
-		"end":       end.Format("2006-01-02T15:04:05Z"),
+		"start":     formatAPITime(start),
+		"end":       formatAPITime(end),
 		"top_users": response,
 	})
 }
@@ -348,7 +394,10 @@ func (h *NodeStatsHandler) GetTopUsersByTraffic(c *gin.Context) {
 // GetAggregatedStats returns comprehensive aggregated traffic statistics.
 // GET /api/admin/nodes/traffic/aggregated
 func (h *NodeStatsHandler) GetAggregatedStats(c *gin.Context) {
-	start, end := parseTimeRange(c)
+	start, end, ok := parseTimeRange(c)
+	if !ok {
+		return
+	}
 
 	stats, err := h.trafficService.GetAggregatedStats(c.Request.Context(), start, end)
 	if err != nil {
@@ -380,8 +429,8 @@ func (h *NodeStatsHandler) GetAggregatedStats(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"start":          start.Format("2006-01-02T15:04:05Z"),
-		"end":            end.Format("2006-01-02T15:04:05Z"),
+		"start":          formatAPITime(start),
+		"end":            formatAPITime(end),
 		"total_upload":   stats.TotalUpload,
 		"total_download": stats.TotalDownload,
 		"total":          stats.Total,
@@ -453,6 +502,10 @@ func (h *NodeStatsHandler) RecordTrafficBatch(c *gin.Context) {
 func (h *NodeStatsHandler) CleanupOldRecords(c *gin.Context) {
 	// Default retention: 30 days
 	retentionDays, _ := strconv.Atoi(c.DefaultQuery("retention_days", "30"))
+	if retentionDays <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "retention_days must be greater than zero"})
+		return
+	}
 	retention := time.Duration(retentionDays) * 24 * time.Hour
 
 	deleted, err := h.trafficService.CleanupOldRecords(c.Request.Context(), retention)
@@ -523,7 +576,7 @@ func (h *NodeStatsHandler) GetRealTimeStats(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"timestamp": end.Format("2006-01-02T15:04:05Z"),
+		"timestamp": formatAPITime(end),
 		"window":    "5m",
 		"traffic": gin.H{
 			"upload":   totalStats.Upload,

@@ -366,13 +366,14 @@ func (s *Service) ResendVerificationEmail(ctx context.Context, userID int64, ema
 
 // LoginResult represents the result of a login attempt.
 type LoginResult struct {
-	UserID       int64  `json:"user_id"`
-	Username     string `json:"username"`
-	Email        string `json:"email"`
-	Role         string `json:"role"`
-	Token        string `json:"token"`
-	RefreshToken string `json:"refresh_token,omitempty"`
-	Requires2FA  bool   `json:"requires_2fa,omitempty"`
+	UserID              int64  `json:"user_id"`
+	Username            string `json:"username"`
+	Email               string `json:"email"`
+	Role                string `json:"role"`
+	Token               string `json:"token"`
+	RefreshToken        string `json:"refresh_token,omitempty"`
+	Requires2FA         bool   `json:"requires_2fa,omitempty"`
+	ForcePasswordChange bool   `json:"force_password_change,omitempty"`
 }
 
 // RateLimiter provides rate limiting functionality.
@@ -542,11 +543,12 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest, ip string, rateL
 	// Check if 2FA is enabled
 	if user.TwoFactorEnabled {
 		return &LoginResult{
-			UserID:      user.ID,
-			Username:    user.Username,
-			Email:       user.Email,
-			Role:        user.Role,
-			Requires2FA: true,
+			UserID:              user.ID,
+			Username:            user.Username,
+			Email:               user.Email,
+			Role:                user.Role,
+			Requires2FA:         true,
+			ForcePasswordChange: user.ForcePasswordChange,
 		}, nil
 	}
 
@@ -562,11 +564,12 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest, ip string, rateL
 	}
 
 	return &LoginResult{
-		UserID:   user.ID,
-		Username: user.Username,
-		Email:    user.Email,
-		Role:     user.Role,
-		Token:    token,
+		UserID:              user.ID,
+		Username:            user.Username,
+		Email:               user.Email,
+		Role:                user.Role,
+		Token:               token,
+		ForcePasswordChange: user.ForcePasswordChange,
 	}, nil
 }
 
@@ -641,11 +644,12 @@ func (s *Service) Verify2FA(ctx context.Context, req *TwoFactorRequest, verifyTO
 	}
 
 	return &LoginResult{
-		UserID:   user.ID,
-		Username: user.Username,
-		Email:    user.Email,
-		Role:     user.Role,
-		Token:    token,
+		UserID:              user.ID,
+		Username:            user.Username,
+		Email:               user.Email,
+		Role:                user.Role,
+		Token:               token,
+		ForcePasswordChange: user.ForcePasswordChange,
 	}, nil
 }
 
@@ -824,6 +828,7 @@ func (s *Service) ExecutePasswordReset(ctx context.Context, req *ResetPasswordRe
 
 	// Update password
 	user.PasswordHash = hashedPassword
+	user.ForcePasswordChange = false
 	if err := s.userRepo.Update(ctx, user); err != nil {
 		return err
 	}
@@ -865,6 +870,7 @@ func (s *Service) ChangePassword(ctx context.Context, userID int64, req *ChangeP
 
 	// Update password
 	user.PasswordHash = hashedPassword
+	user.ForcePasswordChange = false
 	if err := s.userRepo.Update(ctx, user); err != nil {
 		return err
 	}

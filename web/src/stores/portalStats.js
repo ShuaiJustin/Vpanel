@@ -10,7 +10,7 @@ import { toNormalizedError } from '@/utils/entitlement'
 export const usePortalStatsStore = defineStore('portalStats', () => {
   // 状态
   const trafficStats = ref([])
-  const usageStats = ref([])
+  const usageStats = ref({ by_node: [], by_protocol: [] })
   const dashboardStats = ref(null)
   const loading = ref(false)
   const error = ref(null)
@@ -44,26 +44,47 @@ export const usePortalStatsStore = defineStore('portalStats', () => {
     loading.value = true
     error.value = null
     try {
-      // 并行获取流量统计和使用统计
-      const [trafficResponse, usageResponse] = await Promise.all([
-        statsApi.getTrafficStats(params).catch(err => {
-          console.error('获取流量统计失败:', err)
-          return { total_upload: 0, total_download: 0, total_traffic: 0, daily: [] }
-        }),
-        statsApi.getUsageStats(params).catch(err => {
-          console.error('获取使用统计失败:', err)
-          return { by_node: [], by_protocol: [] }
-        })
+      const previousTrafficStats = Array.isArray(trafficStats.value) ? [...trafficStats.value] : []
+      const previousUsageStats = {
+        by_node: Array.isArray(usageStats.value?.by_node) ? [...usageStats.value.by_node] : [],
+        by_protocol: Array.isArray(usageStats.value?.by_protocol) ? [...usageStats.value.by_protocol] : []
+      }
+
+      const [trafficResult, usageResult] = await Promise.allSettled([
+        statsApi.getTrafficStats(params),
+        statsApi.getUsageStats(params)
       ])
-      
-      // 安全地提取数据
-      const daily = Array.isArray(trafficResponse?.daily) ? trafficResponse.daily : []
+
+      if (trafficResult.status === 'rejected') {
+        console.error('获取流量统计失败:', trafficResult.reason)
+      }
+      if (usageResult.status === 'rejected') {
+        console.error('获取使用统计失败:', usageResult.reason)
+      }
+      if (trafficResult.status === 'rejected' && usageResult.status === 'rejected') {
+        throw trafficResult.reason || usageResult.reason
+      }
+
+      const trafficResponse = trafficResult.status === 'fulfilled'
+        ? trafficResult.value
+        : {
+            total_upload: previousTrafficStats.reduce((sum, item) => sum + (item?.upload || 0), 0),
+            total_download: previousTrafficStats.reduce((sum, item) => sum + (item?.download || 0), 0),
+            total_traffic: previousTrafficStats.reduce((sum, item) => sum + (item?.upload || 0) + (item?.download || 0), 0),
+            daily: previousTrafficStats
+          }
+
+      const usageResponse = usageResult.status === 'fulfilled'
+        ? usageResult.value
+        : previousUsageStats
+
+      const daily = Array.isArray(trafficResponse?.daily) ? trafficResponse.daily : previousTrafficStats
       trafficStats.value = daily
       usageStats.value = {
-        by_node: Array.isArray(usageResponse?.by_node) ? usageResponse.by_node : [],
-        by_protocol: Array.isArray(usageResponse?.by_protocol) ? usageResponse.by_protocol : []
+        by_node: Array.isArray(usageResponse?.by_node) ? usageResponse.by_node : previousUsageStats.by_node,
+        by_protocol: Array.isArray(usageResponse?.by_protocol) ? usageResponse.by_protocol : previousUsageStats.by_protocol
       }
-      
+
       // 组合数据
       const data = {
         summary: {

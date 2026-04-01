@@ -29,8 +29,8 @@ func NewPortalStatsHandler(statsService *stats.Service, log logger.Logger) *Port
 
 // GetTrafficStats returns traffic statistics for the current user.
 func (h *PortalStatsHandler) GetTrafficStats(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
+	userID, ok := currentUserIDFromContext(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证"})
 		return
 	}
@@ -45,7 +45,7 @@ func (h *PortalStatsHandler) GetTrafficStats(c *gin.Context) {
 		return
 	}
 
-	trafficStats, err := h.statsService.GetTrafficStatsInRange(c.Request.Context(), userID.(int64), resolvedPeriod, start, end)
+	trafficStats, err := h.statsService.GetTrafficStatsInRange(c.Request.Context(), userID, resolvedPeriod, start, end)
 	if err != nil {
 		if handleRequestContextError(c, err) {
 			return
@@ -68,8 +68,8 @@ func (h *PortalStatsHandler) GetTrafficStats(c *gin.Context) {
 
 // GetUsageStats returns usage statistics by node/protocol.
 func (h *PortalStatsHandler) GetUsageStats(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
+	userID, ok := currentUserIDFromContext(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证"})
 		return
 	}
@@ -78,7 +78,7 @@ func (h *PortalStatsHandler) GetUsageStats(c *gin.Context) {
 	startDate := c.Query("start_date")
 	endDate := c.Query("end_date")
 
-	summary, byNode, byProtocol, err := h.statsService.GetUsageStats(c.Request.Context(), userID.(int64), period, startDate, endDate)
+	summary, byNode, byProtocol, err := h.statsService.GetUsageStats(c.Request.Context(), userID, period, startDate, endDate)
 	if err != nil {
 		if handleRequestContextError(c, err) {
 			return
@@ -97,8 +97,8 @@ func (h *PortalStatsHandler) GetUsageStats(c *gin.Context) {
 
 // ExportStats exports traffic statistics as CSV.
 func (h *PortalStatsHandler) ExportStats(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
+	userID, ok := currentUserIDFromContext(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证"})
 		return
 	}
@@ -123,7 +123,7 @@ func (h *PortalStatsHandler) ExportStats(c *gin.Context) {
 			return
 		}
 
-		csvData, err = h.statsService.ExportTrafficCSVInRange(c.Request.Context(), userID.(int64), start, end)
+		csvData, err = h.statsService.ExportTrafficCSVInRange(c.Request.Context(), userID, start, end)
 	} else {
 		// Backward compatible fallback: Parse days parameter
 		days := 30
@@ -133,7 +133,7 @@ func (h *PortalStatsHandler) ExportStats(c *gin.Context) {
 			}
 		}
 
-		csvData, err = h.statsService.ExportTrafficCSV(c.Request.Context(), userID.(int64), days)
+		csvData, err = h.statsService.ExportTrafficCSV(c.Request.Context(), userID, days)
 	}
 
 	if err != nil {
@@ -154,8 +154,8 @@ func (h *PortalStatsHandler) ExportStats(c *gin.Context) {
 
 // GetDailyTraffic returns daily traffic data.
 func (h *PortalStatsHandler) GetDailyTraffic(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
+	userID, ok := currentUserIDFromContext(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证"})
 		return
 	}
@@ -168,7 +168,7 @@ func (h *PortalStatsHandler) GetDailyTraffic(c *gin.Context) {
 		}
 	}
 
-	daily, err := h.statsService.GetDailyTraffic(c.Request.Context(), userID.(int64), days)
+	daily, err := h.statsService.GetDailyTraffic(c.Request.Context(), userID, days)
 	if err != nil {
 		if handleRequestContextError(c, err) {
 			return

@@ -132,6 +132,28 @@ cd Vpanel
 ./deployments/scripts/dev.sh frontend
 ```
 
+### 方式四：Docker 开发热更新
+
+如果你已经在用 Docker，但希望改 Go 或 Vue 代码后自动生效，可以使用仓库内置的开发态 Compose：
+
+```bash
+cd deployments/docker
+cp .env.dev.example .env.dev
+docker compose --env-file .env.dev -f docker-compose.dev.yml up --build
+```
+
+启动后：
+- 前端开发服务器：`http://localhost:5173`
+- 后端 API：`http://localhost:8081`
+- Go 后端通过 `air` 自动重编译重启
+- Vue 前端通过 Vite HMR 热更新
+
+停止：
+
+```bash
+docker compose --env-file .env.dev -f docker-compose.dev.yml down
+```
+
 ### 访问地址说明
 
 V Panel 提供两套独立的界面，管理后台和用户门户完全分离：

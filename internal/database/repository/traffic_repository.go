@@ -11,6 +11,8 @@ import (
 	"v/pkg/errors"
 )
 
+const unknownTrafficProtocol = "unknown"
+
 // trafficRepository implements TrafficRepository.
 type trafficRepository struct {
 	db *gorm.DB
@@ -37,12 +39,16 @@ func (r *trafficRepository) Create(ctx context.Context, traffic *Traffic) error 
 // GetByUserID retrieves traffic records by user ID.
 func (r *trafficRepository) GetByUserID(ctx context.Context, userID int64, limit, offset int) ([]*Traffic, error) {
 	var records []*Traffic
-	result := r.db.WithContext(ctx).
+	query := r.db.WithContext(ctx).
 		Where("user_id = ?", userID).
-		Order("recorded_at DESC").
-		Limit(limit).
-		Offset(offset).
-		Find(&records)
+		Order("recorded_at DESC")
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	if offset > 0 {
+		query = query.Offset(offset)
+	}
+	result := query.Find(&records)
 	if result.Error != nil {
 		return nil, errors.NewDatabaseError("failed to get traffic by user", result.Error)
 	}
@@ -52,12 +58,16 @@ func (r *trafficRepository) GetByUserID(ctx context.Context, userID int64, limit
 // GetByProxyID retrieves traffic records by proxy ID.
 func (r *trafficRepository) GetByProxyID(ctx context.Context, proxyID int64, limit, offset int) ([]*Traffic, error) {
 	var records []*Traffic
-	result := r.db.WithContext(ctx).
+	query := r.db.WithContext(ctx).
 		Where("proxy_id = ?", proxyID).
-		Order("recorded_at DESC").
-		Limit(limit).
-		Offset(offset).
-		Find(&records)
+		Order("recorded_at DESC")
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	if offset > 0 {
+		query = query.Offset(offset)
+	}
+	result := query.Find(&records)
 	if result.Error != nil {
 		return nil, errors.NewDatabaseError("failed to get traffic by proxy", result.Error)
 	}
@@ -76,6 +86,17 @@ func (r *trafficRepository) GetByDateRange(ctx context.Context, start, end time.
 		return nil, errors.NewDatabaseError("failed to get traffic by date range", result.Error)
 	}
 	return records, nil
+}
+
+// DeleteOlderThan deletes traffic records older than the specified time.
+func (r *trafficRepository) DeleteOlderThan(ctx context.Context, before time.Time) (int64, error) {
+	result := r.db.WithContext(ctx).
+		Where("recorded_at < ?", before).
+		Delete(&Traffic{})
+	if result.Error != nil {
+		return 0, errors.NewDatabaseError("failed to delete old traffic records", result.Error)
+	}
+	return result.RowsAffected, nil
 }
 
 // GetTotalByUser retrieves total upload and download for a user.
@@ -152,10 +173,10 @@ func (r *trafficRepository) GetTrafficByProtocol(ctx context.Context, start, end
 	rangeArgs := BuildTimeRangeArgs(r.db.Dialector.Name(), start, end)
 	err := r.db.WithContext(ctx).
 		Table("traffic t").
-		Select("p.protocol, COUNT(DISTINCT p.id) as count, COALESCE(SUM(t.upload), 0) as upload, COALESCE(SUM(t.download), 0) as download").
-		Joins("JOIN proxies p ON t.proxy_id = p.id").
+		Select("COALESCE(p.protocol, ?) as protocol, COUNT(DISTINCT CASE WHEN p.id IS NOT NULL THEN p.id END) as count, COALESCE(SUM(t.upload), 0) as upload, COALESCE(SUM(t.download), 0) as download", unknownTrafficProtocol).
+		Joins("LEFT JOIN proxies p ON t.proxy_id = p.id").
 		Where(BuildTimeRangeCondition(r.db.Dialector.Name(), "t.recorded_at"), rangeArgs...).
-		Group("p.protocol").
+		Group("COALESCE(p.protocol, 'unknown')").
 		Scan(&results).Error
 	if err != nil {
 		return nil, errors.NewDatabaseError("failed to get traffic by protocol", err)
@@ -183,15 +204,15 @@ func (r *trafficRepository) GetTrafficByUser(ctx context.Context, start, end tim
 
 		var rows []*sqliteUserTrafficStats
 		selectClause := fmt.Sprintf(
-			"t.user_id, u.username, u.email, u.traffic_limit, COALESCE(SUM(t.upload), 0) as upload, COALESCE(SUM(t.download), 0) as download, COUNT(DISTINCT t.proxy_id) as proxy_count, %s as last_active",
+			"t.user_id, COALESCE(u.username, '') as username, COALESCE(u.email, '') as email, COALESCE(u.traffic_limit, 0) as traffic_limit, COALESCE(SUM(t.upload), 0) as upload, COALESCE(SUM(t.download), 0) as download, COUNT(DISTINCT CASE WHEN t.proxy_id > 0 THEN t.proxy_id END) as proxy_count, %s as last_active",
 			BuildTimeMaxExpr(dialect, "t.recorded_at"),
 		)
 		query := r.db.WithContext(ctx).
 			Table("traffic t").
 			Select(selectClause).
-			Joins("JOIN users u ON t.user_id = u.id").
+			Joins("LEFT JOIN users u ON t.user_id = u.id").
 			Where(rangeCondition, rangeArgs...).
-			Group("t.user_id, u.username, u.email, u.traffic_limit").
+			Group("t.user_id, COALESCE(u.username, ''), COALESCE(u.email, ''), COALESCE(u.traffic_limit, 0)").
 			Order("(COALESCE(SUM(t.upload), 0) + COALESCE(SUM(t.download), 0)) DESC")
 
 		if limit > 0 {
@@ -211,7 +232,7 @@ func (r *trafficRepository) GetTrafficByUser(ctx context.Context, start, end tim
 
 			results = append(results, &UserTrafficStats{
 				UserID:       row.UserID,
-				Username:     row.Username,
+				Username:     normalizeTrafficUsername(row.UserID, row.Username),
 				Email:        row.Email,
 				Upload:       row.Upload,
 				Download:     row.Download,
@@ -227,10 +248,10 @@ func (r *trafficRepository) GetTrafficByUser(ctx context.Context, start, end tim
 	var results []*UserTrafficStats
 	query := r.db.WithContext(ctx).
 		Table("traffic t").
-		Select("t.user_id, u.username, u.email, u.traffic_limit, COALESCE(SUM(t.upload), 0) as upload, COALESCE(SUM(t.download), 0) as download, COUNT(DISTINCT t.proxy_id) as proxy_count, MAX(t.recorded_at) as last_active").
-		Joins("JOIN users u ON t.user_id = u.id").
+		Select("t.user_id, COALESCE(u.username, '') as username, COALESCE(u.email, '') as email, COALESCE(u.traffic_limit, 0) as traffic_limit, COALESCE(SUM(t.upload), 0) as upload, COALESCE(SUM(t.download), 0) as download, COUNT(DISTINCT CASE WHEN t.proxy_id > 0 THEN t.proxy_id END) as proxy_count, MAX(t.recorded_at) as last_active").
+		Joins("LEFT JOIN users u ON t.user_id = u.id").
 		Where(rangeCondition, rangeArgs...).
-		Group("t.user_id, u.username, u.email, u.traffic_limit").
+		Group("t.user_id, COALESCE(u.username, ''), COALESCE(u.email, ''), COALESCE(u.traffic_limit, 0)").
 		Order("(COALESCE(SUM(t.upload), 0) + COALESCE(SUM(t.download), 0)) DESC")
 
 	if limit > 0 {
@@ -241,7 +262,20 @@ func (r *trafficRepository) GetTrafficByUser(ctx context.Context, start, end tim
 	if err != nil {
 		return nil, errors.NewDatabaseError("failed to get traffic by user", err)
 	}
+	for _, result := range results {
+		if result == nil {
+			continue
+		}
+		result.Username = normalizeTrafficUsername(result.UserID, result.Username)
+	}
 	return results, nil
+}
+
+func normalizeTrafficUsername(userID int64, username string) string {
+	if username != "" {
+		return username
+	}
+	return fmt.Sprintf("deleted-user-%d", userID)
 }
 
 // GetTrafficTimeline retrieves traffic data points for timeline charts.

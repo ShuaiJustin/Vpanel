@@ -181,6 +181,7 @@
                 size="small"
                 class="row-action"
                 :class="row.status ? 'row-action--warning' : 'row-action--success'"
+                :disabled="row.id === currentUserId"
                 @click="handleToggleStatus(row)"
               >
                 {{ row.status ? '禁用' : '启用' }}
@@ -199,12 +200,16 @@
                 </el-button>
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item command="resetPassword">
+                    <el-dropdown-item
+                      command="resetPassword"
+                      :disabled="row.id === currentUserId"
+                    >
                       重置密码
                     </el-dropdown-item>
                     <el-dropdown-item
                       command="delete"
                       divided
+                      :disabled="row.id === currentUserId"
                     >
                       删除用户
                     </el-dropdown-item>
@@ -339,6 +344,12 @@ const statusFilter = ref('')
 const currentPage = ref(1)
 const pageSize = ref(10)
 const userFormRef = ref(null)
+const currentUserId = ref(null)
+const summary = reactive({
+  adminTotal: 0,
+  enabledTotal: 0,
+  disabledTotal: 0
+})
 
 const userForm = reactive({
   id: null,
@@ -351,7 +362,7 @@ const userForm = reactive({
 const rules = {
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
-    { min: 3, max: 20, message: '长度在 3 到 20 个字符', trigger: 'blur' }
+    { min: 3, max: 50, message: '长度在 3 到 50 个字符', trigger: 'blur' }
   ],
   email: [
     { type: 'email', message: '请输入正确的邮箱地址', trigger: 'blur' }
@@ -387,15 +398,16 @@ const normalizeUser = (user) => ({
   role: user.role || 'user',
   status: user.status ?? user.enabled ?? true,
   created: formatDateTime(user.created_at || user.created),
-  lastLogin: formatDateTime(user.last_login || user.last_login_at || user.lastLogin)
+  lastLogin: formatDateTime(user.last_login || user.last_login_at || user.lastLogin),
+  forcePasswordChange: Boolean(user.force_password_change ?? user.forcePasswordChange)
 })
 
 const displayTotal = computed(() => totalUsers.value)
 const hasActiveFilters = computed(() => Boolean(searchQuery.value.trim() || roleFilter.value || statusFilter.value))
 const isCompact = computed(() => viewportWidth.value <= 1366)
-const adminUserCount = computed(() => users.value.filter((user) => user.role === 'admin').length)
-const enabledUserCount = computed(() => users.value.filter((user) => user.status).length)
-const disabledUserCount = computed(() => users.value.filter((user) => !user.status).length)
+const adminUserCount = computed(() => summary.adminTotal)
+const enabledUserCount = computed(() => summary.enabledTotal)
+const disabledUserCount = computed(() => summary.disabledTotal)
 const paginatedUsers = computed(() => users.value)
 
 const syncCurrentPage = () => {
@@ -411,6 +423,10 @@ const clearFormValidation = async () => {
 }
 
 const getUserHint = (user) => {
+  if (user.forcePasswordChange) {
+    return '该账户已被重置密码，下一次登录后必须先修改密码。'
+  }
+
   if (!user.status) {
     return '当前账户已禁用，不允许登录和订阅。'
   }
@@ -435,12 +451,20 @@ const fetchUsers = async () => {
     const list = Array.isArray(response) ? response : response?.users || response?.list || []
     users.value = list.map(normalizeUser)
     totalUsers.value = Number(response?.total || list.length)
+    currentUserId.value = Number(response?.current_user_id || 0) || null
+    summary.adminTotal = Number(response?.admin_total ?? users.value.filter((user) => user.role === 'admin').length)
+    summary.enabledTotal = Number(response?.enabled_total ?? users.value.filter((user) => user.status).length)
+    summary.disabledTotal = Number(response?.disabled_total ?? users.value.filter((user) => !user.status).length)
     syncCurrentPage()
   } catch (error) {
     console.error('Failed to fetch users:', error)
     ElMessage.error(extractErrorMessage(error) || '获取用户列表失败')
     users.value = []
     totalUsers.value = 0
+    currentUserId.value = null
+    summary.adminTotal = 0
+    summary.enabledTotal = 0
+    summary.disabledTotal = 0
   } finally {
     loading.value = false
   }
@@ -488,16 +512,16 @@ const handleSaveUser = async () => {
   try {
     if (dialogType.value === 'add') {
       await usersApi.create({
-        username: userForm.username,
-        email: userForm.email,
+        username: userForm.username.trim(),
+        email: userForm.email.trim(),
         password: userForm.password,
         role: userForm.role
       })
       ElMessage.success('添加成功')
     } else {
       const payload = {
-        username: userForm.username,
-        email: userForm.email,
+        username: userForm.username.trim(),
+        email: userForm.email.trim(),
         role: userForm.role
       }
 
@@ -527,8 +551,8 @@ const handleToggleStatus = async (row) => {
       await usersApi.enable(row.id)
     }
 
-    row.status = !row.status
-    ElMessage.success(`已${row.status ? '启用' : '禁用'}用户：${row.username}`)
+    ElMessage.success(`已${row.status ? '禁用' : '启用'}用户：${row.username}`)
+    await fetchUsers()
   } catch (error) {
     console.error('Failed to update user status:', error)
     ElMessage.error(extractErrorMessage(error) || '更新用户状态失败')
@@ -562,6 +586,7 @@ const handleResetPassword = async (row) => {
         confirmButtonText: '知道了'
       }
     )
+    await fetchUsers()
   } catch (error) {
     if (error === 'cancel') {
       return

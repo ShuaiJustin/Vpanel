@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"runtime"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -19,20 +21,30 @@ import (
 	"v/internal/xray"
 )
 
+const (
+	defaultTrafficBatchTTL         = 6 * time.Hour
+	trafficBatchDedupPruneInterval = time.Minute
+)
+
+type nodeAgentTrafficRecorder interface {
+	RecordTrafficBatch(ctx context.Context, records []*node.TrafficRecord) error
+}
+
 // NodeAgentHandler handles Node Agent API requests.
 type NodeAgentHandler struct {
 	nodeService     *node.Service
-	trafficService  *node.TrafficService
+	trafficService  nodeAgentTrafficRecorder
 	nodeRepo        repository.NodeRepository
 	configGenerator *xray.ConfigGenerator
 	recoveryTracker *NodeRecoveryTracker
+	trafficDeduper  *trafficBatchDeduper
 	logger          logger.Logger
 }
 
 // NewNodeAgentHandler creates a new NodeAgentHandler.
 func NewNodeAgentHandler(
 	nodeService *node.Service,
-	trafficService *node.TrafficService,
+	trafficService nodeAgentTrafficRecorder,
 	nodeRepo repository.NodeRepository,
 	configGenerator *xray.ConfigGenerator,
 	recoveryTracker *NodeRecoveryTracker,
@@ -47,6 +59,7 @@ func NewNodeAgentHandler(
 		nodeRepo:        nodeRepo,
 		configGenerator: configGenerator,
 		recoveryTracker: recoveryTracker,
+		trafficDeduper:  newTrafficBatchDeduper(defaultTrafficBatchTTL),
 		logger:          log,
 	}
 }
@@ -69,10 +82,11 @@ type RegisterResponse struct {
 
 // HeartbeatRequest represents a node heartbeat request.
 type HeartbeatRequest struct {
-	NodeID  int64           `json:"node_id" binding:"required"`
-	Token   string          `json:"token" binding:"required"`
-	Metrics *NodeMetrics    `json:"metrics"`
-	Traffic []TrafficRecord `json:"traffic,omitempty"`
+	NodeID         int64           `json:"node_id" binding:"required"`
+	Token          string          `json:"token" binding:"required"`
+	Metrics        *NodeMetrics    `json:"metrics"`
+	Traffic        []TrafficRecord `json:"traffic,omitempty"`
+	TrafficBatchID string          `json:"traffic_batch_id,omitempty"`
 }
 
 // TrafficRecord represents per-user traffic reported by the node agent.
@@ -270,6 +284,12 @@ func (h *NodeAgentHandler) Heartbeat(c *gin.Context) {
 	}
 
 	if len(req.Traffic) > 0 && h.trafficService != nil {
+		recordTraffic, doneTrafficBatch := h.beginTrafficBatch(nodeData.ID, req.TrafficBatchID)
+		trafficRecorded := false
+		defer func() {
+			doneTrafficBatch(trafficRecorded)
+		}()
+
 		records := make([]*node.TrafficRecord, 0, len(req.Traffic))
 		for _, traffic := range req.Traffic {
 			if traffic.UserID <= 0 {
@@ -284,7 +304,7 @@ func (h *NodeAgentHandler) Heartbeat(c *gin.Context) {
 			})
 		}
 
-		if len(records) > 0 {
+		if recordTraffic && len(records) > 0 {
 			if err := h.trafficService.RecordTrafficBatch(c.Request.Context(), records); err != nil {
 				h.logger.Error("Failed to record traffic from heartbeat",
 					logger.F("node_id", nodeData.ID),
@@ -296,7 +316,14 @@ func (h *NodeAgentHandler) Heartbeat(c *gin.Context) {
 				})
 				return
 			}
+		} else if !recordTraffic {
+			h.logger.Debug("Skip duplicate heartbeat traffic batch",
+				logger.F("node_id", nodeData.ID),
+				logger.F("traffic_batch_id", req.TrafficBatchID),
+				logger.F("record_count", len(records)))
 		}
+
+		trafficRecorded = true
 	}
 
 	// Get any pending commands for this node
@@ -315,6 +342,13 @@ func shouldPromoteNodeOnlineFromHeartbeat(currentStatus string, metrics *NodeMet
 	}
 
 	return true
+}
+
+func (h *NodeAgentHandler) beginTrafficBatch(nodeID int64, batchID string) (bool, func(bool)) {
+	if h == nil || h.trafficDeduper == nil {
+		return true, func(bool) {}
+	}
+	return h.trafficDeduper.begin(nodeID, batchID)
 }
 
 // ReportCommandResult handles command result reports from nodes.
@@ -539,6 +573,65 @@ func (h *NodeAgentHandler) GetConfig(c *gin.Context) {
 func hashConfigVersion(config []byte) string {
 	digest := sha256.Sum256(config)
 	return hex.EncodeToString(digest[:])
+}
+
+type trafficBatchDeduper struct {
+	mu         sync.Mutex
+	ttl        time.Duration
+	lastPruned time.Time
+	processed  map[string]time.Time
+	inflight   map[string]struct{}
+}
+
+func newTrafficBatchDeduper(ttl time.Duration) *trafficBatchDeduper {
+	if ttl <= 0 {
+		ttl = defaultTrafficBatchTTL
+	}
+	return &trafficBatchDeduper{
+		ttl:       ttl,
+		processed: make(map[string]time.Time),
+		inflight:  make(map[string]struct{}),
+	}
+}
+
+func (d *trafficBatchDeduper) begin(nodeID int64, batchID string) (bool, func(bool)) {
+	trimmedBatchID := strings.TrimSpace(batchID)
+	if d == nil || nodeID <= 0 || trimmedBatchID == "" {
+		return true, func(bool) {}
+	}
+
+	now := time.Now().UTC()
+	key := strconv.FormatInt(nodeID, 10) + ":" + trimmedBatchID
+
+	d.mu.Lock()
+	if d.lastPruned.IsZero() || now.Sub(d.lastPruned) >= trafficBatchDedupPruneInterval {
+		for existingKey, expiresAt := range d.processed {
+			if !expiresAt.After(now) {
+				delete(d.processed, existingKey)
+			}
+		}
+		d.lastPruned = now
+	}
+	if expiresAt, exists := d.processed[key]; exists && expiresAt.After(now) {
+		d.mu.Unlock()
+		return false, func(bool) {}
+	}
+	if _, exists := d.inflight[key]; exists {
+		d.mu.Unlock()
+		return false, func(bool) {}
+	}
+	d.inflight[key] = struct{}{}
+	d.mu.Unlock()
+
+	return true, func(success bool) {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+
+		delete(d.inflight, key)
+		if success {
+			d.processed[key] = now.Add(d.ttl)
+		}
+	}
 }
 
 // GetSystemInfo returns system information for the Panel.

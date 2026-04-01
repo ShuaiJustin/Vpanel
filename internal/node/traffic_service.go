@@ -211,11 +211,23 @@ func (s *TrafficService) RecordTrafficBatch(ctx context.Context, records []*Traf
 
 	if s.db == nil {
 		traffic := make([]*repository.NodeTraffic, len(normalized))
+		globalTraffic := make([]*repository.Traffic, len(normalized))
 		for i, r := range normalized {
+			proxyID := int64(0)
+			if r.ProxyID != nil && *r.ProxyID > 0 {
+				proxyID = *r.ProxyID
+			}
 			traffic[i] = &repository.NodeTraffic{
 				NodeID:     r.NodeID,
 				UserID:     r.UserID,
 				ProxyID:    r.ProxyID,
+				Upload:     r.Upload,
+				Download:   r.Download,
+				RecordedAt: now,
+			}
+			globalTraffic[i] = &repository.Traffic{
+				UserID:     r.UserID,
+				ProxyID:    proxyID,
 				Upload:     r.Upload,
 				Download:   r.Download,
 				RecordedAt: now,
@@ -225,6 +237,14 @@ func (s *TrafficService) RecordTrafficBatch(ctx context.Context, records []*Traf
 		if err := s.nodeTrafficRepo.CreateBatch(ctx, traffic); err != nil {
 			s.logger.Error("Failed to record traffic batch", logger.Err(err))
 			return err
+		}
+		if s.trafficRepo != nil {
+			for _, record := range globalTraffic {
+				if err := s.trafficRepo.Create(ctx, record); err != nil {
+					s.logger.Error("Failed to record global traffic batch", logger.Err(err))
+					return err
+				}
+			}
 		}
 		return nil
 	}
@@ -247,15 +267,17 @@ func (s *TrafficService) RecordTrafficBatch(ctx context.Context, records []*Traf
 				RecordedAt: now,
 			})
 
+			proxyID := int64(0)
 			if record.ProxyID != nil && *record.ProxyID > 0 {
-				globalTrafficRecords = append(globalTrafficRecords, &repository.Traffic{
-					UserID:     record.UserID,
-					ProxyID:    *record.ProxyID,
-					Upload:     record.Upload,
-					Download:   record.Download,
-					RecordedAt: now,
-				})
+				proxyID = *record.ProxyID
 			}
+			globalTrafficRecords = append(globalTrafficRecords, &repository.Traffic{
+				UserID:     record.UserID,
+				ProxyID:    proxyID,
+				Upload:     record.Upload,
+				Download:   record.Download,
+				RecordedAt: now,
+			})
 
 			nodeUploads[record.NodeID] += record.Upload
 			nodeDownloads[record.NodeID] += record.Download
@@ -758,6 +780,15 @@ func (s *TrafficService) GetTrafficStatsByGroup(ctx context.Context, start, end 
 
 // GetTrafficByGroup returns traffic statistics for a specific group.
 func (s *TrafficService) GetTrafficByGroup(ctx context.Context, groupID int64, start, end time.Time) (*GroupTrafficStats, error) {
+	if s.groupRepo == nil {
+		return &GroupTrafficStats{
+			GroupID:  groupID,
+			Upload:   0,
+			Download: 0,
+			Total:    0,
+		}, nil
+	}
+
 	// Get all node IDs in the group
 	nodeIDs, err := s.groupRepo.GetNodeIDs(ctx, groupID)
 	if err != nil {
@@ -782,6 +813,14 @@ func (s *TrafficService) GetTrafficByGroup(ctx context.Context, groupID int64, s
 		Download int64
 	}
 	var res result
+	if s.db == nil {
+		return &GroupTrafficStats{
+			GroupID:  groupID,
+			Upload:   0,
+			Download: 0,
+			Total:    0,
+		}, nil
+	}
 	rangeArgs := repository.BuildTimeRangeArgs(s.db.Dialector.Name(), start, end)
 	err = s.db.WithContext(ctx).
 		Model(&repository.NodeTraffic{}).
@@ -863,19 +902,68 @@ func (s *TrafficService) GetTopUsersByTraffic(ctx context.Context, nodeID int64,
 
 // CleanupOldRecords deletes traffic records older than the specified duration.
 func (s *TrafficService) CleanupOldRecords(ctx context.Context, retention time.Duration) (int64, error) {
+	if retention <= 0 {
+		return 0, apperrors.NewValidationError("retention must be greater than zero", nil)
+	}
+
 	before := time.Now().Add(-retention)
-	deleted, err := s.nodeTrafficRepo.DeleteOlderThan(ctx, before)
+	if s.db != nil {
+		var nodeDeleted int64
+		var trafficDeleted int64
+
+		err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			nodeResult := tx.Where("recorded_at < ?", before).Delete(&repository.NodeTraffic{})
+			if nodeResult.Error != nil {
+				return nodeResult.Error
+			}
+			nodeDeleted = nodeResult.RowsAffected
+
+			trafficResult := tx.Where("recorded_at < ?", before).Delete(&repository.Traffic{})
+			if trafficResult.Error != nil {
+				return trafficResult.Error
+			}
+			trafficDeleted = trafficResult.RowsAffected
+
+			return nil
+		})
+		if err != nil {
+			s.logger.Error("Failed to cleanup old traffic records",
+				logger.Err(err),
+				logger.F("before", before))
+			return 0, err
+		}
+
+		s.logger.Info("Cleaned up old traffic records",
+			logger.F("node_deleted", nodeDeleted),
+			logger.F("traffic_deleted", trafficDeleted),
+			logger.F("before", before))
+		return nodeDeleted + trafficDeleted, nil
+	}
+
+	nodeDeleted, err := s.nodeTrafficRepo.DeleteOlderThan(ctx, before)
 	if err != nil {
-		s.logger.Error("Failed to cleanup old traffic records",
+		s.logger.Error("Failed to cleanup old node traffic records",
 			logger.Err(err),
 			logger.F("before", before))
 		return 0, err
 	}
 
+	var trafficDeleted int64
+	if s.trafficRepo != nil {
+		trafficDeleted, err = s.trafficRepo.DeleteOlderThan(ctx, before)
+		if err != nil {
+			s.logger.Error("Failed to cleanup old global traffic records",
+				logger.Err(err),
+				logger.F("before", before))
+			return 0, err
+		}
+	}
+
 	s.logger.Info("Cleaned up old traffic records",
-		logger.F("deleted", deleted),
+		logger.F("node_deleted", nodeDeleted),
+		logger.F("traffic_deleted", trafficDeleted),
 		logger.F("before", before))
-	return deleted, nil
+	return nodeDeleted + trafficDeleted, nil
 }
 
 // DeleteByNode deletes all traffic records for a specific node.

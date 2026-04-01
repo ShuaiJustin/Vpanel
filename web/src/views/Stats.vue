@@ -546,11 +546,6 @@ const loadTrafficStats = async () => {
     }
   } catch (error) {
     console.error('加载流量统计失败:', error)
-    periodTrafficStats.value = {
-      total: 0,
-      upload: 0,
-      download: 0
-    }
   }
 }
 

@@ -324,27 +324,35 @@ const updateCharts = () => {
 const refreshData = async () => {
   loading.value = true
   try {
-    const [realtimeResponse, historyResponse] = await Promise.all([
+    const [realtimeResult, historyResult] = await Promise.allSettled([
       nodesApi.getRealTimeStats(),
       statsApi.getDetailedStats({ period: historyPeriod.value })
     ])
 
-    const realtimeData = unwrapApiData(realtimeResponse)
-    realtimeWindow.value = realtimeData?.window || '5m'
-    realtimeTimestamp.value = realtimeData?.timestamp || ''
-    realtimeNodeTraffic.value = mapRealtimeRows(realtimeData)
+    if (realtimeResult.status === 'fulfilled') {
+      const realtimeData = unwrapApiData(realtimeResult.value)
+      realtimeWindow.value = realtimeData?.window || '5m'
+      realtimeTimestamp.value = realtimeData?.timestamp || ''
+      realtimeNodeTraffic.value = mapRealtimeRows(realtimeData)
+    } else {
+      console.error('获取实时流量数据失败:', realtimeResult.reason)
+    }
 
-    const historyData = unwrapApiData(historyResponse)
-    trafficData.value = mapHistoryRows(historyData)
-    
-    // 更新图表
+    if (historyResult.status === 'fulfilled') {
+      const historyData = unwrapApiData(historyResult.value)
+      trafficData.value = mapHistoryRows(historyData)
+    } else {
+      console.error('获取历史流量数据失败:', historyResult.reason)
+    }
+
+    if (realtimeResult.status === 'rejected' && historyResult.status === 'rejected') {
+      ElMessage.error('获取流量数据失败')
+    }
+
     updateCharts()
   } catch (error) {
     console.error('获取流量数据失败:', error)
     ElMessage.error('获取流量数据失败')
-    trafficData.value = []
-    realtimeNodeTraffic.value = []
-    updateCharts()
   } finally {
     loading.value = false
   }

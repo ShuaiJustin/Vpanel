@@ -382,7 +382,7 @@ func (r *Router) Setup() {
 	}
 
 	// Auth middleware
-	authMiddleware := middleware.NewAuthMiddleware(r.authService, r.logger)
+	authMiddleware := middleware.NewAuthMiddleware(r.authService, r.logger).WithUserRepository(r.repos.User)
 
 	// Access control middleware (checks traffic limits and expiration)
 	accessControlMiddleware := middleware.NewAccessControlMiddleware(r.repos.User, r.logger)

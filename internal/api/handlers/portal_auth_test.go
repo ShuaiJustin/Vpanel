@@ -966,6 +966,46 @@ func TestPortalAuthHandler_LoginWithEmailIsCaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestPortalAuthHandler_LoginReturnsForcePasswordChangeFlag(t *testing.T) {
+	router, handler, userRepo := setupPortalTestRouter()
+
+	hashedPassword, _ := handler.authService.HashPassword("password123")
+	userRepo.Create(context.Background(), &repository.User{
+		Username:            "forceflaguser",
+		Email:               "forceflag@example.com",
+		PasswordHash:        hashedPassword,
+		Role:                "user",
+		Enabled:             true,
+		ForcePasswordChange: true,
+	})
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"username": "forceflaguser",
+		"password": "password123",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/portal/auth/login", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var response struct {
+		User struct {
+			ForcePasswordChange bool `json:"force_password_change"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to decode login response: %v", err)
+	}
+	if !response.User.ForcePasswordChange {
+		t.Fatal("expected force_password_change flag to be returned")
+	}
+}
+
 func TestPortalAuthHandler_LoginRequiresVerifiedEmailWhenPendingTokenExists(t *testing.T) {
 	router, handler, userRepo := setupPortalTestRouter()
 	authTokenRepo := newPortalMockAuthTokenRepo()

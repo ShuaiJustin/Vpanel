@@ -24,6 +24,7 @@ export const useUserStore = defineStore('user', () => {
 
   const setUser = (userInfo) => {
     user.value = userInfo
+    localStorage.setItem('userInfo', JSON.stringify(userInfo || null))
     // 同步角色到 localStorage，供路由守卫使用
     if (userInfo?.role) {
       localStorage.setItem('userRole', userInfo.role)
@@ -39,6 +40,7 @@ export const useUserStore = defineStore('user', () => {
     for (const storage of [localStorage, sessionStorage]) {
       storage.removeItem('token')
       storage.removeItem('userRole')
+      storage.removeItem('userInfo')
     }
   }
 
