@@ -235,6 +235,7 @@ func (r *Router) Setup() {
 
 	// Create pause service
 	pauseService := pause.NewService(r.repos.Pause, r.repos.User, r.logger, nil)
+	r.nodeRecoveryTracker = handlers.NewNodeRecoveryTracker(r.logger)
 
 	// Create gift card service
 	giftCardService := giftcard.NewService(r.repos.GiftCard, balanceService, r.logger)
@@ -307,7 +308,6 @@ func (r *Router) Setup() {
 	r.runtimeReconciler = entitlement.NewRuntimeReconciler(nil, r.entitlementService, r.repos.Proxy, r.repos.Node, r.logger)
 	systemHandler.WithRuntimeReconciler(r.runtimeReconciler)
 	nodeDeployService := node.NewRemoteDeployService(r.logger, r.repos.Node)
-	r.nodeRecoveryTracker = handlers.NewNodeRecoveryTracker(r.logger)
 	proxyHandler.WithRecoveryTracker(r.nodeRecoveryTracker)
 	r.entitlementService.WithConfigSyncHook(func(nodeID int64, source, reason string) {
 		r.nodeRecoveryTracker.QueueConfigSyncCommand(nodeID, source, reason)

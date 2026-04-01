@@ -7,7 +7,7 @@
           使用统计
         </h1>
         <p class="page-subtitle">
-          查看您的流量使用情况和每日汇总记录
+          查看所选时间范围内的流量历史汇总；这与首页显示的当前周期已用流量口径不同
         </p>
         <p class="page-hint">
           {{ statsRefreshHint }}

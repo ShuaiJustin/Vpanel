@@ -48,6 +48,15 @@ func ResolveSNI(settings map[string]any) string {
 	return ""
 }
 
+func ResolveExternalServerAddress(settings map[string]any) string {
+	for _, key := range []string{"external_host", "externalHost", "server_host", "serverHost"} {
+		if normalized := NormalizeShareHost(getSettingString(settings, key)); normalized != "" {
+			return normalized
+		}
+	}
+	return ""
+}
+
 func ResolveTLSSkipVerify(settings map[string]any) bool {
 	for _, key := range []string{"allowInsecure", "skipCertVerify"} {
 		value, ok := settings[key]
@@ -106,9 +115,10 @@ func HasTLSSettings(settings map[string]any) bool {
 
 func ResolveServerAddress(host string, settings map[string]any) string {
 	candidates := []string{
+		ResolveExternalServerAddress(settings),
+		host,
 		getSettingString(settings, "server"),
 		getSettingString(settings, "address"),
-		host,
 		ResolveSNI(settings),
 	}
 

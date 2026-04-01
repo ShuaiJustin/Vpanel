@@ -31,10 +31,12 @@ func TestShouldPromoteNodeOnlineFromHeartbeat(t *testing.T) {
 type stubNodeAgentTrafficRecorder struct {
 	err   error
 	calls int
+	records [][]*node.TrafficRecord
 }
 
 func (s *stubNodeAgentTrafficRecorder) RecordTrafficBatch(ctx context.Context, records []*node.TrafficRecord) error {
 	s.calls++
+	s.records = append(s.records, records)
 	return s.err
 }
 
@@ -141,5 +143,36 @@ func TestNodeAgentHeartbeat_RetriesFailedTrafficBatchID(t *testing.T) {
 
 	if recorder.calls != 2 {
 		t.Fatalf("expected failed batch to be retried, got %d calls", recorder.calls)
+	}
+}
+
+func TestNodeAgentHeartbeat_AllowsSharedProxyTrafficRecords(t *testing.T) {
+	recorder := &stubNodeAgentTrafficRecorder{}
+	handler := newNodeAgentHeartbeatHandler(t, recorder)
+
+	router := gin.New()
+	router.POST("/api/node/heartbeat", handler.Heartbeat)
+
+	body, err := json.Marshal(HeartbeatRequest{
+		NodeID:         1,
+		Token:          "node-token",
+		TrafficBatchID: "batch-shared",
+		Traffic: []TrafficRecord{{UserID: 0, Upload: 10, Download: 20}},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/node/heartbeat", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if recorder.calls != 1 {
+		t.Fatalf("expected recorder to be called once, got %d", recorder.calls)
+	}
+	if len(recorder.records) != 1 || len(recorder.records[0]) != 1 || recorder.records[0][0].UserID != 0 {
+		t.Fatalf("expected shared proxy traffic record to be forwarded, got %+v", recorder.records)
 	}
 }

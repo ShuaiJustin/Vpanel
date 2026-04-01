@@ -3,6 +3,7 @@ package generators
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"v/internal/database/repository"
@@ -122,22 +123,43 @@ func buildSubscriptionProxyName(proxy *repository.Proxy, server string) string {
 		}
 		return protocol
 	}
-	if proxy.Port > 0 {
-		return fmt.Sprintf("%s · %s:%d", protocol, host, proxy.Port)
+	port := proxylib.ResolveServerPort(proxy.Port, proxy.Settings)
+	if port > 0 {
+		return fmt.Sprintf("%s · %s:%d", protocol, host, port)
 	}
 	return fmt.Sprintf("%s · %s", protocol, host)
 }
 
 // ExtractProxyInfo extracts proxy information from a repository.Proxy.
 func ExtractProxyInfo(proxy *repository.Proxy) *ProxyInfo {
-	server := proxylib.ResolveServerAddress(proxy.Host, proxy.Settings)
+	server := proxylib.ResolveExternalServerAddress(proxy.Settings)
+	if server == "" {
+		server = proxylib.ResolveServerAddress(proxy.Host, proxy.Settings)
+	}
+	settingsCopy := cloneGeneratorSettings(proxy.Settings)
+	if settingsCopy == nil {
+		settingsCopy = map[string]interface{}{}
+	}
+	settingsCopy["server"] = server
 	return &ProxyInfo{
 		Name:     buildSubscriptionProxyName(proxy, server),
 		Protocol: proxy.Protocol,
 		Server:   server,
 		Port:     proxylib.ResolveServerPort(proxy.Port, proxy.Settings),
-		Settings: proxy.Settings,
+		Settings: settingsCopy,
 	}
+}
+
+func cloneGeneratorSettings(settings map[string]interface{}) map[string]interface{} {
+	if len(settings) == 0 {
+		return nil
+	}
+
+	cloned := make(map[string]interface{}, len(settings))
+	for key, value := range settings {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 // GetSettingString safely gets a string setting value.
@@ -208,7 +230,7 @@ func MakeUniqueNames(proxies []*ProxyInfo) {
 	for _, p := range proxies {
 		if nameCount[p.Name] > 1 {
 			nameIndex[p.Name]++
-			p.Name = p.Name + "-" + string(rune('0'+nameIndex[p.Name]))
+			p.Name = p.Name + "-" + strconv.Itoa(nameIndex[p.Name])
 		}
 	}
 }

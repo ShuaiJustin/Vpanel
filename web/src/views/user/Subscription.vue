@@ -53,7 +53,7 @@
                   ({{ daysUntilExpiry > 0 ? `剩余 ${daysUntilExpiry} 天` : '已过期' }})
                 </span>
               </el-descriptions-item>
-              <el-descriptions-item label="已用流量">
+              <el-descriptions-item label="当前周期已用流量">
                 {{ trafficUsageDisplay }}
               </el-descriptions-item>
               <el-descriptions-item label="可用节点">

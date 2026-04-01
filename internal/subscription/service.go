@@ -452,12 +452,8 @@ func (s *Service) GetUserEnabledProxies(ctx context.Context, userID int64) ([]*r
 			continue
 		}
 
-		resolvedServer := ""
-		if proxy.Settings != nil {
-			if explicitServer, ok := proxy.Settings["server"].(string); ok {
-				resolvedServer = proxylib.NormalizeShareHost(explicitServer)
-			}
-		}
+		settingsCopy := cloneSubscriptionProxySettings(proxy.Settings)
+		resolvedServer := proxylib.ResolveExternalServerAddress(settingsCopy)
 		if resolvedServer == "" && proxy.NodeID != nil && s.nodeRepo != nil {
 			node, nodeErr := s.nodeRepo.GetByID(ctx, *proxy.NodeID)
 			if nodeErr == nil {
@@ -465,7 +461,7 @@ func (s *Service) GetUserEnabledProxies(ctx context.Context, userID int64) ([]*r
 			}
 		}
 		if resolvedServer == "" {
-			resolvedServer = proxylib.ResolveServerAddress(proxy.Host, proxy.Settings)
+			resolvedServer = proxylib.ResolveServerAddress(proxy.Host, settingsCopy)
 		}
 		if resolvedServer == "" {
 			s.logger.Warn("skip proxy in subscription due to unresolved server address",
@@ -476,14 +472,28 @@ func (s *Service) GetUserEnabledProxies(ctx context.Context, userID int64) ([]*r
 			continue
 		}
 
-		if proxy.Settings == nil {
-			proxy.Settings = map[string]any{}
+		proxyCopy := *proxy
+		if settingsCopy == nil {
+			settingsCopy = map[string]any{}
 		}
-		proxy.Settings["server"] = resolvedServer
-		enabledProxies = append(enabledProxies, proxy)
+		settingsCopy["server"] = resolvedServer
+		proxyCopy.Settings = settingsCopy
+		enabledProxies = append(enabledProxies, &proxyCopy)
 	}
 
 	return enabledProxies, nil
+}
+
+func cloneSubscriptionProxySettings(settings map[string]any) map[string]any {
+	if len(settings) == 0 {
+		return nil
+	}
+
+	cloned := make(map[string]any, len(settings))
+	for key, value := range settings {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func (s *Service) getAccessibleProxies(ctx context.Context, userID int64) ([]*repository.Proxy, error) {

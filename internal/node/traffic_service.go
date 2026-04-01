@@ -271,13 +271,15 @@ func (s *TrafficService) RecordTrafficBatch(ctx context.Context, records []*Traf
 			if record.ProxyID != nil && *record.ProxyID > 0 {
 				proxyID = *record.ProxyID
 			}
-			globalTrafficRecords = append(globalTrafficRecords, &repository.Traffic{
-				UserID:     record.UserID,
-				ProxyID:    proxyID,
-				Upload:     record.Upload,
-				Download:   record.Download,
-				RecordedAt: now,
-			})
+			if record.UserID > 0 {
+				globalTrafficRecords = append(globalTrafficRecords, &repository.Traffic{
+					UserID:     record.UserID,
+					ProxyID:    proxyID,
+					Upload:     record.Upload,
+					Download:   record.Download,
+					RecordedAt: now,
+				})
+			}
 
 			nodeUploads[record.NodeID] += record.Upload
 			nodeDownloads[record.NodeID] += record.Download
@@ -344,7 +346,7 @@ func (s *TrafficService) RecordTrafficBatch(ctx context.Context, records []*Traf
 func collectUserTrafficTotals(records []*TrafficRecord) map[int64]int64 {
 	userTotals := make(map[int64]int64)
 	for _, record := range records {
-		if record == nil {
+		if record == nil || record.UserID <= 0 {
 			continue
 		}
 		total := record.Upload + record.Download
@@ -359,7 +361,7 @@ func collectUserTrafficTotals(records []*TrafficRecord) map[int64]int64 {
 func collectBatchNodesByUser(records []*TrafficRecord) map[int64]map[int64]struct{} {
 	batchNodesByUser := make(map[int64]map[int64]struct{})
 	for _, record := range records {
-		if record == nil || record.UserID <= 0 || record.NodeID <= 0 {
+		if record == nil || record.UserID < 0 || record.NodeID <= 0 {
 			continue
 		}
 		nodeIDs := batchNodesByUser[record.UserID]
@@ -641,7 +643,7 @@ func normalizeTrafficRecords(records []*TrafficRecord) []*TrafficRecord {
 	normalizedByKey := make(map[trafficRecordKey]*TrafficRecord, len(records))
 	orderedKeys := make([]trafficRecordKey, 0, len(records))
 	for _, record := range records {
-		if record == nil || record.UserID <= 0 || record.NodeID <= 0 {
+		if record == nil || record.UserID < 0 || record.NodeID <= 0 {
 			continue
 		}
 

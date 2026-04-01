@@ -445,6 +445,66 @@ func TestTrafficService_RecordTrafficBatchAggregatesDuplicateRecords(t *testing.
 	}
 }
 
+func TestTrafficService_RecordTrafficBatchCountsSharedProxyTrafficOnlyForNodeTotals(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+	nodeID := int64(53)
+	proxyID := int64(20)
+
+	service := NewTrafficService(
+		db,
+		repository.NewNodeTrafficRepository(db),
+		repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db),
+		repository.NewUserRepository(db),
+		repository.NewNodeRepository(db),
+		nil,
+		logger.NewNopLogger(),
+	)
+
+	if err := db.Create(&repository.Node{ID: nodeID, Name: "shared-node", Address: "127.0.0.1", Status: repository.NodeStatusOnline}).Error; err != nil {
+		t.Fatalf("failed to seed node: %v", err)
+	}
+
+	records := []*TrafficRecord{{NodeID: nodeID, UserID: 0, ProxyID: &proxyID, Upload: 90, Download: 30}}
+	if err := service.RecordTrafficBatch(ctx, records); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	var nodeTrafficRows int64
+	if err := db.Model(&repository.NodeTraffic{}).Count(&nodeTrafficRows).Error; err != nil {
+		t.Fatalf("failed to count node traffic rows: %v", err)
+	}
+	if nodeTrafficRows != 1 {
+		t.Fatalf("expected shared traffic to be persisted in node_traffic, got %d rows", nodeTrafficRows)
+	}
+
+	var globalTrafficRows int64
+	if err := db.Model(&repository.Traffic{}).Count(&globalTrafficRows).Error; err != nil {
+		t.Fatalf("failed to count global traffic rows: %v", err)
+	}
+	if globalTrafficRows != 0 {
+		t.Fatalf("expected shared traffic to stay out of user traffic table, got %d rows", globalTrafficRows)
+	}
+
+	nodeRepo := repository.NewNodeRepository(db)
+	updatedNode, err := nodeRepo.GetByID(ctx, nodeID)
+	if err != nil {
+		t.Fatalf("failed to load updated node: %v", err)
+	}
+	if updatedNode.TrafficTotal != 120 {
+		t.Fatalf("expected node traffic_total 120, got %d", updatedNode.TrafficTotal)
+	}
+
+	topUsers, err := service.GetTopUsersByTraffic(ctx, nodeID, time.Now().Add(-time.Hour), time.Now().Add(time.Hour), 10)
+	if err != nil {
+		t.Fatalf("failed to get top users by traffic: %v", err)
+	}
+	if len(topUsers) != 0 {
+		t.Fatalf("expected shared proxy traffic to be excluded from top users, got %+v", topUsers)
+	}
+}
+
 func TestTrafficService_ProcessMonthlyTrafficResets_InitializesMissingResetAt(t *testing.T) {
 	db := setupTrafficServiceTestDB(t)
 	ctx := context.Background()

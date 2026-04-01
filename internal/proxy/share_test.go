@@ -27,6 +27,27 @@ func TestResolveServerAddress_FallsBackToSNIWhenAddressMissing(t *testing.T) {
 	}
 }
 
+func TestResolveServerAddress_PrefersExplicitHostOverLegacyServerSetting(t *testing.T) {
+	server := ResolveServerAddress("64.176.54.36", map[string]any{
+		"server": "old.example.com",
+	})
+
+	if server != "64.176.54.36" {
+		t.Fatalf("expected explicit host to win over legacy settings server, got %q", server)
+	}
+}
+
+func TestResolveServerAddress_UsesExternalHostOverrideFirst(t *testing.T) {
+	server := ResolveServerAddress("64.176.54.36", map[string]any{
+		"external_host": "edge.example.com",
+		"server":        "old.example.com",
+	})
+
+	if server != "edge.example.com" {
+		t.Fatalf("expected external host override edge.example.com, got %q", server)
+	}
+}
+
 func TestResolveServerPort_UsesExternalPortOverride(t *testing.T) {
 	port := ResolveServerPort(20003, map[string]any{
 		"external_port": "80",

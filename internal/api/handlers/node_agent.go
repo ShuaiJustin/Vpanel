@@ -292,7 +292,7 @@ func (h *NodeAgentHandler) Heartbeat(c *gin.Context) {
 
 		records := make([]*node.TrafficRecord, 0, len(req.Traffic))
 		for _, traffic := range req.Traffic {
-			if traffic.UserID <= 0 {
+				if traffic.UserID < 0 {
 				continue
 			}
 			records = append(records, &node.TrafficRecord{

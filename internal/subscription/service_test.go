@@ -807,6 +807,99 @@ func TestGetUserEnabledProxies_UsesTLSDomainAsServer(t *testing.T) {
 	}
 }
 
+func TestGetUserEnabledProxies_PrefersCurrentNodeAddressOverLegacySettingServer(t *testing.T) {
+	db := setupTestDB(t)
+	if err := db.AutoMigrate(&repository.Node{}); err != nil {
+		t.Fatalf("Failed to migrate node model: %v", err)
+	}
+	service := createTestService(t, db).WithNodeRepository(repository.NewNodeRepository(db))
+	ctx := context.Background()
+
+	userID := createTestUser(t, db, "node-address-user")
+	node := &repository.Node{Name: "sub-node", Address: "64.176.54.36", Token: "node-token", Status: repository.NodeStatusOnline}
+	if err := db.Create(node).Error; err != nil {
+		t.Fatalf("Failed to create node: %v", err)
+	}
+
+	proxy := &repository.Proxy{
+		UserID:   userID,
+		NodeID:   &node.ID,
+		Name:     "Node Proxy",
+		Protocol: "vmess",
+		Host:     "old.example.com",
+		Port:     443,
+		Settings: map[string]interface{}{
+			"uuid":   "12345678-1234-1234-1234-123456789012",
+			"server": "old.example.com",
+		},
+		Enabled: true,
+	}
+	if err := db.Create(proxy).Error; err != nil {
+		t.Fatalf("Failed to create proxy: %v", err)
+	}
+
+	proxies, err := service.GetUserEnabledProxies(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserEnabledProxies returned error: %v", err)
+	}
+	if len(proxies) != 1 {
+		t.Fatalf("Expected 1 proxy, got %d", len(proxies))
+	}
+
+	server, ok := proxies[0].Settings["server"].(string)
+	if !ok || server != "64.176.54.36" {
+		t.Fatalf("Expected node address 64.176.54.36, got %#v", proxies[0].Settings["server"])
+	}
+	if proxy.Settings["server"] != "old.example.com" {
+		t.Fatalf("Expected original proxy settings to remain unchanged, got %#v", proxy.Settings["server"])
+	}
+}
+
+func TestGetUserEnabledProxies_PreservesExternalHostOverride(t *testing.T) {
+	db := setupTestDB(t)
+	if err := db.AutoMigrate(&repository.Node{}); err != nil {
+		t.Fatalf("Failed to migrate node model: %v", err)
+	}
+	service := createTestService(t, db).WithNodeRepository(repository.NewNodeRepository(db))
+	ctx := context.Background()
+
+	userID := createTestUser(t, db, "external-host-user")
+	node := &repository.Node{Name: "sub-node", Address: "64.176.54.36", Token: "node-token", Status: repository.NodeStatusOnline}
+	if err := db.Create(node).Error; err != nil {
+		t.Fatalf("Failed to create node: %v", err)
+	}
+
+	proxy := &repository.Proxy{
+		UserID:   userID,
+		NodeID:   &node.ID,
+		Name:     "Node Proxy",
+		Protocol: "vmess",
+		Host:     "64.176.54.36",
+		Port:     443,
+		Settings: map[string]interface{}{
+			"uuid":          "12345678-1234-1234-1234-123456789012",
+			"external_host": "edge.example.com",
+		},
+		Enabled: true,
+	}
+	if err := db.Create(proxy).Error; err != nil {
+		t.Fatalf("Failed to create proxy: %v", err)
+	}
+
+	proxies, err := service.GetUserEnabledProxies(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserEnabledProxies returned error: %v", err)
+	}
+	if len(proxies) != 1 {
+		t.Fatalf("Expected 1 proxy, got %d", len(proxies))
+	}
+
+	server, ok := proxies[0].Settings["server"].(string)
+	if !ok || server != "edge.example.com" {
+		t.Fatalf("Expected external host edge.example.com, got %#v", proxies[0].Settings["server"])
+	}
+}
+
 func TestGetUserEnabledProxies_WithEntitlementIncludesMultipleNodes(t *testing.T) {
 	db := setupTestDB(t)
 	if err := db.AutoMigrate(&repository.Node{}, &repository.Trial{}, &repository.UserNodeAssignment{}); err != nil {
