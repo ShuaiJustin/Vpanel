@@ -173,8 +173,11 @@ const resuming = ref(false)
 const noSubscriptionReason = '当前无有效订阅'
 const noSubscription = computed(() => !pauseStore.isPaused && pauseStore.cannotPauseReason === noSubscriptionReason)
 const entitlementActionLabel = computed(() => {
-  if (userStore.user?.plan_id && userStore.status === 'expired') {
+  if (userStore.hasActiveSubscription && userStore.status === 'expired') {
     return '去续费套餐'
+  }
+  if (userStore.hasActiveTrial && !userStore.hasActiveSubscription) {
+    return '去升级套餐'
   }
   return '去购买套餐'
 })

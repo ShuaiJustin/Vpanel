@@ -459,6 +459,8 @@ func (h *PortalAuthHandler) GetProfile(c *gin.Context) {
 		effectiveTrafficUsed  = user.TrafficUsed
 		availableNodes        = 0
 		accessDenied          = false
+		hasActiveSubscription = false
+		hasActiveTrial        = false
 	)
 
 	if h.entitlement != nil {
@@ -467,6 +469,8 @@ func (h *PortalAuthHandler) GetProfile(c *gin.Context) {
 			effectiveExpiresAt = accessState.EffectiveExpiresAt
 			effectiveTrafficLimit = accessState.EffectiveTrafficLimit
 			effectiveTrafficUsed = accessState.EffectiveTrafficUsed
+			hasActiveSubscription = accessState.HasActiveSubscription
+			hasActiveTrial = accessState.HasActiveTrial
 		}
 		if accessErr == nil {
 			if proxies, _, proxyErr := h.entitlement.GetAccessibleProxies(c.Request.Context(), userID.(int64)); proxyErr == nil {
@@ -520,6 +524,14 @@ func (h *PortalAuthHandler) GetProfile(c *gin.Context) {
 		}
 	}
 
+	entitlementType := "none"
+	switch {
+	case hasActiveSubscription:
+		entitlementType = "subscription"
+	case hasActiveTrial:
+		entitlementType = "trial"
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"id":                    user.ID,
 		"username":              user.Username,
@@ -531,6 +543,9 @@ func (h *PortalAuthHandler) GetProfile(c *gin.Context) {
 		"traffic_limit":         effectiveTrafficLimit,
 		"traffic_used":          effectiveTrafficUsed,
 		"expires_at":            effectiveExpiresAt,
+		"has_active_subscription": hasActiveSubscription,
+		"has_active_trial":        hasActiveTrial,
+		"entitlement_type":        entitlementType,
 		"two_factor_enabled":    user.TwoFactorEnabled,
 		"available_nodes":       availableNodes,
 		"created_at":            user.CreatedAt,

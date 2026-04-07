@@ -206,14 +206,14 @@
           <el-divider />
 
           <h3 class="section-title">
-            登录会话
+            登录会话（即将支持）
           </h3>
           <div class="sessions-section">
             <p class="section-desc">
-              管理您的登录会话，可以注销其他设备上的登录。
+              当前仅支持退出本设备登录，多设备会话查看与远程下线功能暂未开放。
             </p>
-            <el-button @click="showSessions">
-              查看活跃会话
+            <el-button disabled @click="showSessions">
+              即将支持
             </el-button>
           </div>
         </el-card>

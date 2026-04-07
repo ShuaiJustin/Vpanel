@@ -57,6 +57,10 @@ export const useUserPortalStore = defineStore('userPortal', () => {
   const username = computed(() => user.value?.username || '')
   const email = computed(() => user.value?.email || '')
   const status = computed(() => user.value?.status || 'unknown')
+  const hasActiveSubscription = computed(() => Boolean(user.value?.has_active_subscription))
+  const hasActiveTrial = computed(() => Boolean(user.value?.has_active_trial))
+  const entitlementType = computed(() => user.value?.entitlement_type || 'none')
+  const hasEntitlement = computed(() => hasActiveSubscription.value || hasActiveTrial.value)
   const trafficUsed = computed(() => user.value?.traffic_used || 0)
   const trafficLimit = computed(() => user.value?.traffic_limit || 0)
   const trafficPercent = computed(() => {
@@ -297,6 +301,10 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     username,
     email,
     status,
+    hasActiveSubscription,
+    hasActiveTrial,
+    entitlementType,
+    hasEntitlement,
     trafficUsed,
     trafficLimit,
     trafficPercent,

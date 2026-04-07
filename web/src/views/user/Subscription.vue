@@ -68,7 +68,7 @@
                 @click="handlePrimaryPlanAction"
               >
                 <el-icon><TrendCharts /></el-icon>
-                {{ hasCurrentPlan ? '升级/降级套餐' : '选择套餐' }}
+                {{ hasActiveSubscription ? '升级/降级套餐' : '升级为正式套餐' }}
               </el-button>
               <el-button
                 type="success"
@@ -342,16 +342,21 @@ const subscriptionStatus = computed(() => {
   if (pauseStore.cannotPauseReason === '当前无有效订阅') {
     return { type: 'info', label: '无有效订阅' }
   }
+  if (userStore.hasActiveTrial && !userStore.hasActiveSubscription) {
+    return { type: 'success', label: '试用中' }
+  }
   const status = userStore.status
   if (status === 'active') return { type: 'success', label: '正常' }
   if (status === 'expired') return { type: 'warning', label: '已过期' }
   return { type: 'danger', label: '已禁用' }
 })
 
-const hasCurrentPlan = computed(() => Boolean(userStore.user?.plan_id))
-const isExpiredEntitlement = computed(() => hasCurrentPlan.value && userStore.status === 'expired')
+const hasCurrentPlan = computed(() => userStore.hasActiveSubscription)
+const hasTrialEntitlement = computed(() => userStore.hasActiveTrial)
+const hasAnyEntitlement = computed(() => userStore.hasEntitlement)
+const isExpiredEntitlement = computed(() => hasAnyEntitlement.value && userStore.status === 'expired')
 const expiryDisplayText = computed(() => {
-  if (!hasCurrentPlan.value) return '未开通套餐'
+  if (!hasAnyEntitlement.value) return '未开通套餐'
   if (!userStore.expiresAt) return '永久有效'
   return new Date(userStore.expiresAt).toLocaleDateString('zh-CN')
 })
@@ -360,9 +365,13 @@ const trafficUsed = computed(() => userStore.trafficUsed)
 const trafficLimit = computed(() => userStore.trafficLimit)
 const trafficUsageDisplay = computed(() => `${formatTrafficBytes(trafficUsed.value)} / ${formatTrafficLimit(trafficLimit.value)}`)
 const availableNodes = computed(() => userStore.availableNodes || 0)
-const secondaryPlanActionLabel = computed(() => (hasCurrentPlan.value ? '续费套餐' : '购买套餐'))
+const secondaryPlanActionLabel = computed(() => {
+  if (hasCurrentPlan.value) return '续费套餐'
+  if (hasTrialEntitlement.value) return '升级为正式套餐'
+  return '购买套餐'
+})
 const noEntitlementMessage = computed(() => {
-  if (!hasCurrentPlan.value) return '当前暂无可用订阅链接，请先购买套餐。'
+  if (!hasAnyEntitlement.value) return '当前暂无可用订阅链接，请先购买套餐。'
   if (isExpiredEntitlement.value) return '当前套餐已过期，续费后即可恢复订阅链接和节点使用。'
   return getNoEntitlementMessage('subscription')
 })

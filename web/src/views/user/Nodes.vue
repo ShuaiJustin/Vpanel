@@ -365,17 +365,23 @@ const hasActiveFilters = computed(() =>
     filters.keyword || filters.region || filters.protocol || filters.status,
   ),
 );
-const hasCurrentPlan = computed(() => Boolean(userStore.user?.plan_id));
-const hasExpiredEntitlement = computed(() => hasCurrentPlan.value && userStore.status === "expired");
+const hasCurrentPlan = computed(() => userStore.hasActiveSubscription);
+const hasTrialEntitlement = computed(() => userStore.hasActiveTrial);
+const hasAnyEntitlement = computed(() => userStore.hasEntitlement);
+const hasExpiredEntitlement = computed(() => hasAnyEntitlement.value && userStore.status === "expired");
 const accessPlanActionLabel = computed(() => {
-  if (!hasCurrentPlan.value) return "购买套餐";
+  if (!hasAnyEntitlement.value) return "购买套餐";
+  if (hasTrialEntitlement.value && !hasCurrentPlan.value) return "升级套餐";
   if (hasExpiredEntitlement.value) return "续费套餐";
   return "查看套餐列表";
 });
 const accessRestrictedHint = computed(() => {
   if (!accessRestricted.value) return "";
-  if (!hasCurrentPlan.value) {
+  if (!hasAnyEntitlement.value) {
     return "当前还没有有效套餐，购买套餐后即可查看和使用节点。";
+  }
+  if (hasTrialEntitlement.value && !hasCurrentPlan.value) {
+    return "当前为试用订阅，可正常查看和使用节点；如需长期使用可升级为正式套餐。";
   }
   if (hasExpiredEntitlement.value) {
     return "当前套餐已过期，续费后即可继续查看和使用节点。";
