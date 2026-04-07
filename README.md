@@ -203,10 +203,10 @@ cp .env.example .env
 vim .env
 
 # 启动服务
-docker-compose up -d
+docker compose up -d
 
 # 查看日志
-docker-compose logs -f
+docker compose logs -f
 ```
 
 ### 使用 Docker 命令
@@ -230,7 +230,8 @@ docker run -d \
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `V_SERVER_PORT` | 服务端口（留空自动生成） | 随机 10000-65000 |
+| `V_SERVER_PORT` | 容器内服务端口，通常保持不变 | `8080` |
+| `VPANEL_PUBLISH_PORT` | 宿主机暴露端口 | `8080` |
 | `V_SERVER_MODE` | 运行模式 (debug/release) | release |
 | `V_SERVER_PUBLIC_URL` | 面板公网地址，用于支付回调等外部地址生成 | - |
 | `VPANEL_CONFIG_PATH` | 容器内配置文件路径 | /app/configs/config.yaml |

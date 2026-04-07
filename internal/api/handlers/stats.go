@@ -26,11 +26,12 @@ type StatsHandler struct {
 
 // Cache keys and TTLs for statistics
 const (
-	statsCacheTTL           = 30 * time.Second // Short TTL for real-time stats
-	dashboardStatsCacheKey  = "stats:dashboard"
-	protocolStatsCacheKey   = "stats:protocol"
-	trafficStatsCachePrefix = "stats:traffic:"
-	userStatsCachePrefix    = "stats:user:"
+	statsCacheTTL            = 30 * time.Second // Short TTL for real-time stats
+	dashboardStatsCacheKey   = "stats:dashboard"
+	protocolStatsCacheKey    = "stats:protocol"
+	detailedStatsCachePrefix = "stats:detailed:"
+	trafficStatsCachePrefix  = "stats:traffic:"
+	userStatsCachePrefix     = "stats:user:"
 )
 
 // NewStatsHandler creates a new StatsHandler.
@@ -556,6 +557,10 @@ type DetailedStats struct {
 	TotalTraffic int64           `json:"total_traffic"`
 	Upload       int64           `json:"upload"`
 	Download     int64           `json:"download"`
+	Limit        int64           `json:"limit"`
+	UserLimit    int64           `json:"user_limit"`
+	NodeLimit    int64           `json:"node_limit"`
+	Percentage   float64         `json:"percentage"`
 	ByProtocol   []ProtocolStats `json:"by_protocol"`
 	ByUser       []UserStats     `json:"by_user"`
 	Timeline     []TimelinePoint `json:"timeline"`
@@ -564,10 +569,28 @@ type DetailedStats struct {
 // GetDetailedStats returns detailed statistics.
 func (h *StatsHandler) GetDetailedStats(c *gin.Context) {
 	ctx := c.Request.Context()
-	period, start, end, _, rangeErr := parseStatsRange(c)
+	period, start, end, cacheable, rangeErr := parseStatsRange(c)
 	if rangeErr != nil {
 		c.JSON(http.StatusBadRequest, rangeErr.ToResponse(getRequestID(c)))
 		return
+	}
+
+	cacheKey := ""
+	if cacheable {
+		cacheKey = fmt.Sprintf("%s%s", detailedStatsCachePrefix, period)
+	}
+	if cacheKey != "" && h.cache != nil {
+		if cached, err := h.cache.Get(ctx, cacheKey); err == nil && cached != nil {
+			var stats DetailedStats
+			if err := json.Unmarshal(cached, &stats); err == nil {
+				c.JSON(http.StatusOK, gin.H{
+					"code":    200,
+					"message": "success",
+					"data":    stats,
+				})
+				return
+			}
+		}
 	}
 
 	// Get total traffic
@@ -587,6 +610,18 @@ func (h *StatsHandler) GetDetailedStats(c *gin.Context) {
 		ByProtocol:   []ProtocolStats{},
 		ByUser:       []UserStats{},
 		Timeline:     []TimelinePoint{},
+	}
+
+	userLimit, nodeLimit, limitErr := h.getTrafficLimitSummary(ctx)
+	if limitErr != nil {
+		h.logger.Warn("failed to get traffic limit summary", logger.F("error", limitErr))
+	} else {
+		stats.UserLimit = userLimit
+		stats.NodeLimit = nodeLimit
+		stats.Limit = effectiveTrafficLimit(userLimit, nodeLimit)
+		if stats.Limit > 0 {
+			stats.Percentage = float64(stats.TotalTraffic) / float64(stats.Limit) * 100
+		}
 	}
 
 	// Get protocol stats
@@ -652,6 +687,14 @@ func (h *StatsHandler) GetDetailedStats(c *gin.Context) {
 				Upload:   tp.Upload,
 				Download: tp.Download,
 			})
+		}
+	}
+
+	if cacheKey != "" && h.cache != nil {
+		if data, err := json.Marshal(stats); err == nil {
+			if err := h.cache.Set(ctx, cacheKey, data, statsCacheTTL); err != nil {
+				h.logger.Warn("failed to cache detailed stats", logger.F("error", err))
+			}
 		}
 	}
 

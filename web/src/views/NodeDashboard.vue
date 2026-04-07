@@ -596,7 +596,7 @@ const router = useRouter();
 const nodeStore = useNodeStore();
 const groupStore = useNodeGroupStore();
 
-const autoRefreshSeconds = 30;
+const autoRefreshSeconds = 60;
 const loading = ref(false);
 const nodeFilter = ref("focus");
 const trafficStats = ref({ upload: 0, download: 0, total: 0 });
@@ -927,6 +927,10 @@ async function fetchData() {
       nodeStore.fetchNodes({ limit: 500 }),
       groupStore.fetchGroupsWithStats(),
       nodeStore.fetchClusterHealth(),
+      nodeStore.getTotalTraffic({
+        start: start.toISOString(),
+        end: now.toISOString(),
+      }),
     ]);
 
     // Log individual failures without breaking the whole dashboard
@@ -936,14 +940,11 @@ async function fetchData() {
       }
     });
 
-    try {
-      const totalTraffic = await nodeStore.getTotalTraffic({
-        start: start.toISOString(),
-        end: now.toISOString(),
-      });
+    if (results[3]?.status === "fulfilled") {
+      const totalTraffic = results[3].value;
       trafficStats.value =
         totalTraffic?.stats || totalTraffic || { upload: 0, download: 0, total: 0 };
-    } catch {
+    } else {
       trafficStats.value = { upload: 0, download: 0, total: 0 };
     }
 
@@ -959,15 +960,28 @@ async function refreshData() {
   loading.value = false;
 }
 
+function handleVisibilityChange() {
+  if (document.visibilityState === "visible") {
+    fetchData();
+  }
+}
+
 onMounted(() => {
   refreshData();
-  refreshInterval = setInterval(fetchData, autoRefreshSeconds * 1000);
+  refreshInterval = setInterval(() => {
+    if (document.visibilityState === "hidden") {
+      return;
+    }
+    fetchData();
+  }, autoRefreshSeconds * 1000);
+  document.addEventListener("visibilitychange", handleVisibilityChange);
 });
 
 onUnmounted(() => {
   if (refreshInterval) {
     clearInterval(refreshInterval);
   }
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
 });
 </script>
 

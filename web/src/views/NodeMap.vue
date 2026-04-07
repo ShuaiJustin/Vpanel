@@ -263,10 +263,8 @@ import { MapChart, ScatterChart, EffectScatterChart } from 'echarts/charts'
 import { GeoComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { useNodeStore } from '@/stores/node'
-import worldGeoJson from '@/assets/maps/world.json'
 
 echarts.use([GeoComponent, TooltipComponent, MapChart, ScatterChart, EffectScatterChart, CanvasRenderer])
-echarts.registerMap('WORLD', worldGeoJson)
 
 const router = useRouter()
 const nodeStore = useNodeStore()
@@ -279,6 +277,7 @@ const mapChartRef = ref(null)
 
 let mapChart = null
 let resizeObserver = null
+let worldMapReady = false
 
 const REGION_COORDINATES = [
   { pattern: /(hong\s*kong|香港)/i, coord: [114.1694, 22.3193] },
@@ -469,7 +468,7 @@ const getThemeColor = (name, fallback) => {
 }
 
 const updateChart = () => {
-  if (!mapChart) return
+  if (!mapChart || !worldMapReady) return
 
   const scatterGroups = buildScatterGroups()
   const selectedScatterItem = selectedNode.value
@@ -616,6 +615,12 @@ const updateChart = () => {
 const initChart = async () => {
   await nextTick()
   if (!mapChartRef.value) return
+
+  if (!worldMapReady) {
+    const worldGeoJsonModule = await import('@/assets/maps/world.json')
+    echarts.registerMap('WORLD', worldGeoJsonModule.default || worldGeoJsonModule)
+    worldMapReady = true
+  }
 
   if (mapChart) {
     mapChart.dispose()

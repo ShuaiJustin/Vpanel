@@ -293,8 +293,9 @@ func TestShouldPersistHTTPRequestLog(t *testing.T) {
 		{name: "sse is skipped", method: "GET", path: "/api/sse/xray-events", status: http.StatusOK, want: false},
 		{name: "assets are skipped", method: "GET", path: "/assets/js/index.js", status: http.StatusOK, want: false},
 		{name: "favicon is skipped", method: "GET", path: "/favicon.svg", status: http.StatusOK, want: false},
-		{name: "api list is kept", method: "GET", path: "/api/logs", status: http.StatusOK, want: true},
-		{name: "admin api is kept", method: "GET", path: "/api/admin/nodes", status: http.StatusOK, want: true},
+		{name: "successful reads skip db persistence", method: "GET", path: "/api/logs", status: http.StatusOK, want: false},
+		{name: "successful admin reads skip db persistence", method: "GET", path: "/api/admin/nodes", status: http.StatusOK, want: false},
+		{name: "mutating requests are kept", method: "POST", path: "/api/auth/login", status: http.StatusOK, want: true},
 		{name: "errors are always kept", method: "GET", path: "/assets/js/index.js", status: http.StatusInternalServerError, want: true},
 	}
 

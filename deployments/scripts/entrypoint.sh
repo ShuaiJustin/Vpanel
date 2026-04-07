@@ -3,6 +3,7 @@ set -eu
 
 APP_ROOT="/app"
 RUN_USER="vpanel"
+RUN_HOME="/home/${RUN_USER}"
 
 DEFAULT_CONFIG_PATH="${APP_ROOT}/configs/config.yaml"
 DEFAULT_DATA_DIR="${APP_ROOT}/data"
@@ -18,6 +19,7 @@ DB_PATH="${V_DB_PATH:-${DATA_DIR}/v.db}"
 DB_DIR="$(dirname "${DB_PATH}")"
 
 CONFIG_TEMPLATE_PATH="${APP_ROOT}/configs/config.yaml.example"
+HOME="${HOME:-${RUN_HOME}}"
 ACME_HOME="${HOME}/.acme.sh"
 ACME_SCRIPT="${ACME_HOME}/acme.sh"
 ACME_INSTALLER="/tmp/acme.sh"
@@ -65,17 +67,21 @@ chown_if_root() {
 }
 
 prepare_runtime_tree() {
+    ensure_dir "${RUN_HOME}"
     ensure_dir "${CONFIG_DIR}"
     ensure_dir "${DATA_DIR}"
     ensure_dir "${LOG_DIR}"
     ensure_dir "${XRAY_DIR}"
     ensure_dir "${DB_DIR}"
+    ensure_dir "${ACME_HOME}"
 
+    chown_if_root "${RUN_HOME}"
     chown_if_root "${CONFIG_DIR}"
     chown_if_root "${DATA_DIR}"
     chown_if_root "${LOG_DIR}"
     chown_if_root "${XRAY_DIR}"
     chown_if_root "${DB_DIR}"
+    chown_if_root "${ACME_HOME}"
 }
 
 bootstrap_default_config() {
@@ -213,7 +219,7 @@ print_config() {
 
 exec_command() {
     if is_root; then
-        exec su-exec "${RUN_USER}" "$@"
+        exec env HOME="${RUN_HOME}" su-exec "${RUN_USER}" "$@"
     fi
 
     exec "$@"

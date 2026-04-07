@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -30,12 +32,19 @@ type RuntimeReconciler interface {
 
 // SystemHandler handles system-related requests.
 type SystemHandler struct {
-	config            *config.Config
-	logger            logger.Logger
-	startTime         time.Time
-	runtimeReconciler RuntimeReconciler
-	restartHook       func() error
+	config              *config.Config
+	logger              logger.Logger
+	startTime           time.Time
+	runtimeReconciler   RuntimeReconciler
+	restartHook         func() error
+	statusCacheMu       sync.RWMutex
+	lightStatusCache    *DetailedSystemStatusResponse
+	lightStatusCachedAt time.Time
+	fullStatusCache     *DetailedSystemStatusResponse
+	fullStatusCachedAt  time.Time
 }
+
+const detailedStatusCacheTTL = 5 * time.Second
 
 // NewSystemHandler creates a new SystemHandler.
 func NewSystemHandler(cfg *config.Config, log logger.Logger) *SystemHandler {
@@ -236,6 +245,60 @@ func (h *SystemHandler) AdminRestartPanel(c *gin.Context) {
 	}()
 }
 
+func (h *SystemHandler) cloneDetailedStatus(snapshot *DetailedSystemStatusResponse) *DetailedSystemStatusResponse {
+	if snapshot == nil {
+		return nil
+	}
+
+	copyValue := *snapshot
+	if snapshot.Processes != nil {
+		processes := make([]ProcessInfo, len(snapshot.Processes))
+		copy(processes, snapshot.Processes)
+		copyValue.Processes = processes
+	}
+
+	return &copyValue
+}
+
+func (h *SystemHandler) cachedDetailedStatus(includeProcesses bool) (*DetailedSystemStatusResponse, bool) {
+	h.statusCacheMu.RLock()
+	defer h.statusCacheMu.RUnlock()
+
+	var snapshot *DetailedSystemStatusResponse
+	var cachedAt time.Time
+	if includeProcesses {
+		snapshot = h.fullStatusCache
+		cachedAt = h.fullStatusCachedAt
+	} else {
+		snapshot = h.lightStatusCache
+		cachedAt = h.lightStatusCachedAt
+	}
+
+	if snapshot == nil || time.Since(cachedAt) > detailedStatusCacheTTL {
+		return nil, false
+	}
+
+	return h.cloneDetailedStatus(snapshot), true
+}
+
+func (h *SystemHandler) storeDetailedStatusCache(snapshot *DetailedSystemStatusResponse, includeProcesses bool) {
+	if snapshot == nil {
+		return
+	}
+
+	copyValue := h.cloneDetailedStatus(snapshot)
+
+	h.statusCacheMu.Lock()
+	if includeProcesses {
+		h.fullStatusCache = copyValue
+		h.fullStatusCachedAt = time.Now()
+	} else {
+		h.lightStatusCache = copyValue
+		h.lightStatusCachedAt = time.Now()
+	}
+	h.statusCacheMu.Unlock()
+}
+
 // DetailedSystemStatusResponse represents detailed system status for SystemMonitor.vue
 type DetailedSystemStatusResponse struct {
 	CPUInfo     CPUInfoDetail    `json:"cpuInfo"`
@@ -290,6 +353,17 @@ type ProcessInfo struct {
 
 // GetDetailedStatus returns detailed system status for SystemMonitor.vue
 func (h *SystemHandler) GetDetailedStatus(c *gin.Context) {
+	includeProcesses, _ := strconv.ParseBool(c.DefaultQuery("include_processes", "false"))
+
+	if cached, ok := h.cachedDetailedStatus(includeProcesses); ok {
+		c.JSON(http.StatusOK, gin.H{
+			"code":    200,
+			"message": "success",
+			"data":    cached,
+		})
+		return
+	}
+
 	response := DetailedSystemStatusResponse{}
 
 	// Get CPU info
@@ -307,7 +381,7 @@ func (h *SystemHandler) GetDetailedStatus(c *gin.Context) {
 	}
 
 	// Get CPU usage
-	cpuPercent, err := cpu.Percent(time.Second, false)
+	cpuPercent, err := cpu.Percent(0, false)
 	if err == nil && len(cpuPercent) > 0 {
 		response.CPUUsage = cpuPercent[0]
 	}
@@ -385,59 +459,62 @@ func (h *SystemHandler) GetDetailedStatus(c *gin.Context) {
 		response.SystemInfo.IPAddress = "127.0.0.1"
 	}
 
-	// Get process list
-	processes, err := process.Processes()
-	if err == nil {
-		response.Processes = make([]ProcessInfo, 0)
-		for i, p := range processes {
-			if i >= 20 { // Limit to 20 processes
-				break
-			}
-
-			name, _ := p.Name()
-			username, _ := p.Username()
-			cpuPercent, _ := p.CPUPercent()
-			memPercent, _ := p.MemoryPercent()
-			memInfoProc, _ := p.MemoryInfo()
-			createTime, _ := p.CreateTime()
-			status, _ := p.Status()
-
-			var memUsed uint64
-			if memInfoProc != nil {
-				memUsed = memInfoProc.RSS
-			}
-
-			startTime := time.Unix(createTime/1000, 0).Format("2006-01-02 15:04:05")
-
-			statusStr := "running"
-			if len(status) > 0 {
-				switch status[0] {
-				case "S":
-					statusStr = "sleeping"
-				case "R":
-					statusStr = "running"
-				case "Z":
-					statusStr = "zombie"
-				case "T":
-					statusStr = "stopped"
-				case "I":
-					statusStr = "idle"
+	if includeProcesses {
+		// Process enumeration is only needed by the dedicated system monitor page.
+		processes, err := process.Processes()
+		if err == nil {
+			response.Processes = make([]ProcessInfo, 0)
+			for i, p := range processes {
+				if i >= 12 {
+					break
 				}
-			}
 
-			response.Processes = append(response.Processes, ProcessInfo{
-				PID:        p.Pid,
-				Name:       name,
-				User:       username,
-				CPU:        fmt.Sprintf("%.1f", cpuPercent),
-				Memory:     fmt.Sprintf("%.1f", memPercent),
-				MemoryUsed: memUsed,
-				Started:    startTime,
-				State:      statusStr,
-			})
+				name, _ := p.Name()
+				username, _ := p.Username()
+				cpuPercent, _ := p.CPUPercent()
+				memPercent, _ := p.MemoryPercent()
+				memInfoProc, _ := p.MemoryInfo()
+				createTime, _ := p.CreateTime()
+				status, _ := p.Status()
+
+				var memUsed uint64
+				if memInfoProc != nil {
+					memUsed = memInfoProc.RSS
+				}
+
+				startTime := time.Unix(createTime/1000, 0).Format("2006-01-02 15:04:05")
+
+				statusStr := "running"
+				if len(status) > 0 {
+					switch status[0] {
+					case "S":
+						statusStr = "sleeping"
+					case "R":
+						statusStr = "running"
+					case "Z":
+						statusStr = "zombie"
+					case "T":
+						statusStr = "stopped"
+					case "I":
+						statusStr = "idle"
+					}
+				}
+
+				response.Processes = append(response.Processes, ProcessInfo{
+					PID:        p.Pid,
+					Name:       name,
+					User:       username,
+					CPU:        fmt.Sprintf("%.1f", cpuPercent),
+					Memory:     fmt.Sprintf("%.1f", memPercent),
+					MemoryUsed: memUsed,
+					Started:    startTime,
+					State:      statusStr,
+				})
+			}
 		}
 	}
 
+	h.storeDetailedStatusCache(&response, includeProcesses)
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "success",

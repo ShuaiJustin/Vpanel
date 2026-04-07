@@ -284,9 +284,21 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { User, Connection, DataLine, Monitor, Refresh } from '@element-plus/icons-vue'
-import * as echarts from 'echarts'
+import * as echarts from 'echarts/core'
+import { LineChart, PieChart } from 'echarts/charts'
+import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
 import { statsApi } from '@/api/index'
 import { useViewport } from '@/composables/useViewport'
+
+echarts.use([
+  TooltipComponent,
+  LegendComponent,
+  GridComponent,
+  PieChart,
+  LineChart,
+  CanvasRenderer,
+])
 
 const loading = ref(false)
 const trafficPeriod = ref('today')
@@ -518,46 +530,25 @@ const loadDashboardStats = async () => {
   }
 }
 
-// 加载协议统计
-const loadProtocolStats = async () => {
-  try {
-    const response = await statsApi.getProtocolStats({ period: trafficPeriod.value })
-    if (response.code === 200) {
-      protocolStats.value = response.data || []
-      totalTraffic.value = protocolStats.value.reduce((sum, item) => sum + item.traffic, 0)
-      updateProtocolChart()
-    }
-  } catch (error) {
-    console.error('加载协议统计失败:', error)
-  }
-}
-
-// 加载流量统计
-const loadTrafficStats = async () => {
+// 加载详细统计
+const loadDetailedStats = async () => {
   try {
     const response = await statsApi.getDetailedStats({ period: trafficPeriod.value })
     if (response.code === 200 && response.data) {
+      const data = response.data || {}
+      protocolStats.value = Array.isArray(data.by_protocol) ? data.by_protocol : []
+      userStats.value = Array.isArray(data.by_user) ? data.by_user : []
       periodTrafficStats.value = {
-        total: response.data.total_traffic || 0,
-        upload: response.data.upload || 0,
-        download: response.data.download || 0
+        total: data.total_traffic || 0,
+        upload: data.upload || 0,
+        download: data.download || 0
       }
-      updateTrafficChart(response.data.timeline || [])
+      totalTraffic.value = Number(data.total_traffic || 0)
+      updateProtocolChart()
+      updateTrafficChart(data.timeline || [])
     }
   } catch (error) {
-    console.error('加载流量统计失败:', error)
-  }
-}
-
-// 加载用户统计
-const loadUserStats = async () => {
-  try {
-    const response = await statsApi.getUserStats({ period: trafficPeriod.value })
-    if (response.code === 200) {
-      userStats.value = response.data || []
-    }
-  } catch (error) {
-    console.error('加载用户统计失败:', error)
+    console.error('加载详细统计失败:', error)
   }
 }
 
@@ -567,9 +558,7 @@ const refreshData = async () => {
   try {
     await Promise.all([
       loadDashboardStats(),
-      loadProtocolStats(),
-      loadTrafficStats(),
-      loadUserStats()
+      loadDetailedStats()
     ])
   } finally {
     loading.value = false

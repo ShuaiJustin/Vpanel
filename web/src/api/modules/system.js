@@ -7,15 +7,17 @@ import api from '../base'
 export const systemApi = {
   /**
    * 获取系统状态
+   * @param {Object} params - 查询参数
    * @returns {Promise<Object>} 系统状态信息
    */
-  getStatus: () => api.get('/system/status'),
+  getStatus: (params = {}) => api.get('/system/status', { params }),
 
   /**
    * 获取系统状态（别名，兼容旧代码）
+   * @param {Object} params - 查询参数
    * @returns {Promise<Object>} 系统状态信息
    */
-  getSystemStatus: () => api.get('/system/status'),
+  getSystemStatus: (params = {}) => api.get('/system/status', { params }),
 
   /**
    * 获取系统信息

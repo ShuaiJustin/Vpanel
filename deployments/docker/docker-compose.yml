@@ -1,3 +1,5 @@
+name: vpanel
+
 x-vpanel-build-args: &vpanel-build-args
   VERSION: ${VERSION:-dev}
   BUILD_TIME: ${BUILD_TIME:-unknown}
@@ -69,12 +71,13 @@ services:
       target: runtime
       args: *vpanel-build-args
     image: v-panel:${VERSION:-latest}
-    container_name: v-panel
     init: true
     restart: unless-stopped
     stop_grace_period: 30s
+    env_file:
+      - .env
     ports:
-      - "${V_SERVER_PORT:-8080}:8080"
+      - "${VPANEL_PUBLISH_PORT:-8080}:${V_SERVER_PORT:-8080}"
     environment: *vpanel-environment
     volumes: *vpanel-volumes
     healthcheck: *vpanel-healthcheck

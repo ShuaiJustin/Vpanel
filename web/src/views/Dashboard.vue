@@ -318,6 +318,7 @@ import { statsApi, systemApi } from "@/api";
 import { useViewport } from "@/composables/useViewport";
 
 const { isMobile } = useViewport();
+const DASHBOARD_REFRESH_INTERVAL = 60000;
 
 // 系统状态数据
 const systemStats = ref({
@@ -557,7 +558,9 @@ const getProtocolColor = (protocol) => {
 // 加载系统状态
 const loadSystemStatus = async () => {
   try {
-    const response = await systemApi.getSystemStatus();
+    const response = await systemApi.getSystemStatus({
+      include_processes: false,
+    });
 
     // 后端直接返回数据，不是 {code, data} 格式
     // 检查响应格式
@@ -606,34 +609,44 @@ const loadSystemStatus = async () => {
 
 // 加载统计数据
 const loadStats = async () => {
-  const [trafficResult, protocolResult] = await Promise.allSettled([
-    statsApi.getTrafficStats({ period: trafficPeriod.value }),
-    statsApi.getProtocolStats({ period: trafficPeriod.value }),
-  ]);
+  try {
+    const response = await statsApi.getDetailedStats({
+      period: trafficPeriod.value,
+    });
+    const data = unwrapApiData(response) || {};
 
-  let successCount = 0;
+    trafficStats.value = normalizeTrafficStats(
+      {
+        total: data.total_traffic ?? data.totalTraffic,
+        upload: data.upload,
+        download: data.download,
+        up: data.upload,
+        down: data.download,
+        limit: data.limit,
+        user_limit: data.user_limit ?? data.userLimit,
+        node_limit: data.node_limit ?? data.nodeLimit,
+        percentage: data.percentage,
+      },
+      trafficStats.value,
+    );
 
-  if (trafficResult.status === "fulfilled") {
-    const trafficData = unwrapApiData(trafficResult.value);
-    trafficStats.value = normalizeTrafficStats(trafficData, trafficStats.value);
-    successCount++;
-  } else {
-    console.error("Failed to load traffic stats:", trafficResult.reason);
+    const protocols = Array.isArray(data.by_protocol ?? data.byProtocol)
+      ? data.by_protocol ?? data.byProtocol
+      : [];
+    protocolStats.value = protocols;
+    protocolTraffic.value = buildProtocolTraffic(protocols);
+
+    return {
+      success: true,
+      partial: false,
+    };
+  } catch (error) {
+    console.error("Failed to load detailed stats:", error);
+    return {
+      success: false,
+      partial: false,
+    };
   }
-
-  if (protocolResult.status === "fulfilled") {
-    const protocolData = unwrapApiData(protocolResult.value);
-    protocolStats.value = Array.isArray(protocolData) ? protocolData : [];
-    protocolTraffic.value = buildProtocolTraffic(protocolStats.value);
-    successCount++;
-  } else {
-    console.error("Failed to load protocol stats:", protocolResult.reason);
-  }
-
-  return {
-    success: successCount > 0,
-    partial: successCount === 1,
-  };
 };
 
 // 加载所有数据
@@ -694,17 +707,37 @@ const changeTrafficPeriod = async (period) => {
 // 定时刷新
 let refreshTimer = null;
 
+const startAutoRefresh = () => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+  }
+
+  refreshTimer = setInterval(() => {
+    if (document.visibilityState === "hidden") {
+      return;
+    }
+    loadData();
+  }, DASHBOARD_REFRESH_INTERVAL);
+};
+
+const handleVisibilityChange = () => {
+  if (document.visibilityState === "visible") {
+    loadData();
+  }
+};
+
 // 初始化
 onMounted(() => {
   loadData();
-  // 每30秒自动刷新
-  refreshTimer = setInterval(loadData, 30000);
+  startAutoRefresh();
+  document.addEventListener("visibilitychange", handleVisibilityChange);
 });
 
 onUnmounted(() => {
   if (refreshTimer) {
     clearInterval(refreshTimer);
   }
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
 });
 </script>
 
@@ -806,7 +839,8 @@ onUnmounted(() => {
 }
 
 .traffic-card {
-  height: 220px;
+  height: auto;
+  min-height: 260px;
   margin-bottom: 10px;
 }
 
@@ -818,24 +852,28 @@ onUnmounted(() => {
 .traffic-info {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 10px;
-  height: 140px;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 8px 10px 4px;
+  min-height: 180px;
 }
 
 .traffic-data {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 10px;
-  padding: 0 20px;
+  gap: 12px;
+  padding: 0 20px 0 10px;
 }
 
 .traffic-value {
-  font-size: 24px;
+  font-size: 42px;
+  line-height: 1.05;
   font-weight: bold;
   color: #409eff;
-  margin-bottom: 10px;
+  margin: 0;
 }
 
 .traffic-label {
@@ -846,7 +884,7 @@ onUnmounted(() => {
   display: grid;
   gap: 8px;
   width: 100%;
-  max-width: 320px;
+  max-width: 420px;
 }
 
 .traffic-meta-item {
@@ -865,6 +903,15 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--el-text-color-secondary, #909399);
   line-height: 1.5;
+}
+
+.traffic-chart {
+  flex-shrink: 0;
+  width: 140px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding-top: 4px;
 }
 
 .traffic-details {

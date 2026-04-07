@@ -138,10 +138,23 @@
 
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue'
-import * as echarts from 'echarts'
+import * as echarts from 'echarts/core'
+import { BarChart, LineChart } from 'echarts/charts'
+import { GridComponent, LegendComponent, TitleComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
 
 import { ElMessage } from 'element-plus'
 import { nodesApi, statsApi } from '@/api'
+
+echarts.use([
+  TitleComponent,
+  TooltipComponent,
+  LegendComponent,
+  GridComponent,
+  BarChart,
+  LineChart,
+  CanvasRenderer,
+])
 
 // 图表引用
 const realtimeChartRef = ref(null)

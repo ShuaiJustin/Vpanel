@@ -24,8 +24,9 @@
               修复脏代理
             </el-button>
             <el-button
+              :loading="refreshing"
               type="primary"
-              @click="refreshData"
+              @click="refreshData({ silent: false })"
             >
               刷新数据
             </el-button>
@@ -246,12 +247,26 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import * as echarts from 'echarts'
+import * as echarts from 'echarts/core'
+import { BarChart, LineChart } from 'echarts/charts'
+import { GridComponent, LegendComponent, TitleComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
 import { systemApi } from '@/api'
 import { ElMessage } from 'element-plus'
 import { useViewport } from '@/composables/useViewport'
 
+echarts.use([
+  TitleComponent,
+  TooltipComponent,
+  LegendComponent,
+  GridComponent,
+  BarChart,
+  LineChart,
+  CanvasRenderer,
+])
+
 const { isMobile, isTablet } = useViewport()
+const SYSTEM_MONITOR_REFRESH_INTERVAL = 60000
 
 // 图表引用
 const resourceChartRef = ref(null)
@@ -261,6 +276,7 @@ let diskChart = null
 
 // 数据状态
 const loading = ref(false)
+const refreshing = ref(false)
 const apiError = ref(false)
 const repairingRuntime = ref(false)
 const processSearch = ref('')
@@ -494,7 +510,7 @@ const triggerRuntimeReconcile = async () => {
     const stats = data?.stats || {}
 
     ElMessage.success(data?.message ? `${data.message}：${buildRuntimeReconcileSummary(stats)}` : buildRuntimeReconcileSummary(stats))
-    await refreshData()
+    await refreshData({ silent: false })
   } catch (error) {
     console.error('触发运行时巡检失败:', error)
     ElMessage.error(error?.message || '触发运行时巡检失败')
@@ -503,12 +519,20 @@ const triggerRuntimeReconcile = async () => {
   }
 }
 
-const refreshData = async () => {
-  loading.value = true
+const refreshData = async ({ silent = false } = {}) => {
+  const shouldShowBlockingLoading = !silent && processes.value.length === 0
+  if (shouldShowBlockingLoading) {
+    loading.value = true
+  } else if (!silent) {
+    refreshing.value = true
+  }
+
   apiError.value = false
   
   try {
-    const response = await systemApi.getSystemStatus()
+    const response = await systemApi.getSystemStatus({
+      include_processes: true
+    })
 
     const data = response?.code === 200 && response?.data ? response.data : response
 
@@ -552,9 +576,12 @@ const refreshData = async () => {
   } catch (error) {
     console.error('获取系统状态失败:', error)
     apiError.value = true
-    ElMessage.error('获取系统状态失败')
+    if (!silent) {
+      ElMessage.error('获取系统状态失败')
+    }
   } finally {
     loading.value = false
+    refreshing.value = false
     // 更新图表
     updateCharts()
   }
@@ -569,18 +596,30 @@ const handleResize = () => {
 // 定时器引用
 let timer = null
 
+const handleVisibilityChange = () => {
+  if (document.visibilityState === 'visible') {
+    refreshData({ silent: true })
+  }
+}
+
 onMounted(() => {
   // 初始化图表
   initCharts()
   
   // 加载初始数据
-  refreshData()
+  refreshData({ silent: false })
   
   // 开始定时更新
-  timer = setInterval(refreshData, 30000) // 每30秒更新一次
+  timer = setInterval(() => {
+    if (document.visibilityState === 'hidden') {
+      return
+    }
+    refreshData({ silent: true })
+  }, SYSTEM_MONITOR_REFRESH_INTERVAL)
   
   // 监听窗口大小变化
   window.addEventListener('resize', handleResize)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
@@ -589,6 +628,7 @@ onUnmounted(() => {
     timer = null
   }
   window.removeEventListener('resize', handleResize)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
   resourceChart?.dispose()
   diskChart?.dispose()
 })

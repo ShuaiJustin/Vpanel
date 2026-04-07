@@ -8,6 +8,7 @@ const pollingInterval = Number(process.env.VITE_POLLING_INTERVAL || process.env.
 const hmrHost = process.env.VITE_HMR_HOST || undefined
 const hmrClientPort = Number(process.env.VITE_HMR_CLIENT_PORT || 0) || undefined
 const openBrowser = process.env.VITE_OPEN_BROWSER !== 'false'
+const enableBuildSourceMap = /^(1|true)$/i.test(process.env.VITE_BUILD_SOURCEMAP || '')
 
 export default defineConfig({
   plugins: [vue()],
@@ -122,7 +123,8 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    sourcemap: true,
+    sourcemap: enableBuildSourceMap,
+    reportCompressedSize: false,
     chunkSizeWarningLimit: 1500,
     minify: 'terser',
     terserOptions: {
@@ -138,9 +140,11 @@ export default defineConfig({
         assetFileNames: 'assets/[ext]/[name]-[hash].[ext]',
         manualChunks: {
           'vue-vendor': ['vue', 'vue-router', 'pinia'],
-          'element-plus': ['element-plus'],
+          'element-plus': ['element-plus', '@element-plus/icons-vue'],
           'echarts': ['echarts', 'vue-echarts'],
-          'axios': ['axios']
+          'chartjs': ['chart.js'],
+          'axios': ['axios'],
+          'qrcode': ['qrcode'],
         }
       }
     }

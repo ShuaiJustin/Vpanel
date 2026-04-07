@@ -15,6 +15,7 @@ import (
 	"v/internal/api/handlers"
 	"v/internal/api/middleware"
 	"v/internal/auth"
+	"v/internal/cache"
 	"v/internal/certificate"
 	"v/internal/commercial/balance"
 	"v/internal/commercial/commission"
@@ -130,12 +131,19 @@ func (r *Router) Setup() {
 	// Global middleware
 	r.engine.Use(middleware.Recovery(r.logger))
 	r.engine.Use(middleware.SecureHeaders())
+	r.engine.Use(middleware.Compression())
 	r.engine.Use(middleware.LoggerWithService(r.logger, r.logService))
 	r.engine.Use(middleware.CORS(r.config.Server.CORSOrigins))
 	r.engine.Use(middleware.RequestID())
 	r.engine.Use(middleware.ErrorHandler(r.logger)) // 统一错误处理
 	// Removed global rate limit - too restrictive for development
 	// r.engine.Use(middleware.RateLimit(100)) // 100 requests per second per IP
+
+	statsCache := cache.NewMemoryCache(cache.Config{
+		DefaultTTL:     30 * time.Second,
+		MaxMemoryItems: 512,
+		KeyPrefix:      "stats:",
+	})
 
 	// Create handlers
 	authHandler := handlers.NewAuthHandler(r.authService, r.repos.User, r.repos.LoginHistory, r.logger).
@@ -148,7 +156,7 @@ func (r *Router) Setup() {
 	systemHandler := handlers.NewSystemHandler(r.config, r.logger)
 	healthHandler := handlers.NewHealthHandler(r.repos, r.logger, r.xrayManager, nil)
 	roleHandler := handlers.NewRoleHandler(r.logger, r.repos.Role)
-	statsHandler := handlers.NewStatsHandler(r.logger, r.repos, nil)
+	statsHandler := handlers.NewStatsHandler(r.logger, r.repos, statsCache)
 	settingsHandler := handlers.NewSettingsHandler(r.logger, r.settingsService)
 	xrayHandler := handlers.NewXrayHandler(r.xrayManager, r.logger)
 	certificateHandler := handlers.NewCertificateHandler(r.repos.Certificate, r.repos.Node, r.certificateService, r.logger)
@@ -980,6 +988,13 @@ func (r *Router) Setup() {
 	if r.config.Server.StaticPath != "" {
 		staticPath := r.config.Server.StaticPath
 		r.logger.Info("serving frontend static files", logger.F("static_path", staticPath))
+
+		r.engine.Use(func(c *gin.Context) {
+			if strings.HasPrefix(c.Request.URL.Path, "/assets/") {
+				c.Header("Cache-Control", "public, max-age=31536000, immutable")
+			}
+			c.Next()
+		})
 
 		// Serve static assets (js, css, images, etc.)
 		r.engine.Static("/assets", staticPath+"/assets")

@@ -53,7 +53,7 @@ export const useSystemStore = defineStore('system', () => {
     error.value = null
     
     try {
-      const response = await systemApi.getStatus()
+      const response = await systemApi.getStatus({ include_processes: false })
       status.value = response
       lastUpdated.value = new Date().toISOString()
       return response
@@ -88,7 +88,7 @@ export const useSystemStore = defineStore('system', () => {
     try {
       const [infoRes, statusRes, statsRes] = await Promise.allSettled([
         systemApi.getInfo(),
-        systemApi.getStatus(),
+        systemApi.getStatus({ include_processes: false }),
         statsApi.getDashboard()
       ])
       

@@ -112,18 +112,20 @@ func (m *IPRestrictionMiddleware) CheckIPRestriction(getUserMaxIPs func(userID i
 			return
 		}
 
-		// Record activity outside the request cancellation path so browser aborts do not create noisy errors.
-		userAgent := c.GetHeader("User-Agent")
-		recordCtx, cancel := newBackgroundTaskContext(ctx)
-		defer cancel()
-		if err := m.ipService.RecordActivity(recordCtx, uint(userID), clientIP, userAgent, ip.AccessTypeAPI); err != nil {
-			m.logger.Error("Failed to record IP activity",
-				logger.F("error", err),
-				logger.F("user_id", userID),
-				logger.F("ip", clientIP))
-		}
-
 		c.Next()
+
+		// Persisting IP activity may perform geolocation enrichment; keep it off the response path.
+		userAgent := c.GetHeader("User-Agent")
+		go func(userID int64, clientIP, userAgent string) {
+			recordCtx, cancel := newBackgroundTaskContext(ctx)
+			defer cancel()
+			if err := m.ipService.RecordActivity(recordCtx, uint(userID), clientIP, userAgent, ip.AccessTypeAPI); err != nil {
+				m.logger.Error("Failed to record IP activity",
+					logger.F("error", err),
+					logger.F("user_id", userID),
+					logger.F("ip", clientIP))
+			}
+		}(userID, clientIP, userAgent)
 	}
 }
 
@@ -190,18 +192,20 @@ func (m *IPRestrictionMiddleware) CheckSubscriptionIPRestriction(getSubscription
 			return
 		}
 
-		// Record access outside the request cancellation path so browser aborts do not create noisy errors.
-		userAgent := c.GetHeader("User-Agent")
-		recordCtx, cancel := newBackgroundTaskContext(ctx)
-		defer cancel()
-		if err := subIPService.RecordAccess(recordCtx, subID, clientIP, userAgent); err != nil {
-			m.logger.Error("Failed to record subscription IP access",
-				logger.F("error", err),
-				logger.F("subscription_id", subID),
-				logger.F("ip", clientIP))
-		}
-
 		c.Next()
+
+		// Recording subscription IP access is best-effort and should not block delivery.
+		userAgent := c.GetHeader("User-Agent")
+		go func(subscriptionID uint, clientIP, userAgent string) {
+			recordCtx, cancel := newBackgroundTaskContext(ctx)
+			defer cancel()
+			if err := subIPService.RecordAccess(recordCtx, subscriptionID, clientIP, userAgent); err != nil {
+				m.logger.Error("Failed to record subscription IP access",
+					logger.F("error", err),
+					logger.F("subscription_id", subscriptionID),
+					logger.F("ip", clientIP))
+			}
+		}(subID, clientIP, userAgent)
 	}
 }
 

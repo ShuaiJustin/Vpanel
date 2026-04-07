@@ -262,7 +262,8 @@ func (s *Service) RecordActivity(ctx context.Context, userID uint, ip, userAgent
 	// Get geolocation info
 	var country, city string
 	if s.geoService != nil {
-		geoInfo, err := s.geoService.Lookup(ctx, ip)
+		// Activity recording runs for almost every authenticated request, so keep it local/cache-only.
+		geoInfo, err := s.geoService.LookupLocal(ctx, ip)
 		if err == nil && geoInfo != nil {
 			country = geoInfo.Country
 			city = geoInfo.City

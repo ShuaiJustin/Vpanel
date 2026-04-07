@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 ARG ALPINE_MIRROR=mirrors.aliyun.com
-ARG GO_PROXY=https://goproxy.cn,direct
+ARG GO_PROXY=https://goproxy.cn|direct
 ARG NPM_REGISTRY=https://registry.npmmirror.com/
 
 FROM node:20-alpine AS frontend-base
@@ -99,6 +99,7 @@ ARG ALPINE_MIRROR
 ARG APP_HOME=/app
 ARG APP_UID=1000
 ARG APP_GID=1000
+ARG APP_USER=vpanel
 
 RUN sed -i "s/dl-cdn.alpinelinux.org/${ALPINE_MIRROR}/g" /etc/apk/repositories && \
     apk add --no-cache \
@@ -110,10 +111,12 @@ RUN sed -i "s/dl-cdn.alpinelinux.org/${ALPINE_MIRROR}/g" /etc/apk/repositories &
       su-exec \
       tzdata \
       wget && \
-    addgroup -g "${APP_GID}" vpanel && \
-    adduser -u "${APP_UID}" -G vpanel -s /bin/sh -D vpanel
+    addgroup -g "${APP_GID}" "${APP_USER}" && \
+    adduser -u "${APP_UID}" -G "${APP_USER}" -h "/home/${APP_USER}" -s /bin/sh -D "${APP_USER}"
 
 ENV APP_HOME=${APP_HOME} \
+    APP_USER=${APP_USER} \
+    HOME=/home/${APP_USER} \
     VPANEL_CONFIG_PATH=${APP_HOME}/configs/config.yaml \
     VPANEL_DATA_DIR=${APP_HOME}/data \
     VPANEL_LOG_DIR=${APP_HOME}/logs \
@@ -130,13 +133,16 @@ ENV APP_HOME=${APP_HOME} \
 WORKDIR ${APP_HOME}
 
 RUN install -d -o vpanel -g vpanel \
+      /home/${APP_USER} \
+      /home/${APP_USER}/.acme.sh \
       ${APP_HOME}/bin \
       ${APP_HOME}/configs \
       ${APP_HOME}/data \
       ${APP_HOME}/logs \
       ${APP_HOME}/web \
       ${APP_HOME}/web/dist \
-      ${APP_HOME}/xray
+      ${APP_HOME}/xray \
+      ${APP_HOME}/tmp
 
 COPY --from=backend-builder --chown=vpanel:vpanel /out/v-panel ${APP_HOME}/v-panel
 COPY --from=backend-builder --chown=vpanel:vpanel /out/bin ${APP_HOME}/bin
@@ -153,7 +159,7 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD scheme=http; extra=""; \
         if [ -n "$V_SERVER_TLS_CERT" ] && [ -n "$V_SERVER_TLS_KEY" ]; then scheme=https; extra="--no-check-certificate"; fi; \
-        wget $extra --no-verbose --tries=1 --spider "${scheme}://127.0.0.1:8080/health" || exit 1
+        wget $extra --no-verbose --tries=1 --spider "${scheme}://127.0.0.1:${V_SERVER_PORT:-8080}/health" || exit 1
 
 STOPSIGNAL SIGTERM
 

@@ -52,6 +52,7 @@
             
             <!-- 用户菜单 -->
             <el-dropdown
+              class="user-menu-dropdown"
               trigger="click"
               @command="handleCommand"
             >
@@ -474,6 +475,12 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
+.user-menu-dropdown {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
 .user-dropdown-trigger {
   display: flex;
   align-items: center;
@@ -486,6 +493,9 @@ onMounted(() => {
   max-width: min(220px, 22vw);
   flex-shrink: 0;
   white-space: nowrap;
+  line-height: 1;
+  min-height: 40px;
+  box-sizing: border-box;
 }
 
 .user-dropdown-trigger:hover {
@@ -499,9 +509,11 @@ onMounted(() => {
 }
 
 .header-username {
+  display: block;
   font-size: 14px;
   color: var(--color-text-primary);
   font-weight: 500;
+  line-height: 1.2;
   min-width: 0;
   max-width: min(140px, 14vw);
   overflow: hidden;

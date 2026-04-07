@@ -187,6 +187,14 @@ func shouldPersistHTTPRequestLog(method, requestPath string, status int) bool {
 		return true
 	}
 
+	normalizedMethod := strings.ToUpper(strings.TrimSpace(method))
+	switch normalizedMethod {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		// High-frequency read traffic is already visible in structured stdout logs.
+		// Skip DB persistence to avoid turning dashboards and polling pages into write amplification.
+		return false
+	}
+
 	normalizedPath := strings.TrimSpace(requestPath)
 	if normalizedPath == "" {
 		return false

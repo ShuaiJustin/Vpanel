@@ -254,7 +254,7 @@ const historyPageSize = ref(10)
 const historyTotal = ref(0)
 const devicesUpdatedAt = ref(null)
 const historyUpdatedAt = ref(null)
-const DEVICES_REFRESH_INTERVAL = 30 * 1000
+const DEVICES_REFRESH_INTERVAL = 60 * 1000
 
 // 计算属性
 const deviceUsagePercent = computed(() => {
@@ -447,6 +447,8 @@ const refreshPageData = ({ silent = true } = {}) => Promise.all([
   fetchIPHistory({ silent })
 ])
 
+const refreshAutoData = ({ silent = true } = {}) => fetchDevices({ silent })
+
 const handleVisibilityChange = () => {
   if (document.visibilityState === 'visible') {
     refreshPageData({ silent: true })
@@ -458,7 +460,7 @@ onMounted(() => {
 
   refreshInterval = setInterval(() => {
     if (document.visibilityState === 'hidden') return
-    refreshPageData({ silent: true })
+    refreshAutoData({ silent: true })
   }, DEVICES_REFRESH_INTERVAL)
 
   document.addEventListener('visibilitychange', handleVisibilityChange)

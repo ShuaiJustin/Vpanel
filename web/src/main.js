@@ -1,7 +1,6 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
-import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import 'element-plus/dist/index.css'
 import 'element-plus/theme-chalk/dark/css-vars.css'
 import App from './App.vue'
@@ -28,11 +27,6 @@ const pinia = createPinia()
 
 // 安装全局错误处理器
 installGlobalErrorHandler(app)
-
-// 注册所有Element Plus图标
-for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
-  app.component(key, component)
-}
 
 // 使用插件
 app.use(router)

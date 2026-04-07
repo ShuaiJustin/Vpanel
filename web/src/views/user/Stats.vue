@@ -318,10 +318,39 @@ import {
   Download, Upload, DataLine, Connection, Loading 
 } from '@element-plus/icons-vue'
 import { usePortalStatsStore } from '@/stores/portalStats'
-import Chart from 'chart.js/auto'
+import {
+  ArcElement,
+  BarController,
+  BarElement,
+  CategoryScale,
+  Chart as ChartJS,
+  DoughnutController,
+  Filler,
+  Legend,
+  LineController,
+  LineElement,
+  LinearScale,
+  PointElement,
+  Tooltip,
+} from 'chart.js'
 import { extractErrorMessage } from '@/utils/entitlement'
 import { useViewport } from '@/composables/useViewport'
 import { buildPortalStatsParams, formatTrafficBytes } from '@/utils/traffic'
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  ArcElement,
+  Tooltip,
+  Legend,
+  Filler,
+  BarController,
+  LineController,
+  DoughnutController,
+)
 
 const statsStore = usePortalStatsStore()
 const { isMobile } = useViewport()
@@ -474,7 +503,7 @@ function renderTrafficChart() {
   }
 
   const ctx = trafficChart.value.getContext('2d')
-  trafficChartInstance = new Chart(ctx, {
+  trafficChartInstance = new ChartJS(ctx, {
     type: chartType.value,
     data: {
       labels: chartData.value.labels,
@@ -538,7 +567,7 @@ function renderProtocolChart() {
   }
 
   const ctx = protocolChart.value.getContext('2d')
-  protocolChartInstance = new Chart(ctx, {
+  protocolChartInstance = new ChartJS(ctx, {
     type: 'doughnut',
     data: {
       labels: protocolUsage.value.map(p => p.protocol),
