@@ -10,6 +10,7 @@ import (
 
 	trialsvc "v/internal/commercial/trial"
 	"v/internal/database/repository"
+	"v/internal/ip"
 	"v/internal/logger"
 	"v/internal/proxy"
 	"v/pkg/errors"
@@ -23,6 +24,7 @@ type ProxyHandler struct {
 	userRepo        repository.UserRepository
 	trialRepo       repository.TrialRepository
 	trialService    *trialsvc.Service
+	ipTracker       *ip.Tracker
 	recoveryTracker *NodeRecoveryTracker
 	logger          logger.Logger
 }
@@ -61,6 +63,12 @@ func (h *ProxyHandler) WithUserRepositories(userRepo repository.UserRepository, 
 // WithTrialService injects trial service for derived trial traffic metadata.
 func (h *ProxyHandler) WithTrialService(trialService *trialsvc.Service) *ProxyHandler {
 	h.trialService = trialService
+	return h
+}
+
+// WithIPTracker injects a tracker used to derive live session counts.
+func (h *ProxyHandler) WithIPTracker(ipTracker *ip.Tracker) *ProxyHandler {
+	h.ipTracker = ipTracker
 	return h
 }
 
@@ -743,11 +751,25 @@ func (h *ProxyHandler) GetStats(c *gin.Context) {
 		}
 	}
 
+	connectionCount := 0
+	if h.ipTracker != nil && p.UserID > 0 {
+		count, countErr := h.ipTracker.GetActiveIPCount(c.Request.Context(), uint(p.UserID))
+		if countErr != nil {
+			h.logger.Warn("failed to get proxy live session count",
+				logger.F("error", countErr),
+				logger.F("proxy_id", id),
+				logger.F("user_id", p.UserID),
+			)
+		} else {
+			connectionCount = count
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"upload":           upload,
 		"download":         download,
 		"total":            upload + download,
-		"connection_count": 0, // TODO: Implement connection tracking
+		"connection_count": connectionCount,
 		"last_active":      p.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 	})
 }

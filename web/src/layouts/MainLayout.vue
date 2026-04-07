@@ -42,26 +42,35 @@
         :collapse="!isMobile && isCollapse"
         router
       >
-        <el-menu-item index="/admin/dashboard">
+        <el-menu-item
+          v-if="canAccess(['stats:read', 'system:read'])"
+          index="/admin/dashboard"
+        >
           <el-icon><Monitor /></el-icon>
           <span>仪表盘</span>
         </el-menu-item>
 
         <el-sub-menu
-          v-if="isAdmin"
+          v-if="canAccess('system:read')"
           index="nodes"
         >
           <template #title>
             <el-icon><Connection /></el-icon>
             <span>节点管理</span>
           </template>
-          <el-menu-item index="/admin/node-dashboard">
+          <el-menu-item
+            v-if="canAccess('system:read')"
+            index="/admin/node-dashboard"
+          >
             集群概览
           </el-menu-item>
           <el-menu-item index="/admin/nodes">
             节点列表
           </el-menu-item>
-          <el-menu-item index="/admin/node-operations">
+          <el-menu-item
+            v-if="canAccess('system:write')"
+            index="/admin/node-operations"
+          >
             节点运维
           </el-menu-item>
           <el-menu-item index="/admin/node-groups">
@@ -75,52 +84,82 @@
           </el-menu-item>
         </el-sub-menu>
         
-        <el-menu-item index="/admin/inbounds">
+        <el-menu-item
+          v-if="canAccess('proxy:read')"
+          index="/admin/inbounds"
+        >
           <el-icon><Connection /></el-icon>
           <span>代理服务</span>
         </el-menu-item>
         
-        <el-menu-item index="/admin/subscriptions">
+        <el-menu-item
+          v-if="canAccess('user:read')"
+          index="/admin/subscriptions"
+        >
           <el-icon><Link /></el-icon>
           <span>订阅管理</span>
         </el-menu-item>
         
-        <el-sub-menu index="user">
+        <el-sub-menu
+          v-if="canAccessAny(['user:read', 'role:read'])"
+          index="user"
+        >
           <template #title>
             <el-icon><User /></el-icon>
             <span>用户管理</span>
           </template>
-          <el-menu-item index="/admin/users">
+          <el-menu-item
+            v-if="canAccess('user:read')"
+            index="/admin/users"
+          >
             用户列表
           </el-menu-item>
-          <el-menu-item index="/admin/roles">
+          <el-menu-item
+            v-if="canAccess('role:read')"
+            index="/admin/roles"
+          >
             角色管理
           </el-menu-item>
         </el-sub-menu>
         
-        <el-sub-menu index="monitor">
+        <el-sub-menu
+          v-if="canAccessAny(['system:read', 'stats:read'])"
+          index="monitor"
+        >
           <template #title>
             <el-icon><DataAnalysis /></el-icon>
             <span>监控与统计</span>
           </template>
-          <el-menu-item index="/admin/system-monitor">
+          <el-menu-item
+            v-if="canAccess('system:read')"
+            index="/admin/system-monitor"
+          >
             系统监控
           </el-menu-item>
-          <el-menu-item index="/admin/traffic-monitor">
+          <el-menu-item
+            v-if="canAccess(['stats:read', 'system:read'])"
+            index="/admin/traffic-monitor"
+          >
             流量监控
           </el-menu-item>
-          <el-menu-item index="/admin/stats">
+          <el-menu-item
+            v-if="canAccess('stats:read')"
+            index="/admin/stats"
+          >
             统计数据
           </el-menu-item>
         </el-sub-menu>
         
-        <el-menu-item index="/admin/certificates">
+        <el-menu-item
+          v-if="canAccess('system:write')"
+          index="/admin/certificates"
+        >
           <el-icon><Tools /></el-icon>
           <span>证书管理</span>
         </el-menu-item>
 
         <el-sub-menu
-          v-if="isAdmin"
+          v-if="canAccess('system:write')"
           index="commercial"
         >
           <template #title>
@@ -156,18 +195,30 @@
           </el-menu-item>
         </el-sub-menu>
 
-        <el-sub-menu index="settings">
+        <el-sub-menu
+          v-if="canAccessAny(['system:read', 'system:write'])"
+          index="settings"
+        >
           <template #title>
             <el-icon><Setting /></el-icon>
             <span>系统设置</span>
           </template>
-          <el-menu-item index="/admin/settings">
+          <el-menu-item
+            v-if="canAccess('system:write')"
+            index="/admin/settings"
+          >
             配置管理
           </el-menu-item>
-          <el-menu-item index="/admin/logs">
+          <el-menu-item
+            v-if="canAccess('system:read')"
+            index="/admin/logs"
+          >
             日志管理
           </el-menu-item>
-          <el-menu-item index="/admin/ip-restriction">
+          <el-menu-item
+            v-if="canAccess('system:read')"
+            index="/admin/ip-restriction"
+          >
             IP 限制
           </el-menu-item>
         </el-sub-menu>
@@ -280,7 +331,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import {
@@ -325,15 +376,22 @@ const activeMenu = computed(() => {
 })
 const currentTitle = computed(() => route.meta?.title || 'V 管理面板')
 
-function getStoredItem(key) {
-  return sessionStorage.getItem(key) || localStorage.getItem(key)
+const storedPermissions = computed(() => Array.isArray(userStore.user?.permissions) ? userStore.user.permissions : [])
+
+const canAccessPermission = permission => {
+  if (!permission) return true
+  return storedPermissions.value.includes('*') || storedPermissions.value.includes(permission)
 }
 
-// Check if user is admin
-const isAdmin = computed(() => {
-  const userRole = getStoredItem('userRole')
-  return userRole === 'admin'
-})
+const canAccess = permissions => {
+  const items = Array.isArray(permissions) ? permissions : [permissions]
+  return items.every(permission => canAccessPermission(permission))
+}
+
+const canAccessAny = permissions => {
+  const items = Array.isArray(permissions) ? permissions : [permissions]
+  return items.some(permission => canAccessPermission(permission))
+}
 
 // 切换侧边栏
 const toggleSidebar = () => {
@@ -407,6 +465,12 @@ watch(
 watch(isMobile, mobile => {
   if (!mobile) {
     closeMobileMenu()
+  }
+})
+
+onMounted(() => {
+  if (userStore.isLoggedIn) {
+    userStore.getUser().catch(() => {})
   }
 })
 </script>

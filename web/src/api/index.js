@@ -111,7 +111,8 @@ export const roles = {
   getRole: rolesApi.get,
   createRole: rolesApi.create,
   updateRole: rolesApi.update,
-  deleteRole: rolesApi.delete
+  deleteRole: rolesApi.delete,
+  getPermissions: rolesApi.getPermissions
 }
 export const userApi = {
   getInfo: authApi.getProfile,

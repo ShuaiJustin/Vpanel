@@ -585,7 +585,6 @@ const saveSettings = async () => {
       quic: enableQUIC.value
     }
     
-    console.log('保存协议设置:', { protocols, transports })
     ElMessage.success('协议设置已保存')
   } catch (error) {
     console.error('保存设置失败:', error)
@@ -607,7 +606,6 @@ const saveTrojanSettings = async () => {
       passwordPolicy: trojanPasswordPolicy.value
     }
     
-    console.log('保存Trojan高级设置:', trojanSettings)
     ElMessage.success('Trojan高级设置已保存')
   } catch (error) {
     console.error('保存Trojan设置失败:', error)

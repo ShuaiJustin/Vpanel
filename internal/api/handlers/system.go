@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -33,6 +34,7 @@ type SystemHandler struct {
 	logger            logger.Logger
 	startTime         time.Time
 	runtimeReconciler RuntimeReconciler
+	restartHook       func() error
 }
 
 // NewSystemHandler creates a new SystemHandler.
@@ -47,6 +49,12 @@ func NewSystemHandler(cfg *config.Config, log logger.Logger) *SystemHandler {
 // WithRuntimeReconciler enables manual triggering of stale runtime cleanup.
 func (h *SystemHandler) WithRuntimeReconciler(runtimeReconciler RuntimeReconciler) *SystemHandler {
 	h.runtimeReconciler = runtimeReconciler
+	return h
+}
+
+// WithRestartHook configures a process restart hook.
+func (h *SystemHandler) WithRestartHook(hook func() error) *SystemHandler {
+	h.restartHook = hook
 	return h
 }
 
@@ -184,6 +192,48 @@ func (h *SystemHandler) AdminTriggerRuntimeReconcile(c *gin.Context) {
 		"message": "Runtime reconciliation completed",
 		"stats":   stats,
 	})
+}
+
+// AdminRestartPanel triggers a graceful process restart.
+// POST /api/admin/system/restart-panel
+func (h *SystemHandler) AdminRestartPanel(c *gin.Context) {
+	if h.restartHook != nil {
+		if err := h.restartHook(); err != nil {
+			h.logger.Error("failed to restart panel via hook", logger.Err(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to restart panel"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "Panel restart requested"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Panel restart scheduled",
+		"note":    "The current process will exit and should be restarted by its service manager.",
+	})
+	if flusher, ok := c.Writer.(http.Flusher); ok {
+		flusher.Flush()
+	}
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		process, err := os.FindProcess(os.Getpid())
+		if err != nil {
+			h.logger.Error("failed to locate current process for restart", logger.Err(err))
+			return
+		}
+
+		if runtime.GOOS == "windows" {
+			if err := process.Kill(); err != nil {
+				h.logger.Error("failed to terminate process on windows restart", logger.Err(err))
+			}
+			return
+		}
+
+		if err := process.Signal(syscall.SIGTERM); err != nil {
+			h.logger.Error("failed to terminate process for restart", logger.Err(err))
+		}
+	}()
 }
 
 // DetailedSystemStatusResponse represents detailed system status for SystemMonitor.vue

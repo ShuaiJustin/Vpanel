@@ -42,10 +42,7 @@ func (m *portalMockUserRepo) Create(ctx context.Context, user *repository.User) 
 	user.CreatedAt = time.Now()
 	user.UpdatedAt = time.Now()
 	m.users[user.ID] = user
-	m.byUsername[user.Username] = user
-	if user.Email != "" {
-		m.byEmail[strings.ToLower(user.Email)] = user
-	}
+	m.rebuildIndexes()
 	return nil
 }
 
@@ -73,20 +70,30 @@ func (m *portalMockUserRepo) GetByEmail(ctx context.Context, email string) (*rep
 func (m *portalMockUserRepo) Update(ctx context.Context, user *repository.User) error {
 	user.UpdatedAt = time.Now()
 	m.users[user.ID] = user
-	m.byUsername[user.Username] = user
-	if user.Email != "" {
-		m.byEmail[strings.ToLower(user.Email)] = user
-	}
+	m.rebuildIndexes()
 	return nil
 }
 
 func (m *portalMockUserRepo) Delete(ctx context.Context, id int64) error {
-	if user, ok := m.users[id]; ok {
-		delete(m.byUsername, user.Username)
-		delete(m.byEmail, strings.ToLower(user.Email))
+	if _, ok := m.users[id]; ok {
 		delete(m.users, id)
+		m.rebuildIndexes()
 	}
 	return nil
+}
+
+func (m *portalMockUserRepo) rebuildIndexes() {
+	m.byUsername = make(map[string]*repository.User, len(m.users))
+	m.byEmail = make(map[string]*repository.User, len(m.users))
+	for _, user := range m.users {
+		if user == nil {
+			continue
+		}
+		m.byUsername[user.Username] = user
+		if strings.TrimSpace(user.Email) != "" {
+			m.byEmail[strings.ToLower(strings.TrimSpace(user.Email))] = user
+		}
+	}
 }
 
 func (m *portalMockUserRepo) List(ctx context.Context, limit, offset int) ([]*repository.User, error) {
@@ -1092,6 +1099,148 @@ func TestPortalAuthHandler_VerifyEmailUpdatesUserStatus(t *testing.T) {
 	}
 	if updatedUser.EmailVerifiedAt == nil {
 		t.Fatalf("Expected user email verification timestamp to be set")
+	}
+}
+
+func TestPortalAuthHandler_GetProfileIncludesPortalFields(t *testing.T) {
+	router, handler, userRepo := setupPortalTestRouter()
+
+	user := &repository.User{
+		Username:      "profile-user",
+		Email:         "profile@example.com",
+		PasswordHash:  "hashed",
+		Role:          "user",
+		Enabled:       true,
+		EmailVerified: true,
+		DisplayName:   "Profile Name",
+		AvatarURL:     "https://cdn.example.com/avatar.png",
+		NotifyEmail:   true,
+		Theme:         "dark",
+		Language:      "en-US",
+	}
+	userRepo.Create(context.Background(), user)
+
+	router.GET("/api/portal/auth/profile", func(c *gin.Context) {
+		c.Set("user_id", user.ID)
+		handler.GetProfile(c)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/portal/auth/profile", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected OK for profile, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode profile response: %v", err)
+	}
+
+	if payload["display_name"] != "Profile Name" {
+		t.Fatalf("expected display_name to be returned, got %v", payload["display_name"])
+	}
+	if payload["avatar_url"] != "https://cdn.example.com/avatar.png" {
+		t.Fatalf("expected avatar_url to be returned, got %v", payload["avatar_url"])
+	}
+	if payload["email_verified"] != true {
+		t.Fatalf("expected email_verified=true, got %v", payload["email_verified"])
+	}
+}
+
+func TestPortalAuthHandler_UpdateProfilePersistsDisplayNameAndResetsEmailVerification(t *testing.T) {
+	router, handler, userRepo := setupPortalTestRouter()
+	authTokenRepo := newPortalMockAuthTokenRepo()
+	emailSender := &portalMockEmailSender{}
+	handler.portalAuthService = portalauth.NewService(userRepo, authTokenRepo)
+	handler.WithEmailSender(emailSender, "https://panel.example.com")
+
+	user := &repository.User{
+		Username:        "portal-update-user",
+		Email:           "old@example.com",
+		PasswordHash:    "hashed",
+		Role:            "user",
+		Enabled:         true,
+		EmailVerified:   true,
+		DisplayName:     "Old Name",
+		EmailVerifiedAt: func() *time.Time { now := time.Now().UTC(); return &now }(),
+	}
+	userRepo.Create(context.Background(), user)
+
+	router.PUT("/api/portal/auth/profile", func(c *gin.Context) {
+		c.Set("user_id", user.ID)
+		handler.UpdateProfile(c)
+	})
+
+	body, _ := json.Marshal(map[string]any{
+		"email":        "  NEW@example.com ",
+		"display_name": "  New Name  ",
+	})
+	req := httptest.NewRequest(http.MethodPut, "/api/portal/auth/profile", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected OK for update profile, got %d: %s", w.Code, w.Body.String())
+	}
+
+	updatedUser, err := userRepo.GetByID(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("expected user lookup to succeed: %v", err)
+	}
+	if updatedUser.Email != "new@example.com" {
+		t.Fatalf("expected normalized email, got %q", updatedUser.Email)
+	}
+	if updatedUser.DisplayName != "New Name" {
+		t.Fatalf("expected trimmed display name, got %q", updatedUser.DisplayName)
+	}
+	if updatedUser.EmailVerified {
+		t.Fatalf("expected email verification to reset after email change")
+	}
+	if updatedUser.EmailVerifiedAt != nil {
+		t.Fatalf("expected email verification timestamp to clear after email change")
+	}
+	if len(emailSender.sent) != 1 {
+		t.Fatalf("expected one verification email to be sent, got %d", len(emailSender.sent))
+	}
+}
+
+func TestPortalAuthHandler_ResendVerificationEmailSendsMessage(t *testing.T) {
+	router, handler, userRepo := setupPortalTestRouter()
+	authTokenRepo := newPortalMockAuthTokenRepo()
+	emailSender := &portalMockEmailSender{}
+	handler.portalAuthService = portalauth.NewService(userRepo, authTokenRepo)
+	handler.WithEmailSender(emailSender, "https://panel.example.com")
+
+	user := &repository.User{
+		Username:      "resend-user",
+		Email:         "resend@example.com",
+		PasswordHash:  "hashed",
+		Role:          "user",
+		Enabled:       true,
+		EmailVerified: false,
+	}
+	userRepo.Create(context.Background(), user)
+
+	router.POST("/api/portal/auth/verify-email/resend", func(c *gin.Context) {
+		c.Set("user_id", user.ID)
+		handler.ResendVerificationEmail(c)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/portal/auth/verify-email/resend", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected OK for resend verification email, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(emailSender.sent) != 1 {
+		t.Fatalf("expected one verification email, got %d", len(emailSender.sent))
+	}
+	if !strings.Contains(emailSender.sent[0].body, "verify_email_token=") {
+		t.Fatalf("expected verification link in email body, got %q", emailSender.sent[0].body)
 	}
 }
 

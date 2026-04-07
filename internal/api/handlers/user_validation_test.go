@@ -43,7 +43,7 @@ func setupValidationTestDB(t *testing.T) *gorm.DB {
 	}
 
 	// Auto migrate
-	if err := db.AutoMigrate(&repository.User{}, &repository.LoginHistory{}); err != nil {
+	if err := db.AutoMigrate(&repository.User{}, &repository.LoginHistory{}, &repository.Role{}); err != nil {
 		t.Fatalf("Failed to migrate: %v", err)
 	}
 

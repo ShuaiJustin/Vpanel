@@ -4,13 +4,18 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"v/internal/api/middleware"
+	"v/internal/database"
 	"v/internal/logger"
 	"v/internal/settings"
 	"v/pkg/errors"
@@ -86,9 +91,28 @@ type UpdateSettingsRequest struct {
 	// Panel settings
 	PanelAccessIP  *string `json:"panel_access_ip"`
 	PanelPort      *int    `json:"panel_port"`
+	PanelBasePath  *string `json:"panel_base_path"`
+	ProxyMode      *string `json:"proxy_mode"`
+	Timezone       *string `json:"timezone"`
 	PanelCertPath  *string `json:"panel_cert_path"`
 	PanelKeyPath   *string `json:"panel_key_path"`
 	PanelAPIDomain *string `json:"panel_api_domain"`
+
+	// DB settings
+	DBType     *string `json:"db_type"`
+	DBHost     *string `json:"db_host"`
+	DBPort     *int    `json:"db_port"`
+	DBName     *string `json:"db_name"`
+	DBUser     *string `json:"db_user"`
+	DBPassword *string `json:"db_password"`
+	SQLitePath *string `json:"sqlite_path"`
+
+	// Log settings
+	LogLevel           *string `json:"log_level"`
+	LogRetentionDays   *int    `json:"log_retention_days"`
+	LogPath            *string `json:"log_path"`
+	EnableAccessLog    *bool   `json:"enable_access_log"`
+	EnableOperationLog *bool   `json:"enable_operation_log"`
 
 	// SMTP settings
 	SMTPHost       *string `json:"smtp_host"`
@@ -242,6 +266,15 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 	if req.PanelPort != nil {
 		currentSettings.PanelPort = *req.PanelPort
 	}
+	if req.PanelBasePath != nil {
+		currentSettings.PanelBasePath = strings.TrimSpace(*req.PanelBasePath)
+	}
+	if req.ProxyMode != nil {
+		currentSettings.ProxyMode = strings.TrimSpace(*req.ProxyMode)
+	}
+	if req.Timezone != nil {
+		currentSettings.Timezone = strings.TrimSpace(*req.Timezone)
+	}
 	if req.PanelCertPath != nil {
 		currentSettings.PanelCertPath = *req.PanelCertPath
 	}
@@ -250,6 +283,42 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 	}
 	if req.PanelAPIDomain != nil {
 		currentSettings.PanelAPIDomain = *req.PanelAPIDomain
+	}
+	if req.DBType != nil {
+		currentSettings.DBType = strings.TrimSpace(*req.DBType)
+	}
+	if req.DBHost != nil {
+		currentSettings.DBHost = strings.TrimSpace(*req.DBHost)
+	}
+	if req.DBPort != nil {
+		currentSettings.DBPort = *req.DBPort
+	}
+	if req.DBName != nil {
+		currentSettings.DBName = strings.TrimSpace(*req.DBName)
+	}
+	if req.DBUser != nil {
+		currentSettings.DBUser = strings.TrimSpace(*req.DBUser)
+	}
+	if req.DBPassword != nil {
+		currentSettings.DBPassword = *req.DBPassword
+	}
+	if req.SQLitePath != nil {
+		currentSettings.SQLitePath = strings.TrimSpace(*req.SQLitePath)
+	}
+	if req.LogLevel != nil {
+		currentSettings.LogLevel = strings.TrimSpace(*req.LogLevel)
+	}
+	if req.LogRetentionDays != nil {
+		currentSettings.LogRetentionDays = *req.LogRetentionDays
+	}
+	if req.LogPath != nil {
+		currentSettings.LogPath = strings.TrimSpace(*req.LogPath)
+	}
+	if req.EnableAccessLog != nil {
+		currentSettings.EnableAccessLog = *req.EnableAccessLog
+	}
+	if req.EnableOperationLog != nil {
+		currentSettings.EnableOperationLog = *req.EnableOperationLog
 	}
 	if req.SMTPHost != nil {
 		currentSettings.SMTPHost = *req.SMTPHost
@@ -399,6 +468,183 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 		"code":    200,
 		"message": "settings updated",
 		"data":    currentSettings,
+	})
+}
+
+type TestDatabaseRequest struct {
+	DBType     string `json:"db_type"`
+	DBHost     string `json:"db_host"`
+	DBPort     int    `json:"db_port"`
+	DBName     string `json:"db_name"`
+	DBUser     string `json:"db_user"`
+	DBPassword string `json:"db_password"`
+	SQLitePath string `json:"sqlite_path"`
+}
+
+func buildDatabaseTestConfig(req TestDatabaseRequest) (*database.Config, error) {
+	driver := strings.ToLower(strings.TrimSpace(req.DBType))
+	if driver == "" {
+		driver = "sqlite"
+	}
+
+	cfg := &database.Config{Driver: driver}
+	switch driver {
+	case "sqlite":
+		path := strings.TrimSpace(req.SQLitePath)
+		if path == "" {
+			path = "./data/v.db"
+		}
+		cfg.DSN = path
+	case "mysql":
+		host := strings.TrimSpace(req.DBHost)
+		if host == "" {
+			host = "localhost"
+		}
+		port := req.DBPort
+		if port <= 0 {
+			port = 3306
+		}
+		name := strings.TrimSpace(req.DBName)
+		if name == "" {
+			return nil, fmt.Errorf("database name is required")
+		}
+		cfg.DSN = fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+			strings.TrimSpace(req.DBUser),
+			req.DBPassword,
+			host,
+			port,
+			name,
+		)
+	case "postgres", "postgresql":
+		host := strings.TrimSpace(req.DBHost)
+		if host == "" {
+			host = "localhost"
+		}
+		port := req.DBPort
+		if port <= 0 {
+			port = 5432
+		}
+		name := strings.TrimSpace(req.DBName)
+		if name == "" {
+			return nil, fmt.Errorf("database name is required")
+		}
+		cfg.Driver = "postgres"
+		cfg.DSN = fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
+			host,
+			port,
+			strings.TrimSpace(req.DBUser),
+			req.DBPassword,
+			name,
+		)
+	default:
+		return nil, fmt.Errorf("unsupported database driver")
+	}
+
+	return cfg, nil
+}
+
+// TestDatabase tests a database connection using the provided settings.
+func (h *SettingsHandler) TestDatabase(c *gin.Context) {
+	var req TestDatabaseRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.RespondWithError(c, errors.NewValidationError("invalid request", map[string]interface{}{
+			"error": err.Error(),
+		}))
+		return
+	}
+
+	cfg, err := buildDatabaseTestConfig(req)
+	if err != nil {
+		middleware.RespondWithError(c, errors.NewValidationError("invalid database config", map[string]interface{}{
+			"error": err.Error(),
+		}))
+		return
+	}
+
+	db, err := database.New(cfg)
+	if err != nil {
+		middleware.RespondWithError(c, errors.NewDatabaseError("test database connection", err))
+		return
+	}
+	defer db.Close()
+
+	sqlDB, err := db.DB().DB()
+	if err != nil {
+		middleware.RespondWithError(c, errors.NewDatabaseError("open database handle", err))
+		return
+	}
+	if err := sqlDB.PingContext(c.Request.Context()); err != nil {
+		middleware.RespondWithError(c, errors.NewDatabaseError("ping database", err))
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "database connection successful",
+	})
+}
+
+// BackupDatabase creates a backup of the configured SQLite database file.
+func (h *SettingsHandler) BackupDatabase(c *gin.Context) {
+	settingsValue, err := h.settingsService.GetSystemSettings(c.Request.Context())
+	if err != nil {
+		middleware.RespondWithError(c, errors.NewDatabaseError("get settings", err))
+		return
+	}
+
+	dbType := strings.ToLower(strings.TrimSpace(settingsValue.DBType))
+	if dbType == "" {
+		dbType = "sqlite"
+	}
+	if dbType != "sqlite" {
+		c.JSON(http.StatusNotImplemented, gin.H{
+			"error": "Only SQLite database backup is currently supported",
+		})
+		return
+	}
+
+	sourcePath := strings.TrimSpace(settingsValue.SQLitePath)
+	if sourcePath == "" {
+		sourcePath = "./data/v.db"
+	}
+
+	if _, statErr := os.Stat(sourcePath); statErr != nil {
+		middleware.RespondWithError(c, errors.NewDatabaseError("stat database file", statErr))
+		return
+	}
+
+	backupDir := filepath.Join(filepath.Dir(sourcePath), "backups")
+	if err := os.MkdirAll(backupDir, 0o755); err != nil {
+		middleware.RespondWithError(c, errors.NewInternalError("create backup directory", err))
+		return
+	}
+
+	backupName := fmt.Sprintf("vpanel_db_%s.db", time.Now().Format("20060102_150405"))
+	backupPath := filepath.Join(backupDir, backupName)
+
+	sourceFile, err := os.Open(sourcePath)
+	if err != nil {
+		middleware.RespondWithError(c, errors.NewInternalError("open source database", err))
+		return
+	}
+	defer sourceFile.Close()
+
+	backupFile, err := os.Create(backupPath)
+	if err != nil {
+		middleware.RespondWithError(c, errors.NewInternalError("create backup file", err))
+		return
+	}
+	defer backupFile.Close()
+
+	if _, err := io.Copy(backupFile, sourceFile); err != nil {
+		middleware.RespondWithError(c, errors.NewInternalError("copy database backup", err))
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":        200,
+		"message":     "database backup created",
+		"backup_path": backupPath,
 	})
 }
 

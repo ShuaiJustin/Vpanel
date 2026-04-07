@@ -275,11 +275,13 @@
 </template>
 
 <script setup>
-import { computed, reactive } from 'vue'
+import { computed, reactive, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import api from '@/api'
 import { useViewport } from '@/composables/useViewport'
 
 const { isMobile } = useViewport()
+const loading = ref(false)
 
 // 协议设置
 const protocols = reactive({
@@ -311,12 +313,17 @@ const enabledTransportCount = computed(() =>
 // 保存设置
 const saveSettings = async () => {
   try {
-    // TODO: 替换为实际 API 调用
-    await new Promise(resolve => setTimeout(resolve, 500))
+    loading.value = true
+    await api.post('/settings/protocols', {
+      protocols,
+      transports
+    })
     ElMessage.success('协议配置已保存')
   } catch (error) {
     console.error('保存协议设置失败:', error)
     ElMessage.error('保存协议设置失败')
+  } finally {
+    loading.value = false
   }
 }
 
@@ -333,8 +340,8 @@ const saveAndRestart = async () => {
       }
     )
       .then(async () => {
-        // TODO: 替换为实际 API 调用
-        await new Promise(resolve => setTimeout(resolve, 1000))
+        await saveSettings()
+        await api.post('/xray/restart')
         ElMessage.success('协议配置已保存，Xray已重启')
       })
       .catch(() => {
@@ -345,6 +352,24 @@ const saveAndRestart = async () => {
     ElMessage.error('重启失败')
   }
 }
+
+const loadSettings = async () => {
+  try {
+    loading.value = true
+    const response = await api.get('/settings/protocols')
+    Object.assign(protocols, response?.protocols || {})
+    Object.assign(transports, response?.transports || {})
+  } catch (error) {
+    console.error('加载协议设置失败:', error)
+    ElMessage.error('加载协议设置失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => {
+  loadSettings()
+})
 </script>
 
 <style scoped>

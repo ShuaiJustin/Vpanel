@@ -32,7 +32,7 @@ class XrayEventSource {
       // 错误处理
       this.eventSource.onerror = this.handleError.bind(this);
 
-      console.log('XrayEventSource: Connecting to SSE endpoint');
+      debugLog('XrayEventSource: Connecting to SSE endpoint');
     } catch (error) {
       console.error('XrayEventSource: Failed to initialize SSE connection', error);
     }
@@ -46,7 +46,7 @@ class XrayEventSource {
       this.eventSource.close();
       this.eventSource = null;
       this.connected = false;
-      console.log('XrayEventSource: Connection closed');
+      debugLog('XrayEventSource: Connection closed');
     }
   }
 
@@ -56,7 +56,7 @@ class XrayEventSource {
   handleConnected() {
     this.connected = true;
     this.retryCount = 0;
-    console.log('XrayEventSource: Connected to server');
+    debugLog('XrayEventSource: Connected to server');
   }
 
   /**
@@ -75,7 +75,7 @@ class XrayEventSource {
       // 分发事件
       window.dispatchEvent(customEvent);
       
-      console.log('XrayEventSource: Received progress event', data);
+      debugLog('XrayEventSource: Received progress event', data);
     } catch (error) {
       console.error('XrayEventSource: Failed to parse progress event', error);
     }
@@ -98,7 +98,7 @@ class XrayEventSource {
       this.reconnecting = true;
       this.retryCount++;
       
-      console.log(`XrayEventSource: Reconnecting (${this.retryCount}/${this.maxRetries}) in ${this.retryInterval / 1000}s`);
+      debugLog(`XrayEventSource: Reconnecting (${this.retryCount}/${this.maxRetries}) in ${this.retryInterval / 1000}s`);
       
       setTimeout(() => {
         this.reconnecting = false;
@@ -107,6 +107,12 @@ class XrayEventSource {
     } else if (this.retryCount >= this.maxRetries) {
       console.error('XrayEventSource: Max retries reached, giving up');
     }
+  }
+}
+
+function debugLog(...args) {
+  if (import.meta.env.DEV) {
+    console.log(...args);
   }
 }
 

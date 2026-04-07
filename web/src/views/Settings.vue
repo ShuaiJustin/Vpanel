@@ -1431,6 +1431,41 @@ const securityState = reactive({
   saving: false
 })
 
+const applyServerSettings = (settings) => {
+  serverForm.panelListenIP = settings?.panel_access_ip || '0.0.0.0'
+  serverForm.panelPort = settings?.panel_port || 9000
+  serverForm.panelBasePath = settings?.panel_base_path || '/'
+  serverForm.proxyMode = settings?.proxy_mode || 'compatible'
+  serverForm.timezone = settings?.timezone || 'Asia/Shanghai'
+}
+
+const applyDbSettings = (settings) => {
+  dbForm.dbType = settings?.db_type || 'sqlite'
+  dbForm.dbHost = settings?.db_host || 'localhost'
+  dbForm.dbPort = settings?.db_port || (dbForm.dbType === 'postgres' ? 5432 : 3306)
+  dbForm.dbName = settings?.db_name || 'v_panel'
+  dbForm.dbUser = settings?.db_user || 'root'
+  dbForm.dbPassword = ''
+  dbForm.sqlitePath = settings?.sqlite_path || './data/v.db'
+}
+
+const applyLogSettings = (settings) => {
+  logForm.logLevel = settings?.log_level || 'info'
+  logForm.logRetentionDays = settings?.log_retention_days || 30
+  logForm.logPath = settings?.log_path || './logs'
+  logForm.enableAccessLog = settings?.enable_access_log ?? true
+  logForm.enableOperationLog = settings?.enable_operation_log ?? true
+}
+
+const loadGeneralSettings = async () => {
+  const response = await api.get('/settings')
+  const settings = response?.data || {}
+  applyServerSettings(settings)
+  applyDbSettings(settings)
+  applyLogSettings(settings)
+  return settings
+}
+
 // 协议设置
 const protocolSettings = reactive({
   enableTrojan: true,
@@ -1474,7 +1509,6 @@ const errorDetails = reactive({
 
 // 处理标签页切换
 const handleTabClick = (tab) => {
-  console.log('Tab clicked:', tab.props.name)
   if (tab.props.name === 'xray') {
     // 当切换到Xray标签页时，刷新数据
     refreshXraySettings()
@@ -1563,7 +1597,6 @@ const restartXray = async () => {
       const systemInfoResponse = await api.get('/system/info')
       if (systemInfoResponse.data && systemInfoResponse.data.os) {
         isWindows = systemInfoResponse.data.os === 'windows';
-        console.log(`Detected platform: ${systemInfoResponse.data.os} (Windows: ${isWindows})`);
       }
     } catch (err) {
       console.warn('Failed to detect platform, assuming non-Windows', err);
@@ -1599,7 +1632,6 @@ const restartXray = async () => {
     try {
       const systemInfoResponse = await api.get('/system/info')
       if (systemInfoResponse.data) {
-        console.log('Current system info:', systemInfoResponse.data)
         // 记录系统信息，用于可能的问题排查
         localStorage.setItem('system_info', JSON.stringify({
           os: systemInfoResponse.data.os || 'unknown',
@@ -1774,20 +1806,19 @@ const performVersionSwitch = async () => {
 onMounted(async () => {
   // 初始化加载所有设置
   try {
-    console.log('组件加载中，初始化设置...');
     
     // 设置加载状态
     xraySettings.loading = true;
     
     // 加载Xray版本和支付设置
     await Promise.allSettled([
+      loadGeneralSettings(),
       refreshXrayVersions(),
       loadSecuritySettings(),
       loadEmailSettings(),
       loadPaymentSettings()
     ]);
     
-    console.log('Initial xraySettings:', { ...xraySettings });
   } catch (error) {
     console.error('Failed to load initial settings:', error);
     ElMessage.error('加载设置失败，请刷新页面重试');
@@ -1966,7 +1997,6 @@ const syncVersionsFromGitHub = async () => {
 // 加载Xray设置
 const loadXraySettings = async () => {
   try {
-    console.log('开始加载Xray设置，当前值：', { ...xraySettings });
     
     const response = await api.get('/settings/xray');
 
@@ -1975,21 +2005,12 @@ const loadXraySettings = async () => {
     const newConfigPath = response.config_path || '';
     const newCheckInterval = response.check_interval || 24;
 
-    // 将API返回值与当前值进行比较
-    console.log('Xray设置对比：', {
-      autoUpdate: { old: xraySettings.autoUpdate, new: newAutoUpdate },
-      customConfig: { old: xraySettings.customConfig, new: newCustomConfig },
-      configPath: { old: xraySettings.configPath, new: newConfigPath },
-      checkInterval: { old: xraySettings.checkInterval, new: newCheckInterval }
-    });
-
     // 设置新值
     xraySettings.autoUpdate = newAutoUpdate;
     xraySettings.customConfig = newCustomConfig;
     xraySettings.configPath = newConfigPath;
     xraySettings.checkInterval = newCheckInterval;
 
-    console.log('Xray设置加载完成:', { ...xraySettings });
   } catch (error) {
     console.error('Failed to load Xray settings:', error);
   }
@@ -2007,7 +2028,6 @@ const refreshXrayVersions = async () => {
       // 确保数据有效
       if (Array.isArray(response.supported_versions) && response.supported_versions.length > 0) {
         xraySettings.versions = response.supported_versions;
-        console.log('获取到的版本列表:', xraySettings.versions);
       } else {
         console.warn('API返回的版本列表为空，使用默认版本');
         // 使用备用版本列表
@@ -2023,12 +2043,6 @@ const refreshXrayVersions = async () => {
       if (!xraySettings.selectedVersion) {
         xraySettings.selectedVersion = xraySettings.currentVersion;
       }
-      
-      console.log('Xray versions refreshed:', {
-        supportedVersions: xraySettings.versions,
-        currentVersion: xraySettings.currentVersion,
-        selectedVersion: xraySettings.selectedVersion
-      });
     }
   } catch (error) {
     console.error('Failed to refresh Xray versions:', error);
@@ -2060,11 +2074,6 @@ const refreshXrayStatus = async () => {
       if (response.current_version) {
         xraySettings.currentVersion = response.current_version;
       }
-      
-      console.log('Xray status refreshed:', {
-        running: xraySettings.running,
-        currentVersion: xraySettings.currentVersion
-      });
     }
   } catch (error) {
     console.error('Failed to refresh Xray status:', error);
@@ -2075,8 +2084,14 @@ const refreshXrayStatus = async () => {
 // 方法
 const saveServerSettings = async () => {
   try {
-    // 在实际项目中应调用API保存配置
-    // await api.saveServerSettings(serverForm)
+    const response = await api.put('/settings', {
+      panel_access_ip: serverForm.panelListenIP.trim(),
+      panel_port: serverForm.panelPort,
+      panel_base_path: serverForm.panelBasePath.trim() || '/',
+      proxy_mode: serverForm.proxyMode,
+      timezone: serverForm.timezone
+    })
+    applyServerSettings(response?.data || {})
     ElMessage.success('服务器配置保存成功')
   } catch (error) {
     ElMessage.error('保存失败：' + (extractErrorMessage(error) || '未知错误'))
@@ -2095,9 +2110,8 @@ const restartPanel = () => {
   )
   .then(async () => {
     try {
-      // 在实际项目中应调用API重启面板
-      // await api.restartPanel()
-      ElMessage.success('面板重启指令已发送，请稍后刷新页面')
+      await api.post('/admin/system/restart-panel')
+      ElMessage.success('面板重启指令已发送，请稍后重新访问当前页面')
     } catch (error) {
       ElMessage.error('重启失败：' + (extractErrorMessage(error) || '未知错误'))
     }
@@ -2109,8 +2123,16 @@ const restartPanel = () => {
 
 const saveDbSettings = async () => {
   try {
-    // 在实际项目中应调用API保存配置
-    // await api.saveDbSettings(dbForm)
+    const response = await api.put('/settings', {
+      db_type: dbForm.dbType,
+      db_host: dbForm.dbHost.trim(),
+      db_port: dbForm.dbPort,
+      db_name: dbForm.dbName.trim(),
+      db_user: dbForm.dbUser.trim(),
+      db_password: dbForm.dbPassword,
+      sqlite_path: dbForm.sqlitePath.trim()
+    })
+    applyDbSettings(response?.data || {})
     ElMessage.success('数据库配置保存成功')
   } catch (error) {
     ElMessage.error('保存失败：' + (extractErrorMessage(error) || '未知错误'))
@@ -2119,8 +2141,15 @@ const saveDbSettings = async () => {
 
 const testDbConnection = async () => {
   try {
-    // 在实际项目中应调用API测试连接
-    // await api.testDbConnection(dbForm)
+    await api.post('/settings/test-db', {
+      db_type: dbForm.dbType,
+      db_host: dbForm.dbHost.trim(),
+      db_port: dbForm.dbPort,
+      db_name: dbForm.dbName.trim(),
+      db_user: dbForm.dbUser.trim(),
+      db_password: dbForm.dbPassword,
+      sqlite_path: dbForm.sqlitePath.trim()
+    })
     ElMessage.success('数据库连接测试成功')
   } catch (error) {
     ElMessage.error('连接测试失败：' + (extractErrorMessage(error) || '未知错误'))
@@ -2129,9 +2158,9 @@ const testDbConnection = async () => {
 
 const backupDb = async () => {
   try {
-    // 在实际项目中应调用API备份数据库
-    // await api.backupDatabase()
-    ElMessage.success('数据库备份成功')
+    const response = await api.post('/settings/backup-db')
+    const backupPath = response?.backup_path || response?.data?.backup_path
+    ElMessage.success(backupPath ? `数据库备份成功：${backupPath}` : '数据库备份成功')
   } catch (error) {
     ElMessage.error('备份失败：' + (extractErrorMessage(error) || '未知错误'))
   }
@@ -2139,8 +2168,14 @@ const backupDb = async () => {
 
 const saveLogSettings = async () => {
   try {
-    // 在实际项目中应调用API保存配置
-    // await api.saveLogSettings(logForm)
+    const response = await api.put('/settings', {
+      log_level: logForm.logLevel,
+      log_retention_days: logForm.logRetentionDays,
+      log_path: logForm.logPath.trim(),
+      enable_access_log: logForm.enableAccessLog,
+      enable_operation_log: logForm.enableOperationLog
+    })
+    applyLogSettings(response?.data || {})
     ElMessage.success('日志配置保存成功')
   } catch (error) {
     ElMessage.error('保存失败：' + (extractErrorMessage(error) || '未知错误'))
@@ -2258,8 +2293,9 @@ const clearLogs = () => {
   )
   .then(async () => {
     try {
-      // 在实际项目中应调用API清理日志
-      // await api.clearLogs()
+      await api.post('/logs/cleanup', {
+        retention_days: logForm.logRetentionDays
+      })
       ElMessage.success('日志清理成功')
     } catch (error) {
       ElMessage.error('清理失败：' + (extractErrorMessage(error) || '未知错误'))
@@ -2399,12 +2435,10 @@ const saveXraySettings = async () => {
       check_interval: xraySettings.checkInterval
     };
     
-    console.log('保存设置请求数据:', requestData);
     
     // 发送正确的属性名与API匹配
     const response = await api.post('/settings/xray', requestData);
     
-    console.log('保存设置响应数据:', response);
     
     // 保存成功后立即重新获取设置以验证
     await refreshXraySettings();
@@ -2617,10 +2651,8 @@ const retryFailedOperation = async () => {
 const refreshXraySettings = async () => {
   xraySettings.loading = true;
   try {
-    console.log('刷新Xray设置开始');
     await loadXraySettings();
     ElMessage.success('刷新设置成功');
-    console.log('刷新后的Xray设置：', { ...xraySettings });
   } catch (error) {
     ElMessage.error('刷新设置失败：' + (extractErrorMessage(error) || '未知错误'));
   } finally {
@@ -2736,7 +2768,6 @@ const handleSwitchVersion = async () => {
   } catch (error) {
     // 处理用户取消确认对话框的情况
     if (error === 'cancel') {
-      console.log('User cancelled version switch')
       return
     }
     

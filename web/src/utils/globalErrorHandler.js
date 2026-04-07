@@ -239,7 +239,9 @@ export function installGlobalErrorHandler(app) {
   // 未处理的 Promise 拒绝
   window.addEventListener('unhandledrejection', handleUnhandledRejection)
   
-  console.log('[GlobalErrorHandler] Installed')
+  if (import.meta.env.DEV) {
+    console.log('[GlobalErrorHandler] Installed')
+  }
 }
 
 /**
@@ -248,7 +250,9 @@ export function installGlobalErrorHandler(app) {
 export function uninstallGlobalErrorHandler() {
   window.removeEventListener('error', handleGlobalError)
   window.removeEventListener('unhandledrejection', handleUnhandledRejection)
-  console.log('[GlobalErrorHandler] Uninstalled')
+  if (import.meta.env.DEV) {
+    console.log('[GlobalErrorHandler] Uninstalled')
+  }
 }
 
 export default {

@@ -483,8 +483,8 @@ func TestTrafficService_RecordTrafficBatchCountsSharedProxyTrafficOnlyForNodeTot
 	if err := db.Model(&repository.Traffic{}).Count(&globalTrafficRows).Error; err != nil {
 		t.Fatalf("failed to count global traffic rows: %v", err)
 	}
-	if globalTrafficRows != 0 {
-		t.Fatalf("expected shared traffic to stay out of user traffic table, got %d rows", globalTrafficRows)
+	if globalTrafficRows != 1 {
+		t.Fatalf("expected shared traffic to be persisted in global traffic table once, got %d rows", globalTrafficRows)
 	}
 
 	nodeRepo := repository.NewNodeRepository(db)
@@ -502,6 +502,55 @@ func TestTrafficService_RecordTrafficBatchCountsSharedProxyTrafficOnlyForNodeTot
 	}
 	if len(topUsers) != 0 {
 		t.Fatalf("expected shared proxy traffic to be excluded from top users, got %+v", topUsers)
+	}
+
+	trafficRepo := repository.NewTrafficRepository(db)
+	upload, download, err := trafficRepo.GetTotalTraffic(context.Background())
+	if err != nil {
+		t.Fatalf("failed to get global traffic totals: %v", err)
+	}
+	if upload != 90 || download != 30 {
+		t.Fatalf("expected shared traffic to be counted in global totals, got %d/%d", upload, download)
+	}
+}
+
+func TestTrafficService_GetTrafficByNodeIncludesSharedProxyTraffic(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+	nodeID := int64(54)
+
+	service := NewTrafficService(
+		db,
+		repository.NewNodeTrafficRepository(db),
+		repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db),
+		repository.NewUserRepository(db),
+		repository.NewNodeRepository(db),
+		nil,
+		logger.NewNopLogger(),
+	)
+
+	if err := db.Create(&repository.Node{ID: nodeID, Name: "node-total", Address: "127.0.0.1", Status: repository.NodeStatusOnline}).Error; err != nil {
+		t.Fatalf("failed to seed node: %v", err)
+	}
+	if err := db.Create(&repository.User{ID: 1, Username: "regular-user", PasswordHash: "x"}).Error; err != nil {
+		t.Fatalf("failed to seed user: %v", err)
+	}
+
+	records := []*TrafficRecord{
+		{NodeID: nodeID, UserID: 1, Upload: 10, Download: 20},
+		{NodeID: nodeID, UserID: 0, Upload: 90, Download: 30},
+	}
+	if err := service.RecordTrafficBatch(ctx, records); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	stats, err := service.GetTrafficByNode(ctx, nodeID, time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("failed to get traffic by node: %v", err)
+	}
+	if stats.Upload != 100 || stats.Download != 50 || stats.Total != 150 {
+		t.Fatalf("expected shared traffic to be included in node totals, got %+v", stats)
 	}
 }
 

@@ -153,10 +153,7 @@ const pageTitle = computed(() => {
   return route.meta?.title || 'V Panel'
 })
 
-const hasPortalSession = computed(() => {
-  route.fullPath
-  return Boolean(sessionStorage.getItem('userToken') || localStorage.getItem('userToken'))
-})
+const hasPortalSession = computed(() => userStore.isAuthenticated)
 
 const showPortalActions = computed(() => hasPortalSession.value)
 const showTabbar = computed(() => hasPortalSession.value)
@@ -248,6 +245,7 @@ function handleLogout() {
 
 onMounted(() => {
   if (!hasPortalSession.value) return
+  userStore.fetchProfile({ silent: true }).catch(() => {})
   announcementsStore.fetchUnreadCount().catch(() => {})
 })
 </script>

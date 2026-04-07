@@ -2,6 +2,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -25,6 +26,7 @@ const (
 type AuthMiddlewareHandler struct {
 	authService *auth.Service
 	userRepo    repository.UserRepository
+	roleRepo    repository.RoleRepository
 	logger      logger.Logger
 }
 
@@ -39,6 +41,12 @@ func NewAuthMiddleware(authService *auth.Service, log logger.Logger) *AuthMiddle
 // WithUserRepository enables runtime user state verification for authenticated requests.
 func (h *AuthMiddlewareHandler) WithUserRepository(userRepo repository.UserRepository) *AuthMiddlewareHandler {
 	h.userRepo = userRepo
+	return h
+}
+
+// WithRoleRepository enables permission checks based on the latest role definition.
+func (h *AuthMiddlewareHandler) WithRoleRepository(roleRepo repository.RoleRepository) *AuthMiddlewareHandler {
+	h.roleRepo = roleRepo
 	return h
 }
 
@@ -180,6 +188,129 @@ func (h *AuthMiddlewareHandler) RequireRole(role string) gin.HandlerFunc {
 			return
 		}
 
+		c.Next()
+	}
+}
+
+func (h *AuthMiddlewareHandler) roleHasPermission(ctx context.Context, roleName, permission string) (bool, error) {
+	if permission == "" {
+		return true, nil
+	}
+	if roleName == "admin" {
+		return true, nil
+	}
+	if h == nil || h.roleRepo == nil {
+		return false, nil
+	}
+
+	role, err := h.roleRepo.GetByName(ctx, roleName)
+	if err != nil {
+		return false, err
+	}
+	if role == nil {
+		return false, nil
+	}
+
+	perms, err := role.GetPermissionsList()
+	if err != nil {
+		return false, err
+	}
+	for _, perm := range perms {
+		if perm == "*" || perm == permission {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// RequirePermission returns a middleware that requires a specific permission.
+func (h *AuthMiddlewareHandler) RequirePermission(permission string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		claims, exists := c.Get(string(UserClaimsKey))
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    errors.ErrCodeUnauthorized,
+					"message": "authentication required",
+				},
+			})
+			c.Abort()
+			return
+		}
+
+		userClaims, ok := claims.(*auth.Claims)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    errors.ErrCodeInternal,
+					"message": "invalid claims type",
+				},
+			})
+			c.Abort()
+			return
+		}
+
+		allowed, err := h.roleHasPermission(c.Request.Context(), userClaims.Role, permission)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    errors.ErrCodeInternal,
+					"message": "failed to evaluate permissions",
+				},
+			})
+			c.Abort()
+			return
+		}
+		if !allowed {
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    errors.ErrCodeForbidden,
+					"message": permission + " permission required",
+				},
+			})
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// RequireAllPermissions returns a middleware that requires all listed permissions.
+func (h *AuthMiddlewareHandler) RequireAllPermissions(permissions ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		for _, permission := range permissions {
+			if permission == "" {
+				continue
+			}
+			allowed, err := h.roleHasPermission(c.Request.Context(), c.GetString("role"), permission)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"error": gin.H{
+						"code":    errors.ErrCodeInternal,
+						"message": "failed to evaluate permissions",
+					},
+				})
+				c.Abort()
+				return
+			}
+			if !allowed {
+				c.JSON(http.StatusForbidden, gin.H{
+					"success": false,
+					"error": gin.H{
+						"code":    errors.ErrCodeForbidden,
+						"message": permission + " permission required",
+					},
+				})
+				c.Abort()
+				return
+			}
+		}
 		c.Next()
 	}
 }

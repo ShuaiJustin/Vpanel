@@ -537,16 +537,30 @@ func (h *CertificateHandler) Renew(c *gin.Context) {
 	}
 
 	// TODO: 实现证书续期逻辑
-	// 1. 使用 ACME 续期证书
-	// 2. 更新数据库中的证书内容和过期时间
+	if h.certSvc == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "证书服务不可用"})
+		return
+	}
+
+	if err := h.certSvc.Renew(c.Request.Context(), id); err != nil {
+		h.logger.Error("Failed to renew certificate", logger.Err(err), logger.F("id", id), logger.F("domain", cert.Domain))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	refreshed, refreshErr := h.certRepo.GetByID(c.Request.Context(), id)
+	if refreshErr == nil && refreshed != nil {
+		cert = refreshed
+	}
 
 	h.logger.Info("Certificate renewal requested",
 		logger.F("cert_id", id),
 		logger.F("domain", cert.Domain))
 
-	c.JSON(http.StatusAccepted, gin.H{
-		"message": "证书续期已提交，请稍后查看结果",
-		"domain":  cert.Domain,
+	c.JSON(http.StatusOK, gin.H{
+		"message":     "证书续期成功",
+		"domain":      cert.Domain,
+		"expire_date": cert.ExpiresAt,
 	})
 }
 

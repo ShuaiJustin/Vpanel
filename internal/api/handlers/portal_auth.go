@@ -3,9 +3,12 @@ package handlers
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -27,7 +30,9 @@ type PortalAuthHandler struct {
 	proxyRepo         repository.ProxyRepository
 	entitlement       *entitlement.Service
 	emailSender       portalEmailSender
+	telegramSender    portalTelegramSender
 	baseURL           string
+	avatarStoragePath string
 	rateLimiter       *portalauth.RateLimiter
 	rateLimitConfig   portalauth.RateLimitConfig
 	logger            logger.Logger
@@ -36,6 +41,15 @@ type PortalAuthHandler struct {
 type portalEmailSender interface {
 	CanSendEmail() bool
 	SendEmail(to, subject, body string) error
+}
+
+type portalTelegramSender interface {
+	CanSendTelegram() bool
+	SendTelegramTo(chatID, message string) error
+}
+
+func normalizePortalEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
 }
 
 func (h *PortalAuthHandler) updateLastLogin(ctx *gin.Context, userID int64) {
@@ -66,6 +80,7 @@ func NewPortalAuthHandler(
 		authService:       authService,
 		userRepo:          userRepo,
 		proxyRepo:         proxyRepo,
+		avatarStoragePath: "./data/avatars",
 		rateLimiter:       portalauth.NewRateLimiter(),
 		rateLimitConfig:   portalauth.DefaultRateLimitConfig(),
 		logger:            log,
@@ -82,6 +97,20 @@ func (h *PortalAuthHandler) WithEmailSender(sender portalEmailSender, baseURL st
 // WithEntitlementService configures portal entitlement-aware profile data.
 func (h *PortalAuthHandler) WithEntitlementService(entitlementService *entitlement.Service) *PortalAuthHandler {
 	h.entitlement = entitlementService
+	return h
+}
+
+// WithTelegramSender configures a Telegram sender for user binding verification.
+func (h *PortalAuthHandler) WithTelegramSender(sender portalTelegramSender) *PortalAuthHandler {
+	h.telegramSender = sender
+	return h
+}
+
+// WithAvatarStoragePath configures where uploaded avatars are stored.
+func (h *PortalAuthHandler) WithAvatarStoragePath(path string) *PortalAuthHandler {
+	if strings.TrimSpace(path) != "" {
+		h.avatarStoragePath = strings.TrimSpace(path)
+	}
 	return h
 }
 
@@ -154,6 +183,25 @@ func (h *PortalAuthHandler) resolvePortalBaseURL(c *gin.Context) string {
 	}
 
 	return configuredBaseURL
+}
+
+func portalAvatarPublicPath(filename string) string {
+	return "/api/portal/auth/avatar/" + filename
+}
+
+func (h *PortalAuthHandler) deleteManagedAvatarFile(rawURL string) {
+	if h == nil || strings.TrimSpace(rawURL) == "" {
+		return
+	}
+	const prefix = "/api/portal/auth/avatar/"
+	if !strings.HasPrefix(rawURL, prefix) {
+		return
+	}
+	filename := filepath.Base(strings.TrimPrefix(rawURL, prefix))
+	if filename == "." || filename == "" {
+		return
+	}
+	_ = os.Remove(filepath.Join(h.avatarStoragePath, filename))
 }
 
 func (h *PortalAuthHandler) sendVerificationEmail(c *gin.Context, email, token string) error {
@@ -533,29 +581,44 @@ func (h *PortalAuthHandler) GetProfile(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"id":                    user.ID,
-		"username":              user.Username,
-		"email":                 user.Email,
-		"role":                  user.Role,
-		"enabled":               user.Enabled,
-		"status":                status,
-		"force_password_change": user.ForcePasswordChange,
-		"traffic_limit":         effectiveTrafficLimit,
-		"traffic_used":          effectiveTrafficUsed,
-		"expires_at":            effectiveExpiresAt,
+		"id":                      user.ID,
+		"username":                user.Username,
+		"email":                   user.Email,
+		"email_verified":          user.EmailVerified,
+		"email_verified_at":       user.EmailVerifiedAt,
+		"role":                    user.Role,
+		"enabled":                 user.Enabled,
+		"status":                  status,
+		"display_name":            user.DisplayName,
+		"avatar_url":              user.AvatarURL,
+		"notify_email":            user.NotifyEmail,
+		"notify_telegram":         user.NotifyTelegram,
+		"theme":                   user.Theme,
+		"language":                user.Language,
+		"telegram_id":             user.TelegramID,
+		"telegram_bound":          strings.TrimSpace(user.TelegramID) != "",
+		"force_password_change":   user.ForcePasswordChange,
+		"traffic_limit":           effectiveTrafficLimit,
+		"traffic_used":            effectiveTrafficUsed,
+		"expires_at":              effectiveExpiresAt,
 		"has_active_subscription": hasActiveSubscription,
 		"has_active_trial":        hasActiveTrial,
 		"entitlement_type":        entitlementType,
-		"two_factor_enabled":    user.TwoFactorEnabled,
-		"available_nodes":       availableNodes,
-		"created_at":            user.CreatedAt,
+		"two_factor_enabled":      user.TwoFactorEnabled,
+		"available_nodes":         availableNodes,
+		"created_at":              user.CreatedAt,
 	})
 }
 
 // PortalUpdateProfileRequest represents a profile update request.
 type PortalUpdateProfileRequest struct {
-	Email       string `json:"email,omitempty"`
-	DisplayName string `json:"display_name,omitempty"`
+	Email          *string `json:"email,omitempty"`
+	DisplayName    *string `json:"display_name,omitempty"`
+	AvatarURL      *string `json:"avatar_url,omitempty"`
+	NotifyEmail    *bool   `json:"notify_email,omitempty"`
+	NotifyTelegram *bool   `json:"notify_telegram,omitempty"`
+	Theme          *string `json:"theme,omitempty"`
+	Language       *string `json:"language,omitempty"`
 }
 
 // UpdateProfile updates the current user's profile.
@@ -578,12 +641,131 @@ func (h *PortalAuthHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	if req.Email != "" && req.Email != user.Email {
-		if !portalauth.ValidateEmail(req.Email) {
+	profileChanged := false
+	emailChanged := false
+	verificationEmailSent := false
+	previousAvatarURL := user.AvatarURL
+
+	if req.Email != nil {
+		email := normalizePortalEmail(*req.Email)
+		if email == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "邮箱不能为空"})
+			return
+		}
+		if !portalauth.ValidateEmail(email) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "邮箱格式不正确"})
 			return
 		}
-		user.Email = req.Email
+
+		if email != normalizePortalEmail(user.Email) {
+			existing, lookupErr := h.userRepo.GetByEmail(c.Request.Context(), email)
+			if lookupErr == nil && existing != nil && existing.ID != user.ID {
+				c.JSON(http.StatusConflict, gin.H{"error": "该邮箱已被其他账号使用"})
+				return
+			}
+			if lookupErr != nil && !pkgerrors.IsNotFound(lookupErr) {
+				h.logger.Warn("failed to validate portal profile email uniqueness",
+					logger.F("user_id", user.ID),
+					logger.F("error", lookupErr),
+				)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "更新失败"})
+				return
+			}
+
+			user.Email = email
+			user.EmailVerified = false
+			user.EmailVerifiedAt = nil
+			profileChanged = true
+			emailChanged = true
+		}
+	}
+
+	if req.DisplayName != nil {
+		displayName := strings.TrimSpace(*req.DisplayName)
+		if len(displayName) > 64 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "显示名称不能超过 64 个字符"})
+			return
+		}
+		if displayName != user.DisplayName {
+			user.DisplayName = displayName
+			profileChanged = true
+		}
+	}
+
+	if req.AvatarURL != nil {
+		avatarURL := strings.TrimSpace(*req.AvatarURL)
+		if len(avatarURL) > 512 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "头像地址不能超过 512 个字符"})
+			return
+		}
+		if avatarURL != user.AvatarURL {
+			user.AvatarURL = avatarURL
+			profileChanged = true
+		}
+	}
+
+	if req.NotifyEmail != nil && user.NotifyEmail != *req.NotifyEmail {
+		user.NotifyEmail = *req.NotifyEmail
+		profileChanged = true
+	}
+
+	if req.NotifyTelegram != nil && user.NotifyTelegram != *req.NotifyTelegram {
+		user.NotifyTelegram = *req.NotifyTelegram
+		profileChanged = true
+	}
+
+	if req.Theme != nil {
+		theme := strings.TrimSpace(*req.Theme)
+		switch theme {
+		case "", "auto", "light", "dark":
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "主题设置无效"})
+			return
+		}
+		if theme == "" {
+			theme = "auto"
+		}
+		if theme != user.Theme {
+			user.Theme = theme
+			profileChanged = true
+		}
+	}
+
+	if req.Language != nil {
+		language := strings.TrimSpace(*req.Language)
+		switch language {
+		case "", "zh-CN", "en-US":
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "语言设置无效"})
+			return
+		}
+		if language == "" {
+			language = "zh-CN"
+		}
+		if language != user.Language {
+			user.Language = language
+			profileChanged = true
+		}
+	}
+
+	if !profileChanged {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "资料未发生变化",
+			"user": gin.H{
+				"email":             user.Email,
+				"email_verified":    user.EmailVerified,
+				"email_verified_at": user.EmailVerifiedAt,
+				"display_name":      user.DisplayName,
+				"avatar_url":        user.AvatarURL,
+				"notify_email":      user.NotifyEmail,
+				"notify_telegram":   user.NotifyTelegram,
+				"theme":             user.Theme,
+				"language":          user.Language,
+				"telegram_id":       user.TelegramID,
+				"telegram_bound":    strings.TrimSpace(user.TelegramID) != "",
+			},
+		})
+		return
 	}
 
 	if err := h.userRepo.Update(c.Request.Context(), user); err != nil {
@@ -591,7 +773,284 @@ func (h *PortalAuthHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "更新成功"})
+	if previousAvatarURL != user.AvatarURL {
+		h.deleteManagedAvatarFile(previousAvatarURL)
+	}
+
+	if emailChanged && h.emailSender != nil && h.emailSender.CanSendEmail() && strings.TrimSpace(h.resolvePortalBaseURL(c)) != "" {
+		token, tokenErr := h.portalAuthService.ResendVerificationEmail(c.Request.Context(), user.ID, user.Email)
+		if tokenErr != nil {
+			h.logger.Warn("failed to create portal verification token after email change",
+				logger.F("user_id", user.ID),
+				logger.F("error", tokenErr),
+			)
+		} else if sendErr := h.sendVerificationEmail(c, user.Email, token); sendErr != nil {
+			h.logger.Warn("failed to send portal verification email after email change",
+				logger.F("user_id", user.ID),
+				logger.F("error", sendErr),
+			)
+		} else {
+			verificationEmailSent = true
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":                 "更新成功",
+		"need_email_verification": emailChanged,
+		"verification_email_sent": verificationEmailSent,
+		"user": gin.H{
+			"email":             user.Email,
+			"email_verified":    user.EmailVerified,
+			"email_verified_at": user.EmailVerifiedAt,
+			"display_name":      user.DisplayName,
+			"avatar_url":        user.AvatarURL,
+			"notify_email":      user.NotifyEmail,
+			"notify_telegram":   user.NotifyTelegram,
+			"theme":             user.Theme,
+			"language":          user.Language,
+			"telegram_id":       user.TelegramID,
+			"telegram_bound":    strings.TrimSpace(user.TelegramID) != "",
+		},
+	})
+}
+
+// ResendVerificationEmail resends a verification email for the current user.
+func (h *PortalAuthHandler) ResendVerificationEmail(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证"})
+		return
+	}
+
+	user, err := h.userRepo.GetByID(c.Request.Context(), userID.(int64))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+		return
+	}
+
+	email := normalizePortalEmail(user.Email)
+	if email == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "当前账号未绑定邮箱"})
+		return
+	}
+	if user.EmailVerified {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "当前邮箱已验证"})
+		return
+	}
+	if h.emailSender == nil || !h.emailSender.CanSendEmail() || strings.TrimSpace(h.resolvePortalBaseURL(c)) == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "邮件服务暂不可用"})
+		return
+	}
+
+	token, err := h.portalAuthService.ResendVerificationEmail(c.Request.Context(), user.ID, email)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	if err := h.sendVerificationEmail(c, email, token); err != nil {
+		h.logger.Warn("failed to resend verification email",
+			logger.F("user_id", user.ID),
+			logger.F("error", err),
+		)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "发送验证邮件失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "验证邮件已发送"})
+}
+
+type PortalBindTelegramRequest struct {
+	ChatID string `json:"chat_id" binding:"required"`
+}
+
+// BindTelegram binds a Telegram chat ID to the current user after sending a verification message.
+func (h *PortalAuthHandler) BindTelegram(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证"})
+		return
+	}
+	if h.telegramSender == nil || !h.telegramSender.CanSendTelegram() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Telegram 绑定当前不可用"})
+		return
+	}
+
+	var req PortalBindTelegramRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
+		return
+	}
+
+	chatID := strings.TrimSpace(req.ChatID)
+	if chatID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Telegram Chat ID 不能为空"})
+		return
+	}
+
+	user, err := h.userRepo.GetByID(c.Request.Context(), userID.(int64))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+		return
+	}
+
+	message := fmt.Sprintf("V Panel Telegram 绑定成功\n\n用户: %s\n时间: %s", user.Username, time.Now().Format("2006-01-02 15:04:05"))
+	if err := h.telegramSender.SendTelegramTo(chatID, message); err != nil {
+		h.logger.Warn("failed to verify telegram binding", logger.F("user_id", user.ID), logger.F("error", err))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无法向该 Chat ID 发送验证消息，请确认已先与机器人开始对话"})
+		return
+	}
+
+	user.TelegramID = chatID
+	user.NotifyTelegram = true
+	if err := h.userRepo.Update(c.Request.Context(), user); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "绑定 Telegram 失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Telegram 绑定成功",
+		"user": gin.H{
+			"telegram_id":     user.TelegramID,
+			"telegram_bound":  true,
+			"notify_telegram": true,
+		},
+	})
+}
+
+// UnbindTelegram removes the Telegram binding for the current user.
+func (h *PortalAuthHandler) UnbindTelegram(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证"})
+		return
+	}
+
+	user, err := h.userRepo.GetByID(c.Request.Context(), userID.(int64))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+		return
+	}
+
+	user.TelegramID = ""
+	user.NotifyTelegram = false
+	if err := h.userRepo.Update(c.Request.Context(), user); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "解绑 Telegram 失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Telegram 已解绑",
+		"user": gin.H{
+			"telegram_id":     "",
+			"telegram_bound":  false,
+			"notify_telegram": false,
+		},
+	})
+}
+
+// UploadAvatar uploads an avatar image for the current user.
+func (h *PortalAuthHandler) UploadAvatar(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证"})
+		return
+	}
+
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请选择头像文件"})
+		return
+	}
+	if fileHeader.Size <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "头像文件不能为空"})
+		return
+	}
+	if fileHeader.Size > 2*1024*1024 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "头像文件不能超过 2MB"})
+		return
+	}
+
+	src, err := fileHeader.Open()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取头像文件失败"})
+		return
+	}
+	defer src.Close()
+
+	content, err := io.ReadAll(io.LimitReader(src, 2*1024*1024+1))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取头像文件失败"})
+		return
+	}
+	if len(content) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "头像文件不能为空"})
+		return
+	}
+
+	contentType := http.DetectContentType(content)
+	allowedTypes := map[string]string{
+		"image/jpeg": "jpg",
+		"image/png":  "png",
+		"image/gif":  "gif",
+		"image/webp": "webp",
+	}
+	ext, ok := allowedTypes[contentType]
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "仅支持 JPG、PNG、GIF、WEBP 格式头像"})
+		return
+	}
+
+	if err := os.MkdirAll(h.avatarStoragePath, 0o755); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "初始化头像目录失败"})
+		return
+	}
+
+	user, err := h.userRepo.GetByID(c.Request.Context(), userID.(int64))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+		return
+	}
+
+	filename := fmt.Sprintf("avatar_%d_%d.%s", user.ID, time.Now().UnixNano(), ext)
+	targetPath := filepath.Join(h.avatarStoragePath, filename)
+	if err := os.WriteFile(targetPath, content, 0o644); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存头像失败"})
+		return
+	}
+
+	oldAvatar := user.AvatarURL
+	user.AvatarURL = portalAvatarPublicPath(filename)
+	if err := h.userRepo.Update(c.Request.Context(), user); err != nil {
+		_ = os.Remove(targetPath)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新头像失败"})
+		return
+	}
+
+	h.deleteManagedAvatarFile(oldAvatar)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "头像上传成功",
+		"user": gin.H{
+			"avatar_url": user.AvatarURL,
+		},
+	})
+}
+
+// GetAvatar serves a previously uploaded avatar image.
+func (h *PortalAuthHandler) GetAvatar(c *gin.Context) {
+	filename := filepath.Base(strings.TrimSpace(c.Param("filename")))
+	if filename == "" || filename == "." || filename == "/" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的头像文件"})
+		return
+	}
+
+	targetPath := filepath.Join(h.avatarStoragePath, filename)
+	if _, err := os.Stat(targetPath); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "头像不存在"})
+		return
+	}
+
+	c.File(targetPath)
 }
 
 // PortalChangePasswordRequest represents a password change request.

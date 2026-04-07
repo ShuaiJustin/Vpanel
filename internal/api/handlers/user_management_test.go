@@ -26,9 +26,13 @@ func newUserManagementTestHandler(t *testing.T) (*AuthHandler, repository.UserRe
 		TokenExpiry: time.Hour,
 	})
 	userRepo := repository.NewUserRepository(db)
+	roleRepo := repository.NewRoleRepository(db)
+	if err := roleRepo.EnsureSystemRoles(context.Background()); err != nil {
+		t.Fatalf("failed to seed system roles: %v", err)
+	}
 	log := logger.NewNopLogger()
 
-	return NewAuthHandler(authSvc, userRepo, nil, log), userRepo, authSvc
+	return NewAuthHandler(authSvc, userRepo, nil, log).WithRoleRepository(roleRepo), userRepo, authSvc
 }
 
 func createManagedTestUser(t *testing.T, userRepo repository.UserRepository, authSvc *auth.Service, user *repository.User) *repository.User {
@@ -91,11 +95,14 @@ func TestUpdateUser_AllowsClearingEmail(t *testing.T) {
 
 func TestUpdateCurrentUser_UpdatesEmailAndNormalizesCase(t *testing.T) {
 	handler, userRepo, authSvc := newUserManagementTestHandler(t)
+	verifiedAt := time.Now().UTC()
 	user := createManagedTestUser(t, userRepo, authSvc, &repository.User{
-		Username: "profile-user",
-		Email:    "profile@example.com",
-		Role:     "admin",
-		Enabled:  true,
+		Username:        "profile-user",
+		Email:           "profile@example.com",
+		Role:            "admin",
+		Enabled:         true,
+		EmailVerified:   true,
+		EmailVerifiedAt: &verifiedAt,
 	})
 
 	router := gin.New()
@@ -123,6 +130,12 @@ func TestUpdateCurrentUser_UpdatesEmailAndNormalizesCase(t *testing.T) {
 	}
 	if updatedUser.Email != "newadmin@example.com" {
 		t.Fatalf("expected normalized email newadmin@example.com, got %q", updatedUser.Email)
+	}
+	if updatedUser.EmailVerified {
+		t.Fatal("expected email verification to reset after email change")
+	}
+	if updatedUser.EmailVerifiedAt != nil {
+		t.Fatal("expected email verification timestamp to clear after email change")
 	}
 }
 
@@ -192,6 +205,32 @@ func TestCreateUser_RejectsDuplicateEmail(t *testing.T) {
 	}
 }
 
+func TestCreateUser_RejectsUnknownRole(t *testing.T) {
+	handler, _, _ := newUserManagementTestHandler(t)
+
+	router := gin.New()
+	router.POST("/users", func(c *gin.Context) {
+		c.Set("user_id", int64(999))
+		handler.CreateUser(c)
+	})
+
+	body, _ := json.Marshal(map[string]any{
+		"username": "new-user",
+		"password": "password123",
+		"email":    "new@example.com",
+		"role":     "missing-role",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/users", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestUpdateUser_RejectsDuplicateEmail(t *testing.T) {
 	handler, userRepo, authSvc := newUserManagementTestHandler(t)
 	firstUser := createManagedTestUser(t, userRepo, authSvc, &repository.User{
@@ -224,6 +263,81 @@ func TestUpdateUser_RejectsDuplicateEmail(t *testing.T) {
 
 	if w.Code != http.StatusConflict {
 		t.Fatalf("expected status 409, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateUser_RejectsUnknownRole(t *testing.T) {
+	handler, userRepo, authSvc := newUserManagementTestHandler(t)
+	user := createManagedTestUser(t, userRepo, authSvc, &repository.User{
+		Username: "role-check-user",
+		Email:    "role-check@example.com",
+		Role:     "user",
+		Enabled:  true,
+	})
+
+	router := gin.New()
+	router.PUT("/users/:id", func(c *gin.Context) {
+		c.Set("user_id", int64(999))
+		handler.UpdateUser(c)
+	})
+
+	body, _ := json.Marshal(map[string]any{
+		"role": "unknown-role",
+	})
+	req := httptest.NewRequest(http.MethodPut, "/users/"+strconv.FormatInt(user.ID, 10), bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateUser_ResetsEmailVerificationWhenEmailChanges(t *testing.T) {
+	handler, userRepo, authSvc := newUserManagementTestHandler(t)
+	verifiedAt := time.Now().UTC()
+	user := createManagedTestUser(t, userRepo, authSvc, &repository.User{
+		Username:        "email-reset-user",
+		Email:           "old@example.com",
+		Role:            "user",
+		Enabled:         true,
+		EmailVerified:   true,
+		EmailVerifiedAt: &verifiedAt,
+	})
+
+	router := gin.New()
+	router.PUT("/users/:id", func(c *gin.Context) {
+		c.Set("user_id", int64(999))
+		handler.UpdateUser(c)
+	})
+
+	body, _ := json.Marshal(map[string]any{
+		"email": "new@example.com",
+	})
+	req := httptest.NewRequest(http.MethodPut, "/users/"+strconv.FormatInt(user.ID, 10), bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	updatedUser, err := userRepo.GetByID(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("failed to reload user: %v", err)
+	}
+	if updatedUser.Email != "new@example.com" {
+		t.Fatalf("expected updated email new@example.com, got %q", updatedUser.Email)
+	}
+	if updatedUser.EmailVerified {
+		t.Fatal("expected email verification to reset after admin email change")
+	}
+	if updatedUser.EmailVerifiedAt != nil {
+		t.Fatal("expected email verification timestamp to clear after admin email change")
 	}
 }
 
@@ -453,6 +567,98 @@ func TestListUsers_AppliesServerSideFiltersAndPagination(t *testing.T) {
 	}
 	if len(payload.Users) != 1 || payload.Users[0].Username != "gamma-user" {
 		t.Fatalf("expected gamma-user only, got %+v", payload.Users)
+	}
+}
+
+func TestListUsers_ClampsOutOfRangePageToLastPage(t *testing.T) {
+	handler, userRepo, authSvc := newUserManagementTestHandler(t)
+	createManagedTestUser(t, userRepo, authSvc, &repository.User{
+		Username: "first-page-user",
+		Email:    "first@example.com",
+		Role:     "user",
+		Enabled:  true,
+	})
+	createManagedTestUser(t, userRepo, authSvc, &repository.User{
+		Username: "second-page-user",
+		Email:    "second@example.com",
+		Role:     "user",
+		Enabled:  true,
+	})
+
+	router := gin.New()
+	router.GET("/users", func(c *gin.Context) {
+		c.Set("user_id", int64(999))
+		handler.ListUsers(c)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/users?page=99&page_size=1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var payload struct {
+		Users []UserResponse `json:"users"`
+		Page  int            `json:"page"`
+		Total int            `json:"total"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if payload.Page != 2 {
+		t.Fatalf("expected page to clamp to 2, got %d", payload.Page)
+	}
+	if payload.Total != 2 {
+		t.Fatalf("expected total 2, got %d", payload.Total)
+	}
+	if len(payload.Users) != 1 || payload.Users[0].Username != "first-page-user" {
+		t.Fatalf("expected last page to contain first-page-user, got %+v", payload.Users)
+	}
+}
+
+func TestUpdateUser_PreventsChangingOwnRole(t *testing.T) {
+	handler, userRepo, authSvc := newUserManagementTestHandler(t)
+	admin := createManagedTestUser(t, userRepo, authSvc, &repository.User{
+		Username: "self-role-admin",
+		Email:    "self-role@example.com",
+		Role:     "admin",
+		Enabled:  true,
+	})
+	createManagedTestUser(t, userRepo, authSvc, &repository.User{
+		Username: "backup-admin",
+		Email:    "backup-admin@example.com",
+		Role:     "admin",
+		Enabled:  true,
+	})
+
+	router := gin.New()
+	router.PUT("/users/:id", func(c *gin.Context) {
+		c.Set("user_id", admin.ID)
+		handler.UpdateUser(c)
+	})
+
+	body, _ := json.Marshal(map[string]any{
+		"role": "user",
+	})
+	req := httptest.NewRequest(http.MethodPut, "/users/"+strconv.FormatInt(admin.ID, 10), bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", w.Code, w.Body.String())
+	}
+
+	updatedUser, err := userRepo.GetByID(context.Background(), admin.ID)
+	if err != nil {
+		t.Fatalf("failed to reload user: %v", err)
+	}
+	if updatedUser.Role != "admin" {
+		t.Fatalf("expected role to remain admin, got %q", updatedUser.Role)
 	}
 }
 

@@ -34,6 +34,7 @@ func isValidEmail(email string) bool {
 type AuthHandler struct {
 	authService              *auth.Service
 	userRepo                 repository.UserRepository
+	roleRepo                 repository.RoleRepository
 	loginHistoryRepo         repository.LoginHistoryRepository
 	entitlementService       *entitlement.Service
 	logger                   logger.Logger
@@ -93,14 +94,15 @@ type LoginResponse struct {
 
 // UserResponse represents a user in API responses.
 type UserResponse struct {
-	ID                  int64  `json:"id"`
-	Username            string `json:"username"`
-	Email               string `json:"email,omitempty"`
-	Role                string `json:"role"`
-	Status              bool   `json:"status"`
-	CreatedAt           string `json:"created_at"`
-	LastLogin           string `json:"last_login,omitempty"`
-	ForcePasswordChange bool   `json:"force_password_change"`
+	ID                  int64    `json:"id"`
+	Username            string   `json:"username"`
+	Email               string   `json:"email,omitempty"`
+	Role                string   `json:"role"`
+	Permissions         []string `json:"permissions,omitempty"`
+	Status              bool     `json:"status"`
+	CreatedAt           string   `json:"created_at"`
+	LastLogin           string   `json:"last_login,omitempty"`
+	ForcePasswordChange bool     `json:"force_password_change"`
 }
 
 func buildUserResponse(user *repository.User) UserResponse {
@@ -119,6 +121,62 @@ func buildUserResponse(user *repository.User) UserResponse {
 	}
 
 	return response
+}
+
+// WithRoleRepository enables role validation and permission enrichment.
+func (h *AuthHandler) WithRoleRepository(roleRepo repository.RoleRepository) *AuthHandler {
+	h.roleRepo = roleRepo
+	return h
+}
+
+func (h *AuthHandler) getRolePermissions(ctx context.Context, roleName string) []string {
+	if roleName == "" {
+		return nil
+	}
+	if roleName == "admin" {
+		return []string{"*"}
+	}
+	if h == nil || h.roleRepo == nil {
+		return nil
+	}
+
+	role, err := h.roleRepo.GetByName(ctx, roleName)
+	if err != nil || role == nil {
+		return nil
+	}
+
+	perms, err := role.GetPermissionsList()
+	if err != nil {
+		return nil
+	}
+	return perms
+}
+
+func (h *AuthHandler) userResponse(ctx context.Context, user *repository.User) UserResponse {
+	response := buildUserResponse(user)
+	response.Permissions = h.getRolePermissions(ctx, user.Role)
+	return response
+}
+
+func (h *AuthHandler) roleExists(ctx context.Context, roleName string) (bool, error) {
+	roleName = strings.TrimSpace(roleName)
+	if roleName == "" {
+		return false, nil
+	}
+	if h == nil || h.roleRepo == nil {
+		switch roleName {
+		case "admin", "user", "viewer":
+			return true, nil
+		default:
+			return false, nil
+		}
+	}
+
+	role, err := h.roleRepo.GetByName(ctx, roleName)
+	if err != nil {
+		return false, err
+	}
+	return role != nil, nil
 }
 
 func normalizeEmail(email string) string {
@@ -434,7 +492,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		Token:        token,
 		RefreshToken: refreshToken,
 		ExpiresIn:    expiresIn,
-		User:         func() *UserResponse { resp := buildUserResponse(user); return &resp }(),
+		User:         func() *UserResponse { resp := h.userResponse(c.Request.Context(), user); return &resp }(),
 	})
 }
 
@@ -493,7 +551,7 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		Token:        token,
 		RefreshToken: refreshToken,
 		ExpiresIn:    expiresIn,
-		User:         func() *UserResponse { resp := buildUserResponse(user); return &resp }(),
+		User:         func() *UserResponse { resp := h.userResponse(c.Request.Context(), user); return &resp }(),
 	})
 }
 
@@ -528,7 +586,7 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, buildUserResponse(user))
+	c.JSON(http.StatusOK, h.userResponse(c.Request.Context(), user))
 }
 
 // UpdateCurrentUserRequest represents a current-user profile update request.
@@ -573,6 +631,10 @@ func (h *AuthHandler) UpdateCurrentUser(c *gin.Context) {
 			return
 		}
 
+		if email != normalizeEmail(user.Email) {
+			user.EmailVerified = false
+			user.EmailVerifiedAt = nil
+		}
 		user.Email = email
 	}
 
@@ -582,7 +644,7 @@ func (h *AuthHandler) UpdateCurrentUser(c *gin.Context) {
 	}
 
 	h.logger.Info("current user updated", logger.F("user_id", user.ID))
-	c.JSON(http.StatusOK, buildUserResponse(user))
+	c.JSON(http.StatusOK, h.userResponse(c.Request.Context(), user))
 }
 
 // ChangePasswordRequest represents a password change request.
@@ -659,6 +721,20 @@ func (h *AuthHandler) ListUsers(c *gin.Context) {
 	roleFilter := strings.TrimSpace(c.Query("role"))
 	statusFilter := strings.TrimSpace(c.Query("status"))
 
+	clampPage := func(total int64) int {
+		if total <= 0 {
+			return 1
+		}
+		maxPage := int((total + int64(pageSize) - 1) / int64(pageSize))
+		if maxPage < 1 {
+			maxPage = 1
+		}
+		if page > maxPage {
+			return maxPage
+		}
+		return page
+	}
+
 	filteredUserCount := 0
 	enabledUserCount := 0
 	disabledUserCount := 0
@@ -682,6 +758,15 @@ func (h *AuthHandler) ListUsers(c *gin.Context) {
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list users"})
 			return
+		}
+		if adjustedPage := clampPage(total); adjustedPage != page {
+			page = adjustedPage
+			filter.Offset = (page - 1) * pageSize
+			pagedUsers, total, err = repo.ListFiltered(c.Request.Context(), filter)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list users"})
+				return
+			}
 		}
 		if summaryRepo, ok := h.userRepo.(filteredUserSummaryRepository); ok {
 			summary, summaryErr := summaryRepo.GetFilteredSummary(c.Request.Context(), repository.UserListFilter{
@@ -764,6 +849,7 @@ func (h *AuthHandler) ListUsers(c *gin.Context) {
 		}
 
 		total = int64(filteredUserCount)
+		page = clampPage(total)
 		start := (page - 1) * pageSize
 		if start > filteredUserCount {
 			start = filteredUserCount
@@ -777,7 +863,7 @@ func (h *AuthHandler) ListUsers(c *gin.Context) {
 
 	response := make([]UserResponse, len(pagedUsers))
 	for i, user := range pagedUsers {
-		response[i] = buildUserResponse(user)
+		response[i] = h.userResponse(c.Request.Context(), user)
 	}
 
 	currentUserID, _ := currentUserIDFromContext(c)
@@ -862,6 +948,15 @@ func (h *AuthHandler) CreateUser(c *gin.Context) {
 	if role == "" {
 		role = "user"
 	}
+	roleFound, roleErr := h.roleExists(c.Request.Context(), role)
+	if roleErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate role"})
+		return
+	}
+	if !roleFound {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Role does not exist"})
+		return
+	}
 
 	// Create user
 	user := &repository.User{
@@ -878,7 +973,7 @@ func (h *AuthHandler) CreateUser(c *gin.Context) {
 
 	h.logger.Info("user created", logger.F("username", req.Username), logger.F("user_id", user.ID))
 
-	c.JSON(http.StatusCreated, buildUserResponse(user))
+	c.JSON(http.StatusCreated, h.userResponse(c.Request.Context(), user))
 }
 
 // GetUser returns a user by ID (admin only).
@@ -899,7 +994,7 @@ func (h *AuthHandler) GetUser(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, buildUserResponse(user))
+	c.JSON(http.StatusOK, h.userResponse(c.Request.Context(), user))
 }
 
 // UpdateUserRequest represents an update user request.
@@ -976,12 +1071,29 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 			return
 		}
 
+		if email != normalizeEmail(user.Email) {
+			user.EmailVerified = false
+			user.EmailVerifiedAt = nil
+		}
 		user.Email = email
 	}
 	if req.Role != nil {
 		role := strings.TrimSpace(*req.Role)
 		if role == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Role cannot be empty"})
+			return
+		}
+		roleFound, roleErr := h.roleExists(c.Request.Context(), role)
+		if roleErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate role"})
+			return
+		}
+		if !roleFound {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Role does not exist"})
+			return
+		}
+		if currentUserID, ok := currentUserIDFromContext(c); ok && currentUserID == user.ID && role != user.Role {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot change your own role"})
 			return
 		}
 		if !h.ensureEnabledAdminRemains(c, user, role, user.Enabled, "demote") {
@@ -1011,7 +1123,7 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 
 	h.logger.Info("user updated", logger.F("user_id", id))
 
-	c.JSON(http.StatusOK, buildUserResponse(user))
+	c.JSON(http.StatusOK, h.userResponse(c.Request.Context(), user))
 }
 
 // DeleteUser deletes a user (admin only).

@@ -27,6 +27,12 @@ type User struct {
 	TwoFactorEnabled bool `gorm:"default:false"`
 	LastLoginAt      *time.Time
 	LastLoginIP      string `gorm:"size:45"`
+	AvatarURL        string `gorm:"size:512"`
+	DisplayName      string `gorm:"size:64"`
+	NotifyEmail      bool   `gorm:"default:true"`
+	NotifyTelegram   bool   `gorm:"default:false"`
+	Theme            string `gorm:"size:16;default:auto"`
+	Language         string `gorm:"size:8;default:zh-CN"`
 	TelegramID       string `gorm:"size:50;index"`
 	// Commercial fields
 	Balance   int64     `gorm:"default:0"` // User balance in cents

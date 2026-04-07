@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/mail"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -138,10 +139,12 @@ func (r *Router) Setup() {
 
 	// Create handlers
 	authHandler := handlers.NewAuthHandler(r.authService, r.repos.User, r.repos.LoginHistory, r.logger).
-		WithSecuritySettings(r.settingsService)
+		WithSecuritySettings(r.settingsService).
+		WithRoleRepository(r.repos.Role)
 	proxyHandler := handlers.NewProxyHandlerWithTraffic(r.proxyManager, r.repos.Proxy, r.repos.Traffic, r.logger).
 		WithNodeRepository(r.repos.Node).
-		WithUserRepositories(r.repos.User, r.repos.Trial)
+		WithUserRepositories(r.repos.User, r.repos.Trial).
+		WithIPTracker(ip.NewTracker(r.repos.DB()))
 	systemHandler := handlers.NewSystemHandler(r.config, r.logger)
 	healthHandler := handlers.NewHealthHandler(r.repos, r.logger, r.xrayManager, nil)
 	roleHandler := handlers.NewRoleHandler(r.logger, r.repos.Role)
@@ -382,7 +385,9 @@ func (r *Router) Setup() {
 	}
 
 	// Auth middleware
-	authMiddleware := middleware.NewAuthMiddleware(r.authService, r.logger).WithUserRepository(r.repos.User)
+	authMiddleware := middleware.NewAuthMiddleware(r.authService, r.logger).
+		WithUserRepository(r.repos.User).
+		WithRoleRepository(r.repos.Role)
 
 	// Access control middleware (checks traffic limits and expiration)
 	accessControlMiddleware := middleware.NewAccessControlMiddleware(r.repos.User, r.logger)
@@ -447,55 +452,55 @@ func (r *Router) Setup() {
 			proxies := protected.Group("/proxies")
 			proxies.Use(accessControlMiddleware.CheckProxyAccess())
 			{
-				proxies.GET("", proxyHandler.List)
-				proxies.POST("", proxyHandler.Create)
-				proxies.POST("/batch", proxyHandler.BatchOperation)
-				proxies.GET("/:id", proxyHandler.Get)
-				proxies.PUT("/:id", proxyHandler.Update)
-				proxies.DELETE("/:id", proxyHandler.Delete)
-				proxies.GET("/:id/link", proxyHandler.GetShareLink)
-				proxies.POST("/:id/toggle", proxyHandler.Toggle)
-				proxies.POST("/:id/start", proxyHandler.Start)
-				proxies.POST("/:id/stop", proxyHandler.Stop)
-				proxies.GET("/:id/stats", proxyHandler.GetStats)
+				proxies.GET("", authMiddleware.RequirePermission("proxy:read"), proxyHandler.List)
+				proxies.POST("", authMiddleware.RequirePermission("proxy:write"), proxyHandler.Create)
+				proxies.POST("/batch", authMiddleware.RequirePermission("proxy:write"), proxyHandler.BatchOperation)
+				proxies.GET("/:id", authMiddleware.RequirePermission("proxy:read"), proxyHandler.Get)
+				proxies.PUT("/:id", authMiddleware.RequirePermission("proxy:write"), proxyHandler.Update)
+				proxies.DELETE("/:id", authMiddleware.RequirePermission("proxy:write"), proxyHandler.Delete)
+				proxies.GET("/:id/link", authMiddleware.RequirePermission("proxy:read"), proxyHandler.GetShareLink)
+				proxies.POST("/:id/toggle", authMiddleware.RequirePermission("proxy:write"), proxyHandler.Toggle)
+				proxies.POST("/:id/start", authMiddleware.RequirePermission("proxy:write"), proxyHandler.Start)
+				proxies.POST("/:id/stop", authMiddleware.RequirePermission("proxy:write"), proxyHandler.Stop)
+				proxies.GET("/:id/stats", authMiddleware.RequirePermission("proxy:read"), proxyHandler.GetStats)
 			}
 
 			// System routes
 			system := protected.Group("/system")
 			{
-				system.GET("/info", systemHandler.GetInfo)
-				system.GET("/status", systemHandler.GetDetailedStatus)
-				system.GET("/stats", systemHandler.GetStats)
+				system.GET("/info", authMiddleware.RequirePermission("system:read"), systemHandler.GetInfo)
+				system.GET("/status", authMiddleware.RequirePermission("system:read"), systemHandler.GetDetailedStatus)
+				system.GET("/stats", authMiddleware.RequirePermission("system:read"), systemHandler.GetStats)
 			}
 
 			// Admin system routes
 			adminSystem := protected.Group("/admin/system")
-			adminSystem.Use(authMiddleware.RequireRole("admin"))
 			{
-				adminSystem.POST("/runtime-reconcile", systemHandler.AdminTriggerRuntimeReconcile)
+				adminSystem.POST("/runtime-reconcile", authMiddleware.RequirePermission("system:write"), systemHandler.AdminTriggerRuntimeReconcile)
+				adminSystem.POST("/restart-panel", authMiddleware.RequirePermission("system:write"), systemHandler.AdminRestartPanel)
 			}
 
 			// Role routes
 			roles := protected.Group("/roles")
 			{
-				roles.GET("", roleHandler.ListRoles)
-				roles.POST("", roleHandler.CreateRole)
-				roles.GET("/:id", roleHandler.GetRole)
-				roles.PUT("/:id", roleHandler.UpdateRole)
-				roles.DELETE("/:id", roleHandler.DeleteRole)
+				roles.GET("", authMiddleware.RequirePermission("role:read"), roleHandler.ListRoles)
+				roles.POST("", authMiddleware.RequirePermission("role:write"), roleHandler.CreateRole)
+				roles.GET("/:id", authMiddleware.RequirePermission("role:read"), roleHandler.GetRole)
+				roles.PUT("/:id", authMiddleware.RequirePermission("role:write"), roleHandler.UpdateRole)
+				roles.DELETE("/:id", authMiddleware.RequirePermission("role:write"), roleHandler.DeleteRole)
 			}
 
 			// Permissions route
-			protected.GET("/permissions", roleHandler.GetPermissions)
+			protected.GET("/permissions", authMiddleware.RequirePermission("role:read"), roleHandler.GetPermissions)
 
 			// Stats routes
 			stats := protected.Group("/stats")
 			{
-				stats.GET("/dashboard", statsHandler.GetDashboardStats)
-				stats.GET("/protocol", statsHandler.GetProtocolStats)
-				stats.GET("/traffic", statsHandler.GetTrafficStats)
-				stats.GET("/user", statsHandler.GetUserStats)
-				stats.GET("/detailed", statsHandler.GetDetailedStats)
+				stats.GET("/dashboard", authMiddleware.RequirePermission("stats:read"), statsHandler.GetDashboardStats)
+				stats.GET("/protocol", authMiddleware.RequirePermission("stats:read"), statsHandler.GetProtocolStats)
+				stats.GET("/traffic", authMiddleware.RequirePermission("stats:read"), statsHandler.GetTrafficStats)
+				stats.GET("/user", authMiddleware.RequirePermission("stats:read"), statsHandler.GetUserStats)
+				stats.GET("/detailed", authMiddleware.RequirePermission("stats:read"), statsHandler.GetDetailedStats)
 			}
 
 			// Subscription routes (user)
@@ -508,99 +513,95 @@ func (r *Router) Setup() {
 
 			// User management (admin only)
 			users := protected.Group("/users")
-			users.Use(authMiddleware.RequireRole("admin"))
 			{
-				users.GET("", authHandler.ListUsers)
-				users.POST("", authHandler.CreateUser)
-				users.GET("/:id", authHandler.GetUser)
-				users.PUT("/:id", authHandler.UpdateUser)
-				users.DELETE("/:id", authHandler.DeleteUser)
-				users.POST("/:id/enable", authHandler.EnableUser)
-				users.POST("/:id/disable", authHandler.DisableUser)
-				users.POST("/:id/reset-password", authHandler.ResetPassword)
-				users.GET("/:id/login-history", authHandler.GetLoginHistory)
-				users.DELETE("/:id/login-history", authHandler.ClearLoginHistory)
+				users.GET("", authMiddleware.RequirePermission("user:read"), authHandler.ListUsers)
+				users.POST("", authMiddleware.RequirePermission("user:write"), authHandler.CreateUser)
+				users.GET("/:id", authMiddleware.RequirePermission("user:read"), authHandler.GetUser)
+				users.PUT("/:id", authMiddleware.RequirePermission("user:write"), authHandler.UpdateUser)
+				users.DELETE("/:id", authMiddleware.RequirePermission("user:write"), authHandler.DeleteUser)
+				users.POST("/:id/enable", authMiddleware.RequirePermission("user:write"), authHandler.EnableUser)
+				users.POST("/:id/disable", authMiddleware.RequirePermission("user:write"), authHandler.DisableUser)
+				users.POST("/:id/reset-password", authMiddleware.RequirePermission("user:write"), authHandler.ResetPassword)
+				users.GET("/:id/login-history", authMiddleware.RequirePermission("user:read"), authHandler.GetLoginHistory)
+				users.DELETE("/:id/login-history", authMiddleware.RequirePermission("user:write"), authHandler.ClearLoginHistory)
 			}
 
 			// Settings routes (admin only)
 			settingsRoutes := protected.Group("/settings")
-			settingsRoutes.Use(authMiddleware.RequireRole("admin"))
 			{
-				settingsRoutes.GET("", settingsHandler.GetSettings)
-				settingsRoutes.PUT("", settingsHandler.UpdateSettings)
-				settingsRoutes.POST("/test-email", settingsHandler.TestEmail)
-				settingsRoutes.POST("/backup", settingsHandler.BackupSettings)
-				settingsRoutes.POST("/restore", settingsHandler.RestoreSettings)
-				settingsRoutes.GET("/xray", settingsHandler.GetXraySettings)
-				settingsRoutes.POST("/xray", settingsHandler.UpdateXraySettings)
-				settingsRoutes.GET("/protocols", settingsHandler.GetProtocolSettings)
-				settingsRoutes.POST("/protocols", settingsHandler.UpdateProtocolSettings)
+				settingsRoutes.GET("", authMiddleware.RequirePermission("system:read"), settingsHandler.GetSettings)
+				settingsRoutes.PUT("", authMiddleware.RequirePermission("system:write"), settingsHandler.UpdateSettings)
+				settingsRoutes.POST("/test-email", authMiddleware.RequirePermission("system:write"), settingsHandler.TestEmail)
+				settingsRoutes.POST("/test-db", authMiddleware.RequirePermission("system:write"), settingsHandler.TestDatabase)
+				settingsRoutes.POST("/backup-db", authMiddleware.RequirePermission("system:write"), settingsHandler.BackupDatabase)
+				settingsRoutes.POST("/backup", authMiddleware.RequirePermission("system:write"), settingsHandler.BackupSettings)
+				settingsRoutes.POST("/restore", authMiddleware.RequirePermission("system:write"), settingsHandler.RestoreSettings)
+				settingsRoutes.GET("/xray", authMiddleware.RequirePermission("system:read"), settingsHandler.GetXraySettings)
+				settingsRoutes.POST("/xray", authMiddleware.RequirePermission("system:write"), settingsHandler.UpdateXraySettings)
+				settingsRoutes.GET("/protocols", authMiddleware.RequirePermission("system:read"), settingsHandler.GetProtocolSettings)
+				settingsRoutes.POST("/protocols", authMiddleware.RequirePermission("system:write"), settingsHandler.UpdateProtocolSettings)
 			}
 
 			// Xray routes (admin only)
 			xrayRoutes := protected.Group("/xray")
-			xrayRoutes.Use(authMiddleware.RequireRole("admin"))
 			{
-				xrayRoutes.GET("/status", xrayHandler.GetStatus)
-				xrayRoutes.POST("/start", xrayHandler.Start)
-				xrayRoutes.POST("/stop", xrayHandler.Stop)
-				xrayRoutes.POST("/restart", xrayHandler.Restart)
-				xrayRoutes.GET("/config", xrayHandler.GetConfig)
-				xrayRoutes.PUT("/config", xrayHandler.UpdateConfig)
-				xrayRoutes.POST("/validate", xrayHandler.ValidateConfig)
-				xrayRoutes.POST("/test-config", xrayHandler.TestConfig)
-				xrayRoutes.GET("/version", xrayHandler.GetVersion)
-				xrayRoutes.GET("/version/:version/details", xrayHandler.GetVersionDetails)
-				xrayRoutes.GET("/versions", xrayHandler.GetVersions)
-				xrayRoutes.POST("/sync-versions", xrayHandler.SyncVersions)
-				xrayRoutes.GET("/check-updates", xrayHandler.CheckUpdates)
-				xrayRoutes.POST("/download", xrayHandler.Download)
-				xrayRoutes.POST("/install", xrayHandler.Install)
-				xrayRoutes.POST("/update", xrayHandler.Update)
-				xrayRoutes.POST("/switch-version", xrayHandler.SwitchVersion)
+				xrayRoutes.GET("/status", authMiddleware.RequirePermission("system:read"), xrayHandler.GetStatus)
+				xrayRoutes.POST("/start", authMiddleware.RequirePermission("system:write"), xrayHandler.Start)
+				xrayRoutes.POST("/stop", authMiddleware.RequirePermission("system:write"), xrayHandler.Stop)
+				xrayRoutes.POST("/restart", authMiddleware.RequirePermission("system:write"), xrayHandler.Restart)
+				xrayRoutes.GET("/config", authMiddleware.RequirePermission("system:read"), xrayHandler.GetConfig)
+				xrayRoutes.PUT("/config", authMiddleware.RequirePermission("system:write"), xrayHandler.UpdateConfig)
+				xrayRoutes.POST("/validate", authMiddleware.RequirePermission("system:write"), xrayHandler.ValidateConfig)
+				xrayRoutes.POST("/test-config", authMiddleware.RequirePermission("system:write"), xrayHandler.TestConfig)
+				xrayRoutes.GET("/version", authMiddleware.RequirePermission("system:read"), xrayHandler.GetVersion)
+				xrayRoutes.GET("/version/:version/details", authMiddleware.RequirePermission("system:read"), xrayHandler.GetVersionDetails)
+				xrayRoutes.GET("/versions", authMiddleware.RequirePermission("system:read"), xrayHandler.GetVersions)
+				xrayRoutes.POST("/sync-versions", authMiddleware.RequirePermission("system:write"), xrayHandler.SyncVersions)
+				xrayRoutes.GET("/check-updates", authMiddleware.RequirePermission("system:read"), xrayHandler.CheckUpdates)
+				xrayRoutes.POST("/download", authMiddleware.RequirePermission("system:write"), xrayHandler.Download)
+				xrayRoutes.POST("/install", authMiddleware.RequirePermission("system:write"), xrayHandler.Install)
+				xrayRoutes.POST("/update", authMiddleware.RequirePermission("system:write"), xrayHandler.Update)
+				xrayRoutes.POST("/switch-version", authMiddleware.RequirePermission("system:write"), xrayHandler.SwitchVersion)
 			}
 
 			// Certificates routes (admin only)
 			certificatesRoutes := protected.Group("/certificates")
-			certificatesRoutes.Use(authMiddleware.RequireRole("admin"))
 			{
-				certificatesRoutes.GET("", certificateHandler.List)
-				certificatesRoutes.GET("/all", certificateHandler.ListAll) // 用于下拉选择
-				certificatesRoutes.GET("/:id", certificateHandler.Get)
-				certificatesRoutes.GET("/domain/:domain", certificateHandler.GetByDomain)
-				certificatesRoutes.POST("", certificateHandler.Create)
-				certificatesRoutes.PUT("/:id", certificateHandler.Update)
-				certificatesRoutes.DELETE("/:id", certificateHandler.Delete)
-				certificatesRoutes.POST("/apply", certificateHandler.Apply)
-				certificatesRoutes.POST("/:id/renew", certificateHandler.Renew)
-				certificatesRoutes.GET("/:id/validate", certificateHandler.Validate)
-				certificatesRoutes.GET("/:id/backup", certificateHandler.Backup)
-				certificatesRoutes.GET("/expiring", certificateHandler.GetExpiring)
+				certificatesRoutes.GET("", authMiddleware.RequirePermission("system:read"), certificateHandler.List)
+				certificatesRoutes.GET("/all", authMiddleware.RequirePermission("system:read"), certificateHandler.ListAll) // 用于下拉选择
+				certificatesRoutes.GET("/:id", authMiddleware.RequirePermission("system:read"), certificateHandler.Get)
+				certificatesRoutes.GET("/domain/:domain", authMiddleware.RequirePermission("system:read"), certificateHandler.GetByDomain)
+				certificatesRoutes.POST("", authMiddleware.RequirePermission("system:write"), certificateHandler.Create)
+				certificatesRoutes.PUT("/:id", authMiddleware.RequirePermission("system:write"), certificateHandler.Update)
+				certificatesRoutes.DELETE("/:id", authMiddleware.RequirePermission("system:write"), certificateHandler.Delete)
+				certificatesRoutes.POST("/apply", authMiddleware.RequirePermission("system:write"), certificateHandler.Apply)
+				certificatesRoutes.POST("/:id/renew", authMiddleware.RequirePermission("system:write"), certificateHandler.Renew)
+				certificatesRoutes.GET("/:id/validate", authMiddleware.RequirePermission("system:read"), certificateHandler.Validate)
+				certificatesRoutes.GET("/:id/backup", authMiddleware.RequirePermission("system:read"), certificateHandler.Backup)
+				certificatesRoutes.GET("/expiring", authMiddleware.RequirePermission("system:read"), certificateHandler.GetExpiring)
 
 				// 证书分配到节点
-				certificatesRoutes.POST("/:id/assign", certificateHandler.AssignToNodes)
-				certificatesRoutes.GET("/:id/nodes", certificateHandler.GetAssignedNodes)
-				certificatesRoutes.DELETE("/:id/nodes/:nodeId", certificateHandler.UnassignFromNode)
+				certificatesRoutes.POST("/:id/assign", authMiddleware.RequirePermission("system:write"), certificateHandler.AssignToNodes)
+				certificatesRoutes.GET("/:id/nodes", authMiddleware.RequirePermission("system:read"), certificateHandler.GetAssignedNodes)
+				certificatesRoutes.DELETE("/:id/nodes/:nodeId", authMiddleware.RequirePermission("system:write"), certificateHandler.UnassignFromNode)
 			}
 
 			// Logs routes (admin only)
 			logsRoutes := protected.Group("/logs")
-			logsRoutes.Use(authMiddleware.RequireRole("admin"))
 			{
-				logsRoutes.GET("", logHandler.ListLogs)
-				logsRoutes.GET("/export", logHandler.ExportLogs)
-				logsRoutes.GET("/:id", logHandler.GetLog)
-				logsRoutes.DELETE("", logHandler.DeleteLogs)
-				logsRoutes.POST("/cleanup", logHandler.Cleanup)
+				logsRoutes.GET("", authMiddleware.RequirePermission("system:read"), logHandler.ListLogs)
+				logsRoutes.GET("/export", authMiddleware.RequirePermission("system:read"), logHandler.ExportLogs)
+				logsRoutes.GET("/:id", authMiddleware.RequirePermission("system:read"), logHandler.GetLog)
+				logsRoutes.DELETE("", authMiddleware.RequirePermission("system:write"), logHandler.DeleteLogs)
+				logsRoutes.POST("/cleanup", authMiddleware.RequirePermission("system:write"), logHandler.Cleanup)
 			}
 
 			// Admin subscription routes (admin only)
 			adminSubscriptions := protected.Group("/admin/subscriptions")
-			adminSubscriptions.Use(authMiddleware.RequireRole("admin"))
 			{
-				adminSubscriptions.GET("", subscriptionHandler.AdminList)
-				adminSubscriptions.DELETE("/:user_id", subscriptionHandler.AdminRevoke)
-				adminSubscriptions.POST("/:user_id/reset-stats", subscriptionHandler.AdminResetStats)
+				adminSubscriptions.GET("", authMiddleware.RequirePermission("user:read"), subscriptionHandler.AdminList)
+				adminSubscriptions.DELETE("/:user_id", authMiddleware.RequirePermission("user:write"), subscriptionHandler.AdminRevoke)
+				adminSubscriptions.POST("/:user_id/reset-stats", authMiddleware.RequirePermission("user:write"), subscriptionHandler.AdminResetStats)
 			}
 
 			// ==================== Commercial System Routes ====================
@@ -716,251 +717,233 @@ func (r *Router) Setup() {
 
 			// Admin plan routes
 			adminPlans := protected.Group("/admin/plans")
-			adminPlans.Use(authMiddleware.RequireRole("admin"))
 			{
-				adminPlans.GET("", planHandler.ListAllPlans)
-				adminPlans.POST("", planHandler.CreatePlan)
-				adminPlans.PUT("/:id", planHandler.UpdatePlan)
-				adminPlans.DELETE("/:id", planHandler.DeletePlan)
-				adminPlans.PUT("/:id/status", planHandler.TogglePlanStatus)
-				adminPlans.PUT("/:id/prices", currencyHandler.SetPlanPrices)
-				adminPlans.DELETE("/:id/prices/:currency", currencyHandler.DeletePlanPrice)
+				adminPlans.GET("", authMiddleware.RequirePermission("system:write"), planHandler.ListAllPlans)
+				adminPlans.POST("", authMiddleware.RequirePermission("system:write"), planHandler.CreatePlan)
+				adminPlans.PUT("/:id", authMiddleware.RequirePermission("system:write"), planHandler.UpdatePlan)
+				adminPlans.DELETE("/:id", authMiddleware.RequirePermission("system:write"), planHandler.DeletePlan)
+				adminPlans.PUT("/:id/status", authMiddleware.RequirePermission("system:write"), planHandler.TogglePlanStatus)
+				adminPlans.PUT("/:id/prices", authMiddleware.RequirePermission("system:write"), currencyHandler.SetPlanPrices)
+				adminPlans.DELETE("/:id/prices/:currency", authMiddleware.RequirePermission("system:write"), currencyHandler.DeletePlanPrice)
 			}
 
 			// Admin currency routes
 			adminCurrencies := protected.Group("/admin/currencies")
-			adminCurrencies.Use(authMiddleware.RequireRole("admin"))
 			{
-				adminCurrencies.POST("/update-rates", currencyHandler.UpdateExchangeRates)
+				adminCurrencies.POST("/update-rates", authMiddleware.RequirePermission("system:write"), currencyHandler.UpdateExchangeRates)
 			}
 
 			// Admin order routes
 			adminOrders := protected.Group("/admin/orders")
-			adminOrders.Use(authMiddleware.RequireRole("admin"))
 			{
-				adminOrders.GET("", orderHandler.ListAllOrders)
-				adminOrders.GET("/:id", orderHandler.GetOrder)
-				adminOrders.PUT("/:id/status", orderHandler.UpdateOrderStatus)
-				adminOrders.POST("/:id/refund", orderHandler.RefundOrder)
+				adminOrders.GET("", authMiddleware.RequirePermission("system:write"), orderHandler.ListAllOrders)
+				adminOrders.GET("/:id", authMiddleware.RequirePermission("system:write"), orderHandler.GetOrder)
+				adminOrders.PUT("/:id/status", authMiddleware.RequirePermission("system:write"), orderHandler.UpdateOrderStatus)
+				adminOrders.POST("/:id/refund", authMiddleware.RequirePermission("system:write"), orderHandler.RefundOrder)
 			}
 
 			// Admin balance routes
 			adminBalance := protected.Group("/admin/balance")
-			adminBalance.Use(authMiddleware.RequireRole("admin"))
 			{
-				adminBalance.GET("/recharge-orders", balanceHandler.ListAdminRechargeOrders)
-				adminBalance.GET("/users/:userID", balanceHandler.AdminGetUserBalance)
-				adminBalance.GET("/users/:userID/transactions", balanceHandler.AdminGetUserTransactions)
-				adminBalance.POST("/adjust", balanceHandler.AdjustBalance)
+				adminBalance.GET("/recharge-orders", authMiddleware.RequirePermission("system:write"), balanceHandler.ListAdminRechargeOrders)
+				adminBalance.GET("/users/:userID", authMiddleware.RequirePermission("system:write"), balanceHandler.AdminGetUserBalance)
+				adminBalance.GET("/users/:userID/transactions", authMiddleware.RequirePermission("system:write"), balanceHandler.AdminGetUserTransactions)
+				adminBalance.POST("/adjust", authMiddleware.RequirePermission("system:write"), balanceHandler.AdjustBalance)
 			}
 
 			// Admin coupon routes
 			adminCoupons := protected.Group("/admin/coupons")
-			adminCoupons.Use(authMiddleware.RequireRole("admin"))
 			{
-				adminCoupons.GET("", couponHandler.ListCoupons)
-				adminCoupons.POST("", couponHandler.CreateCoupon)
-				adminCoupons.PUT("/:id", couponHandler.UpdateCoupon)
-				adminCoupons.DELETE("/:id", couponHandler.DeleteCoupon)
-				adminCoupons.POST("/batch", couponHandler.GenerateBatchCodes)
+				adminCoupons.GET("", authMiddleware.RequirePermission("system:write"), couponHandler.ListCoupons)
+				adminCoupons.POST("", authMiddleware.RequirePermission("system:write"), couponHandler.CreateCoupon)
+				adminCoupons.PUT("/:id", authMiddleware.RequirePermission("system:write"), couponHandler.UpdateCoupon)
+				adminCoupons.DELETE("/:id", authMiddleware.RequirePermission("system:write"), couponHandler.DeleteCoupon)
+				adminCoupons.POST("/batch", authMiddleware.RequirePermission("system:write"), couponHandler.GenerateBatchCodes)
 			}
 
 			// Admin invoice routes
 			adminInvoices := protected.Group("/admin/invoices")
-			adminInvoices.Use(authMiddleware.RequireRole("admin"))
 			{
-				adminInvoices.POST("/generate", invoiceHandler.GenerateInvoice)
+				adminInvoices.POST("/generate", authMiddleware.RequirePermission("system:write"), invoiceHandler.GenerateInvoice)
 			}
 
 			// Admin report routes
 			adminReports := protected.Group("/admin/reports")
-			adminReports.Use(authMiddleware.RequireRole("admin"))
 			{
-				adminReports.GET("/overview", reportHandler.GetCommercialOverview)
-				adminReports.GET("/revenue", reportHandler.GetRevenueReport)
-				adminReports.GET("/orders", reportHandler.GetOrderStats)
-				adminReports.GET("/failed-payments", paymentHandler.GetFailedPaymentStats)
-				adminReports.GET("/pause-stats", pauseHandler.AdminGetPauseStats)
+				adminReports.GET("/overview", authMiddleware.RequirePermission("system:write"), reportHandler.GetCommercialOverview)
+				adminReports.GET("/revenue", authMiddleware.RequirePermission("system:write"), reportHandler.GetRevenueReport)
+				adminReports.GET("/orders", authMiddleware.RequirePermission("system:write"), reportHandler.GetOrderStats)
+				adminReports.GET("/failed-payments", authMiddleware.RequirePermission("system:write"), paymentHandler.GetFailedPaymentStats)
+				adminReports.GET("/pause-stats", authMiddleware.RequirePermission("system:write"), pauseHandler.AdminGetPauseStats)
 			}
 
 			// Admin trial routes
 			adminTrials := protected.Group("/admin/trials")
-			adminTrials.Use(authMiddleware.RequireRole("admin"))
 			{
-				adminTrials.GET("", trialHandler.AdminListTrials)
-				adminTrials.GET("/stats", trialHandler.AdminGetTrialStats)
-				adminTrials.POST("/grant", trialHandler.AdminGrantTrial)
-				adminTrials.GET("/user/:user_id", trialHandler.AdminGetTrialByUser)
-				adminTrials.POST("/expire", trialHandler.AdminExpireTrials)
+				adminTrials.GET("", authMiddleware.RequirePermission("system:write"), trialHandler.AdminListTrials)
+				adminTrials.GET("/stats", authMiddleware.RequirePermission("system:write"), trialHandler.AdminGetTrialStats)
+				adminTrials.POST("/grant", authMiddleware.RequirePermission("system:write"), trialHandler.AdminGrantTrial)
+				adminTrials.GET("/user/:user_id", authMiddleware.RequirePermission("system:write"), trialHandler.AdminGetTrialByUser)
+				adminTrials.POST("/expire", authMiddleware.RequirePermission("system:write"), trialHandler.AdminExpireTrials)
 			}
 
 			// Admin pause routes
 			adminPause := protected.Group("/admin/subscription/pause")
-			adminPause.Use(authMiddleware.RequireRole("admin"))
 			{
-				adminPause.GET("/stats", pauseHandler.AdminGetPauseStats)
-				adminPause.POST("/auto-resume", pauseHandler.AdminTriggerAutoResume)
+				adminPause.GET("/stats", authMiddleware.RequirePermission("system:write"), pauseHandler.AdminGetPauseStats)
+				adminPause.POST("/auto-resume", authMiddleware.RequirePermission("system:write"), pauseHandler.AdminTriggerAutoResume)
 			}
 
 			// Admin gift card routes
 			adminGiftCards := protected.Group("/admin/gift-cards")
-			adminGiftCards.Use(authMiddleware.RequireRole("admin"))
 			{
-				adminGiftCards.GET("", giftCardHandler.AdminListGiftCards)
-				adminGiftCards.POST("/batch", giftCardHandler.AdminCreateBatch)
-				adminGiftCards.GET("/stats", giftCardHandler.AdminGetStats)
-				adminGiftCards.GET("/:id", giftCardHandler.AdminGetGiftCard)
-				adminGiftCards.PUT("/:id/status", giftCardHandler.AdminSetStatus)
-				adminGiftCards.DELETE("/:id", giftCardHandler.AdminDeleteGiftCard)
-				adminGiftCards.GET("/batch/:batch_id/stats", giftCardHandler.AdminGetBatchStats)
+				adminGiftCards.GET("", authMiddleware.RequirePermission("system:write"), giftCardHandler.AdminListGiftCards)
+				adminGiftCards.POST("/batch", authMiddleware.RequirePermission("system:write"), giftCardHandler.AdminCreateBatch)
+				adminGiftCards.GET("/stats", authMiddleware.RequirePermission("system:write"), giftCardHandler.AdminGetStats)
+				adminGiftCards.GET("/:id", authMiddleware.RequirePermission("system:write"), giftCardHandler.AdminGetGiftCard)
+				adminGiftCards.PUT("/:id/status", authMiddleware.RequirePermission("system:write"), giftCardHandler.AdminSetStatus)
+				adminGiftCards.DELETE("/:id", authMiddleware.RequirePermission("system:write"), giftCardHandler.AdminDeleteGiftCard)
+				adminGiftCards.GET("/batch/:batch_id/stats", authMiddleware.RequirePermission("system:write"), giftCardHandler.AdminGetBatchStats)
 			}
 
 			// User gift card stats (for compatibility)
 			giftCardStats := protected.Group("/gift-cards")
 			{
-				giftCardStats.GET("/stats", giftCardHandler.AdminGetStats)
+				giftCardStats.GET("/stats", authMiddleware.RequirePermission("system:write"), giftCardHandler.AdminGetStats)
 			}
 
 			// ==================== Node Management Routes ====================
 
 			// Admin node routes
 			adminNodes := protected.Group("/admin/nodes")
-			adminNodes.Use(authMiddleware.RequireRole("admin"))
 			{
 				// Node CRUD
-				adminNodes.GET("", nodeHandler.List)
-				adminNodes.POST("", nodeHandler.Create)
-				adminNodes.GET("/name-suggestion", nodeNameSuggestionHandler.Suggest)
-				adminNodes.GET("/statistics", nodeHandler.GetStatistics)
+				adminNodes.GET("", authMiddleware.RequirePermission("system:read"), nodeHandler.List)
+				adminNodes.POST("", authMiddleware.RequirePermission("system:write"), nodeHandler.Create)
+				adminNodes.GET("/name-suggestion", authMiddleware.RequirePermission("system:read"), nodeNameSuggestionHandler.Suggest)
+				adminNodes.GET("/statistics", authMiddleware.RequirePermission("system:read"), nodeHandler.GetStatistics)
 
 				// Remote deployment (必须在 /:id 之前，避免被参数路由匹配)
 				// Agent 下载已移到公开路由
-				adminNodes.POST("/test-connection", nodeDeployHandler.TestConnection)
+				adminNodes.POST("/test-connection", authMiddleware.RequirePermission("system:write"), nodeDeployHandler.TestConnection)
 
-				adminNodes.GET("/:id", nodeHandler.Get)
-				adminNodes.GET("/:id/install-status", nodeHandler.GetInstallStatus)
-				adminNodes.GET("/:id/network-optimization", nodeNetworkOptimizationHandler.GetProfile)
-				adminNodes.POST("/:id/network-optimization/inspect", nodeNetworkOptimizationHandler.Inspect)
-				adminNodes.POST("/:id/network-optimization/apply", nodeNetworkOptimizationHandler.Apply)
-				adminNodes.POST("/:id/network-optimization/rollback", nodeNetworkOptimizationHandler.Rollback)
-				adminNodes.PUT("/:id", nodeHandler.Update)
-				adminNodes.DELETE("/:id", nodeHandler.Delete)
-				adminNodes.PUT("/:id/status", nodeHandler.UpdateStatus)
+				adminNodes.GET("/:id", authMiddleware.RequirePermission("system:read"), nodeHandler.Get)
+				adminNodes.GET("/:id/install-status", authMiddleware.RequirePermission("system:read"), nodeHandler.GetInstallStatus)
+				adminNodes.GET("/:id/network-optimization", authMiddleware.RequirePermission("system:read"), nodeNetworkOptimizationHandler.GetProfile)
+				adminNodes.POST("/:id/network-optimization/inspect", authMiddleware.RequirePermission("system:write"), nodeNetworkOptimizationHandler.Inspect)
+				adminNodes.POST("/:id/network-optimization/apply", authMiddleware.RequirePermission("system:write"), nodeNetworkOptimizationHandler.Apply)
+				adminNodes.POST("/:id/network-optimization/rollback", authMiddleware.RequirePermission("system:write"), nodeNetworkOptimizationHandler.Rollback)
+				adminNodes.PUT("/:id", authMiddleware.RequirePermission("system:write"), nodeHandler.Update)
+				adminNodes.DELETE("/:id", authMiddleware.RequirePermission("system:write"), nodeHandler.Delete)
+				adminNodes.PUT("/:id/status", authMiddleware.RequirePermission("system:write"), nodeHandler.UpdateStatus)
 
 				// Token management
-				adminNodes.POST("/:id/token", nodeHandler.GenerateToken)
-				adminNodes.POST("/:id/token/rotate", nodeHandler.RotateToken)
-				adminNodes.POST("/:id/token/revoke", nodeHandler.RevokeToken)
+				adminNodes.POST("/:id/token", authMiddleware.RequirePermission("system:write"), nodeHandler.GenerateToken)
+				adminNodes.POST("/:id/token/rotate", authMiddleware.RequirePermission("system:write"), nodeHandler.RotateToken)
+				adminNodes.POST("/:id/token/revoke", authMiddleware.RequirePermission("system:write"), nodeHandler.RevokeToken)
 
 				// Config preview (for testing)
-				adminNodes.GET("/:id/config/preview", nodeConfigTestHandler.PreviewConfig)
+				adminNodes.GET("/:id/config/preview", authMiddleware.RequirePermission("system:read"), nodeConfigTestHandler.PreviewConfig)
 
 				// Remote deployment
-				adminNodes.POST("/:id/deploy", nodeDeployHandler.DeployAgent)
-				adminNodes.GET("/:id/deploy/script", nodeDeployHandler.GetDeployScript)
-				adminNodes.POST("/:id/core/start", nodeHandler.StartCore)
-				adminNodes.POST("/:id/core/restart", nodeHandler.RestartCore)
-				adminNodes.POST("/:id/core/sync-config", nodeHandler.SyncCoreConfig)
+				adminNodes.POST("/:id/deploy", authMiddleware.RequirePermission("system:write"), nodeDeployHandler.DeployAgent)
+				adminNodes.GET("/:id/deploy/script", authMiddleware.RequirePermission("system:read"), nodeDeployHandler.GetDeployScript)
+				adminNodes.POST("/:id/core/start", authMiddleware.RequirePermission("system:write"), nodeHandler.StartCore)
+				adminNodes.POST("/:id/core/restart", authMiddleware.RequirePermission("system:write"), nodeHandler.RestartCore)
+				adminNodes.POST("/:id/core/sync-config", authMiddleware.RequirePermission("system:write"), nodeHandler.SyncCoreConfig)
 
 				// Health check routes
-				adminNodes.POST("/:id/health-check", nodeHealthHandler.CheckNode)
-				adminNodes.GET("/:id/health-history", nodeHealthHandler.GetHistory)
-				adminNodes.GET("/:id/health-latest", nodeHealthHandler.GetLatest)
-				adminNodes.GET("/:id/health-stats", nodeHealthHandler.GetHealthStats)
-				adminNodes.POST("/health-check", nodeHealthHandler.CheckAll)
-				adminNodes.GET("/cluster-health", nodeHealthHandler.GetClusterHealth)
+				adminNodes.POST("/:id/health-check", authMiddleware.RequirePermission("system:write"), nodeHealthHandler.CheckNode)
+				adminNodes.GET("/:id/health-history", authMiddleware.RequirePermission("system:read"), nodeHealthHandler.GetHistory)
+				adminNodes.GET("/:id/health-latest", authMiddleware.RequirePermission("system:read"), nodeHealthHandler.GetLatest)
+				adminNodes.GET("/:id/health-stats", authMiddleware.RequirePermission("system:read"), nodeHealthHandler.GetHealthStats)
+				adminNodes.POST("/health-check", authMiddleware.RequirePermission("system:write"), nodeHealthHandler.CheckAll)
+				adminNodes.GET("/cluster-health", authMiddleware.RequirePermission("system:read"), nodeHealthHandler.GetClusterHealth)
 
 				// Traffic statistics routes
-				adminNodes.GET("/traffic/total", nodeStatsHandler.GetTotalTraffic)
-				adminNodes.GET("/traffic/by-node", nodeStatsHandler.GetTrafficStatsByNode)
-				adminNodes.GET("/traffic/by-group", nodeStatsHandler.GetTrafficStatsByGroup)
-				adminNodes.GET("/traffic/aggregated", nodeStatsHandler.GetAggregatedStats)
-				adminNodes.GET("/traffic/realtime", nodeStatsHandler.GetRealTimeStats)
-				adminNodes.POST("/traffic", nodeStatsHandler.RecordTraffic)
-				adminNodes.POST("/traffic/batch", nodeStatsHandler.RecordTrafficBatch)
-				adminNodes.POST("/traffic/cleanup", nodeStatsHandler.CleanupOldRecords)
-				adminNodes.GET("/:id/traffic", nodeStatsHandler.GetTrafficByNode)
-				adminNodes.GET("/:id/traffic/top-users", nodeStatsHandler.GetTopUsersByTraffic)
+				adminNodes.GET("/traffic/total", authMiddleware.RequirePermission("system:read"), nodeStatsHandler.GetTotalTraffic)
+				adminNodes.GET("/traffic/by-node", authMiddleware.RequirePermission("system:read"), nodeStatsHandler.GetTrafficStatsByNode)
+				adminNodes.GET("/traffic/by-group", authMiddleware.RequirePermission("system:read"), nodeStatsHandler.GetTrafficStatsByGroup)
+				adminNodes.GET("/traffic/aggregated", authMiddleware.RequirePermission("system:read"), nodeStatsHandler.GetAggregatedStats)
+				adminNodes.GET("/traffic/realtime", authMiddleware.RequirePermission("system:read"), nodeStatsHandler.GetRealTimeStats)
+				adminNodes.POST("/traffic", authMiddleware.RequirePermission("system:write"), nodeStatsHandler.RecordTraffic)
+				adminNodes.POST("/traffic/batch", authMiddleware.RequirePermission("system:write"), nodeStatsHandler.RecordTrafficBatch)
+				adminNodes.POST("/traffic/cleanup", authMiddleware.RequirePermission("system:write"), nodeStatsHandler.CleanupOldRecords)
+				adminNodes.GET("/:id/traffic", authMiddleware.RequirePermission("system:read"), nodeStatsHandler.GetTrafficByNode)
+				adminNodes.GET("/:id/traffic/top-users", authMiddleware.RequirePermission("system:read"), nodeStatsHandler.GetTopUsersByTraffic)
 			}
 
 			// Admin node group routes
 			adminNodeGroups := protected.Group("/admin/node-groups")
-			adminNodeGroups.Use(authMiddleware.RequireRole("admin"))
 			{
 				// Group CRUD
-				adminNodeGroups.GET("", nodeGroupHandler.List)
-				adminNodeGroups.POST("", nodeGroupHandler.Create)
-				adminNodeGroups.GET("/with-stats", nodeGroupHandler.ListWithStats)
-				adminNodeGroups.GET("/stats", nodeGroupHandler.GetAllStats)
-				adminNodeGroups.GET("/:id", nodeGroupHandler.Get)
-				adminNodeGroups.PUT("/:id", nodeGroupHandler.Update)
-				adminNodeGroups.DELETE("/:id", nodeGroupHandler.Delete)
-				adminNodeGroups.GET("/:id/stats", nodeGroupHandler.GetWithStats)
+				adminNodeGroups.GET("", authMiddleware.RequirePermission("system:read"), nodeGroupHandler.List)
+				adminNodeGroups.POST("", authMiddleware.RequirePermission("system:write"), nodeGroupHandler.Create)
+				adminNodeGroups.GET("/with-stats", authMiddleware.RequirePermission("system:read"), nodeGroupHandler.ListWithStats)
+				adminNodeGroups.GET("/stats", authMiddleware.RequirePermission("system:read"), nodeGroupHandler.GetAllStats)
+				adminNodeGroups.GET("/:id", authMiddleware.RequirePermission("system:read"), nodeGroupHandler.Get)
+				adminNodeGroups.PUT("/:id", authMiddleware.RequirePermission("system:write"), nodeGroupHandler.Update)
+				adminNodeGroups.DELETE("/:id", authMiddleware.RequirePermission("system:write"), nodeGroupHandler.Delete)
+				adminNodeGroups.GET("/:id/stats", authMiddleware.RequirePermission("system:read"), nodeGroupHandler.GetWithStats)
 
 				// Group membership management
-				adminNodeGroups.GET("/:id/nodes", nodeGroupHandler.GetNodes)
-				adminNodeGroups.PUT("/:id/nodes", nodeGroupHandler.SetNodes)
-				adminNodeGroups.POST("/:id/nodes/:node_id", nodeGroupHandler.AddNode)
-				adminNodeGroups.DELETE("/:id/nodes/:node_id", nodeGroupHandler.RemoveNode)
+				adminNodeGroups.GET("/:id/nodes", authMiddleware.RequirePermission("system:read"), nodeGroupHandler.GetNodes)
+				adminNodeGroups.PUT("/:id/nodes", authMiddleware.RequirePermission("system:write"), nodeGroupHandler.SetNodes)
+				adminNodeGroups.POST("/:id/nodes/:node_id", authMiddleware.RequirePermission("system:write"), nodeGroupHandler.AddNode)
+				adminNodeGroups.DELETE("/:id/nodes/:node_id", authMiddleware.RequirePermission("system:write"), nodeGroupHandler.RemoveNode)
 
 				// Group traffic statistics
-				adminNodeGroups.GET("/:id/traffic", nodeStatsHandler.GetTrafficByGroup)
+				adminNodeGroups.GET("/:id/traffic", authMiddleware.RequirePermission("system:read"), nodeStatsHandler.GetTrafficByGroup)
 			}
 
 			// Health checker control routes
 			healthChecker := protected.Group("/admin/health-checker")
-			healthChecker.Use(authMiddleware.RequireRole("admin"))
 			{
-				healthChecker.GET("/status", nodeHealthHandler.GetCheckerStatus)
-				healthChecker.POST("/start", nodeHealthHandler.StartChecker)
-				healthChecker.POST("/stop", nodeHealthHandler.StopChecker)
-				healthChecker.PUT("/config", nodeHealthHandler.UpdateCheckerConfig)
+				healthChecker.GET("/status", authMiddleware.RequirePermission("system:read"), nodeHealthHandler.GetCheckerStatus)
+				healthChecker.POST("/start", authMiddleware.RequirePermission("system:write"), nodeHealthHandler.StartChecker)
+				healthChecker.POST("/stop", authMiddleware.RequirePermission("system:write"), nodeHealthHandler.StopChecker)
+				healthChecker.PUT("/config", authMiddleware.RequirePermission("system:write"), nodeHealthHandler.UpdateCheckerConfig)
 			}
 
 			// Admin user routes (node traffic and IP management)
 			adminUsers := protected.Group("/admin/users")
-			adminUsers.Use(authMiddleware.RequireRole("admin"))
 			{
 				// Node traffic routes
-				adminUsers.GET("/:id/node-traffic", nodeStatsHandler.GetTrafficByUser)
-				adminUsers.GET("/:id/node-traffic/breakdown", nodeStatsHandler.GetUserTrafficBreakdown)
+				adminUsers.GET("/:id/node-traffic", authMiddleware.RequirePermission("user:read"), nodeStatsHandler.GetTrafficByUser)
+				adminUsers.GET("/:id/node-traffic/breakdown", authMiddleware.RequirePermission("user:read"), nodeStatsHandler.GetUserTrafficBreakdown)
 
 				// IP management routes
-				adminUsers.GET("/:id/online-ips", ipRestrictionHandler.GetUserOnlineIPs)
-				adminUsers.POST("/:id/kick-ip", ipRestrictionHandler.KickUserIP)
+				adminUsers.GET("/:id/online-ips", authMiddleware.RequirePermission("user:read"), ipRestrictionHandler.GetUserOnlineIPs)
+				adminUsers.POST("/:id/kick-ip", authMiddleware.RequirePermission("user:write"), ipRestrictionHandler.KickUserIP)
 			}
 
 			// Admin IP restriction routes
 			adminIPRestriction := protected.Group("/admin/ip-restrictions")
-			adminIPRestriction.Use(authMiddleware.RequireRole("admin"))
 			{
-				adminIPRestriction.GET("/stats", ipRestrictionHandler.GetStats)
-				adminIPRestriction.GET("/online", ipRestrictionHandler.GetAllOnlineIPs)
-				adminIPRestriction.GET("/history", ipRestrictionHandler.GetAllIPHistory)
+				adminIPRestriction.GET("/stats", authMiddleware.RequirePermission("system:read"), ipRestrictionHandler.GetStats)
+				adminIPRestriction.GET("/online", authMiddleware.RequirePermission("system:read"), ipRestrictionHandler.GetAllOnlineIPs)
+				adminIPRestriction.GET("/history", authMiddleware.RequirePermission("system:read"), ipRestrictionHandler.GetAllIPHistory)
 			}
 
 			adminIPWhitelist := protected.Group("/admin/ip-whitelist")
-			adminIPWhitelist.Use(authMiddleware.RequireRole("admin"))
 			{
-				adminIPWhitelist.GET("", ipRestrictionHandler.GetWhitelist)
-				adminIPWhitelist.POST("", ipRestrictionHandler.AddWhitelist)
-				adminIPWhitelist.DELETE("/:id", ipRestrictionHandler.DeleteWhitelist)
-				adminIPWhitelist.POST("/import", ipRestrictionHandler.ImportWhitelist)
+				adminIPWhitelist.GET("", authMiddleware.RequirePermission("system:read"), ipRestrictionHandler.GetWhitelist)
+				adminIPWhitelist.POST("", authMiddleware.RequirePermission("system:write"), ipRestrictionHandler.AddWhitelist)
+				adminIPWhitelist.DELETE("/:id", authMiddleware.RequirePermission("system:write"), ipRestrictionHandler.DeleteWhitelist)
+				adminIPWhitelist.POST("/import", authMiddleware.RequirePermission("system:write"), ipRestrictionHandler.ImportWhitelist)
 			}
 
 			adminIPBlacklist := protected.Group("/admin/ip-blacklist")
-			adminIPBlacklist.Use(authMiddleware.RequireRole("admin"))
 			{
-				adminIPBlacklist.GET("", ipRestrictionHandler.GetBlacklist)
-				adminIPBlacklist.POST("", ipRestrictionHandler.AddBlacklist)
-				adminIPBlacklist.DELETE("/:id", ipRestrictionHandler.DeleteBlacklist)
+				adminIPBlacklist.GET("", authMiddleware.RequirePermission("system:read"), ipRestrictionHandler.GetBlacklist)
+				adminIPBlacklist.POST("", authMiddleware.RequirePermission("system:write"), ipRestrictionHandler.AddBlacklist)
+				adminIPBlacklist.DELETE("/:id", authMiddleware.RequirePermission("system:write"), ipRestrictionHandler.DeleteBlacklist)
 			}
 
 			adminIPSettings := protected.Group("/admin/settings")
-			adminIPSettings.Use(authMiddleware.RequireRole("admin"))
 			{
-				adminIPSettings.GET("/ip-restriction", ipRestrictionHandler.GetIPRestrictionSettings)
-				adminIPSettings.PUT("/ip-restriction", ipRestrictionHandler.UpdateIPRestrictionSettings)
+				adminIPSettings.GET("/ip-restriction", authMiddleware.RequirePermission("system:read"), ipRestrictionHandler.GetIPRestrictionSettings)
+				adminIPSettings.PUT("/ip-restriction", authMiddleware.RequirePermission("system:write"), ipRestrictionHandler.UpdateIPRestrictionSettings)
 			}
 
 			// User IP routes
@@ -1379,6 +1362,8 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 	// Create portal handlers
 	portalAuthHandler := handlers.NewPortalAuthHandler(portalAuthService, r.authService, r.repos.User, r.repos.Proxy, r.logger).
 		WithEmailSender(r.notificationService, r.config.GetBaseURL()).
+		WithTelegramSender(r.notificationService).
+		WithAvatarStoragePath(filepath.Join("data", "avatars")).
 		WithEntitlementService(r.entitlementService)
 	portalDashboardHandler := handlers.NewPortalDashboardHandler(r.repos.User, statsService, announcementService, r.logger).
 		WithEntitlementService(r.entitlementService)
@@ -1402,6 +1387,7 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 			portalAuth.POST("/forgot-password", portalAuthHandler.ForgotPassword)
 			portalAuth.POST("/reset-password", portalAuthHandler.ResetPassword)
 			portalAuth.GET("/verify-email", portalAuthHandler.VerifyEmail)
+			portalAuth.GET("/avatar/:filename", portalAuthHandler.GetAvatar)
 			portalAuth.POST("/2fa/login", portalAuthHandler.Verify2FALogin)
 		}
 
@@ -1424,6 +1410,10 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 			portalProtected.POST("/auth/logout", portalAuthHandler.Logout)
 			portalProtected.GET("/auth/profile", portalAuthHandler.GetProfile)
 			portalProtected.PUT("/auth/profile", portalAuthHandler.UpdateProfile)
+			portalProtected.POST("/auth/avatar", portalAuthHandler.UploadAvatar)
+			portalProtected.POST("/auth/telegram/bind", portalAuthHandler.BindTelegram)
+			portalProtected.DELETE("/auth/telegram/bind", portalAuthHandler.UnbindTelegram)
+			portalProtected.POST("/auth/verify-email/resend", portalAuthHandler.ResendVerificationEmail)
 			portalProtected.PUT("/auth/password", portalAuthHandler.ChangePassword)
 			portalProtected.POST("/auth/2fa/enable", portalAuthHandler.Enable2FA)
 			portalProtected.POST("/auth/2fa/verify", portalAuthHandler.Verify2FA)

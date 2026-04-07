@@ -271,15 +271,13 @@ func (s *TrafficService) RecordTrafficBatch(ctx context.Context, records []*Traf
 			if record.ProxyID != nil && *record.ProxyID > 0 {
 				proxyID = *record.ProxyID
 			}
-			if record.UserID > 0 {
-				globalTrafficRecords = append(globalTrafficRecords, &repository.Traffic{
-					UserID:     record.UserID,
-					ProxyID:    proxyID,
-					Upload:     record.Upload,
-					Download:   record.Download,
-					RecordedAt: now,
-				})
-			}
+			globalTrafficRecords = append(globalTrafficRecords, &repository.Traffic{
+				UserID:     record.UserID,
+				ProxyID:    proxyID,
+				Upload:     record.Upload,
+				Download:   record.Download,
+				RecordedAt: now,
+			})
 
 			nodeUploads[record.NodeID] += record.Upload
 			nodeDownloads[record.NodeID] += record.Download

@@ -12,6 +12,7 @@
       <div class="page-actions">
         <el-button
           type="primary"
+          :disabled="!canManageRoles"
           @click="showCreateDialog"
         >
           <el-icon><Plus /></el-icon>
@@ -119,7 +120,7 @@
               <el-button
                 type="primary"
                 size="small"
-                :disabled="row.is_system"
+                :disabled="row.is_system || !canManageRoles"
                 @click="editRole(row)"
               >
                 编辑
@@ -127,7 +128,7 @@
               <el-button
                 type="danger"
                 size="small"
-                :disabled="row.is_system || row.user_count > 0"
+                :disabled="row.is_system || !canManageRoles"
                 @click="deleteRole(row)"
               >
                 删除
@@ -207,7 +208,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import { roles as rolesApi, usersApi } from '@/api/index'
+import { roles as rolesApi } from '@/api/index'
+import { useUserStore } from '@/stores/user'
 import { useViewport } from '@/composables/useViewport'
 
 const loading = ref(false)
@@ -219,6 +221,7 @@ const isEdit = ref(false)
 const editingId = ref(null)
 const formRef = ref(null)
 const { isMobile } = useViewport()
+const userStore = useUserStore()
 
 const roleForm = ref({
   name: '',
@@ -238,6 +241,8 @@ const customRoleCount = computed(() => roles.value.filter((role) => !role.is_sys
 const assignedUserCount = computed(() =>
   roles.value.reduce((sum, role) => sum + Number(role.user_count || 0), 0)
 )
+const currentPermissions = computed(() => Array.isArray(userStore.user?.permissions) ? userStore.user.permissions : [])
+const canManageRoles = computed(() => currentPermissions.value.includes('*') || currentPermissions.value.includes('role:write'))
 const dialogWidth = computed(() => (isMobile.value ? 'calc(100vw - 24px)' : '600px'))
 const formLabelWidth = computed(() => (isMobile.value ? '84px' : '100px'))
 
@@ -266,7 +271,7 @@ const loadRoles = async () => {
 // 加载权限列表
 const loadPermissions = async () => {
   try {
-    const response = await usersApi.getPermissions()
+    const response = await rolesApi.getPermissions()
     if (response.code === 200) {
       allPermissions.value = response.data || []
     }
@@ -277,6 +282,7 @@ const loadPermissions = async () => {
 
 // 显示创建对话框
 const showCreateDialog = () => {
+  if (!canManageRoles.value) return
   isEdit.value = false
   editingId.value = null
   roleForm.value = {
@@ -289,6 +295,7 @@ const showCreateDialog = () => {
 
 // 编辑角色
 const editRole = (row) => {
+  if (!canManageRoles.value) return
   isEdit.value = true
   editingId.value = row.id
   roleForm.value = {
@@ -301,9 +308,14 @@ const editRole = (row) => {
 
 // 删除角色
 const deleteRole = async (row) => {
+  if (!canManageRoles.value) return
   try {
+    const reassignHint = row.user_count > 0
+      ? `删除后会把这 ${row.user_count} 个用户自动改回默认 "user" 角色。`
+      : '删除后将不可恢复。'
+
     await ElMessageBox.confirm(
-      `确定要删除角色 "${row.name}" 吗？`,
+      `确定要删除角色 "${row.name}" 吗？${reassignHint}`,
       '确认删除',
       {
         confirmButtonText: '确定',
@@ -314,7 +326,12 @@ const deleteRole = async (row) => {
     
     const response = await rolesApi.deleteRole(row.id)
     if (response.code === 200) {
-      ElMessage.success('删除成功')
+      const reassignedUsers = Number(response.data?.reassigned_users || 0)
+      ElMessage.success(
+        reassignedUsers > 0
+          ? `删除成功，已将 ${reassignedUsers} 个用户重新分配到默认角色`
+          : '删除成功'
+      )
       loadRoles()
     } else {
       ElMessage.error(response.message || '删除失败')
@@ -329,6 +346,7 @@ const deleteRole = async (row) => {
 
 // 提交表单
 const submitForm = async () => {
+  if (!canManageRoles.value) return
   if (!formRef.value) return
   
   await formRef.value.validate(async (valid) => {

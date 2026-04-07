@@ -339,6 +339,44 @@ func TestTrafficRepository_GetTrafficByUser_IncludesDeletedUsers(t *testing.T) {
 	}
 }
 
+func TestTrafficRepository_GetTrafficByUser_ExcludesSharedTrafficRows(t *testing.T) {
+	db := setupTrafficRepositoryTestDB(t)
+	repo := NewTrafficRepository(db)
+
+	if err := db.Create(&User{
+		ID:       8,
+		Username: "named-user",
+		Email:    "named@example.com",
+	}).Error; err != nil {
+		t.Fatalf("failed to seed user: %v", err)
+	}
+
+	for _, record := range []*Traffic{
+		{UserID: 0, ProxyID: 21, Upload: 50, Download: 60, RecordedAt: time.Date(2026, 3, 21, 7, 0, 0, 0, time.UTC)},
+		{UserID: 8, ProxyID: 22, Upload: 70, Download: 80, RecordedAt: time.Date(2026, 3, 21, 8, 0, 0, 0, time.UTC)},
+	} {
+		if err := db.Create(record).Error; err != nil {
+			t.Fatalf("failed to seed traffic record: %v", err)
+		}
+	}
+
+	stats, err := repo.GetTrafficByUser(
+		context.Background(),
+		time.Date(2026, 3, 21, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 3, 21, 23, 59, 59, 0, time.UTC),
+		10,
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(stats) != 1 {
+		t.Fatalf("expected shared traffic rows to be excluded from user ranking, got %d rows", len(stats))
+	}
+	if stats[0].UserID != 8 {
+		t.Fatalf("expected only concrete user 8 in ranking, got %d", stats[0].UserID)
+	}
+}
+
 func TestTrafficRepository_GetTrafficByProtocol_IncludesUnknownProxyTraffic(t *testing.T) {
 	db := setupTrafficRepositoryTestDB(t)
 	repo := NewTrafficRepository(db)

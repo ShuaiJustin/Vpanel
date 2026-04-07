@@ -60,6 +60,18 @@ function getStoredUserInfo() {
   }
 }
 
+function getStoredPermissions() {
+  const userInfo = getStoredUserInfo()
+  return Array.isArray(userInfo?.permissions) ? userInfo.permissions : []
+}
+
+function getFirstAccessibleAdminRoute() {
+  const permissions = getStoredPermissions()
+  const can = permission => permissions.includes('*') || permissions.includes(permission)
+  if (can('stats:read') && can('system:read')) return '/admin/dashboard'
+  return '/admin/profile'
+}
+
 /**
  * 用户前台路由配置
  */
@@ -366,7 +378,6 @@ export const userRoutes = [
 export function userRouteGuard(to, from, next) {
   const isUserAuthenticated = getStoredItem('userToken')
   const isAdminAuthenticated = getStoredItem('token')
-  const userRole = getStoredItem('userRole') || 'user'
   const userInfo = getStoredUserInfo()
   const forcePasswordChange = Boolean(userInfo?.force_password_change ?? userInfo?.forcePasswordChange)
   
@@ -393,8 +404,8 @@ export function userRouteGuard(to, from, next) {
   
   // 已登录用户访问登录/注册页面，跳转到用户仪表板
   if (to.meta.guest && (isUserAuthenticated || isAdminAuthenticated) && to.path.startsWith('/user/')) {
-    if (isAdminAuthenticated && userRole === 'admin') {
-      next('/admin/dashboard')
+    if (isAdminAuthenticated) {
+      next(getFirstAccessibleAdminRoute())
       return
     }
     next('/user/dashboard')

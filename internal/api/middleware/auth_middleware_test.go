@@ -30,6 +30,9 @@ func setupAuthMiddlewareTestDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(&repository.User{}); err != nil {
 		t.Fatalf("failed to migrate user table: %v", err)
 	}
+	if err := db.AutoMigrate(&repository.Role{}); err != nil {
+		t.Fatalf("failed to migrate role table: %v", err)
+	}
 
 	return db
 }
@@ -135,5 +138,67 @@ func TestAuthMiddleware_UsesCurrentRoleForAdminChecks(t *testing.T) {
 
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected status 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAuthMiddleware_UsesCurrentRolePermissionsForPermissionChecks(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db := setupAuthMiddlewareTestDB(t)
+	authSvc := auth.NewService(auth.Config{
+		JWTSecret:   "test-auth-middleware-secret",
+		TokenExpiry: time.Hour,
+	})
+	userRepo := repository.NewUserRepository(db)
+	roleRepo := repository.NewRoleRepository(db)
+
+	role := &repository.Role{
+		Name:        "auditor",
+		Description: "can read stats only",
+	}
+	if err := role.SetPermissionsList([]string{"stats:read"}); err != nil {
+		t.Fatalf("failed to set role permissions: %v", err)
+	}
+	if err := roleRepo.Create(context.Background(), role); err != nil {
+		t.Fatalf("failed to create role: %v", err)
+	}
+
+	user := createAuthMiddlewareTestUser(t, userRepo, authSvc, &repository.User{
+		Username: "custom-role-user",
+		Role:     "auditor",
+		Enabled:  true,
+	})
+
+	token, err := authSvc.GenerateToken(user.ID, user.Username, user.Role)
+	if err != nil {
+		t.Fatalf("failed to generate token: %v", err)
+	}
+
+	router := gin.New()
+	authMiddleware := NewAuthMiddleware(authSvc, logger.NewNopLogger()).
+		WithUserRepository(userRepo).
+		WithRoleRepository(roleRepo)
+	router.Use(authMiddleware.Authenticate())
+	router.GET("/stats", authMiddleware.RequirePermission("stats:read"), func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+	router.GET("/users", authMiddleware.RequirePermission("user:read"), func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	statsReq := httptest.NewRequest(http.MethodGet, "/stats", nil)
+	statsReq.Header.Set("Authorization", "Bearer "+token)
+	statsResp := httptest.NewRecorder()
+	router.ServeHTTP(statsResp, statsReq)
+	if statsResp.Code != http.StatusOK {
+		t.Fatalf("expected stats permission to pass, got %d: %s", statsResp.Code, statsResp.Body.String())
+	}
+
+	usersReq := httptest.NewRequest(http.MethodGet, "/users", nil)
+	usersReq.Header.Set("Authorization", "Bearer "+token)
+	usersResp := httptest.NewRecorder()
+	router.ServeHTTP(usersResp, usersReq)
+	if usersResp.Code != http.StatusForbidden {
+		t.Fatalf("expected missing permission to be forbidden, got %d: %s", usersResp.Code, usersResp.Body.String())
 	}
 }

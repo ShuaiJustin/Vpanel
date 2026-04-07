@@ -28,9 +28,29 @@ type SystemSettings struct {
 	// Panel settings
 	PanelAccessIP  string `json:"panel_access_ip"`  // 面板访问 IP
 	PanelPort      int    `json:"panel_port"`       // 面板监听端口
+	PanelBasePath  string `json:"panel_base_path"`  // 面板基础路径
+	ProxyMode      string `json:"proxy_mode"`       // 代理模式
+	Timezone       string `json:"timezone"`         // 系统时区
 	PanelCertPath  string `json:"panel_cert_path"`  // 面板证书公钥路径
 	PanelKeyPath   string `json:"panel_key_path"`   // 面板证书私钥路径
 	PanelAPIDomain string `json:"panel_api_domain"` // 面板 API 域名
+
+	// Database settings
+	DBType               string `json:"db_type"`
+	DBHost               string `json:"db_host"`
+	DBPort               int    `json:"db_port"`
+	DBName               string `json:"db_name"`
+	DBUser               string `json:"db_user"`
+	DBPassword           string `json:"-"`
+	DBPasswordConfigured bool   `json:"db_password_configured"`
+	SQLitePath           string `json:"sqlite_path"`
+
+	// Log settings
+	LogLevel           string `json:"log_level"`
+	LogRetentionDays   int    `json:"log_retention_days"`
+	LogPath            string `json:"log_path"`
+	EnableAccessLog    bool   `json:"enable_access_log"`
+	EnableOperationLog bool   `json:"enable_operation_log"`
 
 	// SMTP settings
 	SMTPHost               string `json:"smtp_host"`
@@ -85,6 +105,19 @@ func DefaultSettings() *SystemSettings {
 		MaxLoginAttempts:    5,
 		LockDuration:        10,
 		PanelPort:           10086, // 默认面板端口
+		PanelBasePath:       "/",
+		ProxyMode:           "compatible",
+		Timezone:            "Asia/Shanghai",
+		DBType:              "sqlite",
+		DBPort:              3306,
+		DBName:              "v_panel",
+		DBUser:              "root",
+		SQLitePath:          "./data/v.db",
+		LogLevel:            "info",
+		LogRetentionDays:    30,
+		LogPath:             "./logs",
+		EnableAccessLog:     true,
+		EnableOperationLog:  true,
 		SMTPPort:            587,
 		RateLimitEnabled:    true,
 		RateLimitRequests:   100,
@@ -238,6 +271,15 @@ func (s *Service) GetSystemSettings(ctx context.Context) (*SystemSettings, error
 			settings.PanelPort = port
 		}
 	}
+	if v, ok := allSettings["panel_base_path"]; ok && v != "" {
+		settings.PanelBasePath = v
+	}
+	if v, ok := allSettings["proxy_mode"]; ok && v != "" {
+		settings.ProxyMode = v
+	}
+	if v, ok := allSettings["timezone"]; ok && v != "" {
+		settings.Timezone = v
+	}
 	if v, ok := allSettings["panel_cert_path"]; ok {
 		settings.PanelCertPath = v
 	}
@@ -246,6 +288,49 @@ func (s *Service) GetSystemSettings(ctx context.Context) (*SystemSettings, error
 	}
 	if v, ok := allSettings["panel_api_domain"]; ok {
 		settings.PanelAPIDomain = v
+	}
+	if v, ok := allSettings["db_type"]; ok && v != "" {
+		settings.DBType = v
+	}
+	if v, ok := allSettings["db_host"]; ok {
+		settings.DBHost = v
+	}
+	if v, ok := allSettings["db_port"]; ok && v != "" {
+		var port int
+		if json.Unmarshal([]byte(v), &port) == nil {
+			settings.DBPort = port
+		}
+	}
+	if v, ok := allSettings["db_name"]; ok {
+		settings.DBName = v
+	}
+	if v, ok := allSettings["db_user"]; ok {
+		settings.DBUser = v
+	}
+	if v, ok := allSettings["db_password"]; ok {
+		settings.DBPassword = v
+		settings.DBPasswordConfigured = v != ""
+	}
+	if v, ok := allSettings["sqlite_path"]; ok && v != "" {
+		settings.SQLitePath = v
+	}
+	if v, ok := allSettings["log_level"]; ok && v != "" {
+		settings.LogLevel = v
+	}
+	if v, ok := allSettings["log_retention_days"]; ok && v != "" {
+		var days int
+		if json.Unmarshal([]byte(v), &days) == nil {
+			settings.LogRetentionDays = days
+		}
+	}
+	if v, ok := allSettings["log_path"]; ok && v != "" {
+		settings.LogPath = v
+	}
+	if v, ok := allSettings["enable_access_log"]; ok {
+		settings.EnableAccessLog = v == "true"
+	}
+	if v, ok := allSettings["enable_operation_log"]; ok {
+		settings.EnableOperationLog = v == "true"
 	}
 	if v, ok := allSettings["smtp_host"]; ok {
 		settings.SMTPHost = v
@@ -380,9 +465,30 @@ func (s *Service) UpdateSystemSettingsWithOptions(ctx context.Context, settings 
 	if data, err := json.Marshal(settings.PanelPort); err == nil {
 		updates["panel_port"] = string(data)
 	}
+	updates["panel_base_path"] = settings.PanelBasePath
+	updates["proxy_mode"] = settings.ProxyMode
+	updates["timezone"] = settings.Timezone
 	updates["panel_cert_path"] = settings.PanelCertPath
 	updates["panel_key_path"] = settings.PanelKeyPath
 	updates["panel_api_domain"] = settings.PanelAPIDomain
+	updates["db_type"] = settings.DBType
+	updates["db_host"] = settings.DBHost
+	if data, err := json.Marshal(settings.DBPort); err == nil {
+		updates["db_port"] = string(data)
+	}
+	updates["db_name"] = settings.DBName
+	updates["db_user"] = settings.DBUser
+	if settings.DBPassword != "" {
+		updates["db_password"] = settings.DBPassword
+	}
+	updates["sqlite_path"] = settings.SQLitePath
+	updates["log_level"] = settings.LogLevel
+	if data, err := json.Marshal(settings.LogRetentionDays); err == nil {
+		updates["log_retention_days"] = string(data)
+	}
+	updates["log_path"] = settings.LogPath
+	updates["enable_access_log"] = boolToString(settings.EnableAccessLog)
+	updates["enable_operation_log"] = boolToString(settings.EnableOperationLog)
 
 	updates["smtp_host"] = settings.SMTPHost
 	if data, err := json.Marshal(settings.SMTPPort); err == nil {

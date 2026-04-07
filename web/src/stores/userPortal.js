@@ -8,6 +8,9 @@ import { auth as authApi } from '@/api/modules/portal'
 import { toNormalizedError } from '@/utils/entitlement'
 
 export const useUserPortalStore = defineStore('userPortal', () => {
+  const ADMIN_USER_INFO_KEY = 'adminUserInfo'
+  const ADMIN_ROLE_KEY = 'adminRole'
+
   function getStoredValue(key) {
     return sessionStorage.getItem(key) || localStorage.getItem(key)
   }
@@ -38,12 +41,37 @@ export const useUserPortalStore = defineStore('userPortal', () => {
   }
 
   function clearPersistedAuth() {
+    const portalToken = token.value || getStoredValue('userToken')
+    const adminToken = getStoredValue('token')
+
     for (const storage of [localStorage, sessionStorage]) {
       storage.removeItem('userToken')
       storage.removeItem('userInfo')
-      storage.removeItem('token')
-      storage.removeItem('userRole')
+      if (portalToken && adminToken && portalToken === adminToken) {
+        storage.removeItem('token')
+        storage.removeItem(ADMIN_USER_INFO_KEY)
+        storage.removeItem(ADMIN_ROLE_KEY)
+      }
     }
+  }
+
+  function syncAdminBridge(storage, otherStorage, userInfo, tokenValue) {
+    if (userInfo?.role === 'admin' && tokenValue) {
+      storage.setItem('token', tokenValue)
+      storage.setItem(ADMIN_USER_INFO_KEY, JSON.stringify(userInfo))
+      storage.setItem(ADMIN_ROLE_KEY, userInfo.role)
+      otherStorage.removeItem('token')
+      otherStorage.removeItem(ADMIN_USER_INFO_KEY)
+      otherStorage.removeItem(ADMIN_ROLE_KEY)
+      return
+    }
+
+    storage.removeItem('token')
+    storage.removeItem(ADMIN_USER_INFO_KEY)
+    storage.removeItem(ADMIN_ROLE_KEY)
+    otherStorage.removeItem('token')
+    otherStorage.removeItem(ADMIN_USER_INFO_KEY)
+    otherStorage.removeItem(ADMIN_ROLE_KEY)
   }
 
   // 状态
@@ -105,18 +133,7 @@ export const useUserPortalStore = defineStore('userPortal', () => {
       storage.setItem('userInfo', JSON.stringify(response.user))
       otherStorage.removeItem('userToken')
       otherStorage.removeItem('userInfo')
-      
-      // 检查用户角色，如果是管理员，同时设置管理员 token
-      if (response.user && response.user.role === 'admin') {
-        storage.setItem('token', response.token)
-        storage.setItem('userRole', 'admin')
-        otherStorage.removeItem('token')
-        otherStorage.removeItem('userRole')
-      } else {
-        storage.setItem('userRole', 'user')
-        otherStorage.removeItem('token')
-        otherStorage.removeItem('userRole')
-      }
+      syncAdminBridge(storage, otherStorage, response.user, response.token)
       
       return response
     } catch (err) {
@@ -142,17 +159,7 @@ export const useUserPortalStore = defineStore('userPortal', () => {
       storage.setItem('userInfo', JSON.stringify(response.user))
       otherStorage.removeItem('userToken')
       otherStorage.removeItem('userInfo')
-
-      if (response.user && response.user.role === 'admin') {
-        storage.setItem('token', response.token)
-        storage.setItem('userRole', 'admin')
-        otherStorage.removeItem('token')
-        otherStorage.removeItem('userRole')
-      } else {
-        storage.setItem('userRole', 'user')
-        otherStorage.removeItem('token')
-        otherStorage.removeItem('userRole')
-      }
+      syncAdminBridge(storage, otherStorage, response.user, response.token)
 
       return response
     } catch (err) {
@@ -218,11 +225,80 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     error.value = null
     try {
       const response = await authApi.updateProfile(data)
-      user.value = { ...user.value, ...response }
+      const updatedUser = response?.user || response
+      user.value = { ...user.value, ...updatedUser }
       syncUserInfoStorage(user.value)
       return response
     } catch (err) {
       const normalizedError = toNormalizedError(err, '更新资料失败')
+      error.value = normalizedError.message
+      throw normalizedError
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function uploadAvatar(file) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await authApi.uploadAvatar(file)
+      const updatedUser = response?.user || response
+      user.value = { ...user.value, ...updatedUser }
+      syncUserInfoStorage(user.value)
+      return response
+    } catch (err) {
+      const normalizedError = toNormalizedError(err, '上传头像失败')
+      error.value = normalizedError.message
+      throw normalizedError
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function bindTelegram(chatId) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await authApi.bindTelegram({ chat_id: chatId })
+      const updatedUser = response?.user || response
+      user.value = { ...user.value, ...updatedUser }
+      syncUserInfoStorage(user.value)
+      return response
+    } catch (err) {
+      const normalizedError = toNormalizedError(err, '绑定 Telegram 失败')
+      error.value = normalizedError.message
+      throw normalizedError
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function unbindTelegram() {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await authApi.unbindTelegram()
+      const updatedUser = response?.user || response
+      user.value = { ...user.value, ...updatedUser }
+      syncUserInfoStorage(user.value)
+      return response
+    } catch (err) {
+      const normalizedError = toNormalizedError(err, '解绑 Telegram 失败')
+      error.value = normalizedError.message
+      throw normalizedError
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function resendVerificationEmail() {
+    loading.value = true
+    error.value = null
+    try {
+      return await authApi.resendVerificationEmail()
+    } catch (err) {
+      const normalizedError = toNormalizedError(err, '发送验证邮件失败')
       error.value = normalizedError.message
       throw normalizedError
     } finally {
@@ -320,6 +396,10 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     logout,
     fetchProfile,
     updateProfile,
+    uploadAvatar,
+    bindTelegram,
+    unbindTelegram,
+    resendVerificationEmail,
     changePassword,
     forgotPassword,
     resetPassword

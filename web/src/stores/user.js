@@ -1,12 +1,31 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi, usersApi } from '@/api'
-import { extractErrorMessage, toNormalizedError } from '@/utils/entitlement'
+import { toNormalizedError } from '@/utils/entitlement'
 
 export const useUserStore = defineStore('user', () => {
+  const ADMIN_USER_INFO_KEY = 'adminUserInfo'
+  const ADMIN_ROLE_KEY = 'adminRole'
+
+  const getCurrentAdminStorage = () => {
+    if (localStorage.getItem('token') || localStorage.getItem(ADMIN_USER_INFO_KEY)) {
+      return localStorage
+    }
+    return sessionStorage
+  }
+
+  const restoreStoredUser = () => {
+    try {
+      const raw = localStorage.getItem(ADMIN_USER_INFO_KEY) || sessionStorage.getItem(ADMIN_USER_INFO_KEY)
+      return raw ? JSON.parse(raw) : null
+    } catch {
+      return null
+    }
+  }
+
   // 状态
   const token = ref(localStorage.getItem('token') || '')
-  const user = ref(null)
+  const user = ref(restoreStoredUser())
   const loading = ref(false)
   const error = ref(null)
 
@@ -23,11 +42,15 @@ export const useUserStore = defineStore('user', () => {
   }
 
   const setUser = (userInfo) => {
+    const storage = getCurrentAdminStorage()
+    const otherStorage = storage === localStorage ? sessionStorage : localStorage
     user.value = userInfo
-    localStorage.setItem('userInfo', JSON.stringify(userInfo || null))
+    storage.setItem(ADMIN_USER_INFO_KEY, JSON.stringify(userInfo || null))
+    otherStorage.removeItem(ADMIN_USER_INFO_KEY)
     // 同步角色到 localStorage，供路由守卫使用
     if (userInfo?.role) {
-      localStorage.setItem('userRole', userInfo.role)
+      storage.setItem(ADMIN_ROLE_KEY, userInfo.role)
+      otherStorage.removeItem(ADMIN_ROLE_KEY)
     }
   }
 
@@ -39,8 +62,8 @@ export const useUserStore = defineStore('user', () => {
     // 只清除管理后台的认证信息，不影响用户门户的 userToken
     for (const storage of [localStorage, sessionStorage]) {
       storage.removeItem('token')
-      storage.removeItem('userRole')
-      storage.removeItem('userInfo')
+      storage.removeItem(ADMIN_ROLE_KEY)
+      storage.removeItem(ADMIN_USER_INFO_KEY)
     }
   }
 

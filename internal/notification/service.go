@@ -140,6 +140,30 @@ func (s *Service) SendEmail(to, subject, body string) error {
 	return s.sendEmail(to, subject, body)
 }
 
+// CanSendTelegram returns whether Telegram bot credentials are configured.
+func (s *Service) CanSendTelegram() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.config != nil && strings.TrimSpace(s.config.TelegramBotToken) != ""
+}
+
+// SendTelegramTo sends a Telegram message to a specific chat ID.
+func (s *Service) SendTelegramTo(chatID, message string) error {
+	s.mu.RLock()
+	config := s.config
+	s.mu.RUnlock()
+
+	if strings.TrimSpace(chatID) == "" {
+		return fmt.Errorf("telegram chat id is required")
+	}
+	if config == nil || strings.TrimSpace(config.TelegramBotToken) == "" {
+		return fmt.Errorf("Telegram not configured")
+	}
+
+	return s.sendTelegramWithConfig(config.TelegramBotToken, chatID, message)
+}
+
 // NotifyNewDevice sends notification when a new device connects
 func (s *Service) NotifyNewDevice(data IPNotificationData) error {
 	if !s.isEnabled(NotificationNewDevice) {
@@ -596,10 +620,14 @@ func (s *Service) sendTelegram(message string) error {
 		return fmt.Errorf("Telegram not configured")
 	}
 
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", config.TelegramBotToken)
+	return s.sendTelegramWithConfig(config.TelegramBotToken, config.TelegramChatID, message)
+}
+
+func (s *Service) sendTelegramWithConfig(botToken, chatID, message string) error {
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", botToken)
 
 	payload := map[string]interface{}{
-		"chat_id":    config.TelegramChatID,
+		"chat_id":    chatID,
 		"text":       message,
 		"parse_mode": "HTML",
 	}

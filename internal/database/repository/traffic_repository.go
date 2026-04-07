@@ -211,7 +211,7 @@ func (r *trafficRepository) GetTrafficByUser(ctx context.Context, start, end tim
 			Table("traffic t").
 			Select(selectClause).
 			Joins("LEFT JOIN users u ON t.user_id = u.id").
-			Where(rangeCondition, rangeArgs...).
+			Where("t.user_id > 0 AND "+rangeCondition, rangeArgs...).
 			Group("t.user_id, COALESCE(u.username, ''), COALESCE(u.email, ''), COALESCE(u.traffic_limit, 0)").
 			Order("(COALESCE(SUM(t.upload), 0) + COALESCE(SUM(t.download), 0)) DESC")
 
@@ -250,7 +250,7 @@ func (r *trafficRepository) GetTrafficByUser(ctx context.Context, start, end tim
 		Table("traffic t").
 		Select("t.user_id, COALESCE(u.username, '') as username, COALESCE(u.email, '') as email, COALESCE(u.traffic_limit, 0) as traffic_limit, COALESCE(SUM(t.upload), 0) as upload, COALESCE(SUM(t.download), 0) as download, COUNT(DISTINCT CASE WHEN t.proxy_id > 0 THEN t.proxy_id END) as proxy_count, MAX(t.recorded_at) as last_active").
 		Joins("LEFT JOIN users u ON t.user_id = u.id").
-		Where(rangeCondition, rangeArgs...).
+		Where("t.user_id > 0 AND "+rangeCondition, rangeArgs...).
 		Group("t.user_id, COALESCE(u.username, ''), COALESCE(u.email, ''), COALESCE(u.traffic_limit, 0)").
 		Order("(COALESCE(SUM(t.upload), 0) + COALESCE(SUM(t.download), 0)) DESC")
 

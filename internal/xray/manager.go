@@ -70,9 +70,9 @@ type manager struct {
 
 // Config holds Xray manager configuration.
 type Config struct {
-	BinaryPath string
-	ConfigPath string
-	BackupDir  string
+	BinaryPath  string
+	ConfigPath  string
+	BackupDir   string
 	MaxRestarts int
 }
 
@@ -93,7 +93,6 @@ func NewManager(cfg Config, log logger.Logger) Manager {
 		logger:      log,
 	}
 }
-
 
 // Start starts the Xray process.
 func (m *manager) Start(ctx context.Context) error {
@@ -285,7 +284,6 @@ func (m *manager) ReloadConfig(ctx context.Context) error {
 	return m.Restart(ctx)
 }
 
-
 // GetVersion returns Xray version information.
 func (m *manager) GetVersion(ctx context.Context) (*Version, error) {
 	version := &Version{
@@ -297,6 +295,22 @@ func (m *manager) GetVersion(ctx context.Context) (*Version, error) {
 	version.CanUpdate = false
 
 	return version, nil
+}
+
+// GetBinaryPath returns the current Xray binary path.
+func (m *manager) GetBinaryPath() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.binaryPath
+}
+
+// SetBinaryPath updates the Xray binary path used for future starts.
+func (m *manager) SetBinaryPath(path string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if path != "" {
+		m.binaryPath = path
+	}
 }
 
 // BackupConfig creates a backup of the current configuration.

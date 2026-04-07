@@ -80,6 +80,32 @@ export function verifyEmail(token) {
 }
 
 /**
+ * 重发邮箱验证邮件
+ * @returns {Promise}
+ */
+export function resendVerificationEmail() {
+  return api.post(`${BASE_URL}/verify-email/resend`)
+}
+
+/**
+ * 绑定 Telegram Chat ID
+ * @param {Object} data
+ * @param {string} data.chat_id
+ * @returns {Promise}
+ */
+export function bindTelegram(data) {
+  return api.post(`${BASE_URL}/telegram/bind`, data)
+}
+
+/**
+ * 解绑 Telegram
+ * @returns {Promise}
+ */
+export function unbindTelegram() {
+  return api.delete(`${BASE_URL}/telegram/bind`)
+}
+
+/**
  * 获取用户资料
  * @returns {Promise}
  */
@@ -96,6 +122,21 @@ export function getProfile() {
  */
 export function updateProfile(data) {
   return api.put(`${BASE_URL}/profile`, data)
+}
+
+/**
+ * 上传头像
+ * @param {File} file - 头像文件
+ * @returns {Promise}
+ */
+export function uploadAvatar(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return api.post(`${BASE_URL}/avatar`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  })
 }
 
 /**
@@ -145,8 +186,12 @@ export default {
   forgotPassword,
   resetPassword,
   verifyEmail,
+  resendVerificationEmail,
+  bindTelegram,
+  unbindTelegram,
   getProfile,
   updateProfile,
+  uploadAvatar,
   changePassword,
   enable2FA,
   verify2FA,

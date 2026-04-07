@@ -2,6 +2,7 @@
 package xray
 
 import (
+	"archive/zip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -46,15 +47,15 @@ type VersionInfo struct {
 
 // VersionManager manages Xray versions.
 type VersionManager struct {
-	mu              sync.RWMutex
-	logger          logger.Logger
-	binaryDir       string
-	currentVersion  string
-	cachedVersions  []VersionInfo
-	lastFetchTime   time.Time
-	cacheDuration   time.Duration
-	httpClient      *http.Client
-	githubAPIURL    string
+	mu                sync.RWMutex
+	logger            logger.Logger
+	binaryDir         string
+	currentVersion    string
+	cachedVersions    []VersionInfo
+	lastFetchTime     time.Time
+	cacheDuration     time.Duration
+	httpClient        *http.Client
+	githubAPIURL      string
 	installedVersions map[string]string // version -> binary path
 }
 
@@ -71,7 +72,6 @@ func NewVersionManager(binaryDir string, log logger.Logger) *VersionManager {
 		installedVersions: make(map[string]string),
 	}
 }
-
 
 // GetAvailableVersions fetches available versions from GitHub.
 func (vm *VersionManager) GetAvailableVersions(ctx context.Context) ([]VersionInfo, error) {
@@ -104,7 +104,7 @@ func (vm *VersionManager) GetAvailableVersions(ctx context.Context) ([]VersionIn
 		if release.Prerelease {
 			continue // Skip prereleases
 		}
-		
+
 		downloadURL := vm.getDownloadURL(release)
 		isInstalled := false
 		if _, ok := vm.installedVersions[release.TagName]; ok {
@@ -242,6 +242,184 @@ func (vm *VersionManager) getDefaultVersionsUnlocked() []VersionInfo {
 		}
 	}
 	return versions
+}
+
+func normalizeVersion(version string) string {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return ""
+	}
+	if !strings.HasPrefix(version, "v") {
+		return "v" + version
+	}
+	return version
+}
+
+func platformBinaryName() string {
+	if runtime.GOOS == "windows" {
+		return "xray.exe"
+	}
+	return "xray"
+}
+
+func (vm *VersionManager) archivePath(version string) string {
+	return filepath.Join(vm.binaryDir, "downloads", fmt.Sprintf("%s.zip", normalizeVersion(version)))
+}
+
+// GetInstalledBinaryPath returns the installed binary path for a version.
+func (vm *VersionManager) GetInstalledBinaryPath(version string) (string, bool) {
+	vm.mu.RLock()
+	defer vm.mu.RUnlock()
+	path, ok := vm.installedVersions[normalizeVersion(version)]
+	return path, ok
+}
+
+// DownloadVersion downloads the release archive for a version into the downloads directory.
+func (vm *VersionManager) DownloadVersion(ctx context.Context, version string) (string, error) {
+	version = normalizeVersion(version)
+	if version == "" {
+		return "", fmt.Errorf("version is required")
+	}
+
+	versions, err := vm.GetAvailableVersions(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	var downloadURL string
+	for _, item := range versions {
+		if item.Version == version {
+			downloadURL = item.DownloadURL
+			break
+		}
+	}
+	if downloadURL == "" {
+		return "", fmt.Errorf("download URL not found for version %s", version)
+	}
+
+	archivePath := vm.archivePath(version)
+	if _, err := os.Stat(archivePath); err == nil {
+		return archivePath, nil
+	}
+
+	if err := os.MkdirAll(filepath.Dir(archivePath), 0o755); err != nil {
+		return "", fmt.Errorf("failed to create download directory: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create download request: %w", err)
+	}
+	req.Header.Set("User-Agent", "V-Panel/1.0")
+
+	resp, err := vm.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to download version: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return "", fmt.Errorf("download failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	file, err := os.Create(archivePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to create archive file: %w", err)
+	}
+	defer file.Close()
+
+	if _, err := io.Copy(file, resp.Body); err != nil {
+		return "", fmt.Errorf("failed to save downloaded archive: %w", err)
+	}
+
+	return archivePath, nil
+}
+
+// InstallVersion installs a downloaded Xray version into the binary directory.
+func (vm *VersionManager) InstallVersion(ctx context.Context, version string) (string, error) {
+	version = normalizeVersion(version)
+	if version == "" {
+		return "", fmt.Errorf("version is required")
+	}
+
+	if installedPath, ok := vm.GetInstalledBinaryPath(version); ok {
+		if _, err := os.Stat(installedPath); err == nil {
+			return installedPath, nil
+		}
+	}
+
+	archivePath := vm.archivePath(version)
+	if _, err := os.Stat(archivePath); os.IsNotExist(err) {
+		var downloadErr error
+		archivePath, downloadErr = vm.DownloadVersion(ctx, version)
+		if downloadErr != nil {
+			return "", downloadErr
+		}
+	}
+
+	if err := os.MkdirAll(vm.binaryDir, 0o755); err != nil {
+		return "", fmt.Errorf("failed to create binary directory: %w", err)
+	}
+
+	installedPath := filepath.Join(vm.binaryDir, fmt.Sprintf("xray-%s", version))
+	if runtime.GOOS == "windows" {
+		installedPath += ".exe"
+	}
+
+	reader, err := zip.OpenReader(archivePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open archive: %w", err)
+	}
+	defer reader.Close()
+
+	binaryName := platformBinaryName()
+	found := false
+	for _, file := range reader.File {
+		if file.FileInfo().IsDir() {
+			continue
+		}
+		if filepath.Base(file.Name) != binaryName {
+			continue
+		}
+
+		src, err := file.Open()
+		if err != nil {
+			return "", fmt.Errorf("failed to open archive entry: %w", err)
+		}
+
+		dst, err := os.Create(installedPath)
+		if err != nil {
+			src.Close()
+			return "", fmt.Errorf("failed to create installed binary: %w", err)
+		}
+
+		if _, err := io.Copy(dst, src); err != nil {
+			dst.Close()
+			src.Close()
+			return "", fmt.Errorf("failed to extract binary: %w", err)
+		}
+		dst.Close()
+		src.Close()
+
+		if runtime.GOOS != "windows" {
+			if err := os.Chmod(installedPath, 0o755); err != nil {
+				return "", fmt.Errorf("failed to set executable permission: %w", err)
+			}
+		}
+		found = true
+		break
+	}
+
+	if !found {
+		return "", fmt.Errorf("xray executable not found in archive")
+	}
+
+	vm.mu.Lock()
+	vm.installedVersions[version] = installedPath
+	vm.mu.Unlock()
+
+	return installedPath, nil
 }
 
 // getDefaultVersions returns default version list when GitHub is unavailable.

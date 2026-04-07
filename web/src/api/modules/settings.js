@@ -27,6 +27,19 @@ export const settingsApi = {
   testEmail: (data) => api.post('/settings/test-email', data),
 
   /**
+   * 测试数据库连接
+   * @param {Object} data - 数据库配置
+   * @returns {Promise<Object>}
+   */
+  testDatabase: (data) => api.post('/settings/test-db', data),
+
+  /**
+   * 创建数据库备份
+   * @returns {Promise<Object>}
+   */
+  backupDatabase: () => api.post('/settings/backup-db'),
+
+  /**
    * 创建设置备份
    * @returns {Promise<Object>} 备份信息
    */

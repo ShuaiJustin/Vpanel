@@ -27,20 +27,6 @@
         </div>
         
         <div class="header-right">
-          <!-- 公告通知 -->
-          <el-badge
-            :value="unreadCount"
-            :hidden="unreadCount === 0"
-            class="notification-badge"
-          >
-            <el-button
-              circle
-              @click="goToAnnouncements"
-            >
-              <el-icon><Bell /></el-icon>
-            </el-button>
-          </el-badge>
-          
           <!-- 主题切换 -->
           <el-button
             circle
@@ -48,62 +34,86 @@
           >
             <el-icon><Sunny v-if="isDarkMode" /><Moon v-else /></el-icon>
           </el-button>
-          
-          <!-- 用户菜单 -->
-          <el-dropdown
-            trigger="click"
-            @command="handleCommand"
-          >
-            <div class="user-dropdown-trigger">
-              <el-avatar
-                :size="32"
-                class="user-avatar"
+
+          <template v-if="isAuthenticated">
+            <!-- 公告通知 -->
+            <el-badge
+              :value="unreadCount"
+              :hidden="unreadCount === 0"
+              class="notification-badge"
+            >
+              <el-button
+                circle
+                @click="goToAnnouncements"
               >
-                {{ userInitial }}
-              </el-avatar>
-              <span class="username">{{ username }}</span>
-              <el-icon><ArrowDown /></el-icon>
-            </div>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="balance">
-                  <el-icon><Coin /></el-icon>
-                  我的余额
-                </el-dropdown-item>
-                <el-dropdown-item command="settings">
-                  <el-icon><Setting /></el-icon>
-                  个人设置
-                </el-dropdown-item>
-                <el-dropdown-item command="tickets">
-                  <el-icon><ChatDotRound /></el-icon>
-                  我的工单
-                </el-dropdown-item>
-                <el-dropdown-item command="devices">
-                  <el-icon><Monitor /></el-icon>
-                  在线设备
-                </el-dropdown-item>
-                <el-dropdown-item command="help">
-                  <el-icon><QuestionFilled /></el-icon>
-                  帮助中心
-                </el-dropdown-item>
-                <el-dropdown-item
-                  divided
-                  command="logout"
+                <el-icon><Bell /></el-icon>
+              </el-button>
+            </el-badge>
+            
+            <!-- 用户菜单 -->
+            <el-dropdown
+              trigger="click"
+              @command="handleCommand"
+            >
+              <div class="user-dropdown-trigger">
+                <el-avatar
+                  :size="32"
+                  class="user-avatar"
                 >
-                  <el-icon><SwitchButton /></el-icon>
-                  退出登录
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-          
-          <!-- 移动端菜单按钮 -->
-          <el-button
-            class="mobile-menu-btn"
-            @click="showMobileMenu = true"
-          >
-            <el-icon><Menu /></el-icon>
-          </el-button>
+                  {{ userInitial }}
+                </el-avatar>
+                <span class="header-username">{{ username }}</span>
+                <el-icon class="user-dropdown-arrow"><ArrowDown /></el-icon>
+              </div>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="balance">
+                    <el-icon><Coin /></el-icon>
+                    我的余额
+                  </el-dropdown-item>
+                  <el-dropdown-item command="settings">
+                    <el-icon><Setting /></el-icon>
+                    个人设置
+                  </el-dropdown-item>
+                  <el-dropdown-item command="tickets">
+                    <el-icon><ChatDotRound /></el-icon>
+                    我的工单
+                  </el-dropdown-item>
+                  <el-dropdown-item command="devices">
+                    <el-icon><Monitor /></el-icon>
+                    在线设备
+                  </el-dropdown-item>
+                  <el-dropdown-item command="help">
+                    <el-icon><QuestionFilled /></el-icon>
+                    帮助中心
+                  </el-dropdown-item>
+                  <el-dropdown-item
+                    divided
+                    command="logout"
+                  >
+                    <el-icon><SwitchButton /></el-icon>
+                    退出登录
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+            
+            <!-- 移动端菜单按钮 -->
+            <el-button
+              class="mobile-menu-btn"
+              @click="showMobileMenu = true"
+            >
+              <el-icon><Menu /></el-icon>
+            </el-button>
+          </template>
+          <template v-else>
+            <el-button
+              class="guest-action-btn"
+              @click="router.push('/user/login')"
+            >
+              登录
+            </el-button>
+          </template>
         </div>
       </div>
     </header>
@@ -149,6 +159,7 @@
     
     <!-- 移动端侧边菜单 -->
     <el-drawer
+      v-if="isAuthenticated"
       v-model="showMobileMenu"
       direction="rtl"
       size="280px"
@@ -163,7 +174,7 @@
             {{ userInitial }}
           </el-avatar>
           <div class="user-info">
-            <div class="username">
+            <div class="drawer-username">
               {{ username }}
             </div>
             <div
@@ -277,14 +288,12 @@ const userStore = useUserPortalStore()
 
 // 状态
 const showMobileMenu = ref(false)
-const username = ref('用户')
-const accountStatus = ref('active')
 
 // 使用共享的主题状态
 const isDarkMode = isDark
 
 // 导航项
-const navItems = [
+const portalNavItems = [
   { path: '/user/dashboard', label: '仪表板', icon: HomeFilled },
   { path: '/user/nodes', label: '节点列表', icon: Connection },
   { path: '/user/subscription', label: '订阅管理', icon: Link },
@@ -292,8 +301,17 @@ const navItems = [
   { path: '/user/download', label: '客户端下载', icon: Download },
   { path: '/user/stats', label: '使用统计', icon: DataAnalysis }
 ]
+const guestNavItems = [
+  { path: '/user/help', label: '帮助中心', icon: QuestionFilled },
+  { path: '/user/terms', label: '服务条款', icon: Link },
+  { path: '/user/privacy', label: '隐私政策', icon: Setting }
+]
 
 // 计算属性
+const isAuthenticated = computed(() => userStore.isAuthenticated)
+const navItems = computed(() => (isAuthenticated.value ? portalNavItems : guestNavItems))
+const username = computed(() => userStore.user?.display_name || userStore.user?.username || '用户')
+const accountStatus = computed(() => userStore.user?.status || 'active')
 const userInitial = computed(() => username.value.charAt(0).toUpperCase())
 const currentYear = computed(() => new Date().getFullYear())
 const unreadCount = computed(() => announcementsStore.unreadCount)
@@ -356,24 +374,15 @@ const handleLogout = () => {
 }
 
 const showContact = () => {
-  ElMessage.info('联系我们页面开发中')
+  router.push(userStore.isAuthenticated ? '/user/tickets/create' : '/user/help')
 }
 
 // 初始化
 onMounted(() => {
-  // 加载用户信息
-  const userInfo = sessionStorage.getItem('userInfo') || localStorage.getItem('userInfo')
-  if (userInfo) {
-    try {
-      const info = JSON.parse(userInfo)
-      username.value = info.username || '用户'
-      accountStatus.value = info.status || 'active'
-    } catch (e) {
-      console.error('Failed to parse user info:', e)
-    }
+  if (userStore.isAuthenticated) {
+    userStore.fetchProfile({ silent: true }).catch(() => {})
+    announcementsStore.fetchUnreadCount().catch(() => {})
   }
-  
-  announcementsStore.fetchUnreadCount().catch(() => {})
 })
 </script>
 
@@ -457,21 +466,26 @@ onMounted(() => {
   align-items: center;
   gap: var(--vp-inline-gap);
   min-width: 0;
+  flex-shrink: 0;
 }
 
 .notification-badge {
   margin-right: 4px;
+  flex-shrink: 0;
 }
 
 .user-dropdown-trigger {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 4px 12px 4px 8px;
   border-radius: 6px;
   transition: background-color 0.2s;
   min-width: 0;
+  max-width: min(220px, 22vw);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .user-dropdown-trigger:hover {
@@ -481,15 +495,23 @@ onMounted(() => {
 .user-avatar {
   background-color: var(--color-primary) !important;
   color: #fff !important;
+  flex-shrink: 0;
 }
 
-.username {
+.header-username {
   font-size: 14px;
   color: var(--color-text-primary);
-  max-width: 120px;
+  font-weight: 500;
+  min-width: 0;
+  max-width: min(140px, 14vw);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.user-dropdown-arrow {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
 }
 
 .mobile-menu-btn {
@@ -560,10 +582,13 @@ onMounted(() => {
   margin: -20px -20px 0;
 }
 
-.user-info .username {
+.drawer-username {
   font-size: 16px;
   font-weight: 500;
   color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-info .user-status {

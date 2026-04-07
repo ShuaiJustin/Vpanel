@@ -21,6 +21,11 @@ type XrayHandler struct {
 	logger         logger.Logger
 }
 
+type xrayBinarySwitcher interface {
+	GetBinaryPath() string
+	SetBinaryPath(string)
+}
+
 // NewXrayHandler creates a new Xray handler.
 func NewXrayHandler(manager xray.Manager, log logger.Logger) *XrayHandler {
 	// Create version manager with default binary directory
@@ -275,13 +280,55 @@ type UpdateVersionRequest struct {
 // Update updates Xray to a new version.
 // POST /api/xray/update
 func (h *XrayHandler) Update(c *gin.Context) {
-	// TODO: Implement Xray update functionality
-	// This would involve:
-	// 1. Downloading the new version
-	// 2. Stopping Xray
-	// 3. Replacing the binary
-	// 4. Starting Xray
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "Xray update not implemented yet"})
+	var req UpdateVersionRequest
+	_ = c.ShouldBindJSON(&req)
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
+	defer cancel()
+
+	targetVersion := req.Version
+	if targetVersion == "" {
+		versions, err := h.versionManager.GetAvailableVersions(ctx)
+		if err != nil || len(versions) == 0 {
+			h.logger.Error("failed to resolve latest xray version", logger.F("error", err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to resolve latest Xray version"})
+			return
+		}
+		targetVersion = versions[0].Version
+	}
+
+	if _, err := h.versionManager.DownloadVersion(ctx, targetVersion); err != nil {
+		h.logger.Error("failed to download xray update", logger.F("version", targetVersion), logger.F("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	binaryPath, err := h.versionManager.InstallVersion(ctx, targetVersion)
+	if err != nil {
+		h.logger.Error("failed to install xray update", logger.F("version", targetVersion), logger.F("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if switcher, ok := h.manager.(xrayBinarySwitcher); ok {
+		switcher.SetBinaryPath(binaryPath)
+	}
+	h.versionManager.SetCurrentVersion(targetVersion)
+
+	status, _ := h.manager.GetStatus(ctx)
+	if status != nil && status.Running {
+		if err := h.manager.Restart(ctx); err != nil {
+			h.logger.Error("failed to restart xray after update", logger.F("version", targetVersion), logger.F("error", err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Xray updated but restart failed: " + err.Error()})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Xray updated successfully",
+		"version": targetVersion,
+	})
 }
 
 // SwitchVersionRequest represents a version switch request.
@@ -326,20 +373,40 @@ func (h *XrayHandler) SwitchVersion(c *gin.Context) {
 		h.logger.Warn("requested version not in available list", logger.F("version", req.Version))
 	}
 
-	// For now, just update the current version setting
-	// In a full implementation, this would:
-	// 1. Download the new version if not installed
-	// 2. Stop Xray
-	// 3. Switch the binary symlink
-	// 4. Start Xray
+	installCtx, installCancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
+	defer installCancel()
 
+	binaryPath, installErr := h.versionManager.InstallVersion(installCtx, req.Version)
+	if installErr != nil {
+		h.logger.Error("failed to install target xray version", logger.F("version", req.Version), logger.F("error", installErr))
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   installErr.Error(),
+		})
+		return
+	}
+
+	if switcher, ok := h.manager.(xrayBinarySwitcher); ok {
+		switcher.SetBinaryPath(binaryPath)
+	}
 	h.versionManager.SetCurrentVersion(req.Version)
+
+	status, _ := h.manager.GetStatus(installCtx)
+	if status != nil && status.Running {
+		if err := h.manager.Restart(installCtx); err != nil {
+			h.logger.Error("failed to restart xray after switch", logger.F("version", req.Version), logger.F("error", err))
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"error":   "version switched but restart failed: " + err.Error(),
+			})
+			return
+		}
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Version switched successfully",
 		"version": req.Version,
-		"note":    "Please restart Xray to apply the new version",
 	})
 }
 
@@ -476,12 +543,24 @@ func (h *XrayHandler) Download(c *gin.Context) {
 
 	h.logger.Info("downloading xray version", logger.F("version", req.Version))
 
-	// For now, just return success
-	// In a full implementation, this would download the version
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
+	defer cancel()
+
+	archivePath, err := h.versionManager.DownloadVersion(ctx, req.Version)
+	if err != nil {
+		h.logger.Error("failed to download xray version", logger.F("version", req.Version), logger.F("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Download started",
-		"version": req.Version,
+		"success":      true,
+		"message":      "Download completed",
+		"version":      req.Version,
+		"archive_path": archivePath,
 	})
 }
 
@@ -504,11 +583,23 @@ func (h *XrayHandler) Install(c *gin.Context) {
 
 	h.logger.Info("installing xray version", logger.F("version", req.Version))
 
-	// For now, just return success
-	// In a full implementation, this would install the version
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
+	defer cancel()
+
+	binaryPath, err := h.versionManager.InstallVersion(ctx, req.Version)
+	if err != nil {
+		h.logger.Error("failed to install xray version", logger.F("version", req.Version), logger.F("error", err))
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Installation completed",
-		"version": req.Version,
+		"success":     true,
+		"message":     "Installation completed",
+		"version":     req.Version,
+		"binary_path": binaryPath,
 	})
 }

@@ -206,10 +206,20 @@ api.interceptors.response.use(
       if (!isLoginPage) {
         if (currentPath.startsWith('/user')) {
           // 用户门户 - 清除用户令牌，跳转到用户登录页
+          const userToken = sessionStorage.getItem('userToken') || localStorage.getItem('userToken')
+          const adminToken = sessionStorage.getItem('token') || localStorage.getItem('token')
           sessionStorage.removeItem('userToken')
           localStorage.removeItem('userToken')
           sessionStorage.removeItem('userInfo')
           localStorage.removeItem('userInfo')
+          if (userToken && adminToken && userToken === adminToken) {
+            sessionStorage.removeItem('token')
+            localStorage.removeItem('token')
+            sessionStorage.removeItem('adminUserInfo')
+            localStorage.removeItem('adminUserInfo')
+            sessionStorage.removeItem('adminRole')
+            localStorage.removeItem('adminRole')
+          }
           
           // 使用 replace 避免产生历史记录
           router.replace('/user/login')
@@ -217,8 +227,10 @@ api.interceptors.response.use(
           // 管理后台 - 清除管理员令牌，跳转到管理员登录页
           sessionStorage.removeItem('token')
           localStorage.removeItem('token')
-          sessionStorage.removeItem('userRole')
-          localStorage.removeItem('userRole')
+          sessionStorage.removeItem('adminRole')
+          localStorage.removeItem('adminRole')
+          sessionStorage.removeItem('adminUserInfo')
+          localStorage.removeItem('adminUserInfo')
           
           // 当前没有独立的后台登录页，统一回到用户登录页并保留目标地址
           router.replace('/user/login?redirect=' + encodeURIComponent(currentPath))
@@ -228,6 +240,10 @@ api.interceptors.response.use(
           localStorage.removeItem('token')
           sessionStorage.removeItem('userToken')
           localStorage.removeItem('userToken')
+          sessionStorage.removeItem('adminRole')
+          localStorage.removeItem('adminRole')
+          sessionStorage.removeItem('adminUserInfo')
+          localStorage.removeItem('adminUserInfo')
           
           router.replace('/user/login')
         }

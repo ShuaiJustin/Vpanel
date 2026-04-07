@@ -47,12 +47,10 @@
           @change="handleFilterChange"
         >
           <el-option
-            label="管理员"
-            value="admin"
-          />
-          <el-option
-            label="普通用户"
-            value="user"
+            v-for="role in roleOptions"
+            :key="role.value"
+            :label="role.label"
+            :value="role.value"
           />
         </el-select>
         <el-select
@@ -78,6 +76,7 @@
         <span class="toolbar-summary">当前筛选 {{ displayTotal }} 个账户，当前页 {{ paginatedUsers.length }} 个</span>
         <el-button
           type="primary"
+          :disabled="!canManageUsers"
           @click="showAddDialog"
         >
           添加用户
@@ -107,7 +106,7 @@
                   :title="row.username"
                 >{{ row.username }}</span>
                 <span :class="['metric-pill', row.role === 'admin' ? 'is-danger' : 'is-primary']">
-                  {{ row.role === 'admin' ? '管理员' : '普通用户' }}
+                  {{ getRoleLabel(row.role) }}
                 </span>
               </div>
               <div class="entity-cell__meta">
@@ -153,10 +152,10 @@
               </div>
               <div class="stack-item">
                 <span class="stack-label">后台权限</span>
-                <span class="stack-value is-strong">{{ row.role === 'admin' ? '完整管理权限' : '普通使用权限' }}</span>
+                <span class="stack-value is-strong">{{ getRoleAccessSummary(row.role) }}</span>
               </div>
               <div class="entity-cell__hint">
-                {{ row.role === 'admin' ? '可访问后台管理和系统配置。' : '仅用于前台订阅与面板使用。' }}
+                {{ getRoleHint(row.role) }}
               </div>
             </div>
           </template>
@@ -173,6 +172,7 @@
               <el-button
                 size="small"
                 class="row-action row-action--primary"
+                :disabled="!canManageUsers"
                 @click="handleEdit(row)"
               >
                 编辑
@@ -181,7 +181,7 @@
                 size="small"
                 class="row-action"
                 :class="row.status ? 'row-action--warning' : 'row-action--success'"
-                :disabled="row.id === currentUserId"
+                :disabled="!canManageUsers || row.id === currentUserId"
                 @click="handleToggleStatus(row)"
               >
                 {{ row.status ? '禁用' : '启用' }}
@@ -202,14 +202,14 @@
                   <el-dropdown-menu>
                     <el-dropdown-item
                       command="resetPassword"
-                      :disabled="row.id === currentUserId"
+                      :disabled="!canManageUsers || row.id === currentUserId"
                     >
                       重置密码
                     </el-dropdown-item>
                     <el-dropdown-item
                       command="delete"
                       divided
-                      :disabled="row.id === currentUserId"
+                      :disabled="!canManageUsers || row.id === currentUserId"
                     >
                       删除用户
                     </el-dropdown-item>
@@ -296,12 +296,10 @@
             style="width: 100%"
           >
             <el-option
-              label="管理员"
-              value="admin"
-            />
-            <el-option
-              label="普通用户"
-              value="user"
+              v-for="role in roleOptions"
+              :key="role.value"
+              :label="role.label"
+              :value="role.value"
             />
           </el-select>
         </el-form-item>
@@ -326,12 +324,14 @@
 import { computed, h, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { MoreFilled, Search } from '@element-plus/icons-vue'
-import { usersApi } from '@/api'
+import { rolesApi, usersApi } from '@/api'
+import { useUserStore } from '@/stores/user'
 import { useViewport } from '@/composables/useViewport'
 import { debounce } from '@/utils/debounce'
 import { extractErrorMessage } from '@/utils/entitlement'
 
 const { isMobile, viewportWidth } = useViewport()
+const userStore = useUserStore()
 
 const users = ref([])
 const loading = ref(false)
@@ -345,6 +345,10 @@ const currentPage = ref(1)
 const pageSize = ref(10)
 const userFormRef = ref(null)
 const currentUserId = ref(null)
+const roleOptions = ref([
+  { label: '管理员', value: 'admin' },
+  { label: '普通用户', value: 'user' }
+])
 const summary = reactive({
   adminTotal: 0,
   enabledTotal: 0,
@@ -409,6 +413,38 @@ const adminUserCount = computed(() => summary.adminTotal)
 const enabledUserCount = computed(() => summary.enabledTotal)
 const disabledUserCount = computed(() => summary.disabledTotal)
 const paginatedUsers = computed(() => users.value)
+const currentPermissions = computed(() => Array.isArray(userStore.user?.permissions) ? userStore.user.permissions : [])
+const canManageUsers = computed(() => currentPermissions.value.includes('*') || currentPermissions.value.includes('user:write'))
+
+const getRoleLabel = (role) => {
+  const matched = roleOptions.value.find(item => item.value === role)
+  if (matched) {
+    return matched.label
+  }
+  return role || '未分配角色'
+}
+
+const getRoleHint = (role) => {
+  if (role === 'admin') {
+    return '可访问后台管理和系统配置。'
+  }
+  const matched = roleOptions.value.find(item => item.value === role)
+  if (matched && matched.value !== 'user') {
+    return `当前账户使用自定义角色：${matched.label}。`
+  }
+  return '仅用于前台订阅与面板使用。'
+}
+
+const getRoleAccessSummary = (role) => {
+  if (role === 'admin') {
+    return '完整管理权限'
+  }
+  const matched = roleOptions.value.find(item => item.value === role)
+  if (matched && matched.value !== 'user') {
+    return `${matched.label} 权限`
+  }
+  return '普通使用权限'
+}
 
 const syncCurrentPage = () => {
   const maxPage = Math.max(1, Math.ceil(displayTotal.value / pageSize.value))
@@ -470,12 +506,30 @@ const fetchUsers = async () => {
   }
 }
 
+const fetchRoles = async () => {
+  try {
+    const response = await rolesApi.list()
+    const roles = Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : []
+    if (roles.length > 0) {
+      roleOptions.value = roles.map(role => ({
+        label: role.name === 'admin' ? '管理员' : role.name === 'user' ? '普通用户' : (role.description || role.name),
+        value: role.name
+      }))
+    }
+  } catch (error) {
+    console.error('Failed to fetch roles:', error)
+  }
+}
+
 const debouncedFetchUsers = debounce(async () => {
   currentPage.value = 1
   await fetchUsers()
 }, 300)
 
 const showAddDialog = async () => {
+  if (!canManageUsers.value) {
+    return
+  }
   dialogType.value = 'add'
   Object.assign(userForm, {
     id: null,
@@ -489,6 +543,9 @@ const showAddDialog = async () => {
 }
 
 const handleEdit = async (row) => {
+  if (!canManageUsers.value) {
+    return
+  }
   dialogType.value = 'edit'
   Object.assign(userForm, {
     id: row.id,
@@ -502,6 +559,9 @@ const handleEdit = async (row) => {
 }
 
 const handleSaveUser = async () => {
+  if (!canManageUsers.value) {
+    return
+  }
   if (!userFormRef.value) {
     return
   }
@@ -544,6 +604,9 @@ const handleSaveUser = async () => {
 }
 
 const handleToggleStatus = async (row) => {
+  if (!canManageUsers.value) {
+    return
+  }
   try {
     if (row.status) {
       await usersApi.disable(row.id)
@@ -560,6 +623,9 @@ const handleToggleStatus = async (row) => {
 }
 
 const handleResetPassword = async (row) => {
+  if (!canManageUsers.value) {
+    return
+  }
   try {
     await ElMessageBox.confirm(
       `确定要重置用户 ${row.username} 的密码吗？`,
@@ -598,6 +664,9 @@ const handleResetPassword = async (row) => {
 }
 
 const handleDelete = async (row) => {
+  if (!canManageUsers.value) {
+    return
+  }
   try {
     await ElMessageBox.confirm(
       `确定要删除用户 ${row.username} 吗？`,
@@ -661,7 +730,9 @@ watch(searchQuery, () => {
   debouncedFetchUsers()
 })
 
-onMounted(fetchUsers)
+onMounted(async () => {
+  await Promise.allSettled([fetchRoles(), fetchUsers()])
+})
 
 onUnmounted(() => {
   debouncedFetchUsers.cancel?.()

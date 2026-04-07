@@ -92,12 +92,32 @@
                 >
                   <el-icon><User /></el-icon>
                 </el-avatar>
+                <input
+                  ref="avatarInputRef"
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif,image/webp"
+                  class="avatar-input-hidden"
+                  @change="handleAvatarSelected"
+                >
                 <el-button
                   size="small"
-                  @click="changeAvatar"
+                  :loading="uploadingAvatar"
+                  @click="avatarInputRef?.click()"
                 >
-                  更换头像
+                  上传头像
                 </el-button>
+                <el-button
+                  v-if="profileForm.avatarUrl"
+                  size="small"
+                  text
+                  :disabled="uploadingAvatar"
+                  @click="clearAvatar"
+                >
+                  清除头像
+                </el-button>
+                <div class="form-tip">
+                  支持 JPG、PNG、GIF、WEBP，大小不超过 2MB
+                </div>
               </div>
             </el-form-item>
 
@@ -206,14 +226,61 @@
           <el-divider />
 
           <h3 class="section-title">
-            登录会话（即将支持）
+            登录会话
           </h3>
           <div class="sessions-section">
-            <p class="section-desc">
-              当前仅支持退出本设备登录，多设备会话查看与远程下线功能暂未开放。
-            </p>
-            <el-button disabled @click="showSessions">
-              即将支持
+            <div class="session-summary">
+              <span>当前在线设备 {{ sessionDevices.length }} 台</span>
+              <span v-if="sessionMaxDevices > 0">上限 {{ sessionMaxDevices }} 台</span>
+            </div>
+            <div
+              v-loading="sessionsLoading"
+              class="session-list"
+            >
+              <div
+                v-for="device in sessionDevices"
+                :key="device.ip"
+                class="session-item"
+              >
+                <div class="session-main">
+                  <div class="session-ip">
+                    {{ device.ip }}
+                    <el-tag
+                      v-if="device.isCurrent"
+                      size="small"
+                      type="success"
+                    >
+                      当前设备
+                    </el-tag>
+                  </div>
+                  <div class="session-meta">
+                    {{ device.locationText }} · {{ device.lastActivity }}
+                  </div>
+                  <div
+                    v-if="device.userAgent"
+                    class="session-agent"
+                  >
+                    {{ device.userAgent }}
+                  </div>
+                </div>
+                <el-button
+                  size="small"
+                  :disabled="device.isCurrent || device.kicking"
+                  :loading="device.kicking"
+                  @click="kickSession(device)"
+                >
+                  踢出
+                </el-button>
+              </div>
+              <div
+                v-if="!sessionsLoading && sessionDevices.length === 0"
+                class="session-empty"
+              >
+                当前没有活跃会话
+              </div>
+            </div>
+            <el-button @click="router.push('/user/devices')">
+              查看完整设备列表
             </el-button>
           </div>
         </el-card>
@@ -246,17 +313,39 @@
               />
               <div class="form-tip">
                 <template v-if="telegramBound">
-                  已绑定 Telegram
+                  已绑定 Chat ID：{{ telegramChatId }}
                 </template>
                 <template v-else>
-                  <el-button
-                    link
-                    type="primary"
-                    @click="bindTelegram"
-                  >
-                    绑定 Telegram
-                  </el-button>
+                  绑定后可接收 Telegram 通知
                 </template>
+              </div>
+            </el-form-item>
+
+            <el-form-item label="Telegram 绑定">
+              <div class="telegram-bind-row">
+                <el-input
+                  v-model="telegramForm.chatId"
+                  :disabled="telegramBound || bindingTelegram"
+                  placeholder="输入 Telegram Chat ID"
+                />
+                <el-button
+                  type="primary"
+                  :loading="bindingTelegram"
+                  :disabled="telegramBound || !telegramForm.chatId.trim()"
+                  @click="handleBindTelegram"
+                >
+                  绑定
+                </el-button>
+                <el-button
+                  v-if="telegramBound"
+                  :loading="unbindingTelegram"
+                  @click="handleUnbindTelegram"
+                >
+                  解绑
+                </el-button>
+              </div>
+              <div class="form-tip">
+                先在 Telegram 中与机器人开始对话，再填写 Chat ID 完成绑定。
               </div>
             </el-form-item>
 
@@ -462,7 +551,10 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import api from '@/api/base'
 import { User } from '@element-plus/icons-vue'
+import QRCode from 'qrcode'
+import { auth as portalAuthApi } from '@/api/modules/portal'
 import { useUserPortalStore } from '@/stores/userPortal'
 import { useTheme } from '@/composables/useTheme'
 import { useViewport } from '@/composables/useViewport'
@@ -484,6 +576,7 @@ const dialogWidth = computed(() => isMobile.value ? 'calc(100vw - 24px)' : '500p
 const profileFormRef = ref(null)
 const passwordFormRef = ref(null)
 const twoFactorQRCode = ref(null)
+const avatarInputRef = ref(null)
 
 // 状态
 const activeTab = ref('profile')
@@ -494,11 +587,16 @@ const savingPreferences = ref(false)
 const loggingOut = ref(false)
 const showTwoFactorDialog = ref(false)
 const processingTwoFactor = ref(false)
+const uploadingAvatar = ref(false)
+const sessionsLoading = ref(false)
+const bindingTelegram = ref(false)
+const unbindingTelegram = ref(false)
 
 // 数据
-const emailVerified = ref(true)
+const emailVerified = computed(() => Boolean(userStore.user?.email_verified ?? userStore.user?.emailVerified))
 const twoFactorEnabled = computed(() => userStore.twoFactorEnabled)
-const telegramBound = ref(false)
+const telegramBound = computed(() => Boolean(userStore.user?.telegram_bound ?? userStore.user?.telegram_id ?? userStore.user?.telegramId))
+const telegramChatId = computed(() => userStore.user?.telegram_id || '')
 const showForcedPasswordAlert = computed(() => {
   return route.query.forced === '1' || Boolean(userStore.user?.force_password_change ?? userStore.user?.forcePasswordChange)
 })
@@ -528,6 +626,10 @@ const preferences = reactive({
   language: 'zh-CN'
 })
 
+const telegramForm = reactive({
+  chatId: ''
+})
+
 // 同步主题设置
 watch(themeMode, (newMode) => {
   preferences.theme = newMode
@@ -553,6 +655,8 @@ const twoFactorSecret = ref('JBSWY3DPEHPK3PXP')
 const twoFactorCode = ref('')
 const backupCodes = ref(['12345678', '23456789', '34567890', '45678901', '56789012'])
 const disablePassword = ref('')
+const sessionDevices = ref([])
+const sessionMaxDevices = ref(0)
 
 // 验证规则
 const profileRules = {
@@ -592,15 +696,19 @@ async function saveProfile() {
     await profileFormRef.value.validate()
     saving.value = true
     
-    await userStore.updateProfile({
+    const response = await userStore.updateProfile({
       display_name: profileForm.displayName,
       avatar_url: profileForm.avatarUrl
     })
-    
-    ElMessage.success('资料已保存')
+
+    if (response?.need_email_verification) {
+      ElMessage.success(response?.verification_email_sent ? '资料已保存，验证邮件已重新发送' : '资料已保存，请重新验证邮箱')
+    } else {
+      ElMessage.success('资料已保存')
+    }
   } catch (error) {
     if (error !== false) {
-      ElMessage.error('保存失败')
+      ElMessage.error(extractErrorMessage(error) || '保存失败')
     }
   } finally {
     saving.value = false
@@ -633,45 +741,193 @@ async function changePassword() {
   }
 }
 
-function changeAvatar() {
-  ElMessage.info('头像上传功能开发中')
+async function resendVerification() {
+  try {
+    await userStore.resendVerificationEmail()
+    ElMessage.success('验证邮件已发送，请前往邮箱查收')
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error) || '发送验证邮件失败')
+  }
 }
 
-function resendVerification() {
-  ElMessage.success('验证邮件已发送')
+const formatSessionDateTime = (value) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString('zh-CN', { hour12: false })
+}
+
+const toCountryFlag = (countryCode) => {
+  const code = String(countryCode || '').trim().toUpperCase()
+  if (!/^[A-Z]{2}$/.test(code)) return ''
+  return String.fromCodePoint(...[...code].map(char => char.charCodeAt(0) + 127397))
+}
+
+const buildSessionLocationText = (device) => {
+  const country = device.country || '位置未知'
+  const city = device.city ? ` - ${device.city}` : ''
+  const flag = toCountryFlag(device.country_code || device.countryCode)
+  return `${flag ? `${flag} ` : ''}${country}${city}`
+}
+
+const normalizeSessionDevice = (device, currentIP = '') => ({
+  ...device,
+  ip: device.ip || '-',
+  isCurrent: Boolean(device.is_current ?? device.isCurrent ?? (currentIP && device.ip === currentIP)),
+  userAgent: device.user_agent || device.userAgent || '',
+  lastActivity: formatSessionDateTime(device.last_active || device.lastActivity),
+  locationText: buildSessionLocationText(device),
+  kicking: false
+})
+
+const loadSessions = async () => {
+  if (!userStore.isAuthenticated) return
+
+  sessionsLoading.value = true
+  try {
+    const response = await api.get('/user/devices')
+    const payload = response?.data ?? response ?? {}
+    const currentIP = payload.current_ip ?? payload.currentIp ?? ''
+    sessionDevices.value = (payload.devices || []).map(device => normalizeSessionDevice(device, currentIP))
+    sessionMaxDevices.value = Number(payload.max_devices ?? payload.maxDevices ?? 0)
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error) || '获取登录会话失败')
+  } finally {
+    sessionsLoading.value = false
+  }
+}
+
+const kickSession = async (device) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要踢出设备 ${device.ip} 吗？`,
+      '踢出设备',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    device.kicking = true
+    await api.post(`/user/devices/${encodeURIComponent(device.ip)}/kick`)
+    ElMessage.success('设备已踢出')
+    await loadSessions()
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error(extractErrorMessage(error) || '踢出设备失败')
+    }
+  } finally {
+    device.kicking = false
+  }
+}
+
+const handleAvatarSelected = async (event) => {
+  const [file] = event?.target?.files || []
+  if (!file) return
+
+  uploadingAvatar.value = true
+  try {
+    const response = await userStore.uploadAvatar(file)
+    profileForm.avatarUrl = response?.user?.avatar_url || profileForm.avatarUrl
+    ElMessage.success('头像上传成功')
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error) || '头像上传失败')
+  } finally {
+    uploadingAvatar.value = false
+    if (avatarInputRef.value) {
+      avatarInputRef.value.value = ''
+    }
+  }
+}
+
+const clearAvatar = async () => {
+  try {
+    await userStore.updateProfile({ avatar_url: '' })
+    profileForm.avatarUrl = ''
+    ElMessage.success('头像已清除')
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error) || '清除头像失败')
+  }
+}
+
+const handleBindTelegram = async () => {
+  bindingTelegram.value = true
+  try {
+    await userStore.bindTelegram(telegramForm.chatId.trim())
+    ElMessage.success('Telegram 绑定成功，已发送验证消息')
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error) || '绑定 Telegram 失败')
+  } finally {
+    bindingTelegram.value = false
+  }
+}
+
+const handleUnbindTelegram = async () => {
+  unbindingTelegram.value = true
+  try {
+    await userStore.unbindTelegram()
+    telegramForm.chatId = ''
+    ElMessage.success('Telegram 已解绑')
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error) || '解绑 Telegram 失败')
+  } finally {
+    unbindingTelegram.value = false
+  }
 }
 
 function toggleTwoFactor() {
   showTwoFactorDialog.value = true
   if (!twoFactorEnabled.value) {
-    // 生成新的密钥和二维码
+    twoFactorCode.value = ''
+    backupCodes.value = []
     generateTwoFactorQRCode()
   }
 }
 
 async function generateTwoFactorQRCode() {
-  // 实际应该从 API 获取
-  // 这里简化处理
+  try {
+    const response = await portalAuthApi.enable2FA()
+    twoFactorSecret.value = response?.secret || ''
+    backupCodes.value = Array.isArray(response?.backup_codes) ? response.backup_codes : []
+
+    if (!twoFactorQRCode.value || !twoFactorSecret.value) {
+      return
+    }
+
+    const issuer = encodeURIComponent('V Panel')
+    const account = encodeURIComponent(userStore.username || 'user')
+    const otpauthUrl = `otpauth://totp/${issuer}:${account}?secret=${twoFactorSecret.value}&issuer=${issuer}`
+
+    await QRCode.toCanvas(twoFactorQRCode.value, otpauthUrl, {
+      width: 180,
+      margin: 1
+    })
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error) || '生成两步验证二维码失败')
+  }
 }
 
 async function confirmTwoFactor() {
   processingTwoFactor.value = true
   try {
     if (twoFactorEnabled.value) {
-      // 禁用
       if (!disablePassword.value) {
         ElMessage.error('请输入密码')
         return
       }
-      // await api.disable2FA({ password: disablePassword.value })
+      await portalAuthApi.disable2FA({ password: disablePassword.value })
+      await userStore.fetchProfile({ silent: true })
+      disablePassword.value = ''
       ElMessage.success('两步验证已禁用')
     } else {
-      // 启用
       if (!twoFactorCode.value || twoFactorCode.value.length !== 6) {
         ElMessage.error('请输入 6 位验证码')
         return
       }
-      // await api.enable2FA({ code: twoFactorCode.value })
+      await portalAuthApi.verify2FA({ code: twoFactorCode.value })
+      await userStore.fetchProfile({ silent: true })
+      twoFactorCode.value = ''
       ElMessage.success('两步验证已启用')
     }
     showTwoFactorDialog.value = false
@@ -692,21 +948,16 @@ async function copyBackupCodes() {
   }
 }
 
-function showSessions() {
-  ElMessage.info('会话管理功能开发中')
-}
-
-function bindTelegram() {
-  ElMessage.info('Telegram 绑定功能开发中')
-}
-
 async function saveNotifications() {
   savingNotifications.value = true
   try {
-    // await api.updateNotificationSettings(notificationSettings)
+    await userStore.updateProfile({
+      notify_email: notificationSettings.email,
+      notify_telegram: notificationSettings.telegram
+    })
     ElMessage.success('通知设置已保存')
   } catch (error) {
-    ElMessage.error('保存失败')
+    ElMessage.error(extractErrorMessage(error) || '保存失败')
   } finally {
     savingNotifications.value = false
   }
@@ -715,12 +966,14 @@ async function saveNotifications() {
 async function savePreferences() {
   savingPreferences.value = true
   try {
-    // 应用主题设置
+    await userStore.updateProfile({
+      theme: preferences.theme,
+      language: preferences.language
+    })
     setTheme(preferences.theme)
-    // await api.updatePreferences(preferences)
     ElMessage.success('偏好设置已保存')
   } catch (error) {
-    ElMessage.error('保存失败')
+    ElMessage.error(extractErrorMessage(error) || '保存失败')
   } finally {
     savingPreferences.value = false
   }
@@ -741,8 +994,28 @@ function logout() {
   })
 }
 
-onMounted(() => {
-  // 加载用户设置
+watch(
+  () => userStore.user,
+  (user) => {
+    profileForm.displayName = user?.display_name || ''
+    profileForm.avatarUrl = user?.avatar_url || ''
+    notificationSettings.email = user?.notify_email ?? true
+    notificationSettings.telegram = user?.notify_telegram ?? false
+    preferences.theme = user?.theme || preferences.theme
+    preferences.language = user?.language || preferences.language
+    telegramForm.chatId = user?.telegram_id || ''
+  },
+  { immediate: true }
+)
+
+onMounted(async () => {
+  try {
+    await userStore.fetchProfile({ silent: true })
+    await loadSessions()
+  } catch (error) {
+    console.error('加载用户资料失败:', error)
+  }
+
   profileForm.displayName = userStore.user?.display_name || ''
   profileForm.avatarUrl = userStore.user?.avatar_url || ''
 })
@@ -807,7 +1080,12 @@ onMounted(() => {
 .avatar-upload {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 16px;
+}
+
+.avatar-input-hidden {
+  display: none;
 }
 
 /* 两步验证 */
@@ -906,6 +1184,63 @@ onMounted(() => {
   gap: 12px;
 }
 
+.sessions-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.session-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--el-text-color-secondary);
+  font-size: 14px;
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.session-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 12px;
+  background: var(--el-bg-color);
+}
+
+.session-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.session-ip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.session-meta,
+.session-agent,
+.session-empty {
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
+
+.session-agent {
+  word-break: break-word;
+}
+
 /* 响应式 */
 @media (max-width: 768px) {
   .settings-page {
@@ -923,6 +1258,10 @@ onMounted(() => {
 
   .backup-codes {
     grid-template-columns: 1fr;
+  }
+
+  .session-item {
+    flex-direction: column;
   }
 
   .account-actions .el-button {

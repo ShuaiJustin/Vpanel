@@ -69,8 +69,8 @@ function getStoredItem(key) {
   return sessionStorage.getItem(key) || localStorage.getItem(key)
 }
 
-function getStoredUserInfo() {
-  const raw = getStoredItem('userInfo')
+function getStoredAdminUserInfo() {
+  const raw = getStoredItem('adminUserInfo')
   if (!raw) {
     return null
   }
@@ -82,6 +82,72 @@ function getStoredUserInfo() {
   }
 }
 
+function getStoredPermissions() {
+  const userInfo = getStoredAdminUserInfo()
+  return Array.isArray(userInfo?.permissions) ? userInfo.permissions : []
+}
+
+function hasStoredPermission(permission) {
+  if (!permission) return true
+  const permissions = getStoredPermissions()
+  return permissions.includes('*') || permissions.includes(permission)
+}
+
+function hasAllStoredPermissions(permissions = []) {
+  return permissions.every(permission => hasStoredPermission(permission))
+}
+
+function getFirstAccessibleAdminRoute() {
+  const candidates = [
+    { path: '/admin/dashboard', permissionsAll: ['stats:read', 'system:read'] },
+    { path: '/admin/inbounds', permissionsAll: ['proxy:read'] },
+    { path: '/admin/users', permissionsAll: ['user:read'] },
+    { path: '/admin/roles', permissionsAll: ['role:read'] },
+    { path: '/admin/system-monitor', permissionsAll: ['system:read'] },
+    { path: '/admin/stats', permissionsAll: ['stats:read'] },
+    { path: '/admin/profile', permissionsAll: [] }
+  ]
+
+  const match = candidates.find(candidate => hasAllStoredPermissions(candidate.permissionsAll))
+  return match?.path || '/admin/profile'
+}
+
+const adminRoutePermissionMeta = Object.freeze({
+  AdminDashboard: { permissionsAll: ['stats:read', 'system:read'] },
+  AdminProfile: { permissionsAll: [] },
+  AdminChangePassword: { permissionsAll: [] },
+  AdminInbounds: { permissionsAll: ['proxy:read'] },
+  AdminSubscriptions: { permissionsAll: ['user:read'] },
+  AdminUsers: { permissionsAll: ['user:read'] },
+  AdminRoles: { permissionsAll: ['role:read'] },
+  AdminSystemMonitor: { permissionsAll: ['system:read'] },
+  AdminTrafficMonitor: { permissionsAll: ['stats:read', 'system:read'] },
+  AdminStats: { permissionsAll: ['stats:read'] },
+  AdminSettings: { permissionsAll: ['system:write'] },
+  AdminCertificates: { permissionsAll: ['system:write'] },
+  AdminLogs: { permissionsAll: ['system:read'] },
+  AdminIPRestriction: { permissionsAll: ['system:read'] },
+  AdminPlans: { permissionsAll: ['system:write'] },
+  AdminOrders: { permissionsAll: ['system:write'] },
+  AdminRechargeOrders: { permissionsAll: ['system:write'] },
+  AdminBalances: { permissionsAll: ['system:write'] },
+  AdminCoupons: { permissionsAll: ['system:write'] },
+  AdminReports: { permissionsAll: ['system:write'] },
+  AdminGiftCards: { permissionsAll: ['system:write'] },
+  AdminTrials: { permissionsAll: ['system:write'] },
+  AdminPaymentSettings: { permissionsAll: ['system:write'] },
+  AdminNodes: { permissionsAll: ['system:read'] },
+  NodeCreate: { permissionsAll: ['system:write'] },
+  AdminNodeOperations: { permissionsAll: ['system:write'] },
+  NodeDetail: { permissionsAll: ['system:read'] },
+  NodeOperations: { permissionsAll: ['system:write'] },
+  NodeEdit: { permissionsAll: ['system:write'] },
+  AdminNodeGroups: { permissionsAll: ['system:read'] },
+  NodeDashboard: { permissionsAll: ['system:read'] },
+  NodeMap: { permissionsAll: ['system:read'] },
+  NodeComparison: { permissionsAll: ['system:read'] }
+})
+
 const routes = [
   // 根路径 - 默认跳转到用户门户
   {
@@ -90,11 +156,10 @@ const routes = [
     redirect: () => {
       const isAuthenticated = getStoredItem('token')
       const isUserAuthenticated = getStoredItem('userToken')
-      const userRole = getStoredItem('userRole') || 'user'
       
-      // 管理员已登录，跳转到管理后台
-      if (isAuthenticated && userRole === 'admin') {
-        return '/admin/dashboard'
+      // 管理后台已登录，跳转到首个可访问页面
+      if (isAuthenticated) {
+        return getFirstAccessibleAdminRoute()
       }
       
       // 普通用户已登录，跳转到用户门户
@@ -114,7 +179,7 @@ const routes = [
   {
     path: '/admin',
     component: MainLayout,
-    meta: { requiresAuth: true, roles: ['admin'] },
+    meta: { requiresAuth: true },
     children: [
       // 管理后台首页
       {
@@ -493,6 +558,17 @@ const routes = [
   }
 ]
 
+const adminRootRoute = routes.find(route => route.path === '/admin')
+if (adminRootRoute?.children) {
+  adminRootRoute.children = adminRootRoute.children.map(route => ({
+    ...route,
+    meta: {
+      ...route.meta,
+      ...(adminRoutePermissionMeta[route.name] || {})
+    }
+  }))
+}
+
 // 创建路由实例
 const router = createRouter({
   history: createWebHistory(),
@@ -509,14 +585,13 @@ const router = createRouter({
 router.beforeEach((to, from, next) => {
   const isAuthenticated = getStoredItem('token')
   const isUserAuthenticated = getStoredItem('userToken')
-  const userRole = getStoredItem('userRole') || 'user'
-  const userInfo = getStoredUserInfo()
+  const userInfo = getStoredAdminUserInfo()
   const forcePasswordChange = Boolean(userInfo?.force_password_change ?? userInfo?.forcePasswordChange)
   
   // 处理根路径 - 根据登录状态和角色智能跳转
   if (to.path === '/') {
-    if (isAuthenticated && userRole === 'admin') {
-      next('/admin/dashboard')
+    if (isAuthenticated) {
+      next(getFirstAccessibleAdminRoute())
       return
     } else if (isUserAuthenticated) {
       next('/user/dashboard')
@@ -559,10 +634,14 @@ router.beforeEach((to, from, next) => {
     next('/admin/change-password')
     return
   }
-  
-  // 角色权限检查
-  if (to.meta.roles && !to.meta.roles.includes(userRole)) {
-    // 非管理员访问管理后台，跳转到用户门户或登录页
+
+  const requiredPermissions = Array.isArray(to.meta.permissionsAll) ? to.meta.permissionsAll : []
+  if (requiredPermissions.length > 0 && !hasAllStoredPermissions(requiredPermissions)) {
+    const fallbackRoute = getFirstAccessibleAdminRoute()
+    if (isAuthenticated && to.path !== fallbackRoute) {
+      next(fallbackRoute)
+      return
+    }
     if (isUserAuthenticated) {
       next('/user/dashboard')
     } else {
@@ -577,7 +656,7 @@ router.beforeEach((to, from, next) => {
 // 全局后置钩子 - 用于预加载
 router.afterEach((to) => {
   // 预加载可能访问的下一个页面
-  if (to.name === 'Dashboard') {
+  if (to.name === 'AdminDashboard') {
     // 预加载常用页面
     import(/* webpackChunkName: "proxy" */ '../views/Inbounds.vue')
     import(/* webpackChunkName: "monitor" */ '../views/SystemMonitor.vue')

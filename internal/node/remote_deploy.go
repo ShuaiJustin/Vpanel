@@ -1201,15 +1201,28 @@ echo "✓ 安装验证完成"
 
 // UploadAgentBinary uploads the agent binary to the remote server.
 func (s *RemoteDeployService) UploadAgentBinary(client *ssh.Client, localPath string) error {
-	// Open SFTP session
-	sftp, err := client.NewSession()
-	if err != nil {
-		return fmt.Errorf("failed to create SFTP session: %w", err)
+	if client == nil {
+		return fmt.Errorf("ssh client is required")
 	}
-	defer sftp.Close()
+	if strings.TrimSpace(localPath) == "" {
+		return fmt.Errorf("local agent path is required")
+	}
 
-	// TODO: Implement file upload using SFTP
-	// This requires the golang.org/x/crypto/ssh package with SFTP support
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		return fmt.Errorf("failed to read local agent binary: %w", err)
+	}
+
+	hash := sha256.Sum256(data)
+	expectedHash := hex.EncodeToString(hash[:])
+
+	var logBuffer bytes.Buffer
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	if err := s.uploadFileSCP(ctx, client, data, "/usr/local/bin/vpanel-agent", expectedHash, &logBuffer); err != nil {
+		return fmt.Errorf("failed to upload agent binary: %w", err)
+	}
 
 	return nil
 }
