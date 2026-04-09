@@ -209,12 +209,17 @@ onMounted(async () => {
 
 .plans-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 360px));
+  justify-content: center;
   gap: 24px;
+  align-items: stretch;
 }
 
 .plan-card {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
   border-radius: 12px;
@@ -298,6 +303,7 @@ onMounted(async () => {
 
 .plan-features {
   list-style: none;
+  flex: 1;
   padding: 0;
   margin: 0 0 24px 0;
   text-align: left;
@@ -322,6 +328,7 @@ onMounted(async () => {
 }
 
 .plan-button {
+  margin-top: auto;
   width: 100%;
 }
 

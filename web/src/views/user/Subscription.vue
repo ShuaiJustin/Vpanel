@@ -604,9 +604,16 @@ onBeforeUnmount(() => {
   border-radius: 8px;
 }
 
+.status-card :deep(.el-card__body) {
+  display: flex;
+  min-height: 260px;
+}
+
 .status-content {
   display: flex;
+  flex: 1;
   flex-direction: column;
+  justify-content: space-between;
   gap: 16px;
 }
 

@@ -1547,6 +1547,8 @@ onMounted(async () => {
 <style scoped>
 .download-page {
   padding: 20px;
+  max-width: 1280px;
+  margin: 0 auto;
 }
 
 .page-header {
@@ -1579,6 +1581,7 @@ onMounted(async () => {
 
 .quick-start-card {
   margin-bottom: 24px;
+  border-radius: 16px;
   border: 1px solid var(--color-border);
   background: linear-gradient(135deg, var(--color-bg-card) 0%, var(--color-border-light) 100%);
 }
@@ -1675,10 +1678,14 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 20px;
+  align-items: stretch;
 }
 
 .client-card {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
   border-radius: 12px;
@@ -1777,6 +1784,7 @@ onMounted(async () => {
 /* 操作按钮 */
 .client-actions {
   display: flex;
+  margin-top: auto;
   gap: 12px;
 }
 
@@ -1786,7 +1794,7 @@ onMounted(async () => {
 
 /* 提示卡片 */
 .tips-card {
-  border-radius: 8px;
+  border-radius: 16px;
 }
 
 .tips-card :deep(.el-card__header) {
@@ -1916,7 +1924,7 @@ onMounted(async () => {
 /* 响应式 */
 @media (max-width: 768px) {
   .download-page {
-    padding: 16px;
+    padding: 16px 16px 96px;
   }
 
   .quick-start-content {
@@ -1924,9 +1932,12 @@ onMounted(async () => {
   }
 
   .quick-start-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     min-width: 0;
     width: 100%;
-    justify-content: flex-start;
+    gap: 10px;
+    justify-content: stretch;
   }
 
   .quick-start-actions .el-button {

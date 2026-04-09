@@ -1969,13 +1969,15 @@ const loadInbounds = async () => {
 
 // 流量格式化
 const formatTraffic = (bytes) => {
-  if (bytes === 0) return '0 B'
+  const normalized = Number(bytes)
+  if (!Number.isFinite(normalized) || normalized <= 0) return '0 B'
+  if (normalized < 1) return `${normalized.toFixed(2)} B`
   
   const k = 1024
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  const i = Math.floor(Math.log(normalized) / Math.log(k))
 
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  return parseFloat((normalized / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
 const formatProxyTrafficDisplay = (trafficLimit) => {

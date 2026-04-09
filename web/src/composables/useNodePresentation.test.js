@@ -79,6 +79,14 @@ describe("useNodePresentation helpers", () => {
     expect(formatNodeTrafficResetAt("invalid-date")).toBe("未设置");
   });
 
+  it("clamps month-end reset anchors without skipping February", () => {
+    const anchor = "2026-01-31T10:15:00Z";
+
+    expect(
+      formatNodeTrafficResetAt(anchor, new Date("2026-02-28T12:00:00Z")),
+    ).toBe(new Date("2026-03-28T10:15:00Z").toLocaleString("zh-CN"));
+  });
+
   it("formats node traffic quota helpers", () => {
     const healthyNode = {
       traffic_total: 512 * 1024 ** 3,

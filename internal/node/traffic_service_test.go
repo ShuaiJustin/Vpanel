@@ -554,6 +554,61 @@ func TestTrafficService_GetTrafficByNodeIncludesSharedProxyTraffic(t *testing.T)
 	}
 }
 
+func TestTrafficService_GetTopUsersByTrafficIncludesUsername(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+	nodeID := int64(55)
+
+	service := NewTrafficService(
+		db,
+		repository.NewNodeTrafficRepository(db),
+		repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db),
+		repository.NewUserRepository(db),
+		repository.NewNodeRepository(db),
+		nil,
+		logger.NewNopLogger(),
+	)
+
+	if err := db.Create(&repository.Node{ID: nodeID, Name: "top-user-node", Address: "127.0.0.1", Status: repository.NodeStatusOnline}).Error; err != nil {
+		t.Fatalf("failed to seed node: %v", err)
+	}
+	for _, user := range []*repository.User{
+		{ID: 1, Username: "alpha", PasswordHash: "x"},
+		{ID: 2, Username: "beta", PasswordHash: "x"},
+	} {
+		if err := db.Create(user).Error; err != nil {
+			t.Fatalf("failed to seed user %d: %v", user.ID, err)
+		}
+	}
+
+	records := []*TrafficRecord{
+		{NodeID: nodeID, UserID: 1, Upload: 100, Download: 50},
+		{NodeID: nodeID, UserID: 1, Upload: 10, Download: 5},
+		{NodeID: nodeID, UserID: 2, Upload: 20, Download: 10},
+	}
+	if err := service.RecordTrafficBatch(ctx, records); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	topUsers, err := service.GetTopUsersByTraffic(ctx, nodeID, time.Now().Add(-time.Hour), time.Now().Add(time.Hour), 10)
+	if err != nil {
+		t.Fatalf("failed to get top users by traffic: %v", err)
+	}
+	if len(topUsers) != 2 {
+		t.Fatalf("expected 2 users, got %d", len(topUsers))
+	}
+	if topUsers[0].UserID != 1 || topUsers[0].Username != "alpha" {
+		t.Fatalf("expected top user alpha, got %+v", topUsers[0])
+	}
+	if topUsers[0].Total != 165 {
+		t.Fatalf("expected aggregated total 165, got %d", topUsers[0].Total)
+	}
+	if topUsers[1].UserID != 2 || topUsers[1].Username != "beta" {
+		t.Fatalf("expected second user beta, got %+v", topUsers[1])
+	}
+}
+
 func TestTrafficService_ProcessMonthlyTrafficResets_InitializesMissingResetAt(t *testing.T) {
 	db := setupTrafficServiceTestDB(t)
 	ctx := context.Background()
@@ -716,7 +771,68 @@ func TestTrafficService_ProcessMonthlyTrafficResets_ResetsDueNode(t *testing.T) 
 	if updated.TrafficResetAt == nil {
 		t.Fatalf("expected traffic_reset_at to remain set")
 	}
-	if !updated.TrafficResetAt.Equal(now) {
-		t.Fatalf("expected traffic_reset_at %v, got %v", now, updated.TrafficResetAt)
+	expectedResetAt := time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)
+	if !updated.TrafficResetAt.Equal(expectedResetAt) {
+		t.Fatalf("expected traffic_reset_at %v, got %v", expectedResetAt, updated.TrafficResetAt)
+	}
+}
+
+func TestTrafficService_ProcessMonthlyTrafficResets_ClampsEndOfMonthAnchors(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+	now := time.Date(2026, 2, 28, 12, 0, 0, 0, time.UTC)
+	nodeID := int64(33)
+	anchor := time.Date(2026, 1, 31, 10, 15, 0, 0, time.UTC)
+
+	service := NewTrafficService(
+		db,
+		repository.NewNodeTrafficRepository(db),
+		repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db),
+		repository.NewUserRepository(db),
+		repository.NewNodeRepository(db),
+		nil,
+		logger.NewNopLogger(),
+	)
+
+	if err := db.Create(&repository.Node{
+		ID:             nodeID,
+		Name:           "month-end-node",
+		Address:        "127.0.0.1",
+		Status:         repository.NodeStatusOnline,
+		TrafficUp:      10,
+		TrafficDown:    20,
+		TrafficTotal:   30,
+		TrafficLimit:   100,
+		TrafficResetAt: &anchor,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed node: %v", err)
+	}
+
+	resetNodeIDs, err := service.ProcessMonthlyTrafficResets(ctx, now)
+	if err != nil {
+		t.Fatalf("ProcessMonthlyTrafficResets returned error: %v", err)
+	}
+	if !reflect.DeepEqual(resetNodeIDs, []int64{nodeID}) {
+		t.Fatalf("expected reset node ids [%d], got %v", nodeID, resetNodeIDs)
+	}
+
+	var updated repository.Node
+	if err := db.First(&updated, nodeID).Error; err != nil {
+		t.Fatalf("failed to load updated node: %v", err)
+	}
+	expectedResetAt := time.Date(2026, 2, 28, 10, 15, 0, 0, time.UTC)
+	if updated.TrafficResetAt == nil || !updated.TrafficResetAt.Equal(expectedResetAt) {
+		t.Fatalf("expected clamped traffic_reset_at %v, got %v", expectedResetAt, updated.TrafficResetAt)
+	}
+}
+
+func TestAddOneCalendarMonthClamped_DoesNotSkipShortMonths(t *testing.T) {
+	anchor := time.Date(2026, 1, 31, 10, 15, 0, 0, time.UTC)
+	clamped := addOneCalendarMonthClamped(anchor)
+
+	expected := time.Date(2026, 2, 28, 10, 15, 0, 0, time.UTC)
+	if !clamped.Equal(expected) {
+		t.Fatalf("expected %v, got %v", expected, clamped)
 	}
 }

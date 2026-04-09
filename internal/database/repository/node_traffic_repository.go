@@ -19,10 +19,6 @@ type NodeTraffic struct {
 	Upload     int64     `gorm:"default:0"` // bytes
 	Download   int64     `gorm:"default:0"` // bytes
 	RecordedAt time.Time `gorm:"index"`
-
-	Node  *Node  `gorm:"foreignKey:NodeID"`
-	User  *User  `gorm:"foreignKey:UserID"`
-	Proxy *Proxy `gorm:"foreignKey:ProxyID"`
 }
 
 // TableName returns the table name for NodeTraffic.
@@ -42,6 +38,7 @@ type NodeTrafficStats struct {
 type UserNodeTrafficStats struct {
 	UserID   int64
 	NodeID   int64
+	Username string
 	Upload   int64
 	Download int64
 }
@@ -332,17 +329,24 @@ func (r *nodeTrafficRepository) GetStatsByUser(ctx context.Context, nodeID int64
 	var stats []*UserNodeTrafficStats
 	rangeArgs := BuildTimeRangeArgs(r.db.Dialector.Name(), start, end)
 	query := r.db.WithContext(ctx).
-		Model(&NodeTraffic{}).
-		Select("user_id, node_id, COALESCE(SUM(upload), 0) as upload, COALESCE(SUM(download), 0) as download").
-		Where("node_id = ? AND user_id > 0 AND "+BuildTimeRangeCondition(r.db.Dialector.Name(), "recorded_at"), append([]any{nodeID}, rangeArgs...)...).
-		Group("user_id, node_id").
-		Order("(upload + download) DESC")
+		Table("node_traffic nt").
+		Select("nt.user_id, nt.node_id, COALESCE(u.username, '') as username, COALESCE(SUM(nt.upload), 0) as upload, COALESCE(SUM(nt.download), 0) as download").
+		Joins("LEFT JOIN users u ON u.id = nt.user_id").
+		Where("nt.node_id = ? AND nt.user_id > 0 AND "+BuildTimeRangeCondition(r.db.Dialector.Name(), "nt.recorded_at"), append([]any{nodeID}, rangeArgs...)...).
+		Group("nt.user_id, nt.node_id, COALESCE(u.username, '')").
+		Order("(COALESCE(SUM(nt.upload), 0) + COALESCE(SUM(nt.download), 0)) DESC, nt.user_id ASC")
 	if limit > 0 {
 		query = query.Limit(limit)
 	}
 	err := query.Scan(&stats).Error
 	if err != nil {
 		return nil, errors.NewDatabaseError("failed to get stats by user", err)
+	}
+	for _, stat := range stats {
+		if stat == nil {
+			continue
+		}
+		stat.Username = normalizeTrafficUsername(stat.UserID, stat.Username)
 	}
 	return stats, nil
 }

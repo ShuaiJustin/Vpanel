@@ -263,7 +263,13 @@ onMounted(() => {
 
 <style scoped>
 .trial-card {
+  height: 100%;
   border-radius: 8px;
+}
+
+.trial-card :deep(.el-card__body) {
+  display: flex;
+  min-height: 260px;
 }
 
 .card-header {
@@ -274,6 +280,7 @@ onMounted(() => {
 
 .trial-content {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 16px;
 }
@@ -396,6 +403,7 @@ onMounted(() => {
 }
 
 .action-btn {
+  margin-top: auto;
   width: 100%;
 }
 

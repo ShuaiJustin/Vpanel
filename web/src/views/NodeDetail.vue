@@ -276,6 +276,11 @@
             </PageSectionHeader>
           </template>
           <el-row :gutter="isMobile ? 12 : 20">
+            <el-col :span="24">
+              <div class="traffic-cycle-note">
+                {{ cycleTrafficHint }}
+              </div>
+            </el-col>
             <el-col
               v-for="item in trafficSummaryCards"
               :key="item.key"
@@ -301,7 +306,7 @@
           <template #header>
             <PageSectionHeader
               title="流量 Top 用户"
-              subtitle="当前周期内消耗流量最高的用户列表"
+              :subtitle="`${trafficPeriodText}内消耗流量最高的用户列表`"
             />
           </template>
           <div
@@ -350,7 +355,7 @@
           </div>
           <el-empty
             v-else
-            description="当前周期暂无流量记录"
+            :description="topUsersEmptyDescription"
             :image-size="56"
           />
         </el-card>
@@ -558,6 +563,8 @@ import { useNodeStore } from '@/stores/node'
 import { nodeGroupsApi, usersApi } from '@/api'
 import {
   formatCoreVersion,
+  formatNodeTrafficResetAt,
+  formatNodeTrafficUsageSummary,
   formatNodeTime as formatTime,
   formatUsersLimitDisplay,
   getNodeLatencyClass as getLatencyClass,
@@ -565,6 +572,8 @@ import {
   getNodeStatusType as getStatusType,
   getNodeSyncStatusText as getSyncStatusText,
   getNodeSyncStatusType as getSyncStatusType,
+  getNodeTrafficStateText,
+  hasNodeTrafficLimit,
   parseNodeTags as parseTags
 } from '@/composables/useNodePresentation'
 import { useViewport } from '@/composables/useViewport'
@@ -607,10 +616,27 @@ const tokenDialogWidth = computed(() => (isMobile.value ? 'calc(100vw - 24px)' :
 const trafficPeriodText = computed(() => {
   const map = {
     today: '今日',
-    week: '近 7 天',
+    week: '本周',
     month: '本月'
   }
   return map[trafficPeriod.value] || '当前周期'
+})
+const cycleTrafficSummary = computed(() => formatNodeTrafficUsageSummary(node.value || {}))
+const cycleTrafficResetText = computed(() => formatNodeTrafficResetAt(node.value?.traffic_reset_at))
+const cycleTrafficStateText = computed(() => getNodeTrafficStateText(node.value || {}))
+const cycleTrafficHint = computed(() => {
+  if (!node.value) return ''
+  if (!hasNodeTrafficLimit(node.value)) {
+    return '下方今日 / 本周 / 本月显示的是自然时间聚合流量，当前节点未设置月流量上限。'
+  }
+  return `当前月周期累计 ${cycleTrafficSummary.value}，状态 ${cycleTrafficStateText.value}，下次重置 ${cycleTrafficResetText.value}。下方今日 / 本周 / 本月显示的是自然时间聚合流量。`
+})
+const topUsersEmptyDescription = computed(() => {
+  const totalTraffic = Number(trafficStats.value.upload || 0) + Number(trafficStats.value.download || 0)
+  if (totalTraffic > 0) {
+    return `当前所选${trafficPeriodText.value}存在流量，但暂无可归属到具体用户的流量记录`
+  }
+  return `当前所选${trafficPeriodText.value}暂无流量记录`
 })
 const currentUsersLimitDisplay = computed(() => formatUsersLimitDisplay(
   node.value?.current_users,
@@ -759,13 +785,21 @@ const fillTopUsernames = async (rows) => {
   }))
 }
 
+const startOfCurrentWeek = (value) => {
+  const date = new Date(value)
+  const weekday = date.getDay() || 7
+  date.setDate(date.getDate() - (weekday - 1))
+  date.setHours(0, 0, 0, 0)
+  return date
+}
+
 const getTimeRange = () => {
   const now = new Date()
   let start
   if (trafficPeriod.value === 'today') {
     start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   } else if (trafficPeriod.value === 'week') {
-    start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    start = startOfCurrentWeek(now)
   } else {
     start = new Date(now.getFullYear(), now.getMonth(), 1)
   }
@@ -1101,6 +1135,16 @@ watch(
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.traffic-cycle-note {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-regular);
+  line-height: 1.7;
+  font-size: 13px;
 }
 
 .traffic-stat {

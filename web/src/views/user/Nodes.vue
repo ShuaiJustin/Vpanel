@@ -623,6 +623,8 @@ onMounted(() => {
 <style scoped>
 .nodes-page {
   padding: 20px;
+  max-width: 1320px;
+  margin: 0 auto;
 }
 
 .page-header {
@@ -755,7 +757,8 @@ onMounted(() => {
 
 .nodes-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 360px));
+  justify-content: center;
   gap: 18px;
   align-items: stretch;
 }
@@ -892,14 +895,26 @@ onMounted(() => {
     width: 100%;
   }
 
+  .filter-right {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .keyword-filter {
     width: 100%;
   }
 
   .filter-left :deep(.el-select),
-  .filter-right :deep(.el-select),
   .filter-right :deep(.el-button-group),
   .filter-right :deep(.el-button) {
+    width: 100% !important;
+  }
+
+  .filter-right > :first-child,
+  .filter-right > :last-child {
+    grid-column: 1 / -1;
+  }
+
+  .filter-right :deep(.el-select) {
     width: 100% !important;
   }
 

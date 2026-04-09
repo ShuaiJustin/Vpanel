@@ -230,12 +230,14 @@ const loadConnections = async () => {
 
 // 格式化流量大小
 const formatBytes = (bytes) => {
-  if (bytes === 0) return '0 B'
+  const normalized = Number(bytes)
+  if (!Number.isFinite(normalized) || normalized <= 0) return '0 B'
+  if (normalized < 1) return `${normalized.toFixed(2)} B`
   
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  const i = Math.floor(Math.log(normalized) / Math.log(1024))
   
-  return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i]
+  return parseFloat((normalized / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
 // 格式化持续时间

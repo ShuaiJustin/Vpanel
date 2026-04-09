@@ -1409,9 +1409,22 @@
   .app-container .content .failed-stats-grid,
   .app-container .content .pause-stats-grid,
   .app-container .content .metrics-grid,
-  .app-container .content .stats-grid,
-  .app-container .content .overview-strip {
+  .app-container .content .stats-grid {
     grid-template-columns: 1fr;
+  }
+
+  .app-container .content .overview-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .app-container .content .overview-card {
+    min-height: 96px;
+    padding: 14px 14px 16px;
+  }
+
+  .app-container .content .overview-value {
+    font-size: clamp(20px, 6vw, 28px);
   }
 
   .app-container .content .filter-bar > *,

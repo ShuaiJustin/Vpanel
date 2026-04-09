@@ -38,11 +38,12 @@ type UserTrafficStats struct {
 
 // UserNodeTrafficStats represents traffic statistics for a user on a specific node.
 type UserNodeTrafficStats struct {
-	UserID   int64 `json:"user_id"`
-	NodeID   int64 `json:"node_id"`
-	Upload   int64 `json:"upload"`
-	Download int64 `json:"download"`
-	Total    int64 `json:"total"`
+	UserID   int64  `json:"user_id"`
+	NodeID   int64  `json:"node_id"`
+	Username string `json:"username,omitempty"`
+	Upload   int64  `json:"upload"`
+	Download int64  `json:"download"`
+	Total    int64  `json:"total"`
 }
 
 // GroupTrafficStats represents traffic statistics for a node group.
@@ -780,6 +781,7 @@ func (s *TrafficService) GetTrafficStatsByNode(ctx context.Context, start, end t
 			Total:    rs.Total,
 		}
 	}
+	sort.Slice(stats, func(i, j int) bool { return stats[i].NodeID < stats[j].NodeID })
 
 	return stats, nil
 }
@@ -801,6 +803,7 @@ func (s *TrafficService) GetTrafficStatsByGroup(ctx context.Context, start, end 
 			Total:    rs.Upload + rs.Download,
 		}
 	}
+	sort.Slice(stats, func(i, j int) bool { return stats[i].GroupID < stats[j].GroupID })
 
 	return stats, nil
 }
@@ -899,6 +902,7 @@ func (s *TrafficService) GetUserTrafficBreakdownByNode(ctx context.Context, user
 		s.Total = s.Upload + s.Download
 		stats = append(stats, s)
 	}
+	sort.Slice(stats, func(i, j int) bool { return stats[i].NodeID < stats[j].NodeID })
 
 	return stats, nil
 }
@@ -918,6 +922,7 @@ func (s *TrafficService) GetTopUsersByTraffic(ctx context.Context, nodeID int64,
 		stats[i] = &UserNodeTrafficStats{
 			UserID:   rs.UserID,
 			NodeID:   rs.NodeID,
+			Username: rs.Username,
 			Upload:   rs.Upload,
 			Download: rs.Download,
 			Total:    rs.Upload + rs.Download,
@@ -1069,7 +1074,8 @@ func (s *TrafficService) ProcessMonthlyTrafficResets(ctx context.Context, now ti
 		if !nodeTrafficResetDue(nodeData, now) {
 			continue
 		}
-		if resetErr := s.resetNodeTrafficAt(ctx, nodeData.ID, now); resetErr != nil {
+		nextAnchor := advanceNodeTrafficCycleAnchor(*nodeData.TrafficResetAt, now)
+		if resetErr := s.resetNodeTrafficAt(ctx, nodeData.ID, nextAnchor); resetErr != nil {
 			s.logger.Warn("failed to process monthly node traffic reset",
 				logger.Err(resetErr),
 				logger.F("node_id", nodeData.ID),
@@ -1107,11 +1113,66 @@ func nodeRequiresTrafficCycle(nodeData *repository.Node) bool {
 	return nodeData != nil && nodeData.ID > 0 && nodeData.TrafficLimit > 0
 }
 
+func addOneCalendarMonthClamped(value time.Time) time.Time {
+	location := value.Location()
+	if location == nil {
+		location = time.UTC
+	}
+
+	year, month, day := value.Date()
+	hour, minute, second := value.Clock()
+	nanosecond := value.Nanosecond()
+
+	targetMonth := int(month) + 1
+	targetYear := year
+	if targetMonth > 12 {
+		targetMonth = 1
+		targetYear++
+	}
+
+	lastDayOfTargetMonth := time.Date(
+		targetYear,
+		time.Month(targetMonth)+1,
+		0,
+		hour,
+		minute,
+		second,
+		nanosecond,
+		location,
+	).Day()
+	if day > lastDayOfTargetMonth {
+		day = lastDayOfTargetMonth
+	}
+
+	return time.Date(
+		targetYear,
+		time.Month(targetMonth),
+		day,
+		hour,
+		minute,
+		second,
+		nanosecond,
+		location,
+	)
+}
+
+func advanceNodeTrafficCycleAnchor(anchor, now time.Time) time.Time {
+	current := anchor
+	for guard := 0; guard < 240; guard++ {
+		next := addOneCalendarMonthClamped(current)
+		if next.After(now) {
+			return current
+		}
+		current = next
+	}
+	return current
+}
+
 func nodeTrafficResetDue(nodeData *repository.Node, now time.Time) bool {
 	if !nodeRequiresTrafficCycle(nodeData) || nodeData.TrafficResetAt == nil {
 		return false
 	}
-	return !now.Before(nodeData.TrafficResetAt.AddDate(0, 1, 0))
+	return !now.Before(addOneCalendarMonthClamped(*nodeData.TrafficResetAt))
 }
 
 // AggregatedTrafficStats represents comprehensive aggregated traffic statistics.

@@ -378,7 +378,27 @@ export const formatNodeTrafficUsageSummary = (node) => {
 
 const addOneCalendarMonth = (value) => {
   const nextValue = new Date(value.getTime());
-  nextValue.setMonth(nextValue.getMonth() + 1);
+  const year = nextValue.getFullYear();
+  const month = nextValue.getMonth();
+  const day = nextValue.getDate();
+  const targetMonth = month + 1;
+  const targetYear = year + Math.floor(targetMonth / 12);
+  const normalizedMonth = targetMonth % 12;
+  const lastDayOfTargetMonth = new Date(
+    targetYear,
+    normalizedMonth + 1,
+    0,
+    nextValue.getHours(),
+    nextValue.getMinutes(),
+    nextValue.getSeconds(),
+    nextValue.getMilliseconds(),
+  ).getDate();
+
+  nextValue.setFullYear(
+    targetYear,
+    normalizedMonth,
+    Math.min(day, lastDayOfTargetMonth),
+  );
   return nextValue;
 };
 

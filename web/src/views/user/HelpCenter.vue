@@ -509,9 +509,13 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 16px;
+  align-items: stretch;
 }
 
 .featured-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
   padding: 20px;
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
@@ -534,6 +538,7 @@ onMounted(() => {
 }
 
 .card-summary {
+  flex: 1;
   font-size: 13px;
   color: var(--color-text-secondary);
   margin: 0;
@@ -550,11 +555,13 @@ onMounted(() => {
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 16px;
   margin-bottom: 32px;
+  align-items: stretch;
 }
 
 .category-card {
   display: flex;
   align-items: center;
+  min-height: 100%;
   padding: 20px;
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
@@ -584,6 +591,7 @@ onMounted(() => {
 
 .category-info {
   flex: 1;
+  min-width: 0;
 }
 
 .category-name {
@@ -694,7 +702,7 @@ onMounted(() => {
 
 /* 联系支持 */
 .support-card {
-  border-radius: 8px;
+  border-radius: 16px;
 }
 
 .support-content {
@@ -719,7 +727,7 @@ onMounted(() => {
 /* 响应式 */
 @media (max-width: 768px) {
   .help-center-page {
-    padding: 0;
+    padding: 0 0 96px;
   }
 
   .search-section {

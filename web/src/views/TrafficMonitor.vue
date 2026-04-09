@@ -53,10 +53,19 @@
               最近 {{ realtimeWindowLabel }}
             </div>
           </template>
-          <div
-            ref="realtimeChartRef"
-            class="chart"
-          />
+          <div class="chart-shell">
+            <div
+              ref="realtimeChartRef"
+              class="chart"
+              :class="{ 'chart--muted': !hasRealtimeChartData }"
+            />
+            <el-empty
+              v-if="!hasRealtimeChartData"
+              class="chart-empty"
+              description="最近 5 分钟暂无节点流量"
+              :image-size="54"
+            />
+          </div>
         </el-card>
         
         <el-card class="chart-card">
@@ -65,10 +74,19 @@
               历史流量统计
             </div>
           </template>
-          <div
-            ref="historyChartRef"
-            class="chart"
-          />
+          <div class="chart-shell">
+            <div
+              ref="historyChartRef"
+              class="chart"
+              :class="{ 'chart--muted': !hasHistoryChartData }"
+            />
+            <el-empty
+              v-if="!hasHistoryChartData"
+              class="chart-empty"
+              description="当前周期暂无历史流量"
+              :image-size="54"
+            />
+          </div>
         </el-card>
       </div>
       
@@ -84,12 +102,12 @@
             width="180"
           >
             <template #default="{ row }">
-              {{ formatDate(row.timestamp) }}
+              {{ formatHistoryTableDate(row.timestamp) }}
             </template>
           </el-table-column>
           <el-table-column
             prop="inbound"
-            label="入站流量"
+            label="上行流量"
             width="150"
           >
             <template #default="{ row }">
@@ -98,7 +116,7 @@
           </el-table-column>
           <el-table-column
             prop="outbound"
-            label="出站流量"
+            label="下行流量"
             width="150"
           >
             <template #default="{ row }">
@@ -177,6 +195,14 @@ const realtimeWindowLabel = computed(() => {
   return realtimeWindow.value || '5m'
 })
 
+const hasRealtimeChartData = computed(() =>
+  realtimeNodeTraffic.value.some(item => Number(item.total || 0) > 0)
+)
+
+const hasHistoryChartData = computed(() =>
+  trafficData.value.some(item => Number(item.total || 0) > 0)
+)
+
 const unwrapApiData = (response) => {
   if (response && response.code === 200 && response.data !== undefined) {
     return response.data
@@ -186,13 +212,15 @@ const unwrapApiData = (response) => {
 
 const mapRealtimeRows = (response) => {
   const rows = Array.isArray(response?.traffic_by_node) ? response.traffic_by_node : []
-  return rows.map((item) => ({
-    nodeId: item.node_id,
-    label: `节点 ${item.node_id}`,
-    inbound: item.upload || 0,
-    outbound: item.download || 0,
-    total: item.total || 0
-  }))
+  return rows
+    .map((item) => ({
+      nodeId: item.node_id,
+      label: `节点 ${item.node_id}`,
+      inbound: item.upload || 0,
+      outbound: item.download || 0,
+      total: item.total || 0
+    }))
+    .sort((a, b) => a.nodeId - b.nodeId)
 }
 
 const mapHistoryRows = (response) => {
@@ -220,9 +248,6 @@ const initCharts = () => {
   // 实时流量图表
   realtimeChart = echarts.init(realtimeChartRef.value)
   realtimeChart.setOption({
-    title: {
-      text: '最近 5 分钟节点流量'
-    },
     tooltip: {
       trigger: 'axis'
     },
@@ -254,14 +279,11 @@ const initCharts = () => {
   // 历史流量图表
   historyChart = echarts.init(historyChartRef.value)
   historyChart.setOption({
-    title: {
-      text: '流量历史统计'
-    },
     tooltip: {
       trigger: 'axis'
     },
     legend: {
-      data: ['入站流量', '出站流量', '总流量']
+      data: ['上行流量', '下行流量', '总流量']
     },
     xAxis: {
       type: 'category',
@@ -273,12 +295,12 @@ const initCharts = () => {
     },
     series: [
       {
-        name: '入站流量',
+        name: '上行流量',
         type: 'bar',
         data: []
       },
       {
-        name: '出站流量',
+        name: '下行流量',
         type: 'bar',
         data: []
       },
@@ -298,9 +320,6 @@ const updateCharts = () => {
   
   // 更新实时流量图表
   realtimeChart.setOption({
-    title: {
-      text: `最近 ${realtimeWindowLabel.value} 节点流量`
-    },
     xAxis: {
       data: realtimeData.map(item => item.label)
     },
@@ -382,6 +401,13 @@ const formatTraffic = (bytes) => {
 
 const formatPercentage = (value) => `${Math.round((value || 0) * 100)}%`
 
+const formatHistoryTableDate = (date) => {
+  if (historyPeriod.value === 'today') {
+    return formatDate(date)
+  }
+  return formatDate(date, 'YYYY-MM-DD')
+}
+
 // 格式化日期
 const formatDate = (date, format = 'YYYY-MM-DD HH:mm:ss') => {
   const d = new Date(date)
@@ -433,6 +459,43 @@ onUnmounted(() => {
   padding: 20px;
 }
 
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.page-heading {
+  min-width: 0;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 32px;
+  line-height: 1.1;
+  color: var(--color-text-primary);
+}
+
+.page-subtitle {
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+}
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toolbar-summary {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
 .card-header {
   display: flex;
   justify-content: space-between;
@@ -455,9 +518,26 @@ onUnmounted(() => {
   font-weight: bold;
 }
 
+.chart-shell {
+  position: relative;
+}
+
 .chart {
   height: 300px;
   margin-top: 10px;
+}
+
+.chart--muted {
+  opacity: 0.28;
+}
+
+.chart-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.95));
 }
 
 .table-shell {
@@ -473,6 +553,27 @@ onUnmounted(() => {
     padding: 12px;
   }
 
+  .page-header,
+  .page-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-title {
+    font-size: 28px;
+  }
+
+  .page-actions :deep(.el-select),
+  .page-actions :deep(.el-button) {
+    width: 100%;
+  }
+
+  .charts-container {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
   .card-header {
     flex-direction: column;
     align-items: flex-start;
@@ -480,12 +581,13 @@ onUnmounted(() => {
   }
 
   .chart-card {
+    flex: none;
     min-width: 0;
     width: 100%;
   }
 
   .chart {
-    height: 260px;
+    height: 220px;
   }
 }
 </style> 

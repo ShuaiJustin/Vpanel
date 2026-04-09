@@ -56,6 +56,79 @@ func TestRecordTraffic_AllowsZeroUploadOrDownload(t *testing.T) {
 	}
 }
 
+func TestRecordTraffic_AllowsSharedTrafficUserIDZero(t *testing.T) {
+	handler, _ := newNodeStatsTestHandler(t)
+
+	router := gin.New()
+	router.POST("/api/admin/nodes/traffic", handler.RecordTraffic)
+
+	payload, _ := json.Marshal(map[string]any{
+		"node_id":  1,
+		"user_id":  0,
+		"upload":   512,
+		"download": 0,
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/nodes/traffic", bytes.NewBuffer(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected shared traffic to be accepted, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRecordTraffic_RejectsZeroTotalTraffic(t *testing.T) {
+	handler, _ := newNodeStatsTestHandler(t)
+
+	router := gin.New()
+	router.POST("/api/admin/nodes/traffic", handler.RecordTraffic)
+
+	payload, _ := json.Marshal(map[string]any{
+		"node_id":  1,
+		"user_id":  2,
+		"upload":   0,
+		"download": 0,
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/nodes/traffic", bytes.NewBuffer(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for zero-total traffic, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRecordTrafficBatch_RejectsNegativeTraffic(t *testing.T) {
+	handler, _ := newNodeStatsTestHandler(t)
+
+	router := gin.New()
+	router.POST("/api/admin/nodes/traffic/batch", handler.RecordTrafficBatch)
+
+	payload, _ := json.Marshal(map[string]any{
+		"records": []map[string]any{
+			{
+				"node_id":  1,
+				"user_id":  2,
+				"upload":   -1,
+				"download": 1024,
+			},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/nodes/traffic/batch", bytes.NewBuffer(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for negative traffic, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestGetTotalTraffic_RejectsInvalidStartTime(t *testing.T) {
 	handler, _ := newNodeStatsTestHandler(t)
 

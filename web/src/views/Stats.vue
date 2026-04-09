@@ -107,10 +107,19 @@
               <span>协议分布</span>
             </div>
           </template>
-          <div
-            ref="protocolChartRef"
-            class="chart-container"
-          />
+          <div class="chart-shell">
+            <div
+              ref="protocolChartRef"
+              class="chart-container"
+              :class="{ 'chart-container--muted': !hasProtocolChartData }"
+            />
+            <el-empty
+              v-if="!hasProtocolChartData"
+              class="chart-empty"
+              description="暂无协议分布数据"
+              :image-size="54"
+            />
+          </div>
         </el-card>
       </el-col>
       <el-col :span="chartSpan">
@@ -121,7 +130,7 @@
               <el-radio-group
                 v-model="trafficPeriod"
                 size="small"
-                @change="refreshData"
+                @change="changeTrafficPeriod"
               >
                 <el-radio-button label="today">
                   今日
@@ -135,10 +144,19 @@
               </el-radio-group>
             </div>
           </template>
-          <div
-            ref="trafficChartRef"
-            class="chart-container"
-          />
+          <div class="chart-shell">
+            <div
+              ref="trafficChartRef"
+              class="chart-container"
+              :class="{ 'chart-container--muted': !hasTrafficTimelineData }"
+            />
+            <el-empty
+              v-if="!hasTrafficTimelineData"
+              class="chart-empty"
+              description="当前周期暂无流量趋势数据"
+              :image-size="54"
+            />
+          </div>
         </el-card>
       </el-col>
     </el-row>
@@ -284,12 +302,14 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { User, Connection, DataLine, Monitor, Refresh } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts/core'
 import { LineChart, PieChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { statsApi } from '@/api/index'
 import { useViewport } from '@/composables/useViewport'
+import { formatTrafficBytes } from '@/utils/traffic'
 
 echarts.use([
   TooltipComponent,
@@ -302,8 +322,9 @@ echarts.use([
 
 const loading = ref(false)
 const trafficPeriod = ref('today')
+const lastSuccessfulTrafficPeriod = ref(trafficPeriod.value)
 const { isMobile, isTablet } = useViewport()
-const statCardSpan = computed(() => (isMobile.value ? 24 : isTablet.value ? 12 : 6))
+const statCardSpan = computed(() => (isMobile.value ? 12 : isTablet.value ? 12 : 6))
 const chartSpan = computed(() => (isMobile.value ? 24 : 12))
 
 const protocolChartRef = ref(null)
@@ -337,14 +358,32 @@ const periodTrafficStats = ref({
 const protocolStats = ref([])
 const userStats = ref([])
 const totalTraffic = ref(0)
+const trafficTimeline = ref([])
+const hasProtocolChartData = computed(() =>
+  protocolStats.value.some(item => Number(item.count || 0) > 0 || Number(item.traffic || 0) > 0)
+)
+const hasTrafficTimelineData = computed(() =>
+  trafficTimeline.value.some(item => Number(item.upload || 0) > 0 || Number(item.download || 0) > 0)
+)
+
+const formatTimelineLabel = (rawValue) => {
+  const date = new Date(rawValue)
+  if (Number.isNaN(date.getTime())) {
+    return rawValue || ''
+  }
+
+  if (trafficPeriod.value === 'today') {
+    return `${String(date.getHours()).padStart(2, '0')}:00`
+  }
+
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${month}-${day}`
+}
 
 // 格式化字节
 const formatBytes = (bytes) => {
-  if (!bytes || bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  return formatTrafficBytes(bytes)
 }
 
 // 获取协议标签类型
@@ -503,7 +542,7 @@ const updateProtocolChart = () => {
 const updateTrafficChart = (timeline) => {
   if (!trafficChart || !timeline) return
   
-  const times = timeline.map(item => item.time)
+  const times = timeline.map(item => formatTimelineLabel(item.time))
   const uploads = timeline.map(item => item.upload)
   const downloads = timeline.map(item => item.download)
   
@@ -524,10 +563,12 @@ const loadDashboardStats = async () => {
     const response = await statsApi.getDashboardStats()
     if (response.code === 200) {
       dashboardStats.value = response.data || dashboardStats.value
+      return true
     }
   } catch (error) {
     console.error('加载仪表盘统计失败:', error)
   }
+  return false
 }
 
 // 加载详细统计
@@ -544,22 +585,59 @@ const loadDetailedStats = async () => {
         download: data.download || 0
       }
       totalTraffic.value = Number(data.total_traffic || 0)
+      trafficTimeline.value = Array.isArray(data.timeline) ? data.timeline : []
       updateProtocolChart()
-      updateTrafficChart(data.timeline || [])
+      updateTrafficChart(trafficTimeline.value)
+      lastSuccessfulTrafficPeriod.value = trafficPeriod.value
+      return true
     }
   } catch (error) {
     console.error('加载详细统计失败:', error)
   }
+  return false
 }
 
 // 刷新所有数据
 const refreshData = async () => {
   loading.value = true
   try {
-    await Promise.all([
+    const [dashboardOk, detailedOk] = await Promise.all([
       loadDashboardStats(),
       loadDetailedStats()
     ])
+
+    if (!dashboardOk && !detailedOk) {
+      ElMessage.error('统计数据加载失败')
+    } else if (!dashboardOk || !detailedOk) {
+      ElMessage.warning('部分统计数据刷新失败')
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+const changeTrafficPeriod = async () => {
+  const previousPeriod = lastSuccessfulTrafficPeriod.value
+  const previousProtocolStats = [...protocolStats.value]
+  const previousUserStats = [...userStats.value]
+  const previousPeriodTrafficStats = { ...periodTrafficStats.value }
+  const previousTotalTraffic = totalTraffic.value
+  const previousTimeline = [...trafficTimeline.value]
+
+  loading.value = true
+  try {
+    const detailedOk = await loadDetailedStats()
+    if (!detailedOk) {
+      trafficPeriod.value = previousPeriod
+      protocolStats.value = previousProtocolStats
+      userStats.value = previousUserStats
+      periodTrafficStats.value = previousPeriodTrafficStats
+      totalTraffic.value = previousTotalTraffic
+      trafficTimeline.value = previousTimeline
+      updateProtocolChart()
+      updateTrafficChart(trafficTimeline.value)
+      ElMessage.warning('统计周期切换失败，已保留原统计数据')
+    }
   } finally {
     loading.value = false
   }
@@ -595,12 +673,13 @@ onUnmounted(() => {
 }
 
 .stat-card {
-  height: 140px;
+  min-height: 140px;
 }
 
 .stat-content {
   display: flex;
   align-items: center;
+  gap: 15px;
   padding: 10px 0;
 }
 
@@ -662,6 +741,23 @@ onUnmounted(() => {
   height: 300px;
 }
 
+.chart-shell {
+  position: relative;
+}
+
+.chart-container--muted {
+  opacity: 0.28;
+}
+
+.chart-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.95));
+}
+
 .card-header {
   display: flex;
   justify-content: space-between;
@@ -696,18 +792,31 @@ onUnmounted(() => {
   }
 
   .stat-card {
-    height: auto;
+    min-height: 0;
   }
 
-  .stat-content,
   .card-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
   }
 
+  .stat-content {
+    align-items: center;
+    flex-direction: row;
+    gap: 14px;
+    padding: 4px 0;
+  }
+
   .stat-icon {
     margin-right: 0;
+    width: 52px;
+    height: 52px;
+    flex-shrink: 0;
+  }
+
+  .stat-value {
+    font-size: 24px;
   }
 
   .chart-container {

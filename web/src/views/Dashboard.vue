@@ -316,6 +316,7 @@ import { ref, computed, onMounted, onUnmounted } from "vue";
 import { ElMessage } from "element-plus";
 import { statsApi, systemApi } from "@/api";
 import { useViewport } from "@/composables/useViewport";
+import { formatTrafficBytes } from "@/utils/traffic";
 
 const { isMobile } = useViewport();
 const DASHBOARD_REFRESH_INTERVAL = 60000;
@@ -347,7 +348,8 @@ const systemInfo = ref({
 });
 
 // 流量统计数据
-const trafficPeriod = ref("week");
+const trafficPeriod = ref("month");
+const lastSuccessfulTrafficPeriod = ref(trafficPeriod.value);
 const trafficStats = ref({
   total: 0,
   up: 0,
@@ -406,13 +408,13 @@ const buildProtocolTraffic = (stats) => {
 // 计算上传流量百分比
 const getUpPercentage = computed(() => {
   const total = trafficStats.value.up + trafficStats.value.down;
-  return total > 0 ? Math.round((trafficStats.value.up / total) * 100) : 50;
+  return total > 0 ? Math.round((trafficStats.value.up / total) * 100) : 0;
 });
 
 // 计算下载流量百分比
 const getDownPercentage = computed(() => {
   const total = trafficStats.value.up + trafficStats.value.down;
-  return total > 0 ? Math.round((trafficStats.value.down / total) * 100) : 50;
+  return total > 0 ? Math.round((trafficStats.value.down / total) * 100) : 0;
 });
 
 const hasTrafficLimit = computed(
@@ -450,7 +452,7 @@ const trafficPeriodLabel = computed(() => {
 
 const trafficPeriodSummaryHint = computed(() => {
   if (Number(trafficStats.value.total || 0) > 0) {
-    return `当前展示${trafficPeriodLabel.value.toLowerCase()}聚合流量`;
+    return `当前展示${trafficPeriodLabel.value}聚合流量`;
   }
 
   if (trafficPeriod.value === "today") {
@@ -495,13 +497,7 @@ const getDiskColor = computed(() => {
 
 // 格式化流量
 const formatTraffic = (bytes) => {
-  if (!bytes || bytes === 0) return "0 B";
-
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB", "TB", "PB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  return formatTrafficBytes(bytes);
 };
 const formatTrafficLimit = (bytes) => {
   const value = Number(bytes || 0);
@@ -635,6 +631,7 @@ const loadStats = async () => {
       : [];
     protocolStats.value = protocols;
     protocolTraffic.value = buildProtocolTraffic(protocols);
+    lastSuccessfulTrafficPeriod.value = trafficPeriod.value;
 
     return {
       success: true,
@@ -678,12 +675,11 @@ const refreshStats = async () => {
 };
 
 // 切换流量统计周期
-const changeTrafficPeriod = async (period) => {
-  const previousPeriod = trafficPeriod.value;
+const changeTrafficPeriod = async () => {
+  const previousPeriod = lastSuccessfulTrafficPeriod.value;
   const previousTrafficStats = { ...trafficStats.value };
   const previousProtocolStats = [...protocolStats.value];
   const previousProtocolTraffic = [...protocolTraffic.value];
-  trafficPeriod.value = period;
   const result = await loadStats();
 
   if (result.success && !result.partial) {
@@ -839,9 +835,26 @@ onUnmounted(() => {
 }
 
 .traffic-card {
+  display: flex;
+  flex: 1;
+  width: 100%;
   height: auto;
-  min-height: 260px;
+  min-height: 340px;
   margin-bottom: 10px;
+}
+
+.traffic-card :deep(.el-card__body) {
+  display: flex;
+  flex: 1;
+  min-height: 280px;
+}
+
+.traffic-stats :deep(.el-row) {
+  align-items: stretch;
+}
+
+.traffic-stats :deep(.el-col) {
+  display: flex;
 }
 
 .protocol-card {
@@ -851,11 +864,12 @@ onUnmounted(() => {
 
 .traffic-info {
   display: flex;
+  flex: 1;
   justify-content: space-between;
   align-items: flex-start;
   gap: 20px;
-  padding: 8px 10px 4px;
-  min-height: 180px;
+  min-height: 220px;
+  padding: 10px 12px 8px;
 }
 
 .traffic-data {
@@ -915,14 +929,24 @@ onUnmounted(() => {
 }
 
 .traffic-details {
-  padding: 20px;
-  height: 140px;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 220px;
+  padding: 10px 20px 8px;
 }
 
 .traffic-item {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  margin-bottom: 15px;
+  min-height: 36px;
+  margin-bottom: 18px;
+}
+
+.traffic-item:last-of-type {
+  margin-bottom: 0;
 }
 
 .traffic-item-label {
@@ -934,7 +958,8 @@ onUnmounted(() => {
 }
 
 .traffic-chart-small {
-  margin-top: 20px;
+  margin-top: 0;
+  padding-top: 28px;
 }
 
 .up-down-ratio {
@@ -1019,6 +1044,10 @@ onUnmounted(() => {
     gap: 12px;
   }
 
+  .panel-header :deep(.el-button) {
+    width: 100%;
+  }
+
   .stats-cards,
   .traffic-stats,
   .protocols-stats,
@@ -1045,7 +1074,7 @@ onUnmounted(() => {
   }
 
   .traffic-details {
-    height: auto;
+    min-height: auto;
     padding: 4px 0;
   }
 

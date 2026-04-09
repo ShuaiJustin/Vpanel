@@ -544,7 +544,29 @@ onMounted(loadSettings)
     padding: 12px;
   }
 
+  .page-header,
+  .page-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-actions {
+    width: 100%;
+  }
+
+  .page-actions :deep(.el-button) {
+    width: 100%;
+  }
+
   .payment-config-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .gateway-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .guide-grid {
     grid-template-columns: 1fr;
   }
 }

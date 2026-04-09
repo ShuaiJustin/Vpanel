@@ -252,6 +252,7 @@ onMounted(() => {
 
 <style scoped>
 .mobile-layout {
+  --mobile-tabbar-height: 60px;
   display: flex;
   flex-direction: column;
   min-height: 100vh;
@@ -310,14 +311,15 @@ onMounted(() => {
 /* 主内容区 */
 .mobile-main {
   flex: 1;
-  padding: 50px 0 16px;
+  padding: 50px 0 20px;
   background: transparent;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  scroll-padding-bottom: calc(56px + var(--mobile-tabbar-height));
 }
 
 .mobile-main.with-tabbar {
-  padding-bottom: 60px;
+  padding-bottom: calc(72px + var(--mobile-tabbar-height));
 }
 
 /* 底部导航栏 */
@@ -326,7 +328,7 @@ onMounted(() => {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 60px;
+  height: var(--mobile-tabbar-height);
   display: flex;
   background: var(--color-bg-card);
   border-top: 1px solid var(--color-border);
@@ -384,11 +386,11 @@ onMounted(() => {
 /* 安全区域适配 */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .mobile-tabbar {
-    height: calc(60px + env(safe-area-inset-bottom));
+    height: calc(var(--mobile-tabbar-height) + env(safe-area-inset-bottom));
   }
 
   .mobile-main.with-tabbar {
-    padding-bottom: calc(60px + env(safe-area-inset-bottom));
+    padding-bottom: calc(72px + var(--mobile-tabbar-height) + env(safe-area-inset-bottom));
   }
 }
 </style>

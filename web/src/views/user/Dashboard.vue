@@ -656,6 +656,7 @@ onBeforeUnmount(() => {
 .status-card {
   display: flex;
   align-items: center;
+  min-height: 108px;
   padding: 20px;
   background: var(--color-bg-card);
   border-radius: 8px;
@@ -739,6 +740,12 @@ onBeforeUnmount(() => {
   border-radius: 8px;
 }
 
+.traffic-card :deep(.el-card__body),
+.quick-actions-card :deep(.el-card__body) {
+  display: flex;
+  min-height: 280px;
+}
+
 .card-header {
   display: flex;
   justify-content: space-between;
@@ -760,6 +767,7 @@ onBeforeUnmount(() => {
 /* 流量卡片 */
 .traffic-overview {
   display: flex;
+  flex: 1;
   align-items: center;
   gap: 40px;
 }
@@ -785,6 +793,9 @@ onBeforeUnmount(() => {
 
 .traffic-details {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .traffic-item {
@@ -810,7 +821,10 @@ onBeforeUnmount(() => {
 /* 快捷操作 */
 .quick-actions {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  flex: 1;
+  align-content: start;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: minmax(88px, 1fr);
   gap: 16px;
 }
 
@@ -818,6 +832,8 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  min-height: 88px;
   padding: 16px;
   border-radius: 8px;
   cursor: pointer;
@@ -912,8 +928,14 @@ onBeforeUnmount(() => {
     gap: 24px;
   }
 
+  .traffic-card :deep(.el-card__body),
+  .quick-actions-card :deep(.el-card__body) {
+    min-height: auto;
+  }
+
   .quick-actions {
     grid-template-columns: repeat(2, 1fr);
+    grid-auto-rows: minmax(80px, auto);
   }
 }
 

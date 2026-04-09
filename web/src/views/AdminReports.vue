@@ -697,6 +697,12 @@ onMounted(fetchReports)
     padding: 12px;
   }
 
+  .overview-grid,
+  .compact-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
   .page-header,
   .page-actions,
   .card-header,
@@ -708,6 +714,30 @@ onMounted(fetchReports)
 
   .page-actions {
     width: 100%;
+  }
+
+  .page-actions :deep(.el-date-editor),
+  .page-actions :deep(.el-button) {
+    width: 100% !important;
+  }
+
+  .metric-card,
+  .compact-item {
+    padding: 14px;
+  }
+
+  .metric-value,
+  .compact-value {
+    font-size: 22px;
+  }
+
+  .card-header > :last-child,
+  .link-actions {
+    width: 100%;
+  }
+
+  .link-actions :deep(.el-button) {
+    padding-left: 0;
   }
 
   .detail-note {

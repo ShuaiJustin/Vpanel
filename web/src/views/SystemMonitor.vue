@@ -341,11 +341,13 @@ const getStatusType = (state) => {
 
 // 格式化字节大小
 const formatBytes = (bytes) => {
-  if (bytes === 0) return '0 B'
+  const normalized = Number(bytes)
+  if (!Number.isFinite(normalized) || normalized <= 0) return '0 B'
+  if (normalized < 1) return `${normalized.toFixed(2)} B`
   const k = 1024
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  const i = Math.floor(Math.log(normalized) / Math.log(k))
+  return parseFloat((normalized / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
 // 初始化图表
@@ -733,8 +735,26 @@ onUnmounted(() => {
     padding: 12px;
   }
 
+  .card-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .card-actions {
+    width: 100%;
+  }
+
+  .card-actions :deep(.el-button) {
+    flex: 1 1 100%;
+  }
+
   .monitor-stats-grid {
     grid-template-columns: 1fr;
+  }
+
+  .stats-value {
+    gap: 12px;
+    padding: 8px 0;
   }
 
   .chart {

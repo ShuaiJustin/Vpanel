@@ -954,10 +954,6 @@ type NodeTraffic struct {
 	Upload     int64     `json:"upload" gorm:"default:0"`   // bytes
 	Download   int64     `json:"download" gorm:"default:0"` // bytes
 	RecordedAt time.Time `json:"recorded_at" gorm:"index"`
-
-	Node  *Node  `json:"node,omitempty" gorm:"foreignKey:NodeID"`
-	User  *User  `json:"user,omitempty" gorm:"foreignKey:UserID"`
-	Proxy *Proxy `json:"proxy,omitempty" gorm:"foreignKey:ProxyID"`
 }
 
 // TableName returns the table name for NodeTraffic.

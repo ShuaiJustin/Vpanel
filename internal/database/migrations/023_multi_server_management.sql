@@ -95,10 +95,7 @@ CREATE TABLE IF NOT EXISTS node_traffic (
     proxy_id INTEGER,
     upload INTEGER DEFAULT 0,
     download INTEGER DEFAULT 0,
-    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (proxy_id) REFERENCES proxies(id) ON DELETE SET NULL
+    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Indexes for node traffic

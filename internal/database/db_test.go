@@ -12,6 +12,8 @@ import (
 	"github.com/leanovate/gopter/gen"
 	"github.com/leanovate/gopter/prop"
 	"gorm.io/gorm"
+
+	"v/internal/database/repository"
 )
 
 // Property 23: Database Connection Retry
@@ -364,4 +366,122 @@ func TestDatabaseClose(t *testing.T) {
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		t.Error("Database file should exist after close")
 	}
+}
+
+func TestDatabaseAutoMigrate_SharedTrafficTablesAllowSharedUsersWithForeignKeysEnabled(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "shared-traffic.db")
+
+	db, err := New(&Config{
+		Driver:              "sqlite",
+		DSN:                 dbPath,
+		HealthCheckInterval: time.Hour,
+		MaxRetries:          1,
+		RetryInterval:       10 * time.Millisecond,
+		SlowQueryThreshold:  200 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("failed to create database: %v", err)
+	}
+
+	// Simulate an old schema that enforced foreign keys on traffic tables.
+	if err := db.DB().Exec(`PRAGMA foreign_keys = OFF`).Error; err != nil {
+		t.Fatalf("failed to disable foreign keys: %v", err)
+	}
+	for _, stmt := range []string{
+		`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, password TEXT)`,
+		`CREATE TABLE IF NOT EXISTS nodes (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, address TEXT, token TEXT)`,
+		`CREATE TABLE IF NOT EXISTS proxies (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, name TEXT, protocol TEXT, port INTEGER)`,
+		`CREATE TABLE IF NOT EXISTS traffic (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				user_id INTEGER NOT NULL,
+				proxy_id INTEGER,
+				upload INTEGER DEFAULT 0,
+				download INTEGER DEFAULT 0,
+				recorded_at TIMESTAMP NOT NULL,
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+				FOREIGN KEY (proxy_id) REFERENCES proxies(id) ON DELETE SET NULL
+			)`,
+		`CREATE TABLE IF NOT EXISTS node_traffic (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				node_id INTEGER NOT NULL,
+			user_id INTEGER NOT NULL,
+			proxy_id INTEGER,
+			upload INTEGER DEFAULT 0,
+			download INTEGER DEFAULT 0,
+			recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (proxy_id) REFERENCES proxies(id) ON DELETE SET NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_node_traffic_node ON node_traffic(node_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_node_traffic_user ON node_traffic(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_node_traffic_proxy ON node_traffic(proxy_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_node_traffic_recorded ON node_traffic(recorded_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_node_traffic_node_recorded ON node_traffic(node_id, recorded_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_node_traffic_user_recorded ON node_traffic(user_id, recorded_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_traffic_user_id ON traffic(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_traffic_proxy_id ON traffic(proxy_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_traffic_recorded_at ON traffic(recorded_at)`,
+	} {
+		if execErr := db.DB().Exec(stmt).Error; execErr != nil {
+			t.Fatalf("failed to seed legacy schema: %v", execErr)
+		}
+	}
+	if err := db.DB().Exec(`PRAGMA foreign_keys = ON`).Error; err != nil {
+		t.Fatalf("failed to enable foreign keys: %v", err)
+	}
+
+	if err := db.AutoMigrate(); err != nil {
+		t.Fatalf("AutoMigrate failed: %v", err)
+	}
+
+	if err := db.DB().Exec(`PRAGMA foreign_keys = ON`).Error; err != nil {
+		t.Fatalf("failed to re-enable foreign keys after AutoMigrate: %v", err)
+	}
+
+	if err := db.DB().Create(&repository.Node{
+		ID:      1,
+		Name:    "shared-node",
+		Address: "127.0.0.1",
+		Token:   "node-token",
+	}).Error; err != nil {
+		t.Fatalf("failed to create node: %v", err)
+	}
+
+	result := db.DB().Create(&repository.NodeTraffic{
+		NodeID:   1,
+		UserID:   0,
+		Upload:   128,
+		Download: 64,
+	})
+	if result.Error != nil {
+		t.Fatalf("expected shared traffic insert to succeed, got %v", result.Error)
+	}
+	result = db.DB().Create(&repository.Traffic{
+		UserID:     0,
+		Upload:     32,
+		Download:   16,
+		RecordedAt: time.Now(),
+	})
+	if result.Error != nil {
+		t.Fatalf("expected shared global traffic insert to succeed, got %v", result.Error)
+	}
+
+	type fkRow struct {
+		Table string `gorm:"column:table"`
+		From  string `gorm:"column:from"`
+	}
+	for _, tableName := range []string{"traffic", "node_traffic"} {
+		var foreignKeys []fkRow
+		if err := db.DB().Raw(fmt.Sprintf(`PRAGMA foreign_key_list('%s')`, tableName)).Scan(&foreignKeys).Error; err != nil {
+			t.Fatalf("failed to inspect %s foreign keys: %v", tableName, err)
+		}
+		if len(foreignKeys) != 0 {
+			t.Fatalf("expected %s foreign keys to be removed, still found %+v", tableName, foreignKeys)
+		}
+	}
+
+	_ = db.Close()
 }

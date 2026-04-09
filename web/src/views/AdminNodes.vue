@@ -2720,6 +2720,10 @@ onUnmounted(() => {
     padding: 12px;
   }
 
+  .overview-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .nodes-table {
     min-width: 760px;
   }

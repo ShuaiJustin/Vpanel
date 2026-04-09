@@ -545,6 +545,8 @@ onUnmounted(() => {
 <style scoped>
 .balance-page {
   padding: 20px;
+  max-width: 1100px;
+  margin: 0 auto;
 }
 
 .page-header {
@@ -566,7 +568,7 @@ onUnmounted(() => {
 
 .balance-card {
   margin-bottom: 20px;
-  border-radius: 8px;
+  border-radius: 16px;
   background: linear-gradient(135deg, #409eff, #66b1ff);
 }
 
@@ -607,7 +609,13 @@ onUnmounted(() => {
 }
 
 .transactions-card {
-  border-radius: 8px;
+  border-radius: 16px;
+}
+
+.transactions-card :deep(.el-card__body) {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
 .card-header {
@@ -763,7 +771,7 @@ onUnmounted(() => {
 
 @media (max-width: 640px) {
   .balance-page {
-    padding: 12px;
+    padding: 12px 12px 96px;
   }
 
   .balance-info,

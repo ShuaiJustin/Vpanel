@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -69,8 +70,8 @@ type GroupTrafficStatsResponse struct {
 
 // RecordTrafficRequest represents a request to record traffic.
 type RecordTrafficRequest struct {
-	NodeID   int64  `json:"node_id" binding:"required"`
-	UserID   int64  `json:"user_id" binding:"required"`
+	NodeID   int64  `json:"node_id"`
+	UserID   int64  `json:"user_id"`
 	ProxyID  *int64 `json:"proxy_id"`
 	Upload   int64  `json:"upload"`
 	Download int64  `json:"download"`
@@ -78,11 +79,38 @@ type RecordTrafficRequest struct {
 
 // RecordTrafficBatchRequest represents a request to record multiple traffic entries.
 type RecordTrafficBatchRequest struct {
-	Records []RecordTrafficRequest `json:"records" binding:"required"`
+	Records []RecordTrafficRequest `json:"records"`
 }
 
 func formatAPITime(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
+}
+
+func normalizeTrafficProxyID(proxyID *int64) *int64 {
+	if proxyID == nil || *proxyID <= 0 {
+		return nil
+	}
+	normalized := *proxyID
+	return &normalized
+}
+
+func validateTrafficRequest(req RecordTrafficRequest) string {
+	if req.NodeID <= 0 {
+		return "node_id must be greater than zero"
+	}
+	if req.UserID < 0 {
+		return "user_id must be greater than or equal to zero"
+	}
+	if req.Upload < 0 {
+		return "upload must be greater than or equal to zero"
+	}
+	if req.Download < 0 {
+		return "download must be greater than or equal to zero"
+	}
+	if req.Upload == 0 && req.Download == 0 {
+		return "upload and download cannot both be zero"
+	}
+	return ""
 }
 
 // parseTimeRange parses and validates start and end time from query parameters.
@@ -378,6 +406,7 @@ func (h *NodeStatsHandler) GetTopUsersByTraffic(c *gin.Context) {
 		response[i] = gin.H{
 			"user_id":  s.UserID,
 			"node_id":  s.NodeID,
+			"username": s.Username,
 			"upload":   s.Upload,
 			"download": s.Download,
 			"total":    s.Total,
@@ -447,11 +476,15 @@ func (h *NodeStatsHandler) RecordTraffic(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
+	if validationErr := validateTrafficRequest(req); validationErr != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": validationErr})
+		return
+	}
 
 	record := &node.TrafficRecord{
 		NodeID:   req.NodeID,
 		UserID:   req.UserID,
-		ProxyID:  req.ProxyID,
+		ProxyID:  normalizeTrafficProxyID(req.ProxyID),
 		Upload:   req.Upload,
 		Download: req.Download,
 	}
@@ -473,13 +506,21 @@ func (h *NodeStatsHandler) RecordTrafficBatch(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
+	if len(req.Records) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "records cannot be empty"})
+		return
+	}
 
 	records := make([]*node.TrafficRecord, len(req.Records))
 	for i, r := range req.Records {
+		if validationErr := validateTrafficRequest(r); validationErr != "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("records[%d]: %s", i, validationErr)})
+			return
+		}
 		records[i] = &node.TrafficRecord{
 			NodeID:   r.NodeID,
 			UserID:   r.UserID,
-			ProxyID:  r.ProxyID,
+			ProxyID:  normalizeTrafficProxyID(r.ProxyID),
 			Upload:   r.Upload,
 			Download: r.Download,
 		}
@@ -550,18 +591,22 @@ func (h *NodeStatsHandler) GetRealTimeStats(c *gin.Context) {
 	}
 
 	// Get node statistics
-	nodeStatusStats, err := h.nodeService.GetStatistics(c.Request.Context())
-	if err != nil {
-		h.logger.Error("Failed to get node statistics", logger.Err(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get real-time stats"})
-		return
-	}
+	nodeStatusStats := map[string]int64{}
+	var totalUsers int64
+	if h.nodeService != nil {
+		nodeStatusStats, err = h.nodeService.GetStatistics(c.Request.Context())
+		if err != nil {
+			h.logger.Error("Failed to get node statistics", logger.Err(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get real-time stats"})
+			return
+		}
 
-	totalUsers, err := h.nodeService.GetTotalUsers(c.Request.Context())
-	if err != nil {
-		h.logger.Error("Failed to get total users", logger.Err(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get real-time stats"})
-		return
+		totalUsers, err = h.nodeService.GetTotalUsers(c.Request.Context())
+		if err != nil {
+			h.logger.Error("Failed to get total users", logger.Err(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get real-time stats"})
+			return
+		}
 	}
 
 	// Convert node stats

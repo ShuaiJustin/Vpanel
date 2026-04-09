@@ -252,7 +252,13 @@ onMounted(() => {
 
 <style scoped>
 .pause-card {
+  height: 100%;
   border-radius: 8px;
+}
+
+.pause-card :deep(.el-card__body) {
+  display: flex;
+  min-height: 260px;
 }
 
 .card-header {
@@ -263,6 +269,7 @@ onMounted(() => {
 
 .pause-content {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 16px;
 }
@@ -356,6 +363,7 @@ onMounted(() => {
 }
 
 .action-btn {
+  margin-top: auto;
   width: 100%;
 }
 

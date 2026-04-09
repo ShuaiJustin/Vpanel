@@ -150,6 +150,10 @@ func (d *Database) Close() error {
 
 // AutoMigrate runs database migrations.
 func (d *Database) AutoMigrate() error {
+	if err := d.ensureTrafficTablesSupportSharedUsers(context.Background()); err != nil {
+		return err
+	}
+
 	// Only run GORM auto migrations
 	// SQL migrations are disabled for PostgreSQL compatibility
 	if err := d.db.AutoMigrate(
@@ -311,6 +315,187 @@ func (d *Database) findDuplicateNormalizedUserEmails(ctx context.Context) ([]str
 	}
 
 	return duplicates, nil
+}
+
+func (d *Database) ensureTrafficTablesSupportSharedUsers(ctx context.Context) error {
+	for _, table := range []string{"traffic", "node_traffic"} {
+		if err := d.ensureSharedTrafficTableWithoutForeignKeys(ctx, table); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *Database) ensureSharedTrafficTableWithoutForeignKeys(ctx context.Context, tableName string) error {
+	if d == nil || d.db == nil {
+		return nil
+	}
+	if !d.db.Migrator().HasTable(tableName) {
+		return nil
+	}
+
+	switch d.db.Dialector.Name() {
+	case "sqlite", "sqlite3":
+		return d.ensureSQLiteSharedTrafficTableWithoutForeignKeys(ctx, tableName)
+	case "postgres", "postgresql":
+		return d.dropPostgresTableForeignKeys(ctx, tableName)
+	case "mysql":
+		return d.dropMySQLTableForeignKeys(ctx, tableName)
+	default:
+		return nil
+	}
+}
+
+func (d *Database) ensureSQLiteSharedTrafficTableWithoutForeignKeys(ctx context.Context, tableName string) error {
+	var createSQL string
+	if err := d.db.WithContext(ctx).
+		Raw(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`, tableName).
+		Row().
+		Scan(&createSQL); err != nil {
+		return fmt.Errorf("inspect sqlite %s schema: %w", tableName, err)
+	}
+
+	normalizedSQL := strings.ToLower(createSQL)
+	if !strings.Contains(normalizedSQL, "foreign key") {
+		return nil
+	}
+
+	var createReplacement string
+	var indexStatements []string
+	switch tableName {
+	case "traffic":
+		createReplacement = `
+			CREATE TABLE traffic__shared_user_tmp (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				user_id INTEGER NOT NULL,
+				proxy_id INTEGER,
+				upload INTEGER DEFAULT 0,
+				download INTEGER DEFAULT 0,
+				recorded_at TIMESTAMP NOT NULL,
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+			)
+		`
+		indexStatements = []string{
+			`CREATE INDEX IF NOT EXISTS idx_traffic_user_id ON traffic(user_id)`,
+			`CREATE INDEX IF NOT EXISTS idx_traffic_proxy_id ON traffic(proxy_id)`,
+			`CREATE INDEX IF NOT EXISTS idx_traffic_recorded_at ON traffic(recorded_at)`,
+		}
+	case "node_traffic":
+		createReplacement = `
+			CREATE TABLE node_traffic__shared_user_tmp (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				node_id INTEGER NOT NULL,
+				user_id INTEGER NOT NULL,
+				proxy_id INTEGER,
+				upload INTEGER DEFAULT 0,
+				download INTEGER DEFAULT 0,
+				recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			)
+		`
+		indexStatements = []string{
+			`CREATE INDEX IF NOT EXISTS idx_node_traffic_node ON node_traffic(node_id)`,
+			`CREATE INDEX IF NOT EXISTS idx_node_traffic_user ON node_traffic(user_id)`,
+			`CREATE INDEX IF NOT EXISTS idx_node_traffic_proxy ON node_traffic(proxy_id)`,
+			`CREATE INDEX IF NOT EXISTS idx_node_traffic_recorded ON node_traffic(recorded_at)`,
+			`CREATE INDEX IF NOT EXISTS idx_node_traffic_node_recorded ON node_traffic(node_id, recorded_at)`,
+			`CREATE INDEX IF NOT EXISTS idx_node_traffic_user_recorded ON node_traffic(user_id, recorded_at)`,
+		}
+	default:
+		return nil
+	}
+
+	tempTableName := tableName + "__shared_user_tmp"
+
+	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`PRAGMA foreign_keys = OFF`).Error; err != nil {
+			return fmt.Errorf("disable sqlite foreign keys: %w", err)
+		}
+		if err := tx.Exec(fmt.Sprintf(`DROP TABLE IF EXISTS %s`, tempTableName)).Error; err != nil {
+			return fmt.Errorf("drop stale sqlite %s temp table: %w", tableName, err)
+		}
+		if err := tx.Exec(createReplacement).Error; err != nil {
+			return fmt.Errorf("create sqlite %s temp table: %w", tableName, err)
+		}
+		if err := tx.Exec(fmt.Sprintf(`INSERT INTO %s SELECT * FROM %s`, tempTableName, tableName)).Error; err != nil {
+			return fmt.Errorf("copy sqlite %s rows: %w", tableName, err)
+		}
+		if err := tx.Exec(fmt.Sprintf(`DROP TABLE %s`, tableName)).Error; err != nil {
+			return fmt.Errorf("drop sqlite %s: %w", tableName, err)
+		}
+		if err := tx.Exec(fmt.Sprintf(`ALTER TABLE %s RENAME TO %s`, tempTableName, tableName)).Error; err != nil {
+			return fmt.Errorf("rename sqlite %s temp table: %w", tableName, err)
+		}
+		for _, stmt := range indexStatements {
+			if err := tx.Exec(stmt).Error; err != nil {
+				return fmt.Errorf("recreate sqlite %s index: %w", tableName, err)
+			}
+		}
+		if err := tx.Exec(`PRAGMA foreign_keys = ON`).Error; err != nil {
+			return fmt.Errorf("enable sqlite foreign keys: %w", err)
+		}
+		return nil
+	})
+}
+
+func (d *Database) dropPostgresTableForeignKeys(ctx context.Context, tableName string) error {
+	type constraintRow struct {
+		ConstraintName string `gorm:"column:constraint_name"`
+	}
+
+	rows := make([]constraintRow, 0)
+	if err := d.db.WithContext(ctx).Raw(`
+		SELECT tc.constraint_name
+		FROM information_schema.table_constraints tc
+		JOIN information_schema.key_column_usage kcu
+			ON tc.constraint_name = kcu.constraint_name
+			AND tc.table_schema = kcu.table_schema
+		WHERE tc.constraint_type = 'FOREIGN KEY'
+			AND tc.table_schema = CURRENT_SCHEMA()
+			AND tc.table_name = ?
+	`, tableName).Scan(&rows).Error; err != nil {
+		return fmt.Errorf("inspect postgres %s foreign keys: %w", tableName, err)
+	}
+
+	for _, row := range rows {
+		if row.ConstraintName == "" {
+			continue
+		}
+		stmt := fmt.Sprintf(`ALTER TABLE %s DROP CONSTRAINT IF EXISTS "%s"`, tableName, row.ConstraintName)
+		if err := d.db.WithContext(ctx).Exec(stmt).Error; err != nil {
+			return fmt.Errorf("drop postgres %s foreign key %s: %w", tableName, row.ConstraintName, err)
+		}
+	}
+
+	return nil
+}
+
+func (d *Database) dropMySQLTableForeignKeys(ctx context.Context, tableName string) error {
+	type constraintRow struct {
+		ConstraintName string `gorm:"column:constraint_name"`
+	}
+
+	rows := make([]constraintRow, 0)
+	if err := d.db.WithContext(ctx).Raw(`
+		SELECT constraint_name
+		FROM information_schema.key_column_usage
+		WHERE table_schema = DATABASE()
+			AND table_name = ?
+			AND referenced_table_name IS NOT NULL
+	`, tableName).Scan(&rows).Error; err != nil {
+		return fmt.Errorf("inspect mysql %s foreign keys: %w", tableName, err)
+	}
+
+	for _, row := range rows {
+		if row.ConstraintName == "" {
+			continue
+		}
+		stmt := fmt.Sprintf("ALTER TABLE %s DROP FOREIGN KEY `%s`", tableName, row.ConstraintName)
+		if err := d.db.WithContext(ctx).Exec(stmt).Error; err != nil {
+			return fmt.Errorf("drop mysql %s foreign key %s: %w", tableName, row.ConstraintName, err)
+		}
+	}
+
+	return nil
 }
 
 // Ping checks the database connection.

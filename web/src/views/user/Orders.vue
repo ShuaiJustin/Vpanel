@@ -440,6 +440,8 @@ onMounted(() => {
 <style scoped>
 .orders-page {
   padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
 .page-header {
@@ -478,11 +480,29 @@ onMounted(() => {
 }
 
 .orders-card {
-  border-radius: 8px;
+  border-radius: 16px;
+}
+
+.orders-card :deep(.el-card__body) {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .orders-filter {
-  margin-bottom: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--color-bg-page);
+  border: 1px solid var(--color-border-light);
+}
+
+.orders-filter :deep(.el-radio-group) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .table-wrap {
@@ -491,6 +511,10 @@ onMounted(() => {
 
 .loading-container {
   padding: 20px;
+}
+
+.orders-card :deep(.el-empty) {
+  padding: 32px 0 12px;
 }
 
 .empty-description {
@@ -529,7 +553,27 @@ onMounted(() => {
 
 @media (max-width: 768px) {
   .orders-page {
-    padding: 12px;
+    padding: 12px 12px 96px;
+  }
+
+  .orders-filter {
+    padding: 14px;
+  }
+
+  .orders-filter :deep(.el-radio-group) {
+    width: 100%;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .orders-filter :deep(.el-radio-button) {
+    flex: 1 1 calc(50% - 8px);
+    min-width: calc(50% - 8px);
+  }
+
+  .orders-filter :deep(.el-radio-button__inner) {
+    width: 100%;
+    text-align: center;
   }
 
   .pagination-container {

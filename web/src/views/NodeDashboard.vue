@@ -933,12 +933,17 @@ async function fetchData() {
       }),
     ]);
 
-    // Log individual failures without breaking the whole dashboard
+    // Log individual failures without breaking the whole dashboard.
     results.forEach((result, idx) => {
       if (result.status === 'rejected') {
         console.warn(`Dashboard fetch [${idx}] failed:`, result.reason);
       }
     });
+
+    const successCount = results.filter((result) => result.status === "fulfilled").length;
+    if (successCount === 0) {
+      throw new Error("所有节点概览请求均失败");
+    }
 
     if (results[3]?.status === "fulfilled") {
       const totalTraffic = results[3].value;
@@ -1729,7 +1734,8 @@ onUnmounted(() => {
   }
 
   .metrics-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
   }
 
   .title-row {
@@ -1765,6 +1771,20 @@ onUnmounted(() => {
 
   .node-dashboard-page .header-actions > :last-child {
     grid-column: 1 / -1;
+  }
+
+  .metric-card {
+    min-height: 0;
+  }
+
+  .metric-value {
+    font-size: 26px;
+  }
+
+  .metric-icon-shell {
+    width: 46px;
+    height: 46px;
+    font-size: 22px;
   }
 
   .hero-layout,

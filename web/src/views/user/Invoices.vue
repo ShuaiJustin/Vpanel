@@ -226,6 +226,8 @@ onMounted(() => {
 <style scoped>
 .invoices-page {
   padding: 20px;
+  max-width: 1100px;
+  margin: 0 auto;
 }
 
 .page-header {
@@ -246,11 +248,21 @@ onMounted(() => {
 }
 
 .invoices-card {
-  border-radius: 8px;
+  border-radius: 16px;
+}
+
+.invoices-card :deep(.el-card__body) {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
 .loading-container {
   padding: 20px;
+}
+
+.invoices-card :deep(.el-empty) {
+  padding: 24px 0 8px;
 }
 
 .amount {
@@ -267,5 +279,15 @@ onMounted(() => {
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
+}
+
+@media (max-width: 768px) {
+  .invoices-page {
+    padding: 12px 12px 96px;
+  }
+
+  .pagination-container {
+    justify-content: center;
+  }
 }
 </style>
