@@ -26,6 +26,13 @@ export const nodesApi = {
   get: (id) => api.get(`/admin/nodes/${id}`),
 
   /**
+   * 获取节点流量采集诊断
+   * @param {number|string} id - 节点 ID
+   * @returns {Promise<Object>} 流量采集诊断
+   */
+  getTrafficDiagnostic: (id) => api.get(`/admin/nodes/${id}/traffic-diagnostic`),
+
+  /**
    * 创建节点
    * @param {Object} data - 节点数据
    * @param {string} data.name - 节点名称

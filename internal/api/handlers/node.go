@@ -3,15 +3,21 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	stderrors "errors"
+	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"v/internal/agent"
 	"v/internal/api/middleware"
 	"v/internal/logger"
 	"v/internal/node"
@@ -24,6 +30,7 @@ type NodeHandler struct {
 	groupService    *node.GroupService
 	deployService   *node.RemoteDeployService
 	recoveryTracker *NodeRecoveryTracker
+	httpClient      *http.Client
 	logger          logger.Logger
 }
 
@@ -36,6 +43,7 @@ func NewNodeHandler(nodeService *node.Service, groupService *node.GroupService, 
 		groupService:    groupService,
 		deployService:   deployService,
 		recoveryTracker: recoveryTracker,
+		httpClient:      &http.Client{Timeout: 5 * time.Second},
 		logger:          log,
 	}
 }
@@ -127,6 +135,17 @@ type NodeResponse struct {
 type NodeWithTokenResponse struct {
 	NodeResponse
 	Token string `json:"token"`
+}
+
+// TrafficDiagnosticResponse represents traffic collection diagnostics for a node.
+type TrafficDiagnosticResponse struct {
+	NodeID           int64                         `json:"node_id"`
+	NodeName         string                        `json:"node_name"`
+	Address          string                        `json:"address"`
+	Port             int                           `json:"port"`
+	DiagnosticStatus string                        `json:"diagnostic_status"`
+	Message          string                        `json:"message"`
+	Traffic          *agent.TrafficCollectorStatus `json:"traffic,omitempty"`
 }
 
 // MaskedTokenResponse includes a masked token for display after initial creation.
@@ -453,6 +472,188 @@ func (h *NodeHandler) buildNodeResponse(ctx context.Context, n *node.Node) *Node
 	return resp
 }
 
+func normalizeTrafficDiagnosticPath(path string) string {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return ""
+	}
+	cleaned := filepath.Clean(trimmed)
+	if cleaned == "." {
+		return ""
+	}
+	return cleaned
+}
+
+func nodeAgentTrafficStatusURL(address string, port int) (string, error) {
+	host := strings.TrimSpace(address)
+	if host == "" {
+		return "", fmt.Errorf("node address is empty")
+	}
+	if port <= 0 {
+		port = 18443
+	}
+	return fmt.Sprintf("http://%s/traffic/status", net.JoinHostPort(host, strconv.Itoa(port))), nil
+}
+
+func nodeTrafficDiagnosticStatus(
+	collector *agent.TrafficCollectorStatus,
+	statusCode int,
+	fetchErr error,
+) string {
+	if fetchErr != nil {
+		if statusCode == http.StatusOK {
+			return agent.TrafficCollectorStatusCollectorError
+		}
+		return "agent_unreachable"
+	}
+	if statusCode == http.StatusNotFound {
+		return "agent_no_traffic_endpoint"
+	}
+	if statusCode != http.StatusOK {
+		return agent.TrafficCollectorStatusCollectorError
+	}
+	if collector == nil {
+		return agent.TrafficCollectorStatusCollectorError
+	}
+	if !collector.XrayRunning {
+		return "xray_not_running"
+	}
+	switch collector.Status {
+	case agent.TrafficCollectorStatusHealthyCollecting:
+		return agent.TrafficCollectorStatusHealthyCollecting
+	case agent.TrafficCollectorStatusHealthyIdle:
+		return agent.TrafficCollectorStatusHealthyIdle
+	default:
+		return agent.TrafficCollectorStatusCollectorError
+	}
+}
+
+func hasTrafficConfigPathMismatch(collector *agent.TrafficCollectorStatus) bool {
+	if collector == nil {
+		return false
+	}
+	configured := normalizeTrafficDiagnosticPath(collector.ConfiguredConfigPath)
+	resolved := normalizeTrafficDiagnosticPath(collector.ResolvedConfigPath)
+	return configured != "" && resolved != "" && configured != resolved
+}
+
+func trafficConfigMismatchMessage(collector *agent.TrafficCollectorStatus) string {
+	if !hasTrafficConfigPathMismatch(collector) {
+		return ""
+	}
+	return fmt.Sprintf(
+		"agent 配置路径与运行中的 Xray 配置路径不一致，当前使用 %s 采集流量",
+		normalizeTrafficDiagnosticPath(collector.ResolvedConfigPath),
+	)
+}
+
+func nodeTrafficDiagnosticMessage(
+	diagnosticStatus string,
+	collector *agent.TrafficCollectorStatus,
+	statusCode int,
+	fetchErr error,
+) string {
+	if fetchErr != nil {
+		if statusCode == http.StatusOK {
+			return fmt.Sprintf("无法解析节点返回的流量诊断数据: %v", fetchErr)
+		}
+		return fmt.Sprintf("无法连接到节点 Agent，请检查地址、端口和防火墙: %v", fetchErr)
+	}
+
+	if mismatch := trafficConfigMismatchMessage(collector); mismatch != "" &&
+		(diagnosticStatus == agent.TrafficCollectorStatusHealthyCollecting ||
+			diagnosticStatus == agent.TrafficCollectorStatusHealthyIdle ||
+			diagnosticStatus == agent.TrafficCollectorStatusCollectorError) {
+		return mismatch
+	}
+
+	switch diagnosticStatus {
+	case "agent_no_traffic_endpoint":
+		return "节点 Agent 可达，但当前版本未提供 /traffic/status 诊断接口"
+	case "xray_not_running":
+		return "节点 Agent 可达，但 Xray 当前未运行"
+	case agent.TrafficCollectorStatusCollectorError:
+		if collector != nil && strings.TrimSpace(collector.LastError) != "" {
+			return collector.LastError
+		}
+		if statusCode != http.StatusOK && statusCode > 0 {
+			return fmt.Sprintf("节点 Agent 返回异常状态码 %d", statusCode)
+		}
+		return "流量采集器报告异常"
+	case agent.TrafficCollectorStatusHealthyIdle:
+		return "流量采集器运行正常，当前没有新的用户流量记录"
+	case agent.TrafficCollectorStatusHealthyCollecting:
+		if collector != nil {
+			return fmt.Sprintf("流量采集器运行正常，最近一次采集记录数 %d", collector.LastRecordCount)
+		}
+		return "流量采集器运行正常，最近一次采集已有流量记录"
+	case "agent_unreachable":
+		return "无法连接到节点 Agent，请检查节点地址、端口和防火墙"
+	default:
+		return "流量采集状态未知"
+	}
+}
+
+func (h *NodeHandler) fetchTrafficCollectorStatus(
+	ctx context.Context,
+	n *node.Node,
+) (*agent.TrafficCollectorStatus, int, error) {
+	if n == nil {
+		return nil, 0, fmt.Errorf("node is nil")
+	}
+
+	url, err := nodeAgentTrafficStatusURL(n.Address, n.Port)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	client := h.httpClient
+	if client == nil {
+		client = &http.Client{Timeout: 5 * time.Second}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return nil, resp.StatusCode, nil
+	}
+
+	var collector agent.TrafficCollectorStatus
+	if err := json.NewDecoder(resp.Body).Decode(&collector); err != nil {
+		return nil, resp.StatusCode, err
+	}
+
+	return &collector, resp.StatusCode, nil
+}
+
+func (h *NodeHandler) buildTrafficDiagnosticResponse(
+	ctx context.Context,
+	n *node.Node,
+) *TrafficDiagnosticResponse {
+	collector, statusCode, fetchErr := h.fetchTrafficCollectorStatus(ctx, n)
+	diagnosticStatus := nodeTrafficDiagnosticStatus(collector, statusCode, fetchErr)
+
+	return &TrafficDiagnosticResponse{
+		NodeID:           n.ID,
+		NodeName:         n.Name,
+		Address:          n.Address,
+		Port:             n.Port,
+		DiagnosticStatus: diagnosticStatus,
+		Message:          nodeTrafficDiagnosticMessage(diagnosticStatus, collector, statusCode, fetchErr),
+		Traffic:          collector,
+	}
+}
+
 // List returns all nodes with optional filtering.
 // GET /api/admin/nodes
 func (h *NodeHandler) List(c *gin.Context) {
@@ -591,6 +792,29 @@ func (h *NodeHandler) Get(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, h.buildNodeResponse(c.Request.Context(), n))
+}
+
+// GetTrafficDiagnostic returns the live traffic collection diagnostic for a node.
+// GET /api/admin/nodes/:id/traffic-diagnostic
+func (h *NodeHandler) GetTrafficDiagnostic(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		middleware.HandleBadRequest(c, errors.MsgFieldInvalidFormat)
+		return
+	}
+
+	n, err := h.nodeService.GetByID(c.Request.Context(), id)
+	if err != nil {
+		if err == node.ErrNodeNotFound {
+			middleware.HandleNotFound(c, "node", id)
+			return
+		}
+		h.logger.Error("Failed to get node for traffic diagnostic", logger.Err(err), logger.F("id", id))
+		middleware.HandleInternalError(c, errors.MsgNodeNotFound, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, h.buildTrafficDiagnosticResponse(c.Request.Context(), n))
 }
 
 // Create creates a new node.

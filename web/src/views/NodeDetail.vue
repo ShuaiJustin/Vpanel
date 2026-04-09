@@ -412,6 +412,70 @@
           </div>
         </el-card>
 
+        <el-card
+          shadow="never"
+          class="info-card"
+        >
+          <template #header>
+            <PageSectionHeader
+              title="流量采集诊断"
+              subtitle="定位节点在线但流量不上报的问题"
+            >
+              <el-button
+                link
+                :loading="trafficDiagnosticLoading"
+                @click="fetchTrafficDiagnostic"
+              >
+                刷新诊断
+              </el-button>
+            </PageSectionHeader>
+          </template>
+          <div
+            v-if="trafficDiagnostic"
+            class="traffic-diagnostic"
+          >
+            <div class="traffic-diagnostic__header">
+              <el-tag
+                :type="trafficDiagnosticStatusType"
+                size="small"
+              >
+                {{ trafficDiagnosticStatusText }}
+              </el-tag>
+            </div>
+            <div class="traffic-diagnostic__message">
+              {{ trafficDiagnostic.message || '暂无诊断说明' }}
+            </div>
+            <el-alert
+              v-if="trafficDiagnosticHasMismatch"
+              type="warning"
+              :closable="false"
+              show-icon
+              class="traffic-diagnostic__alert"
+              title="检测到历史手工节点路径漂移，建议将 agent 配置收口到 /usr/local/etc/xray/config.json。"
+            />
+            <el-descriptions
+              :column="1"
+              border
+              size="small"
+            >
+              <el-descriptions-item
+                v-for="item in trafficDiagnosticItems"
+                :key="item.label"
+                :label="item.label"
+              >
+                <span class="detail-inline-text">
+                  {{ item.value }}
+                </span>
+              </el-descriptions-item>
+            </el-descriptions>
+          </div>
+          <el-empty
+            v-else
+            description="暂无诊断数据"
+            :image-size="60"
+          />
+        </el-card>
+
         <!-- 所属分组 -->
         <el-card
           shadow="never"
@@ -576,6 +640,12 @@ import {
   hasNodeTrafficLimit,
   parseNodeTags as parseTags
 } from '@/composables/useNodePresentation'
+import {
+  getNodeTrafficDiagnosticStatusText,
+  getNodeTrafficDiagnosticStatusType,
+  hasNodeTrafficDiagnosticConfigMismatch,
+  normalizeNodeTrafficDiagnostic
+} from '@/composables/useNodeTrafficDiagnostic'
 import { useViewport } from '@/composables/useViewport'
 
 const route = useRoute()
@@ -593,6 +663,8 @@ const trafficPeriod = ref('today')
 const trafficStats = ref({ upload: 0, download: 0 })
 const topUsers = ref([])
 const nodeGroups = ref([])
+const trafficDiagnostic = ref(null)
+const trafficDiagnosticLoading = ref(false)
 
 const node = computed(() => nodeStore.currentNode)
 const supportedProtocols = computed(() => Array.isArray(node.value?.protocols) ? node.value.protocols : [])
@@ -637,6 +709,33 @@ const topUsersEmptyDescription = computed(() => {
     return `当前所选${trafficPeriodText.value}存在流量，但暂无可归属到具体用户的流量记录`
   }
   return `当前所选${trafficPeriodText.value}暂无流量记录`
+})
+const trafficDiagnosticStatusText = computed(() => getNodeTrafficDiagnosticStatusText(
+  trafficDiagnostic.value?.diagnostic_status
+))
+const trafficDiagnosticStatusType = computed(() => getNodeTrafficDiagnosticStatusType(
+  trafficDiagnostic.value?.diagnostic_status
+))
+const trafficDiagnosticHasMismatch = computed(() => hasNodeTrafficDiagnosticConfigMismatch(
+  trafficDiagnostic.value
+))
+const trafficDiagnosticItems = computed(() => {
+  const traffic = trafficDiagnostic.value?.traffic || {}
+  const attemptedPaths = Array.isArray(traffic.candidate_config_paths)
+    ? traffic.candidate_config_paths.join(' / ')
+    : ''
+
+  return [
+    { label: '配置路径', value: traffic.configured_config_path || '-' },
+    { label: '命中路径', value: traffic.resolved_config_path || '-' },
+    { label: '尝试路径', value: attemptedPaths || '-' },
+    { label: 'API 端口', value: traffic.api_port || '-' },
+    { label: '最近采集', value: formatTime(traffic.last_collection_at) },
+    { label: '最近成功', value: formatTime(traffic.last_success_at) },
+    { label: '最近错误', value: traffic.last_error || '-' },
+    { label: '错误时间', value: formatTime(traffic.last_error_at) },
+    { label: '最近记录数', value: traffic.last_record_count ?? 0 }
+  ]
 })
 const currentUsersLimitDisplay = computed(() => formatUsersLimitDisplay(
   node.value?.current_users,
@@ -841,6 +940,20 @@ const fetchTopUsers = async () => {
   }
 }
 
+const fetchTrafficDiagnostic = async () => {
+  if (!node.value) return
+  trafficDiagnosticLoading.value = true
+  try {
+    const res = await nodeStore.getTrafficDiagnostic(node.value.id)
+    trafficDiagnostic.value = normalizeNodeTrafficDiagnostic(res)
+  } catch (e) {
+    console.error('获取流量诊断失败:', e)
+    trafficDiagnostic.value = null
+  } finally {
+    trafficDiagnosticLoading.value = false
+  }
+}
+
 const fetchNodeGroups = async () => {
   if (!node.value) return
   try {
@@ -857,7 +970,7 @@ const fetchNodeGroups = async () => {
 
 const refreshData = async () => {
   await fetchNode()
-  await Promise.all([fetchTraffic(), fetchTopUsers(), fetchNodeGroups()])
+  await Promise.all([fetchTraffic(), fetchTopUsers(), fetchNodeGroups(), fetchTrafficDiagnostic()])
 }
 
 const goBack = () => {
@@ -962,6 +1075,7 @@ watch(
     trafficStats.value = { upload: 0, download: 0 }
     topUsers.value = []
     nodeGroups.value = []
+    trafficDiagnostic.value = null
     await refreshData()
   }
 )
@@ -1052,6 +1166,26 @@ watch(
 
 .info-card {
   margin-bottom: 20px;
+}
+
+.traffic-diagnostic {
+  display: grid;
+  gap: 12px;
+}
+
+.traffic-diagnostic__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.traffic-diagnostic__message {
+  color: var(--el-text-color-regular);
+  line-height: 1.6;
+}
+
+.traffic-diagnostic__alert {
+  margin-bottom: 4px;
 }
 
 .tags-section {

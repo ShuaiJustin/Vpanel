@@ -836,6 +836,7 @@ func (r *Router) Setup() {
 				adminNodes.POST("/test-connection", authMiddleware.RequirePermission("system:write"), nodeDeployHandler.TestConnection)
 
 				adminNodes.GET("/:id", authMiddleware.RequirePermission("system:read"), nodeHandler.Get)
+				adminNodes.GET("/:id/traffic-diagnostic", authMiddleware.RequirePermission("system:read"), nodeHandler.GetTrafficDiagnostic)
 				adminNodes.GET("/:id/install-status", authMiddleware.RequirePermission("system:read"), nodeHandler.GetInstallStatus)
 				adminNodes.GET("/:id/network-optimization", authMiddleware.RequirePermission("system:read"), nodeNetworkOptimizationHandler.GetProfile)
 				adminNodes.POST("/:id/network-optimization/inspect", authMiddleware.RequirePermission("system:write"), nodeNetworkOptimizationHandler.Inspect)

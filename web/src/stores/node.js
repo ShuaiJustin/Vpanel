@@ -384,6 +384,15 @@ export const useNodeStore = defineStore('node', () => {
     }
   }
 
+  const getTrafficDiagnostic = async (id) => {
+    try {
+      return await nodesApi.getTrafficDiagnostic(id)
+    } catch (err) {
+      error.value = err.message || '获取流量诊断失败'
+      throw err
+    }
+  }
+
   const getTotalTraffic = async (params) => {
     try {
       return await nodesApi.getTotalTraffic(params)
@@ -460,6 +469,7 @@ export const useNodeStore = defineStore('node', () => {
     fetchStatistics,
     fetchClusterHealth,
     getNodeTraffic,
+    getTrafficDiagnostic,
     getTopUsers,
     getTotalTraffic,
     getTrafficByNode,

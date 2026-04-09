@@ -284,7 +284,7 @@ panel:
   token: "<node-token>"
 xray:
   binary_path: "/usr/local/bin/xray"
-  config_path: "/etc/xray/config.json"
+  config_path: "/usr/local/etc/xray/config.json"
 EOF
 
 # 启动 agent

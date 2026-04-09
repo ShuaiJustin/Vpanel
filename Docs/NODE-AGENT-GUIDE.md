@@ -102,7 +102,7 @@ node:
 # Xray配置
 xray:
   binary_path: "/usr/local/bin/xray"    # Xray二进制路径
-  config_path: "/etc/xray/config.json"  # Xray配置文件路径
+  config_path: "/usr/local/etc/xray/config.json"  # 托管标准路径；历史手工节点仍兼容 /etc/xray/config.json
   backup_dir: "/var/backups/xray"       # 配置备份目录
 
 # 健康检查服务
@@ -194,6 +194,19 @@ curl http://localhost:18443/health
 - Agent是否有写入权限
 - Xray配置目录是否存在
 - 查看Agent日志中的错误信息
+
+### Q5: 节点在线但流量不上报
+**检查：**
+- Agent 配置里的 Xray 路径：`grep config_path /etc/vpanel/agent.yaml`
+- Xray 实际运行路径：`ps -eo pid=,comm=,args= | grep xray`
+- Xray Stats API 是否可用：`/usr/local/bin/xray api statsquery --server=127.0.0.1:<api_port>`
+- Agent 流量诊断：`curl http://127.0.0.1:18443/traffic/status`
+
+**历史手工节点巡检步骤：**
+1. 核对 `/etc/vpanel/agent.yaml` 中的 `xray.config_path` 是否已经收口到 `/usr/local/etc/xray/config.json`
+2. 核对 `ps` 输出里的 Xray `-config` 或 `-c` 实际参数
+3. 如果 Agent 配置路径与 Xray 实际运行路径不一致，优先以运行中的配置路径为准修正 Agent 配置
+4. 确认 `curl http://127.0.0.1:18443/traffic/status` 返回 `healthy_idle` 或 `healthy_collecting`
 
 ## 多节点部署
 

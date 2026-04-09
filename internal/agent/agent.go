@@ -32,6 +32,11 @@ type heartbeatTrafficReporter interface {
 	Commit(snapshot *TrafficSnapshot)
 }
 
+type heartbeatTrafficStatusReporter interface {
+	heartbeatTrafficReporter
+	GetCollectorStatus() *TrafficCollectorStatus
+}
+
 type heartbeatTrafficStateReporter interface {
 	heartbeatTrafficReporter
 	ExportCommittedCounters() map[string]int64
@@ -45,15 +50,15 @@ type pendingTrafficBatch struct {
 }
 
 type persistedTrafficState struct {
-	CommittedCounters map[string]int64               `json:"committed_counters,omitempty"`
-	PendingBatch      *persistedPendingTrafficBatch  `json:"pending_batch,omitempty"`
+	CommittedCounters map[string]int64              `json:"committed_counters,omitempty"`
+	PendingBatch      *persistedPendingTrafficBatch `json:"pending_batch,omitempty"`
 }
 
 type persistedPendingTrafficBatch struct {
-	BatchID  string          `json:"batch_id"`
+	BatchID  string           `json:"batch_id"`
 	Snapshot *TrafficSnapshot `json:"-"`
 	Counters map[string]int64 `json:"counters,omitempty"`
-	Records  []TrafficRecord `json:"records,omitempty"`
+	Records  []TrafficRecord  `json:"records,omitempty"`
 }
 
 // Agent represents the Node Agent that runs on each Xray node.
@@ -838,6 +843,24 @@ func (a *Agent) GetMetrics() *NodeMetrics {
 	return a.collectMetrics()
 }
 
+// GetTrafficCollectorStatus returns the current traffic collection status.
+func (a *Agent) GetTrafficCollectorStatus() *TrafficCollectorStatus {
+	statusReporter, ok := a.trafficReporter.(heartbeatTrafficStatusReporter)
+	if !ok {
+		return &TrafficCollectorStatus{
+			Status:      TrafficCollectorStatusUnknown,
+			XrayRunning: a.currentXrayStatus().Running,
+		}
+	}
+
+	status := statusReporter.GetCollectorStatus()
+	if status == nil {
+		status = &TrafficCollectorStatus{Status: TrafficCollectorStatusUnknown}
+	}
+	status.XrayRunning = a.currentXrayStatus().Running
+	return status
+}
+
 // GetXrayVersion returns the Xray version string.
 func GetXrayVersion(binaryPath string) string {
 	cmd := exec.Command(binaryPath, "version")
@@ -1040,7 +1063,7 @@ func (a *Agent) lookupXrayPID() int {
 		return managedStatus.PID
 	}
 
-	output, err := exec.Command("ps", "-eo", "pid=,comm=,args=").Output()
+	output, err := exec.Command("ps", "-eo", "pid=", "-o", "comm=", "-o", "args=").Output()
 	if err == nil {
 		return findConfiguredXrayPID(string(output), a.config.Xray.ConfigPath)
 	}

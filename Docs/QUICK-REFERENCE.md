@@ -117,7 +117,7 @@ panel:
 
 xray:
   binary_path: "/usr/local/bin/xray"
-  config_path: "/etc/xray/config.json"
+  config_path: "/usr/local/etc/xray/config.json"  # 托管标准路径；历史手工节点仍兼容 /etc/xray/config.json
 
 sync:
   interval: 5m
@@ -181,6 +181,19 @@ xray -test -config /etc/xray/config.json
 ---
 
 ## 故障排查
+
+### 历史手工节点流量不上报
+
+```bash
+# 1. 查看 Agent 配置中的 Xray 路径
+grep config_path /etc/vpanel/agent.yaml
+
+# 2. 查看 Xray 实际运行路径
+ps -eo pid=,comm=,args= | grep xray
+
+# 3. 查看 Agent 流量诊断
+curl http://127.0.0.1:18443/traffic/status
+```
 
 ### Panel 无法启动
 

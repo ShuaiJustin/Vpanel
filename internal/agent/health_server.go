@@ -20,12 +20,13 @@ type HealthServerConfig struct {
 
 // HealthResponse represents the health check response.
 type HealthResponse struct {
-	Status      string       `json:"status"`
-	Timestamp   time.Time    `json:"timestamp"`
-	Xray        *XrayStatus  `json:"xray,omitempty"`
-	Metrics     *NodeMetrics `json:"metrics,omitempty"`
-	Agent       *AgentInfo   `json:"agent,omitempty"`
-	Checks      []HealthCheck `json:"checks,omitempty"`
+	Status    string                  `json:"status"`
+	Timestamp time.Time               `json:"timestamp"`
+	Xray      *XrayStatus             `json:"xray,omitempty"`
+	Traffic   *TrafficCollectorStatus `json:"traffic,omitempty"`
+	Metrics   *NodeMetrics            `json:"metrics,omitempty"`
+	Agent     *AgentInfo              `json:"agent,omitempty"`
+	Checks    []HealthCheck           `json:"checks,omitempty"`
 }
 
 // AgentInfo represents agent information.
@@ -49,17 +50,18 @@ type AgentStatusProvider interface {
 	IsRegistered() bool
 	GetNodeID() int64
 	GetXrayStatus() *XrayStatus
+	GetTrafficCollectorStatus() *TrafficCollectorStatus
 	GetMetrics() *NodeMetrics
 }
 
 // HealthServer provides health check endpoints for the agent.
 type HealthServer struct {
-	mu       sync.RWMutex
-	config   HealthServerConfig
-	logger   logger.Logger
-	server   *http.Server
-	agent    AgentStatusProvider
-	running  bool
+	mu      sync.RWMutex
+	config  HealthServerConfig
+	logger  logger.Logger
+	server  *http.Server
+	agent   AgentStatusProvider
+	running bool
 }
 
 // NewHealthServer creates a new health server.
@@ -85,6 +87,7 @@ func (s *HealthServer) Start() error {
 	mux.HandleFunc("/health/live", s.handleLiveness)
 	mux.HandleFunc("/health/ready", s.handleReadiness)
 	mux.HandleFunc("/xray/status", s.handleXrayStatus)
+	mux.HandleFunc("/traffic/status", s.handleTrafficStatus)
 	mux.HandleFunc("/metrics", s.handleMetrics)
 
 	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
@@ -166,6 +169,45 @@ func (s *HealthServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 		}
 		response.Checks = append(response.Checks, regCheck)
 
+		trafficStatus := s.agent.GetTrafficCollectorStatus()
+		response.Traffic = trafficStatus
+
+		trafficCheck := HealthCheck{
+			Name:   "traffic_collector",
+			Status: "pass",
+		}
+		if trafficStatus == nil {
+			trafficCheck.Status = "warn"
+			trafficCheck.Message = "Traffic collector status unavailable"
+			if response.Status == "healthy" {
+				response.Status = "degraded"
+			}
+		} else {
+			switch trafficStatus.Status {
+			case TrafficCollectorStatusCollectorError:
+				trafficCheck.Status = "warn"
+				if trafficStatus.LastError != "" {
+					trafficCheck.Message = trafficStatus.LastError
+				} else {
+					trafficCheck.Message = "Traffic collector reported an error"
+				}
+				if response.Status == "healthy" {
+					response.Status = "degraded"
+				}
+			case TrafficCollectorStatusHealthyCollecting:
+				trafficCheck.Message = fmt.Sprintf("Collected %d traffic records during the last successful pass", trafficStatus.LastRecordCount)
+			case TrafficCollectorStatusHealthyIdle:
+				trafficCheck.Message = "Traffic collector is healthy but has no new traffic records"
+			default:
+				trafficCheck.Status = "warn"
+				trafficCheck.Message = "Traffic collector status is unknown"
+				if response.Status == "healthy" {
+					response.Status = "degraded"
+				}
+			}
+		}
+		response.Checks = append(response.Checks, trafficCheck)
+
 		// Add agent info
 		response.Agent = &AgentInfo{
 			Version:    "1.0.0",
@@ -176,6 +218,27 @@ func (s *HealthServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// handleTrafficStatus handles the /traffic/status endpoint.
+func (s *HealthServer) handleTrafficStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.agent == nil {
+		http.Error(w, "Agent not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	status := s.agent.GetTrafficCollectorStatus()
+	if status == nil {
+		status = &TrafficCollectorStatus{Status: TrafficCollectorStatusUnknown}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(status)
 }
 
 // handleXrayStatus handles the /xray/status endpoint.
