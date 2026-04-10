@@ -20,6 +20,7 @@ import (
 type IPRestrictionHandler struct {
 	logger    logger.Logger
 	ipService *ip.Service
+	schema    concurrentIPSchema
 }
 
 type ipCountryStat struct {
@@ -27,11 +28,31 @@ type ipCountryStat struct {
 	Count   int64  `json:"count" gorm:"column:count"`
 }
 
+type concurrentIPSchema struct {
+	userHasMaxConcurrentIPs bool
+	userHasPlanID           bool
+	hasPlansTable           bool
+	hasCommercialPlansTable bool
+}
+
 // NewIPRestrictionHandler creates a new IPRestrictionHandler.
 func NewIPRestrictionHandler(log logger.Logger, ipService *ip.Service) *IPRestrictionHandler {
+	schema := concurrentIPSchema{}
+	if ipService != nil && ipService.Tracker() != nil && ipService.Tracker().GetDB() != nil {
+		db := ipService.Tracker().GetDB()
+		migrator := db.Migrator()
+		schema = concurrentIPSchema{
+			userHasMaxConcurrentIPs: migrator.HasColumn("users", "max_concurrent_ips"),
+			userHasPlanID:           migrator.HasColumn("users", "plan_id"),
+			hasPlansTable:           migrator.HasTable("plans"),
+			hasCommercialPlansTable: migrator.HasTable("commercial_plans"),
+		}
+	}
+
 	return &IPRestrictionHandler{
 		logger:    log,
 		ipService: ipService,
+		schema:    schema,
 	}
 }
 
@@ -48,8 +69,6 @@ func (h *IPRestrictionHandler) resolveUserMaxConcurrentIPsWithContext(ctx contex
 	}
 
 	db := h.ipService.Tracker().GetDB().WithContext(ctx)
-	userHasMaxConcurrentIPs := db.Migrator().HasColumn("users", "max_concurrent_ips")
-	userHasPlanID := db.Migrator().HasColumn("users", "plan_id")
 
 	type userRow struct {
 		Role             string `gorm:"column:role"`
@@ -59,10 +78,10 @@ func (h *IPRestrictionHandler) resolveUserMaxConcurrentIPsWithContext(ctx contex
 
 	var result userRow
 	selectFields := []string{"role"}
-	if userHasMaxConcurrentIPs {
+	if h.schema.userHasMaxConcurrentIPs {
 		selectFields = append(selectFields, "max_concurrent_ips")
 	}
-	if userHasPlanID {
+	if h.schema.userHasPlanID {
 		selectFields = append(selectFields, "plan_id")
 	}
 
@@ -76,11 +95,11 @@ func (h *IPRestrictionHandler) resolveUserMaxConcurrentIPsWithContext(ctx contex
 		return 0
 	}
 
-	if userHasMaxConcurrentIPs && result.MaxConcurrentIPs != nil && *result.MaxConcurrentIPs >= 0 {
+	if h.schema.userHasMaxConcurrentIPs && result.MaxConcurrentIPs != nil && *result.MaxConcurrentIPs >= 0 {
 		return *result.MaxConcurrentIPs
 	}
 
-	if userHasPlanID && result.PlanID != nil && *result.PlanID > 0 {
+	if h.schema.userHasPlanID && result.PlanID != nil && *result.PlanID > 0 {
 		if planDefault, ok := h.lookupPlanDefaultMaxConcurrentIPs(ctx, *result.PlanID); ok {
 			return planDefault
 		}
@@ -100,7 +119,7 @@ func (h *IPRestrictionHandler) lookupPlanDefaultMaxConcurrentIPs(ctx context.Con
 		Value *int `gorm:"column:value"`
 	}
 
-	if db.Migrator().HasTable("plans") {
+	if h.schema.hasPlansTable {
 		var plan planRow
 		if err := db.Table("plans").Select("default_max_concurrent_ips AS value").Where("id = ?", planID).Take(&plan).Error; err == nil {
 			if plan.Value != nil && *plan.Value >= 0 {
@@ -110,7 +129,7 @@ func (h *IPRestrictionHandler) lookupPlanDefaultMaxConcurrentIPs(ctx context.Con
 		}
 	}
 
-	if db.Migrator().HasTable("commercial_plans") {
+	if h.schema.hasCommercialPlansTable {
 		var plan planRow
 		if err := db.Table("commercial_plans").Select("ip_limit AS value").Where("id = ?", planID).Take(&plan).Error; err == nil {
 			if plan.Value != nil && *plan.Value >= 0 {

@@ -2,15 +2,46 @@ package ip
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
+type selectQueryCounter struct {
+	gormlogger.Interface
+	selects int
+}
+
+func newSelectQueryCounter() *selectQueryCounter {
+	return &selectQueryCounter{
+		Interface: gormlogger.Default.LogMode(gormlogger.Silent),
+	}
+}
+
+func (l *selectQueryCounter) LogMode(level gormlogger.LogLevel) gormlogger.Interface {
+	l.Interface = l.Interface.LogMode(level)
+	return l
+}
+
+func (l *selectQueryCounter) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+	sql, rows := fc()
+	if len(sql) >= len("SELECT") && sql[:len("SELECT")] == "SELECT" {
+		l.selects++
+	}
+	l.Interface.Trace(ctx, begin, func() (string, int64) {
+		return sql, rows
+	}, err)
+}
+
 func TestGetAggregatedIPHistorySQLite(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	queryCounter := newSelectQueryCounter()
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		Logger: queryCounter,
+	})
 	if err != nil {
 		t.Fatalf("open sqlite db: %v", err)
 	}
@@ -61,6 +92,7 @@ func TestGetAggregatedIPHistorySQLite(t *testing.T) {
 	}
 
 	tracker := NewTracker(db)
+	queryCounter.selects = 0
 	summaries, total, err := tracker.GetAggregatedIPHistory(context.Background(), 7, 10, 0)
 	if err != nil {
 		t.Fatalf("get aggregated ip history: %v", err)
@@ -97,5 +129,51 @@ func TestGetAggregatedIPHistorySQLite(t *testing.T) {
 	}
 	if summaries[1].Country != "Japan" || summaries[1].City != "Osaka" {
 		t.Fatalf("unexpected latest location for first ip: got %s/%s", summaries[1].Country, summaries[1].City)
+	}
+	if queryCounter.selects != 3 {
+		t.Fatalf("expected fixed select count for aggregated history, got %d", queryCounter.selects)
+	}
+}
+
+func TestGetAggregatedIPHistorySQLiteQueryCountStaysFixedAcrossMoreIPs(t *testing.T) {
+	queryCounter := newSelectQueryCounter()
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		Logger: queryCounter,
+	})
+	if err != nil {
+		t.Fatalf("open sqlite db: %v", err)
+	}
+
+	if err := db.AutoMigrate(&IPHistory{}); err != nil {
+		t.Fatalf("migrate ip history: %v", err)
+	}
+
+	baseTime := time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC)
+	for i := 0; i < 12; i++ {
+		recordTime := baseTime.Add(time.Duration(i) * time.Minute)
+		ipAddr := fmt.Sprintf("10.0.0.%d", i+1)
+		for version := 0; version < 2; version++ {
+			if err := db.Create(&IPHistory{
+				UserID:     18,
+				IP:         ipAddr,
+				UserAgent:  fmt.Sprintf("ua-%d-%d", i, version),
+				AccessType: AccessTypeProxy,
+				Country:    "Country",
+				City:       fmt.Sprintf("City-%d", version),
+				CreatedAt:  recordTime.Add(time.Duration(version) * time.Second),
+			}).Error; err != nil {
+				t.Fatalf("create ip history record: %v", err)
+			}
+		}
+	}
+
+	tracker := NewTracker(db)
+	queryCounter.selects = 0
+	if _, _, err := tracker.GetAggregatedIPHistory(context.Background(), 18, 10, 0); err != nil {
+		t.Fatalf("get aggregated ip history: %v", err)
+	}
+
+	if queryCounter.selects != 3 {
+		t.Fatalf("expected fixed select count for paged aggregated history, got %d", queryCounter.selects)
 	}
 }

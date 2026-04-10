@@ -163,13 +163,7 @@ func (r *Router) Setup() {
 	logHandler := handlers.NewLogHandler(r.logService, r.logger)
 
 	// Create IP restriction service and handler
-	ipServiceConfig := &ip.ServiceConfig{
-		GeoConfig: &ip.GeolocationConfig{
-			DatabasePath: "", // Disable GeoIP database to avoid initialization errors
-			CacheTTL:     24 * time.Hour,
-		},
-	}
-	ipService, err := ip.NewService(r.repos.DB(), ipServiceConfig)
+	ipService, err := ip.NewService(r.repos.DB(), &ip.ServiceConfig{})
 	if err != nil {
 		r.logger.Error("Failed to create IP service", logger.F("error", err))
 		// Continue without IP service - don't block application startup

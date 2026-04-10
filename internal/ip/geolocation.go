@@ -77,7 +77,18 @@ func (g *GeolocationService) Close() error {
 }
 
 // LookupLocal looks up geolocation using only cache and the local GeoIP database.
+// When local data is found it is persisted into the cache for later reuse.
 func (g *GeolocationService) LookupLocal(ctx context.Context, ipStr string) (*GeoInfo, error) {
+	return g.lookupLocal(ctx, ipStr, true)
+}
+
+// LookupFast looks up geolocation using only cached data and the local GeoIP database.
+// It never performs network requests or cache writes, making it safe for response paths.
+func (g *GeolocationService) LookupFast(ctx context.Context, ipStr string) (*GeoInfo, error) {
+	return g.lookupLocal(ctx, ipStr, false)
+}
+
+func (g *GeolocationService) lookupLocal(ctx context.Context, ipStr string, persistCache bool) (*GeoInfo, error) {
 	ipStr = strings.TrimSpace(ipStr)
 	if ipStr == "" {
 		return &GeoInfo{}, nil
@@ -92,7 +103,7 @@ func (g *GeolocationService) LookupLocal(ctx context.Context, ipStr string) (*Ge
 	if err != nil {
 		return nil, err
 	}
-	if hasGeolocationDetails(info) {
+	if persistCache && hasGeolocationDetails(info) {
 		_ = g.saveToCache(ctx, info)
 	}
 	return info, nil

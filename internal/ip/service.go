@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -53,6 +54,9 @@ type Service struct {
 	geoService *GeolocationService
 	settings   *IPRestrictionSettings
 	notifier   NotificationSender
+
+	geoWarmupMu sync.Mutex
+	geoWarmups  map[string]struct{}
 }
 
 // ServiceConfig holds configuration for the IP restriction service.
@@ -85,6 +89,7 @@ func NewService(db *gorm.DB, config *ServiceConfig) (*Service, error) {
 		geoService: geoService,
 		settings:   DefaultIPRestrictionSettings(),
 		notifier:   notifier,
+		geoWarmups: make(map[string]struct{}),
 	}, nil
 }
 
@@ -268,6 +273,14 @@ func (s *Service) RecordActivity(ctx context.Context, userID uint, ip, userAgent
 			country = geoInfo.Country
 			city = geoInfo.City
 		}
+		if err != nil || !hasGeolocationDetails(geoInfo) {
+			s.warmGeolocationAsync(ip)
+		}
+	}
+
+	timeout := time.Duration(s.settings.InactiveTimeout) * time.Minute
+	if timeout > 0 {
+		_, _ = s.tracker.CleanupInactiveIPsForUser(ctx, userID, timeout)
 	}
 
 	// Detect device type from user agent
@@ -388,10 +401,6 @@ func containsSubstring(s, substr string) bool {
 
 // GetOnlineIPs returns online IPs for a user.
 func (s *Service) GetOnlineIPs(ctx context.Context, userID uint) ([]OnlineIP, error) {
-	// Clean up inactive IPs first
-	timeout := time.Duration(s.settings.InactiveTimeout) * time.Minute
-	_, _ = s.tracker.CleanupInactiveIPsForUser(ctx, userID, timeout)
-
 	onlineIPs, err := s.tracker.GetOnlineIPs(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -418,12 +427,12 @@ func (s *Service) GetAggregatedIPHistory(ctx context.Context, userID uint, limit
 	return summaries, total, nil
 }
 
-func (s *Service) enrichOnlineIP(ctx context.Context, userID uint, onlineIP *OnlineIP) {
+func (s *Service) enrichOnlineIP(ctx context.Context, _ uint, onlineIP *OnlineIP) {
 	if onlineIP == nil {
 		return
 	}
 
-	country, city, countryCode, changed := s.resolveMissingGeo(ctx, onlineIP.IP, onlineIP.Country, onlineIP.City, onlineIP.CountryCode)
+	country, city, countryCode, changed := s.resolveMissingGeoFast(ctx, onlineIP.IP, onlineIP.Country, onlineIP.City, onlineIP.CountryCode)
 	if !changed {
 		return
 	}
@@ -431,26 +440,14 @@ func (s *Service) enrichOnlineIP(ctx context.Context, userID uint, onlineIP *Onl
 	onlineIP.Country = country
 	onlineIP.City = city
 	onlineIP.CountryCode = countryCode
-
-	if strings.TrimSpace(country) == "" && strings.TrimSpace(city) == "" {
-		return
-	}
-
-	_ = s.db.WithContext(ctx).
-		Model(&ActiveIP{}).
-		Where("user_id = ? AND ip = ? AND (country = '' OR country IS NULL OR city = '' OR city IS NULL)", userID, onlineIP.IP).
-		Updates(map[string]any{
-			"country": country,
-			"city":    city,
-		}).Error
 }
 
-func (s *Service) enrichIPHistorySummary(ctx context.Context, userID uint, summary *IPHistorySummary) {
+func (s *Service) enrichIPHistorySummary(ctx context.Context, _ uint, summary *IPHistorySummary) {
 	if summary == nil {
 		return
 	}
 
-	country, city, countryCode, changed := s.resolveMissingGeo(ctx, summary.IP, summary.Country, summary.City, summary.CountryCode)
+	country, city, countryCode, changed := s.resolveMissingGeoFast(ctx, summary.IP, summary.Country, summary.City, summary.CountryCode)
 	if !changed {
 		return
 	}
@@ -458,18 +455,46 @@ func (s *Service) enrichIPHistorySummary(ctx context.Context, userID uint, summa
 	summary.Country = country
 	summary.City = city
 	summary.CountryCode = countryCode
+}
 
-	if strings.TrimSpace(country) == "" && strings.TrimSpace(city) == "" {
-		return
+func (s *Service) resolveMissingGeoFast(ctx context.Context, ip, country, city, countryCode string) (string, string, string, bool) {
+	if s.geoService == nil || strings.TrimSpace(ip) == "" {
+		return country, city, countryCode, false
 	}
 
-	_ = s.db.WithContext(ctx).
-		Model(&IPHistory{}).
-		Where("user_id = ? AND ip = ? AND (country = '' OR country IS NULL OR city = '' OR city IS NULL)", userID, summary.IP).
-		Updates(map[string]any{
-			"country": country,
-			"city":    city,
-		}).Error
+	needsCountry := strings.TrimSpace(country) == ""
+	needsCity := strings.TrimSpace(city) == ""
+	needsCountryCode := strings.TrimSpace(countryCode) == ""
+	if !needsCountry && !needsCity && !needsCountryCode {
+		return country, city, countryCode, false
+	}
+
+	geoInfo, err := s.geoService.LookupFast(ctx, ip)
+	if err != nil || !hasGeolocationDetails(geoInfo) {
+		return country, city, countryCode, false
+	}
+
+	changed := false
+	if needsCountry && strings.TrimSpace(geoInfo.Country) != "" {
+		country = geoInfo.Country
+		changed = true
+	}
+	if needsCity {
+		resolvedCity := strings.TrimSpace(geoInfo.City)
+		if resolvedCity == "" {
+			resolvedCity = strings.TrimSpace(geoInfo.Region)
+		}
+		if resolvedCity != "" {
+			city = resolvedCity
+			changed = true
+		}
+	}
+	if needsCountryCode && strings.TrimSpace(geoInfo.CountryCode) != "" {
+		countryCode = strings.ToUpper(strings.TrimSpace(geoInfo.CountryCode))
+		changed = true
+	}
+
+	return country, city, countryCode, changed
 }
 
 func (s *Service) resolveMissingGeo(ctx context.Context, ip, country, city, countryCode string) (string, string, string, bool) {
@@ -510,6 +535,33 @@ func (s *Service) resolveMissingGeo(ctx context.Context, ip, country, city, coun
 	}
 
 	return country, city, countryCode, changed
+}
+
+func (s *Service) warmGeolocationAsync(ip string) {
+	if s.geoService == nil || !isExternalLookupCandidate(ip) {
+		return
+	}
+
+	s.geoWarmupMu.Lock()
+	if _, exists := s.geoWarmups[ip]; exists {
+		s.geoWarmupMu.Unlock()
+		return
+	}
+	s.geoWarmups[ip] = struct{}{}
+	s.geoWarmupMu.Unlock()
+
+	go func(targetIP string) {
+		defer func() {
+			s.geoWarmupMu.Lock()
+			delete(s.geoWarmups, targetIP)
+			s.geoWarmupMu.Unlock()
+		}()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		_, _ = s.geoService.Lookup(ctx, targetIP)
+	}(ip)
 }
 
 // EnrichActiveIPRecords fills missing geolocation fields for active IP records.

@@ -254,16 +254,51 @@ func (t *Tracker) GetAggregatedIPHistory(ctx context.Context, userID uint, limit
 		}
 	}
 
+	if len(summaries) == 0 {
+		return summaries, total, nil
+	}
+
+	ips := make([]string, 0, len(summaries))
+	summaryByIP := make(map[string]*IPHistorySummary, len(summaries))
 	for i := range summaries {
-		var latest IPHistory
-		if err := t.db.WithContext(ctx).
-			Select("country, city").
-			Where("user_id = ? AND ip = ?", userID, summaries[i].IP).
-			Order("created_at DESC").
-			Limit(1).
-			Take(&latest).Error; err == nil {
-			summaries[i].Country = latest.Country
-			summaries[i].City = latest.City
+		ips = append(ips, summaries[i].IP)
+		summaryByIP[summaries[i].IP] = &summaries[i]
+	}
+
+	type latestLocationRow struct {
+		ID        uint      `gorm:"column:id"`
+		IP        string    `gorm:"column:ip"`
+		Country   string    `gorm:"column:country"`
+		City      string    `gorm:"column:city"`
+		CreatedAt time.Time `gorm:"column:created_at"`
+	}
+
+	latestByIP := t.db.WithContext(ctx).
+		Model(&IPHistory{}).
+		Select("ip, MAX(created_at) AS last_seen").
+		Where("user_id = ? AND ip IN ?", userID, ips).
+		Group("ip")
+
+	var latestRows []latestLocationRow
+	if err := t.db.WithContext(ctx).
+		Table("ip_history AS history").
+		Select("history.id, history.ip, history.country, history.city, history.created_at").
+		Joins("JOIN (?) AS latest ON latest.ip = history.ip AND latest.last_seen = history.created_at", latestByIP).
+		Where("history.user_id = ? AND history.ip IN ?", userID, ips).
+		Order("history.ip ASC, history.id DESC").
+		Scan(&latestRows).Error; err != nil {
+		return nil, 0, err
+	}
+
+	appliedIPs := make(map[string]struct{}, len(latestRows))
+	for _, row := range latestRows {
+		if _, exists := appliedIPs[row.IP]; exists {
+			continue
+		}
+		appliedIPs[row.IP] = struct{}{}
+		if summary, exists := summaryByIP[row.IP]; exists {
+			summary.Country = row.Country
+			summary.City = row.City
 		}
 	}
 

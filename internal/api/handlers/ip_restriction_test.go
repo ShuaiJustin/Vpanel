@@ -234,3 +234,100 @@ func TestIPRestrictionHandlerGetAllIPHistory_EnrichesMissingGeo(t *testing.T) {
 		t.Fatalf("unexpected enriched data: %+v", response.Data[0])
 	}
 }
+
+func TestIPRestrictionHandlerUserReadEndpoints_Return200WithColdGeoCache(t *testing.T) {
+	db := setupIPRestrictionHandlerTestDB(t)
+	ipService, err := ip.NewService(db, &ip.ServiceConfig{GeoConfig: &ip.GeolocationConfig{DatabasePath: "", CacheTTL: 24 * time.Hour}})
+	if err != nil {
+		t.Fatalf("create ip service: %v", err)
+	}
+
+	handler := NewIPRestrictionHandler(logger.NewNopLogger(), ipService)
+	router := gin.New()
+	router.GET("/devices", func(c *gin.Context) {
+		c.Set("user_id", int64(42))
+		handler.GetUserDevices(c)
+	})
+	router.GET("/ip-history", func(c *gin.Context) {
+		c.Set("user_id", int64(42))
+		handler.GetUserIPHistory(c)
+	})
+
+	now := time.Now()
+	if err := db.Create(&ip.ActiveIP{
+		UserID:     42,
+		IP:         "124.79.151.251",
+		UserAgent:  "ua-device",
+		DeviceType: "desktop",
+		LastActive: now,
+		CreatedAt:  now,
+	}).Error; err != nil {
+		t.Fatalf("seed active ip: %v", err)
+	}
+	if err := db.Create(&ip.IPHistory{
+		UserID:     42,
+		IP:         "124.79.151.251",
+		UserAgent:  "ua-history",
+		AccessType: ip.AccessTypeProxy,
+		CreatedAt:  now,
+	}).Error; err != nil {
+		t.Fatalf("seed history: %v", err)
+	}
+
+	deviceReq := httptest.NewRequest(http.MethodGet, "/devices", nil)
+	deviceRes := httptest.NewRecorder()
+	router.ServeHTTP(deviceRes, deviceReq)
+
+	if deviceRes.Code != http.StatusOK {
+		t.Fatalf("expected device status 200, got %d: %s", deviceRes.Code, deviceRes.Body.String())
+	}
+
+	var devicePayload struct {
+		Code int `json:"code"`
+		Data struct {
+			Devices []struct {
+				IP      string `json:"ip"`
+				Country string `json:"country"`
+				City    string `json:"city"`
+			} `json:"devices"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(deviceRes.Body.Bytes(), &devicePayload); err != nil {
+		t.Fatalf("decode devices response: %v", err)
+	}
+	if devicePayload.Code != 200 || len(devicePayload.Data.Devices) != 1 {
+		t.Fatalf("unexpected devices response: %+v", devicePayload)
+	}
+	if devicePayload.Data.Devices[0].IP != "124.79.151.251" {
+		t.Fatalf("unexpected device payload: %+v", devicePayload.Data.Devices[0])
+	}
+
+	historyReq := httptest.NewRequest(http.MethodGet, "/ip-history?limit=10&offset=0", nil)
+	historyRes := httptest.NewRecorder()
+	router.ServeHTTP(historyRes, historyReq)
+
+	if historyRes.Code != http.StatusOK {
+		t.Fatalf("expected history status 200, got %d: %s", historyRes.Code, historyRes.Body.String())
+	}
+
+	var historyPayload struct {
+		Code int `json:"code"`
+		Data struct {
+			List []struct {
+				IP      string `json:"ip"`
+				Country string `json:"country"`
+				City    string `json:"city"`
+			} `json:"list"`
+			Total int64 `json:"total"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(historyRes.Body.Bytes(), &historyPayload); err != nil {
+		t.Fatalf("decode history response: %v", err)
+	}
+	if historyPayload.Code != 200 || historyPayload.Data.Total != 1 || len(historyPayload.Data.List) != 1 {
+		t.Fatalf("unexpected history response: %+v", historyPayload)
+	}
+	if historyPayload.Data.List[0].IP != "124.79.151.251" {
+		t.Fatalf("unexpected history payload: %+v", historyPayload.Data.List[0])
+	}
+}
