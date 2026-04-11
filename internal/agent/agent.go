@@ -43,6 +43,10 @@ type heartbeatTrafficStateReporter interface {
 	RestoreCommittedCounters(map[string]int64)
 }
 
+type heartbeatSessionReporter interface {
+	CollectRecentSessions(ctx context.Context) ([]ProxySessionRecord, error)
+}
+
 type pendingTrafficBatch struct {
 	batchID  string
 	snapshot *TrafficSnapshot
@@ -74,6 +78,7 @@ type Agent struct {
 	metricsCollector *MetricsCollector
 	commandExecutor  *CommandExecutor
 	trafficReporter  heartbeatTrafficReporter
+	sessionReporter  heartbeatSessionReporter
 
 	// State
 	mu                  sync.RWMutex
@@ -126,11 +131,12 @@ type RegisterResponse struct {
 
 // HeartbeatRequest represents a heartbeat request to the Panel.
 type HeartbeatRequest struct {
-	NodeID         int64           `json:"node_id"`
-	Token          string          `json:"token"`
-	Metrics        *NodeMetrics    `json:"metrics"`
-	Traffic        []TrafficRecord `json:"traffic,omitempty"`
-	TrafficBatchID string          `json:"traffic_batch_id,omitempty"`
+	NodeID         int64                `json:"node_id"`
+	Token          string               `json:"token"`
+	Metrics        *NodeMetrics         `json:"metrics"`
+	Traffic        []TrafficRecord      `json:"traffic,omitempty"`
+	ProxySessions  []ProxySessionRecord `json:"proxy_sessions,omitempty"`
+	TrafficBatchID string               `json:"traffic_batch_id,omitempty"`
 }
 
 // HeartbeatResponse represents a heartbeat response from the Panel.
@@ -198,6 +204,7 @@ func New(cfg *Config, log logger.Logger) (*Agent, error) {
 	// Initialize command executor
 	agent.commandExecutor = NewCommandExecutor(agent, log)
 	agent.trafficReporter = newTrafficReporter(cfg.Xray, log)
+	agent.sessionReporter = newSessionReporter(cfg.Xray, log)
 	agent.restoreTrafficState()
 
 	return agent, nil
@@ -401,6 +408,7 @@ func (a *Agent) sendHeartbeat() {
 	var trafficSnapshot *TrafficSnapshot
 	var trafficRecords []TrafficRecord
 	var trafficBatchID string
+	var proxySessions []ProxySessionRecord
 	if a.trafficReporter != nil {
 		snapshot, records, batchID, err := a.prepareHeartbeatTraffic(nodeID)
 		if err != nil {
@@ -413,12 +421,23 @@ func (a *Agent) sendHeartbeat() {
 			trafficBatchID = batchID
 		}
 	}
+	if a.sessionReporter != nil {
+		sessions, err := a.sessionReporter.CollectRecentSessions(a.ctx)
+		if err != nil {
+			a.logger.Warn("failed to collect proxy session activity",
+				logger.F("node_id", nodeID),
+				logger.F("error", err.Error()))
+		} else {
+			proxySessions = sessions
+		}
+	}
 
 	req := &HeartbeatRequest{
 		NodeID:         nodeID,
 		Token:          a.config.Node.Token,
 		Metrics:        metrics,
 		Traffic:        trafficRecords,
+		ProxySessions:  proxySessions,
 		TrafficBatchID: trafficBatchID,
 	}
 
@@ -450,7 +469,8 @@ func (a *Agent) sendHeartbeat() {
 	a.logger.Debug("heartbeat sent successfully",
 		logger.F("node_id", nodeID),
 		logger.F("commands_received", len(resp.Commands)),
-		logger.F("traffic_records", len(trafficRecords)))
+		logger.F("traffic_records", len(trafficRecords)),
+		logger.F("proxy_sessions", len(proxySessions)))
 
 	if trafficSnapshot != nil {
 		a.acknowledgeHeartbeatTraffic(trafficBatchID, trafficSnapshot)

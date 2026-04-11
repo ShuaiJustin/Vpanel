@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -16,6 +17,7 @@ import (
 	"gorm.io/gorm"
 
 	"v/internal/database/repository"
+	"v/internal/ip"
 	"v/internal/logger"
 	"v/internal/node"
 )
@@ -29,8 +31,8 @@ func TestShouldPromoteNodeOnlineFromHeartbeat(t *testing.T) {
 }
 
 type stubNodeAgentTrafficRecorder struct {
-	err   error
-	calls int
+	err     error
+	calls   int
 	records [][]*node.TrafficRecord
 }
 
@@ -157,7 +159,7 @@ func TestNodeAgentHeartbeat_AllowsSharedProxyTrafficRecords(t *testing.T) {
 		NodeID:         1,
 		Token:          "node-token",
 		TrafficBatchID: "batch-shared",
-		Traffic: []TrafficRecord{{UserID: 0, Upload: 10, Download: 20}},
+		Traffic:        []TrafficRecord{{UserID: 0, Upload: 10, Download: 20}},
 	})
 	require.NoError(t, err)
 
@@ -175,4 +177,70 @@ func TestNodeAgentHeartbeat_AllowsSharedProxyTrafficRecords(t *testing.T) {
 	if len(recorder.records) != 1 || len(recorder.records[0]) != 1 || recorder.records[0][0].UserID != 0 {
 		t.Fatalf("expected shared proxy traffic record to be forwarded, got %+v", recorder.records)
 	}
+}
+
+func TestNodeAgentHeartbeat_RecordsProxySessionsIntoActiveIPs(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&repository.Node{}, &ip.ActiveIP{}, &ip.IPHistory{}, &ip.GeoCache{}))
+	require.NoError(t, db.Create(&repository.Node{
+		ID:      1,
+		Name:    "node-1",
+		Address: "127.0.0.1",
+		Token:   "node-token",
+		Status:  repository.NodeStatusOnline,
+	}).Error)
+
+	nodeRepo := repository.NewNodeRepository(db)
+	ipService, err := ip.NewService(db, &ip.ServiceConfig{
+		GeoConfig: &ip.GeolocationConfig{
+			DatabasePath: "",
+			CacheTTL:     24 * time.Hour,
+		},
+	})
+	require.NoError(t, err)
+
+	handler := NewNodeAgentHandler(
+		node.NewService(nodeRepo, nil, nil, logger.NewNopLogger()),
+		nil,
+		nodeRepo,
+		nil,
+		nil,
+		logger.NewNopLogger(),
+	).WithIPService(ipService)
+
+	router := gin.New()
+	router.POST("/api/node/heartbeat", handler.Heartbeat)
+
+	body, err := json.Marshal(HeartbeatRequest{
+		NodeID: 1,
+		Token:  "node-token",
+		ProxySessions: []ProxySessionRecord{
+			{
+				UserID:     39,
+				ProxyID:    7,
+				IP:         "198.51.100.23",
+				LastSeen:   time.Now().UTC().Unix(),
+				DeviceInfo: "Proxy #7 connection",
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/node/heartbeat", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var active ip.ActiveIP
+	require.NoError(t, db.Where("user_id = ? AND ip = ?", 39, "198.51.100.23").Take(&active).Error)
+	assert.Equal(t, "Proxy #7 connection", active.UserAgent)
+
+	var history ip.IPHistory
+	require.NoError(t, db.Where("user_id = ? AND ip = ? AND access_type = ?", 39, "198.51.100.23", ip.AccessTypeProxy).Take(&history).Error)
+	assert.Equal(t, "Proxy #7 connection", history.UserAgent)
 }

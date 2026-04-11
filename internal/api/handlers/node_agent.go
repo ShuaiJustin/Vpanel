@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"v/internal/database/repository"
+	"v/internal/ip"
 	"v/internal/logger"
 	"v/internal/node"
 	"v/internal/xray"
@@ -38,6 +39,7 @@ type NodeAgentHandler struct {
 	configGenerator *xray.ConfigGenerator
 	recoveryTracker *NodeRecoveryTracker
 	trafficDeduper  *trafficBatchDeduper
+	ipService       *ip.Service
 	logger          logger.Logger
 }
 
@@ -64,6 +66,12 @@ func NewNodeAgentHandler(
 	}
 }
 
+// WithIPService injects IP tracking for node-reported proxy sessions.
+func (h *NodeAgentHandler) WithIPService(ipService *ip.Service) *NodeAgentHandler {
+	h.ipService = ipService
+	return h
+}
+
 // RegisterRequest represents a node registration request.
 type RegisterRequest struct {
 	Token   string `json:"token" binding:"required"`
@@ -82,11 +90,12 @@ type RegisterResponse struct {
 
 // HeartbeatRequest represents a node heartbeat request.
 type HeartbeatRequest struct {
-	NodeID         int64           `json:"node_id" binding:"required"`
-	Token          string          `json:"token" binding:"required"`
-	Metrics        *NodeMetrics    `json:"metrics"`
-	Traffic        []TrafficRecord `json:"traffic,omitempty"`
-	TrafficBatchID string          `json:"traffic_batch_id,omitempty"`
+	NodeID         int64                `json:"node_id" binding:"required"`
+	Token          string               `json:"token" binding:"required"`
+	Metrics        *NodeMetrics         `json:"metrics"`
+	Traffic        []TrafficRecord      `json:"traffic,omitempty"`
+	ProxySessions  []ProxySessionRecord `json:"proxy_sessions,omitempty"`
+	TrafficBatchID string               `json:"traffic_batch_id,omitempty"`
 }
 
 // TrafficRecord represents per-user traffic reported by the node agent.
@@ -95,6 +104,15 @@ type TrafficRecord struct {
 	ProxyID  *int64 `json:"proxy_id,omitempty"`
 	Upload   int64  `json:"upload"`
 	Download int64  `json:"download"`
+}
+
+// ProxySessionRecord represents a recently active client IP observed by the node agent.
+type ProxySessionRecord struct {
+	UserID     int64  `json:"user_id"`
+	ProxyID    int64  `json:"proxy_id"`
+	IP         string `json:"ip"`
+	LastSeen   int64  `json:"last_seen"`
+	DeviceInfo string `json:"device_info,omitempty"`
 }
 
 // NodeMetrics represents metrics from a node.
@@ -292,7 +310,7 @@ func (h *NodeAgentHandler) Heartbeat(c *gin.Context) {
 
 		records := make([]*node.TrafficRecord, 0, len(req.Traffic))
 		for _, traffic := range req.Traffic {
-				if traffic.UserID < 0 {
+			if traffic.UserID < 0 {
 				continue
 			}
 			records = append(records, &node.TrafficRecord{
@@ -324,6 +342,37 @@ func (h *NodeAgentHandler) Heartbeat(c *gin.Context) {
 		}
 
 		trafficRecorded = true
+	}
+
+	if len(req.ProxySessions) > 0 && h.ipService != nil {
+		activities := make([]ip.ProxySessionActivity, 0, len(req.ProxySessions))
+		for _, session := range req.ProxySessions {
+			if session.UserID <= 0 || strings.TrimSpace(session.IP) == "" {
+				continue
+			}
+
+			seenAt := time.Unix(session.LastSeen, 0).UTC()
+			if session.LastSeen <= 0 {
+				seenAt = time.Now().UTC()
+			}
+
+			activities = append(activities, ip.ProxySessionActivity{
+				UserID:     uint(session.UserID),
+				ProxyID:    session.ProxyID,
+				IP:         strings.TrimSpace(session.IP),
+				LastSeen:   seenAt,
+				DeviceInfo: strings.TrimSpace(session.DeviceInfo),
+			})
+		}
+
+		if len(activities) > 0 {
+			if err := h.ipService.RecordProxySessions(c.Request.Context(), activities); err != nil {
+				h.logger.Warn("failed to record proxy session activity from heartbeat",
+					logger.F("node_id", nodeData.ID),
+					logger.F("session_count", len(activities)),
+					logger.F("error", err.Error()))
+			}
+		}
 	}
 
 	// Get any pending commands for this node

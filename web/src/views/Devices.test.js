@@ -100,6 +100,14 @@ describe("Devices view", () => {
           },
         });
       }
+      if (url === "/subscription/access-ips") {
+        return Promise.resolve({
+          data: {
+            list: [],
+            total: 0,
+          },
+        });
+      }
       throw new Error(`Unexpected URL: ${url}`);
     });
 
@@ -145,6 +153,14 @@ describe("Devices view", () => {
         });
       }
       if (url === "/user/ip-history") {
+        return Promise.resolve({
+          data: {
+            list: [],
+            total: 0,
+          },
+        });
+      }
+      if (url === "/subscription/access-ips") {
         return Promise.resolve({
           data: {
             list: [],

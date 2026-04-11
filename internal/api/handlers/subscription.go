@@ -8,11 +8,13 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/gin-gonic/gin"
 
 	"v/internal/database/repository"
+	"v/internal/ip"
 	"v/internal/logger"
 	"v/internal/subscription"
 	"v/pkg/errors"
@@ -21,6 +23,7 @@ import (
 // SubscriptionHandler handles subscription-related requests.
 type SubscriptionHandler struct {
 	service                    *subscription.Service
+	ipService                  *ip.Service
 	logger                     logger.Logger
 	profileUpdateIntervalHours int
 }
@@ -47,6 +50,12 @@ func NewSubscriptionHandler(service *subscription.Service, log logger.Logger, pr
 	}
 }
 
+// WithIPService injects IP tracking for subscription access bookkeeping.
+func (h *SubscriptionHandler) WithIPService(ipService *ip.Service) *SubscriptionHandler {
+	h.ipService = ipService
+	return h
+}
+
 // SubscriptionLinkResponse represents the response for getting subscription link.
 type SubscriptionLinkResponse struct {
 	Link      string                    `json:"link"`
@@ -62,6 +71,22 @@ type AccessStats struct {
 	TotalAccess  int64  `json:"total_access"`
 	LastAccessAt string `json:"last_access_at,omitempty"`
 	LastIP       string `json:"last_ip,omitempty"`
+}
+
+// SubscriptionAccessIPItem represents a user-facing subscription access IP entry.
+type SubscriptionAccessIPItem struct {
+	IP          string `json:"ip"`
+	Country     string `json:"country"`
+	AccessCount int    `json:"access_count"`
+	FirstAccess string `json:"first_access"`
+	LastAccess  string `json:"last_access"`
+	UserAgent   string `json:"user_agent"`
+}
+
+// SubscriptionAccessIPResponse represents the subscription access IP list response.
+type SubscriptionAccessIPResponse struct {
+	List  []SubscriptionAccessIPItem `json:"list"`
+	Total int                        `json:"total"`
 }
 
 // GetLink returns the subscription link for the current user.
@@ -139,6 +164,69 @@ func (h *SubscriptionHandler) GetInfo(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, info)
+}
+
+// GetAccessIPs returns IPs that recently accessed the current user's subscription link.
+// GET /api/subscription/access-ips
+func (h *SubscriptionHandler) GetAccessIPs(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	if h.ipService == nil || h.ipService.Tracker() == nil || h.ipService.Tracker().GetDB() == nil {
+		c.JSON(http.StatusOK, SubscriptionAccessIPResponse{
+			List:  []SubscriptionAccessIPItem{},
+			Total: 0,
+		})
+		return
+	}
+
+	subscriptionRecord, err := h.service.GetSubscriptionByUserID(c.Request.Context(), userID.(int64))
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusOK, SubscriptionAccessIPResponse{
+				List:  []SubscriptionAccessIPItem{},
+				Total: 0,
+			})
+			return
+		}
+
+		h.logger.Error("failed to load subscription access ip list",
+			logger.F("error", err),
+			logger.UserID(userID.(int64)))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get subscription access IPs"})
+		return
+	}
+
+	subscriptionIPService := ip.NewSubscriptionIPService(h.ipService.Tracker().GetDB(), h.ipService.GeoService())
+	accessList, err := subscriptionIPService.GetAccessList(c.Request.Context(), uint(subscriptionRecord.ID))
+	if err != nil {
+		h.logger.Error("failed to query subscription access ip list",
+			logger.F("error", err),
+			logger.UserID(userID.(int64)),
+			logger.F("subscription_id", subscriptionRecord.ID))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get subscription access IPs"})
+		return
+	}
+
+	items := make([]SubscriptionAccessIPItem, 0, len(accessList))
+	for _, access := range accessList {
+		items = append(items, SubscriptionAccessIPItem{
+			IP:          access.IP,
+			Country:     access.Country,
+			AccessCount: access.AccessCount,
+			FirstAccess: access.FirstAccess.Format(time.RFC3339),
+			LastAccess:  access.LastAccess.Format(time.RFC3339),
+			UserAgent:   access.UserAgent,
+		})
+	}
+
+	c.JSON(http.StatusOK, SubscriptionAccessIPResponse{
+		List:  items,
+		Total: len(items),
+	})
 }
 
 // Regenerate regenerates the subscription token for the current user.
@@ -386,12 +474,52 @@ func (h *SubscriptionHandler) serveSubscriptionContent(c *gin.Context, sub *repo
 	if err := h.service.UpdateAccessStats(ctx, sub.ID, clientIP, userAgent); err != nil {
 		h.logger.Warn("failed to update access stats", logger.F("error", err), logger.F("subscription_id", sub.ID))
 	}
+	h.recordSubscriptionUsage(ctx, sub, clientIP, userAgent)
 
 	// Set response headers
 	h.setSubscriptionHeaders(c, ctx, sub, format, fileExt)
 
 	// Return content
 	c.Data(http.StatusOK, contentType, content)
+}
+
+func (h *SubscriptionHandler) recordSubscriptionUsage(parent context.Context, sub *repository.Subscription, clientIP, userAgent string) {
+	if h == nil || h.ipService == nil || sub == nil || sub.UserID <= 0 || sub.ID <= 0 {
+		return
+	}
+
+	tracker := h.ipService.Tracker()
+	if tracker == nil || tracker.GetDB() == nil {
+		return
+	}
+
+	go func() {
+		recordCtx, cancel := newHandlerBackgroundTaskContext(parent)
+		defer cancel()
+
+		if err := h.ipService.RecordActivity(recordCtx, uint(sub.UserID), clientIP, userAgent, ip.AccessTypeSubscription); err != nil {
+			h.logger.Error("failed to record subscription activity",
+				logger.F("error", err),
+				logger.UserID(sub.UserID),
+				logger.F("subscription_id", sub.ID),
+				logger.F("ip", clientIP))
+		}
+
+		subscriptionIPService := ip.NewSubscriptionIPService(tracker.GetDB(), h.ipService.GeoService())
+		if err := subscriptionIPService.RecordAccess(recordCtx, uint(sub.ID), clientIP, userAgent); err != nil {
+			h.logger.Error("failed to record subscription access ip",
+				logger.F("error", err),
+				logger.UserID(sub.UserID),
+				logger.F("subscription_id", sub.ID),
+				logger.F("ip", clientIP))
+		}
+	}()
+}
+
+const handlerBackgroundTaskTimeout = 5 * time.Second
+
+func newHandlerBackgroundTaskContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(parent), handlerBackgroundTaskTimeout)
 }
 
 // detectFormat detects the subscription format from query param or User-Agent.

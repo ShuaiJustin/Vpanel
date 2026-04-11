@@ -115,3 +115,13 @@ func TestGenerateForNode_DisablesProxyInboundsWhenNodeTrafficLimitExceeded(t *te
 	require.Len(t, config.Inbounds, 1)
 	assert.Equal(t, "api", config.Inbounds[0].Tag)
 }
+
+func TestGenerateForNode_ConfiguresAccessLogPath(t *testing.T) {
+	repo := newMockProxyRepoForSync()
+	generator := NewConfigGenerator(repo, nil, nil, logger.NewNopLogger())
+
+	config, err := generator.GenerateForNode(context.Background(), 1)
+	require.NoError(t, err)
+	require.NotNil(t, config.Log)
+	assert.Equal(t, defaultXrayAccessLogPath, config.Log.Access)
+}

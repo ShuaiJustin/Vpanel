@@ -5,16 +5,20 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
 	"github.com/leanovate/gopter/prop"
+	"gorm.io/gorm"
 
 	"v/internal/database/repository"
+	"v/internal/ip"
 	"v/internal/logger"
 	"v/internal/subscription"
 	"v/pkg/errors"
@@ -223,6 +227,20 @@ func (m *mockUserRepo) CountActive(ctx context.Context) (int64, error) {
 		}
 	}
 	return count, nil
+}
+
+func waitForSubscriptionSideEffect(t *testing.T, timeout time.Duration, fn func() bool) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if fn() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Fatalf("condition not satisfied within %s", timeout)
 }
 
 type mockProxyRepo struct {
@@ -928,5 +946,190 @@ func TestRegenerate(t *testing.T) {
 	// Token should be different from old token
 	if response.Token == "old-token-12345678901234567890" {
 		t.Error("expected token to be regenerated")
+	}
+}
+
+func TestGetContent_RecordsUsageForDeviceTracking(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "subscription-devices.db")
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite db: %v", err)
+	}
+
+	if err := db.AutoMigrate(
+		&repository.User{},
+		&repository.Subscription{},
+		&repository.Proxy{},
+		&ip.ActiveIP{},
+		&ip.IPHistory{},
+		&ip.SubscriptionIPAccess{},
+		&ip.GeoCache{},
+	); err != nil {
+		t.Fatalf("migrate tables: %v", err)
+	}
+
+	userRepo := repository.NewUserRepository(db)
+	subscriptionRepo := repository.NewSubscriptionRepository(db)
+	proxyRepo := repository.NewProxyRepository(db)
+
+	user := &repository.User{
+		Username:     "subscription-device-user",
+		PasswordHash: "hash",
+		Role:         "user",
+		Enabled:      true,
+		TrafficLimit: 1024,
+	}
+	if err := userRepo.Create(context.Background(), user); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	sub := &repository.Subscription{
+		UserID:    user.ID,
+		Token:     "subscription-track-token",
+		ShortCode: "subtrack",
+	}
+	if err := subscriptionRepo.Create(context.Background(), sub); err != nil {
+		t.Fatalf("create subscription: %v", err)
+	}
+
+	subscriptionService := subscription.NewService(subscriptionRepo, userRepo, proxyRepo, logger.NewNopLogger(), "http://panel.example.com")
+	ipService, err := ip.NewService(db, &ip.ServiceConfig{
+		GeoConfig: &ip.GeolocationConfig{
+			DatabasePath: "",
+			CacheTTL:     24 * time.Hour,
+		},
+	})
+	if err != nil {
+		t.Fatalf("create ip service: %v", err)
+	}
+
+	handler := NewSubscriptionHandler(subscriptionService, logger.NewNopLogger()).WithIPService(ipService)
+	router := gin.New()
+	router.GET("/api/subscription/:token", handler.GetContent)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/subscription/"+sub.Token, nil)
+	req.RemoteAddr = "198.51.100.23:4567"
+	req.Header.Set("User-Agent", "SubClient/1.0")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var activeIP ip.ActiveIP
+	waitForSubscriptionSideEffect(t, time.Second, func() bool {
+		return db.Where("user_id = ? AND ip = ?", user.ID, "198.51.100.23").Take(&activeIP).Error == nil
+	})
+
+	var historyRecord ip.IPHistory
+	waitForSubscriptionSideEffect(t, time.Second, func() bool {
+		return db.Where("user_id = ? AND ip = ? AND access_type = ?", user.ID, "198.51.100.23", ip.AccessTypeSubscription).Order("created_at desc").Take(&historyRecord).Error == nil
+	})
+
+	var subscriptionAccess ip.SubscriptionIPAccess
+	waitForSubscriptionSideEffect(t, time.Second, func() bool {
+		return db.Where("subscription_id = ? AND ip = ?", sub.ID, "198.51.100.23").Take(&subscriptionAccess).Error == nil
+	})
+
+	if activeIP.UserAgent != "SubClient/1.0" {
+		t.Fatalf("unexpected active ip record: %+v", activeIP)
+	}
+	if historyRecord.UserAgent != "SubClient/1.0" || historyRecord.AccessType != ip.AccessTypeSubscription {
+		t.Fatalf("unexpected history record: %+v", historyRecord)
+	}
+	if subscriptionAccess.AccessCount != 1 || subscriptionAccess.UserAgent != "SubClient/1.0" {
+		t.Fatalf("unexpected subscription access record: %+v", subscriptionAccess)
+	}
+}
+
+func TestGetAccessIPs_ReturnsSubscriptionAccessList(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "subscription-access-list.db")
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite db: %v", err)
+	}
+
+	if err := db.AutoMigrate(
+		&repository.User{},
+		&repository.Subscription{},
+		&ip.SubscriptionIPAccess{},
+		&ip.GeoCache{},
+	); err != nil {
+		t.Fatalf("migrate tables: %v", err)
+	}
+
+	userRepo := repository.NewUserRepository(db)
+	subscriptionRepo := repository.NewSubscriptionRepository(db)
+	proxyRepo := repository.NewProxyRepository(db)
+
+	user := &repository.User{
+		Username:     "subscription-access-list-user",
+		PasswordHash: "hash",
+		Role:         "user",
+		Enabled:      true,
+	}
+	if err := userRepo.Create(context.Background(), user); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	sub := &repository.Subscription{
+		UserID:    user.ID,
+		Token:     "subscription-access-list-token",
+		ShortCode: "sublist",
+	}
+	if err := subscriptionRepo.Create(context.Background(), sub); err != nil {
+		t.Fatalf("create subscription: %v", err)
+	}
+
+	now := time.Now().UTC()
+	if err := db.Create(&ip.SubscriptionIPAccess{
+		SubscriptionID: uint(sub.ID),
+		IP:             "203.0.113.88",
+		UserAgent:      "SubList/1.0",
+		Country:        "Japan",
+		AccessCount:    3,
+		FirstAccess:    now.Add(-time.Hour),
+		LastAccess:     now,
+	}).Error; err != nil {
+		t.Fatalf("seed subscription access: %v", err)
+	}
+
+	subscriptionService := subscription.NewService(subscriptionRepo, userRepo, proxyRepo, logger.NewNopLogger(), "http://panel.example.com")
+	ipService, err := ip.NewService(db, &ip.ServiceConfig{
+		GeoConfig: &ip.GeolocationConfig{
+			DatabasePath: "",
+			CacheTTL:     24 * time.Hour,
+		},
+	})
+	if err != nil {
+		t.Fatalf("create ip service: %v", err)
+	}
+
+	handler := NewSubscriptionHandler(subscriptionService, logger.NewNopLogger()).WithIPService(ipService)
+	router := gin.New()
+	router.GET("/api/subscription/access-ips", func(c *gin.Context) {
+		c.Set("user_id", user.ID)
+		handler.GetAccessIPs(c)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/subscription/access-ips", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var response SubscriptionAccessIPResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if response.Total != 1 || len(response.List) != 1 {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+	if response.List[0].IP != "203.0.113.88" || response.List[0].Country != "Japan" || response.List[0].AccessCount != 3 {
+		t.Fatalf("unexpected subscription access entry: %+v", response.List[0])
 	}
 }

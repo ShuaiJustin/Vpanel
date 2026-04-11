@@ -185,7 +185,8 @@ func (r *Router) Setup() {
 		r.logger,
 		r.config.GetBaseURL(),
 	).WithNodeRepository(r.repos.Node)
-	subscriptionHandler := handlers.NewSubscriptionHandler(subscriptionService, r.logger, r.config.Server.SubscriptionUpdateInterval)
+	subscriptionHandler := handlers.NewSubscriptionHandler(subscriptionService, r.logger, r.config.Server.SubscriptionUpdateInterval).
+		WithIPService(ipService)
 
 	// Create commercial services
 	planService := plan.NewService(r.repos.Plan, r.logger)
@@ -326,7 +327,8 @@ func (r *Router) Setup() {
 			return err
 		})
 	nodeConfigTestHandler := handlers.NewNodeConfigTestHandler(configGenerator, r.logger)
-	nodeAgentHandler := handlers.NewNodeAgentHandler(nodeService, nodeTrafficService, r.repos.Node, configGenerator, r.nodeRecoveryTracker, r.logger)
+	nodeAgentHandler := handlers.NewNodeAgentHandler(nodeService, nodeTrafficService, r.repos.Node, configGenerator, r.nodeRecoveryTracker, r.logger).
+		WithIPService(ipService)
 
 	// Create node management handlers
 	var geoService *ip.GeolocationService
@@ -510,6 +512,7 @@ func (r *Router) Setup() {
 			{
 				subscriptionRoutes.GET("/link", subscriptionHandler.GetLink)
 				subscriptionRoutes.GET("/info", subscriptionHandler.GetInfo)
+				subscriptionRoutes.GET("/access-ips", subscriptionHandler.GetAccessIPs)
 				subscriptionRoutes.POST("/regenerate", subscriptionHandler.Regenerate)
 			}
 

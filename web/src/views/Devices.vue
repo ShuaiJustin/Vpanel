@@ -139,19 +139,34 @@
     </el-card>
 
     <!-- 订阅链接访问 IP -->
-    <el-card v-if="false" style="margin-top: 20px">
+    <el-card style="margin-top: 20px">
       <template #header>
         <div class="card-header">
-          <span>订阅链接访问 IP</span>
-          <el-tooltip content="这些 IP 曾访问过您的订阅链接">
-            <el-icon><QuestionFilled /></el-icon>
-          </el-tooltip>
+          <div class="card-header-info">
+            <span>订阅链接访问 IP</span>
+            <span class="card-header-hint">{{ subscriptionRefreshHint }}</span>
+          </div>
         </div>
       </template>
 
-      <el-table :data="[]" border>
+      <el-empty
+        v-if="subscriptionAccessList.length === 0 && !subscriptionLoading"
+        description="暂无订阅访问记录"
+      />
+
+      <el-table
+        v-else
+        v-loading="subscriptionLoading"
+        :data="subscriptionAccessList"
+        border
+      >
         <el-table-column prop="ip" label="IP 地址" width="150" />
-        <el-table-column prop="country" label="国家/地区" width="120" />
+        <el-table-column prop="country" label="国家/地区" width="140">
+          <template #default="scope">
+            {{ scope.row.countryFlag }} {{ scope.row.country }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="firstAccess" label="首次访问" width="180" />
         <el-table-column prop="lastAccess" label="最后访问" width="180" />
         <el-table-column prop="accessCount" label="访问次数" width="100" />
         <el-table-column prop="userAgent" label="客户端" />
@@ -171,7 +186,6 @@ import {
   Refresh,
   Close,
   Warning,
-  QuestionFilled,
 } from "@element-plus/icons-vue";
 import api from "@/api/index";
 
@@ -186,15 +200,21 @@ const ipHistory = ref([]);
 const historyPage = ref(1);
 const historyPageSize = ref(10);
 const historyTotal = ref(0);
+const subscriptionLoading = ref(false);
+const subscriptionAccessList = ref([]);
 const devicesUpdatedAt = ref(null);
 const historyUpdatedAt = ref(null);
+const subscriptionUpdatedAt = ref(null);
 const DEVICES_REFRESH_INTERVAL = 60 * 1000;
 const DEVICE_AUTO_REFRESH_HINT = `约每 ${Math.round(DEVICES_REFRESH_INTERVAL / 1000)} 秒自动刷新`;
 const HISTORY_AUTO_REFRESH_HINT = "页面恢复可见时自动刷新";
+const SUBSCRIPTION_AUTO_REFRESH_HINT = "页面恢复可见时自动刷新";
 const DEVICES_REQUEST_KEY = "user-devices-page-list";
 const HISTORY_REQUEST_KEY = "user-devices-page-history";
+const SUBSCRIPTION_REQUEST_KEY = "user-subscription-access-ips";
 let devicesRequest = null;
 let historyRequest = null;
+let subscriptionRequest = null;
 let historyRequestSignature = "";
 
 // 计算属性
@@ -230,6 +250,12 @@ const deviceRefreshHint = computed(() =>
 );
 const historyRefreshHint = computed(() =>
   formatRefreshHint(historyUpdatedAt.value, HISTORY_AUTO_REFRESH_HINT),
+);
+const subscriptionRefreshHint = computed(() =>
+  formatRefreshHint(
+    subscriptionUpdatedAt.value,
+    SUBSCRIPTION_AUTO_REFRESH_HINT,
+  ),
 );
 
 const formatDateTime = (value) => {
@@ -310,6 +336,21 @@ const normalizeHistoryItem = (item) => {
     ),
     accessCount: Number(item.access_count ?? item.accessCount ?? 1),
     userAgent: item.user_agent || item.userAgent || "",
+  };
+};
+
+const normalizeSubscriptionAccessItem = (item) => {
+  const country = item.country || "-";
+  const countryFlag = toCountryFlag(item.country_code || item.countryCode);
+
+  return {
+    ...item,
+    country,
+    countryFlag,
+    firstAccess: formatDateTime(item.first_access || item.firstAccess),
+    lastAccess: formatDateTime(item.last_access || item.lastAccess),
+    accessCount: Number(item.access_count ?? item.accessCount ?? 1),
+    userAgent: item.user_agent || item.userAgent || "-",
   };
 };
 
@@ -442,11 +483,61 @@ const fetchIPHistory = async (options = {}) => {
   return historyRequest;
 };
 
+const fetchSubscriptionAccess = async (options = {}) => {
+  if (subscriptionRequest) {
+    return subscriptionRequest;
+  }
+
+  const silent =
+    typeof options === "object" && options !== null && options.silent === true;
+  if (!silent) {
+    subscriptionLoading.value = true;
+  }
+
+  subscriptionRequest = (async () => {
+    try {
+      const response = await api.get("/subscription/access-ips", {
+        cancelKey: SUBSCRIPTION_REQUEST_KEY,
+      });
+      const payload = unwrapApiPayload(response);
+      const list = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload.data)
+          ? payload.data
+          : Array.isArray(payload.list)
+            ? payload.list
+            : [];
+
+      subscriptionAccessList.value = list.map(normalizeSubscriptionAccessItem);
+      subscriptionUpdatedAt.value = new Date();
+    } catch (error) {
+      if (error?.cancelled) {
+        return;
+      }
+      console.error("Failed to fetch subscription access:", error);
+      if (!silent) {
+        ElMessage.error("获取订阅访问记录失败");
+      }
+    } finally {
+      if (!silent) {
+        subscriptionLoading.value = false;
+      }
+      subscriptionRequest = null;
+    }
+  })();
+
+  return subscriptionRequest;
+};
+
 // 自动刷新
 let refreshInterval = null;
 
 const refreshPageData = ({ silent = true } = {}) =>
-  Promise.all([fetchDevices({ silent }), fetchIPHistory({ silent })]);
+  Promise.all([
+    fetchDevices({ silent }),
+    fetchIPHistory({ silent }),
+    fetchSubscriptionAccess({ silent }),
+  ]);
 
 const refreshAutoData = ({ silent = true } = {}) => fetchDevices({ silent });
 

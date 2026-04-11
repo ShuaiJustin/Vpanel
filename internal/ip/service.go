@@ -35,6 +35,15 @@ type NotificationData struct {
 	Timestamp    time.Time
 }
 
+// ProxySessionActivity represents a recently active proxy session reported by a node.
+type ProxySessionActivity struct {
+	UserID     uint
+	ProxyID    int64
+	IP         string
+	LastSeen   time.Time
+	DeviceInfo string
+}
+
 // Error codes for IP restriction.
 const (
 	ErrCodeIPLimitExceeded     = "IP_LIMIT_EXCEEDED"
@@ -340,6 +349,96 @@ func (s *Service) RecordActivity(ctx context.Context, userID uint, ip, userAgent
 	}
 
 	return s.tracker.RecordIPHistory(ctx, record)
+}
+
+// RecordProxySessions refreshes active proxy sessions reported by a node heartbeat.
+// Existing active IPs are touched, while new IPs are added to active_ips and ip_history.
+func (s *Service) RecordProxySessions(ctx context.Context, sessions []ProxySessionActivity) error {
+	if len(sessions) == 0 {
+		return nil
+	}
+
+	uniqueSessions := make(map[uint]map[string]ProxySessionActivity)
+	for _, session := range sessions {
+		if session.UserID == 0 || strings.TrimSpace(session.IP) == "" {
+			continue
+		}
+
+		userSessions := uniqueSessions[session.UserID]
+		if userSessions == nil {
+			userSessions = make(map[string]ProxySessionActivity)
+			uniqueSessions[session.UserID] = userSessions
+		}
+
+		current, exists := userSessions[session.IP]
+		if !exists || session.LastSeen.After(current.LastSeen) {
+			userSessions[session.IP] = session
+		}
+	}
+
+	timeout := time.Duration(s.settings.InactiveTimeout) * time.Minute
+	now := time.Now()
+	for userID, userSessions := range uniqueSessions {
+		if timeout > 0 {
+			_, _ = s.tracker.CleanupInactiveIPsForUser(ctx, userID, timeout)
+		}
+
+		for _, session := range userSessions {
+			country, city := "", ""
+			if s.geoService != nil {
+				geoInfo, err := s.geoService.LookupLocal(ctx, session.IP)
+				if err == nil && geoInfo != nil {
+					country = geoInfo.Country
+					city = geoInfo.City
+				}
+				if err != nil || !hasGeolocationDetails(geoInfo) {
+					s.warmGeolocationAsync(session.IP)
+				}
+			}
+
+			isActive, err := s.tracker.IsIPActive(ctx, userID, session.IP)
+			if err != nil {
+				return err
+			}
+			if isActive {
+				if err := s.tracker.UpdateLastActive(ctx, userID, session.IP); err != nil {
+					return err
+				}
+				continue
+			}
+
+			deviceInfo := strings.TrimSpace(session.DeviceInfo)
+			if deviceInfo == "" {
+				if session.ProxyID > 0 {
+					deviceInfo = fmt.Sprintf("Proxy #%d connection", session.ProxyID)
+				} else {
+					deviceInfo = "Proxy connection"
+				}
+			}
+
+			if err := s.tracker.AddActiveIP(ctx, userID, session.IP, deviceInfo, "proxy", country, city); err != nil {
+				return err
+			}
+
+			recordedAt := session.LastSeen
+			if recordedAt.IsZero() {
+				recordedAt = now
+			}
+			if err := s.tracker.RecordIPHistory(ctx, &IPHistory{
+				UserID:     userID,
+				IP:         session.IP,
+				UserAgent:  deviceInfo,
+				AccessType: AccessTypeProxy,
+				Country:    country,
+				City:       city,
+				CreatedAt:  recordedAt,
+			}); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 // isSuspiciousActivity checks if the activity is suspicious.

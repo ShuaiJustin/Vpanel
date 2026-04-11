@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	apiInboundPortBase = 63000
-	apiInboundPortSpan = 2048
+	apiInboundPortBase       = 63000
+	apiInboundPortSpan       = 2048
+	defaultXrayAccessLogPath = "/tmp/vpanel-xray-access.log"
 )
 
 // ConfigGenerator generates Xray configurations for nodes.
@@ -206,7 +207,7 @@ func (g *ConfigGenerator) GenerateForNode(ctx context.Context, nodeID int64) (*X
 	config := &XrayConfig{
 		Log: &LogConfig{
 			LogLevel: "warning",
-			Access:   "",
+			Access:   defaultXrayAccessLogPath,
 			Error:    "",
 		},
 		API: &APIConfig{
