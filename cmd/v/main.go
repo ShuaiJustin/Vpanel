@@ -111,6 +111,12 @@ func main() {
 		RefreshTokenExpiry:  cfg.Auth.RefreshTokenExpiry,
 	})
 
+	// Ensure system roles exist
+	if err := repos.Role.EnsureSystemRoles(context.Background()); err != nil {
+		log.Error("failed to ensure system roles", logger.F("error", err))
+		os.Exit(1)
+	}
+
 	// Ensure default admin user exists
 	if err := ensureAdminUser(repos.User, authService, cfg, log); err != nil {
 		log.Error("failed to ensure admin user", logger.F("error", err))
@@ -180,13 +186,26 @@ func ensureAdminUser(userRepo repository.UserRepository, authService *auth.Servi
 	// Check if admin user exists
 	existingUser, err := userRepo.GetByUsername(ctx, cfg.Auth.AdminUsername)
 	if err == nil {
-		// Admin user already exists, update password if different
+		// Admin user already exists
+		updated := false
+		
+		// Update password if different
 		if existingUser.PasswordHash != passwordHash {
 			existingUser.PasswordHash = passwordHash
+			updated = true
+		}
+		
+		// Set default nickname if empty
+		if existingUser.Nickname == "" {
+			existingUser.Nickname = "系统管理员"
+			updated = true
+		}
+		
+		if updated {
 			if err := userRepo.Update(ctx, existingUser); err != nil {
-				return fmt.Errorf("failed to update admin password: %w", err)
+				return fmt.Errorf("failed to update admin user: %w", err)
 			}
-			log.Info("admin user password updated", logger.F("username", cfg.Auth.AdminUsername))
+			log.Info("admin user updated", logger.F("username", cfg.Auth.AdminUsername))
 		} else {
 			log.Info("admin user already exists", logger.F("username", cfg.Auth.AdminUsername))
 		}
@@ -198,6 +217,7 @@ func ensureAdminUser(userRepo repository.UserRepository, authService *auth.Servi
 		Username:     cfg.Auth.AdminUsername,
 		PasswordHash: passwordHash,
 		Email:        "",
+		Nickname:     "系统管理员", // Set default nickname
 		Role:         "admin",
 		Enabled:      true,
 	}
