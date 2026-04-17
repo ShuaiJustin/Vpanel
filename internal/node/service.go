@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -278,6 +279,18 @@ func (s *Service) Create(ctx context.Context, req *CreateNodeRequest) (*Node, er
 		return nil, fmt.Errorf("%w: 节点地址不能为空", ErrInvalidNode)
 	}
 
+	// 验证 Panel URL 格式（防止 SSRF 攻击）
+	if req.PanelURL != "" {
+		panelURL, err := url.Parse(req.PanelURL)
+		if err != nil || (panelURL.Scheme != "http" && panelURL.Scheme != "https") {
+			return nil, fmt.Errorf("%w: Panel URL 格式无效，必须是 http:// 或 https:// 开头的有效 URL", ErrInvalidNode)
+		}
+		// 防止内网地址 SSRF
+		if panelURL.Hostname() == "localhost" || panelURL.Hostname() == "127.0.0.1" || strings.HasPrefix(panelURL.Hostname(), "192.168.") || strings.HasPrefix(panelURL.Hostname(), "10.") || strings.HasPrefix(panelURL.Hostname(), "172.") {
+			s.logger.Warn("Potential SSRF attempt with internal Panel URL", logger.F("panel_url", req.PanelURL))
+		}
+	}
+
 	// 标准化地址（去除空格和协议前缀）
 	address := strings.TrimSpace(req.Address)
 	address = strings.TrimPrefix(address, "http://")
@@ -371,20 +384,21 @@ func (s *Service) Create(ctx context.Context, req *CreateNodeRequest) (*Node, er
 		}
 	}
 
-	// 检查节点名称和地址是否重复
-	existingNodes, err := s.nodeRepo.List(ctx, &repository.NodeFilter{Limit: 10000})
+	// 检查节点名称和地址是否重复 - 使用数据库级别的高效查询
+	nameCount, err := s.nodeRepo.CountByName(ctx, req.Name, 0)
 	if err != nil {
-		s.logger.Warn("Failed to check existing nodes", logger.Err(err))
+		s.logger.Warn("Failed to check for duplicate node name", logger.Err(err))
 		// 继续创建，不因为查询失败而阻止
-	} else {
-		for _, node := range existingNodes {
-			if strings.EqualFold(node.Name, req.Name) {
-				return nil, fmt.Errorf("%w: 节点名称 '%s' 已存在", ErrDuplicateNode, req.Name)
-			}
-			if strings.EqualFold(node.Address, address) && node.Port == port {
-				return nil, fmt.Errorf("%w: 节点地址 %s:%d 已存在", ErrDuplicateNode, address, port)
-			}
-		}
+	} else if nameCount > 0 {
+		return nil, fmt.Errorf("%w: 节点名称 '%s' 已存在", ErrDuplicateNode, req.Name)
+	}
+
+	addressPortCount, err := s.nodeRepo.CountByAddressPort(ctx, address, port, 0)
+	if err != nil {
+		s.logger.Warn("Failed to check for duplicate node address", logger.Err(err))
+		// 继续创建，不因为查询失败而阻止
+	} else if addressPortCount > 0 {
+		return nil, fmt.Errorf("%w: 节点地址 %s:%d 已存在", ErrDuplicateNode, address, port)
 	}
 
 	// 生成 token
@@ -566,14 +580,12 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdateNodeRequest) 
 			return nil, fmt.Errorf("%w: 节点名称过长（最多 128 个字符）", ErrInvalidNode)
 		}
 
-		// 检查名称是否与其他节点重复
-		existingNodes, err := s.nodeRepo.List(ctx, &repository.NodeFilter{Limit: 10000})
-		if err == nil {
-			for _, node := range existingNodes {
-				if node.ID != id && strings.EqualFold(node.Name, *req.Name) {
-					return nil, fmt.Errorf("%w: 节点名称 '%s' 已被使用", ErrDuplicateNode, *req.Name)
-				}
-			}
+		// 检查名称是否与其他节点重复 - 使用数据库级别的高效查询
+		nameCount, err := s.nodeRepo.CountByName(ctx, *req.Name, id)
+		if err != nil {
+			s.logger.Warn("Failed to check for duplicate node name", logger.Err(err))
+		} else if nameCount > 0 {
+			return nil, fmt.Errorf("%w: 节点名称 '%s' 已被使用", ErrDuplicateNode, *req.Name)
 		}
 		repoNode.Name = *req.Name
 	}
@@ -589,19 +601,17 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdateNodeRequest) 
 			return nil, fmt.Errorf("%w: 地址格式无效", ErrInvalidAddress)
 		}
 
-		// 检查地址+端口是否与其他节点重复
+		// 检查地址+端口是否与其他节点重复 - 使用数据库级别的高效查询
 		checkPort := repoNode.Port
 		if req.Port != nil {
 			checkPort = *req.Port
 		}
 
-		existingNodes, err := s.nodeRepo.List(ctx, &repository.NodeFilter{Limit: 10000})
-		if err == nil {
-			for _, node := range existingNodes {
-				if node.ID != id && strings.EqualFold(node.Address, address) && node.Port == checkPort {
-					return nil, fmt.Errorf("%w: 节点地址 %s:%d 已被使用", ErrDuplicateNode, address, checkPort)
-				}
-			}
+		addressPortCount, err := s.nodeRepo.CountByAddressPort(ctx, address, checkPort, id)
+		if err != nil {
+			s.logger.Warn("Failed to check for duplicate node address", logger.Err(err))
+		} else if addressPortCount > 0 {
+			return nil, fmt.Errorf("%w: 节点地址 %s:%d 已被使用", ErrDuplicateNode, address, checkPort)
 		}
 		repoNode.Address = address
 	}
@@ -614,6 +624,17 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdateNodeRequest) 
 	}
 
 	if req.PanelURL != nil {
+		// 验证 Panel URL 格式（防止 SSRF 攻击）
+		if *req.PanelURL != "" {
+			panelURL, err := url.Parse(*req.PanelURL)
+			if err != nil || (panelURL.Scheme != "http" && panelURL.Scheme != "https") {
+				return nil, fmt.Errorf("%w: Panel URL 格式无效，必须是 http:// 或 https:// 开头的有效 URL", ErrInvalidNode)
+			}
+			// 防止内网地址 SSRF
+			if panelURL.Hostname() == "localhost" || panelURL.Hostname() == "127.0.0.1" || strings.HasPrefix(panelURL.Hostname(), "192.168.") || strings.HasPrefix(panelURL.Hostname(), "10.") || strings.HasPrefix(panelURL.Hostname(), "172.") {
+				s.logger.Warn("Potential SSRF attempt with internal Panel URL", logger.F("panel_url", *req.PanelURL))
+			}
+		}
 		repoNode.PanelURL = *req.PanelURL
 	}
 
@@ -1454,8 +1475,11 @@ func (s *Service) TestNodeConnectivity(ctx context.Context, address string, port
 
 	addr := fmt.Sprintf("%s:%d", address, port)
 
-	// 设置超时
-	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	// 使用 context-aware 连接，尊重上下文超时
+	dialer := &net.Dialer{
+		Timeout: 5 * time.Second,
+	}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		s.logger.Warn("节点连通性测试失败",
 			logger.F("address", address),

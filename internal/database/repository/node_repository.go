@@ -148,6 +148,7 @@ type NodeRepository interface {
 	// CRUD operations
 	Create(ctx context.Context, node *Node) error
 	GetByID(ctx context.Context, id int64) (*Node, error)
+	GetByIDs(ctx context.Context, ids []int64) ([]*Node, error)
 	Update(ctx context.Context, node *Node) error
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context, filter *NodeFilter) ([]*Node, error)
@@ -175,6 +176,10 @@ type NodeRepository interface {
 	GetHealthy(ctx context.Context) ([]*Node, error)
 	GetOnline(ctx context.Context) ([]*Node, error)
 	GetAvailable(ctx context.Context) ([]*Node, error) // online and not at capacity
+	
+	// Duplicate checking
+	CountByName(ctx context.Context, name string, excludeID int64) (int64, error)
+	CountByAddressPort(ctx context.Context, address string, port int, excludeID int64) (int64, error)
 
 	// Statistics
 	CountByStatus(ctx context.Context) (map[string]int64, error)
@@ -219,6 +224,20 @@ func (r *nodeRepository) GetByID(ctx context.Context, id int64) (*Node, error) {
 		return nil, errors.NewDatabaseError("failed to get node", result.Error)
 	}
 	return &node, nil
+}
+
+// GetByIDs retrieves multiple nodes by their IDs in a single query (batch operation).
+func (r *nodeRepository) GetByIDs(ctx context.Context, ids []int64) ([]*Node, error) {
+	if len(ids) == 0 {
+		return []*Node{}, nil
+	}
+	
+	var nodes []*Node
+	result := r.db.WithContext(ctx).Preload("Groups").Where("id IN ?", ids).Find(&nodes)
+	if result.Error != nil {
+		return nil, errors.NewDatabaseError("failed to get nodes by IDs", result.Error)
+	}
+	return nodes, nil
 }
 
 // Update updates a node.
@@ -501,6 +520,35 @@ func (r *nodeRepository) GetAvailable(ctx context.Context) ([]*Node, error) {
 		return nil, errors.NewDatabaseError("failed to get available nodes", result.Error)
 	}
 	return filterNodesAcceptingNewAssignments(nodes), nil
+}
+
+// CountByName counts nodes with the given name (case-insensitive), excluding a specific ID.
+func (r *nodeRepository) CountByName(ctx context.Context, name string, excludeID int64) (int64, error) {
+	var count int64
+	query := r.db.WithContext(ctx).Model(&Node{}).Where("LOWER(name) = LOWER(?)", name)
+	if excludeID > 0 {
+		query = query.Where("id != ?", excludeID)
+	}
+	err := query.Count(&count).Error
+	if err != nil {
+		return 0, errors.NewDatabaseError("failed to count nodes by name", err)
+	}
+	return count, nil
+}
+
+// CountByAddressPort counts nodes with the given address and port (case-insensitive), excluding a specific ID.
+func (r *nodeRepository) CountByAddressPort(ctx context.Context, address string, port int, excludeID int64) (int64, error) {
+	var count int64
+	query := r.db.WithContext(ctx).Model(&Node{}).
+		Where("LOWER(address) = LOWER(?) AND port = ?", address, port)
+	if excludeID > 0 {
+		query = query.Where("id != ?", excludeID)
+	}
+	err := query.Count(&count).Error
+	if err != nil {
+		return 0, errors.NewDatabaseError("failed to count nodes by address and port", err)
+	}
+	return count, nil
 }
 
 // CountByStatus returns node counts grouped by status.

@@ -551,13 +551,25 @@ func (s *TrafficService) snapshotNodesByID(ctx context.Context, nodeIDs map[int6
 		return nil
 	}
 
-	snapshots := make(map[int64]*repository.Node, len(nodeIDs))
-	for _, nodeID := range sortedNodeIDs(nodeIDs) {
-		nodeData, err := s.nodeRepo.GetByID(ctx, nodeID)
-		if err != nil || nodeData == nil {
-			continue
+	// Convert map to slice for batch query
+	nodeIDSlice := make([]int64, 0, len(nodeIDs))
+	for nodeID := range nodeIDs {
+		nodeIDSlice = append(nodeIDSlice, nodeID)
+	}
+
+	// Batch query all nodes at once instead of N+1 queries
+	nodes, err := s.nodeRepo.GetByIDs(ctx, nodeIDSlice)
+	if err != nil {
+		s.logger.Warn("Failed to batch fetch nodes for traffic snapshot", logger.Err(err))
+		return nil
+	}
+
+	// Build snapshot map
+	snapshots := make(map[int64]*repository.Node, len(nodes))
+	for _, nodeData := range nodes {
+		if nodeData != nil {
+			snapshots[nodeData.ID] = cloneNodeSnapshot(nodeData)
 		}
-		snapshots[nodeID] = cloneNodeSnapshot(nodeData)
 	}
 	return snapshots
 }
