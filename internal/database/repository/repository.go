@@ -98,21 +98,24 @@ func (u *User) BeforeDelete(tx *gorm.DB) error {
 		}
 	}
 
-	for _, table := range []string{
-		"proxies",
-		"subscriptions",
-		"user_node_assignments",
-		"login_history",
-		"active_ips",
-		"ip_history",
-		"trials",
-		"subscription_pauses",
-		"password_reset_tokens",
-		"email_verification_tokens",
-		"two_factor_secrets",
-		"announcement_reads",
-		"commercial_invite_codes",
-	} {
+	// 使用白名单验证表名，防止SQL注入
+	allowedTables := map[string]bool{
+		"proxies":                    true,
+		"subscriptions":              true,
+		"user_node_assignments":      true,
+		"login_history":              true,
+		"active_ips":                 true,
+		"ip_history":                 true,
+		"trials":                     true,
+		"subscription_pauses":        true,
+		"password_reset_tokens":      true,
+		"email_verification_tokens":  true,
+		"two_factor_secrets":         true,
+		"announcement_reads":         true,
+		"commercial_invite_codes":    true,
+	}
+
+	for table := range allowedTables {
 		if !tx.Migrator().HasTable(table) {
 			continue
 		}

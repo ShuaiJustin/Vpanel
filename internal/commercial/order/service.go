@@ -97,8 +97,6 @@ type Service struct {
 	afterPlanApplied func(ctx context.Context, userID int64) error
 	logger           logger.Logger
 	config           *Config
-	mu               sync.Mutex
-	orderNos         map[string]bool // Track generated order numbers for uniqueness
 }
 
 type trialMarker interface {
@@ -120,7 +118,6 @@ func NewService(
 		planRepo:  planRepo,
 		logger:    log,
 		config:    config,
-		orderNos:  make(map[string]bool),
 	}
 }
 
@@ -142,29 +139,24 @@ func (s *Service) WithAfterPlanAppliedHook(hook func(ctx context.Context, userID
 	return s
 }
 
-// GenerateOrderNo generates a unique order number.
+// GenerateOrderNo generates a unique order number using database constraint.
 // Format: ORD-YYYYMMDD-XXXX where XXXX is a random hex string.
 func (s *Service) GenerateOrderNo() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for {
-		// Generate random bytes
-		bytes := make([]byte, 4)
-		rand.Read(bytes)
-		randomPart := hex.EncodeToString(bytes)
-
-		// Format: ORD-20260114-XXXXXXXX
-		orderNo := fmt.Sprintf("ORD-%s-%s",
-			time.Now().Format("20060102"),
-			randomPart[:8])
-
-		// Check uniqueness in memory cache
-		if !s.orderNos[orderNo] {
-			s.orderNos[orderNo] = true
-			return orderNo
-		}
+	// Generate random bytes
+	bytes := make([]byte, 4)
+	if _, err := rand.Read(bytes); err != nil {
+		// Fallback to timestamp-based generation if random fails
+		s.logger.Warn("Failed to generate random bytes for order number", logger.Err(err))
+		return fmt.Sprintf("ORD-%s-%d", time.Now().Format("20060102"), time.Now().UnixNano()%100000000)
 	}
+	randomPart := hex.EncodeToString(bytes)
+
+	// Format: ORD-20260114-XXXXXXXX
+	orderNo := fmt.Sprintf("ORD-%s-%s",
+		time.Now().Format("20060102"),
+		randomPart[:8])
+
+	return orderNo
 }
 
 // Create creates a new order.

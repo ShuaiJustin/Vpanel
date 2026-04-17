@@ -219,10 +219,10 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 		}
 	}
 
-	// 异步申请证书（使用独立的 context）
+	// 异步申请证书（使用传入的 context）
 	go func() {
-		// 创建带超时的 context（30 分钟）
-		applyCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		// 创建带超时的 context（10 分钟，从30分钟缩短）
+		applyCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 		defer cancel()
 
 		if err := s.ensureAcmeInstalled(applyCtx, req.Email); err != nil {
@@ -841,7 +841,8 @@ func (s *Service) issueWithAcme(ctx context.Context, req *ApplyRequest, cert *re
 
 	// 安装证书到指定目录
 	certPath := filepath.Join(s.certDir, req.Domain)
-	if err := os.MkdirAll(certPath, 0750); err != nil {
+	// 使用安全的目录权限 (0700)
+	if err := os.MkdirAll(certPath, 0700); err != nil {
 		return fmt.Errorf("创建证书目录失败: %w", err)
 	}
 
@@ -864,7 +865,10 @@ func (s *Service) issueWithAcme(ctx context.Context, req *ApplyRequest, cert *re
 		return fmt.Errorf("安装证书失败: %w", err)
 	}
 
-	// 设置私钥文件权限
+	// 设置证书文件权限为 0644，私钥文件权限为 0600
+	if err := os.Chmod(certFile, 0644); err != nil {
+		s.logger.Warn("设置证书文件权限失败", logger.Err(err))
+	}
 	if err := os.Chmod(keyFile, 0600); err != nil {
 		s.logger.Warn("设置私钥文件权限失败", logger.Err(err))
 	}
@@ -922,13 +926,15 @@ func (s *Service) Upload(ctx context.Context, domain string, certData, keyData [
 
 	// 保存证书文件
 	certPath := filepath.Join(s.certDir, domain)
-	if err := os.MkdirAll(certPath, 0755); err != nil {
+	// 使用安全的目录权限 (0700)
+	if err := os.MkdirAll(certPath, 0700); err != nil {
 		return nil, fmt.Errorf("创建证书目录失败: %w", err)
 	}
 
 	certFile := filepath.Join(certPath, "fullchain.pem")
 	keyFile := filepath.Join(certPath, "privkey.pem")
 
+	// 证书文件权限 0644，私钥文件权限 0600
 	if err := os.WriteFile(certFile, certData, 0644); err != nil {
 		return nil, fmt.Errorf("保存证书文件失败: %w", err)
 	}
@@ -1182,13 +1188,15 @@ func (s *Service) GenerateSelfSigned(ctx context.Context, domain string) (*repos
 
 	// 保存文件
 	certPath := filepath.Join(s.certDir, domain)
-	if err := os.MkdirAll(certPath, 0755); err != nil {
+	// 使用安全的目录权限 (0700)
+	if err := os.MkdirAll(certPath, 0700); err != nil {
 		return nil, fmt.Errorf("创建证书目录失败: %w", err)
 	}
 
 	certFile := filepath.Join(certPath, "fullchain.pem")
 	keyFile := filepath.Join(certPath, "privkey.pem")
 
+	// 证书文件权限 0644，私钥文件权限 0600
 	if err := os.WriteFile(certFile, certPEM, 0644); err != nil {
 		return nil, fmt.Errorf("保存证书文件失败: %w", err)
 	}
@@ -1419,14 +1427,18 @@ func (s *Service) DeployToAssignedNodes(ctx context.Context, certID int64) error
 		logger.F("cert_id", certID),
 		logger.F("node_count", len(assignedNodes)))
 
-	// 并发部署到所有节点
+	// 并发部署到所有节点（限制并发数）
+	const maxConcurrent = 5
+	semaphore := make(chan struct{}, maxConcurrent)
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(assignedNodes))
 
 	for _, node := range assignedNodes {
 		wg.Add(1)
+		semaphore <- struct{}{} // 获取信号量
 		go func(n *repository.Node) {
 			defer wg.Done()
+			defer func() { <-semaphore }() // 释放信号量
 			if err := s.DeployToNode(ctx, certID, n.ID); err != nil {
 				errChan <- fmt.Errorf("节点 %s 部署失败: %w", n.Name, err)
 			}

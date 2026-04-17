@@ -132,6 +132,19 @@ func (h *AuthMiddlewareHandler) Authenticate() gin.HandlerFunc {
 			return
 		}
 
+		// Check token blacklist (CRITICAL SECURITY FIX)
+		if h.authService.IsTokenBlacklisted(c.Request.Context(), token) {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    errors.ErrCodeUnauthorized,
+					"message": "token has been revoked",
+				},
+			})
+			c.Abort()
+			return
+		}
+
 		claims, ok := h.enrichClaimsWithCurrentUser(c, claims)
 		if !ok {
 			return

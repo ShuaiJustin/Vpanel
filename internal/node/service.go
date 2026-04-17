@@ -1267,16 +1267,28 @@ func (s *Service) toNode(rn *repository.Node) *Node {
 	var installSteps []DeployStep
 
 	if rn.Tags != "" {
-		_ = json.Unmarshal([]byte(rn.Tags), &tags)
+		if err := json.Unmarshal([]byte(rn.Tags), &tags); err != nil {
+			s.logger.Warn("Failed to unmarshal node tags", logger.Err(err), logger.F("node_id", rn.ID))
+			tags = []string{}
+		}
 	}
 	if rn.IPWhitelist != "" {
-		_ = json.Unmarshal([]byte(rn.IPWhitelist), &ipWhitelist)
+		if err := json.Unmarshal([]byte(rn.IPWhitelist), &ipWhitelist); err != nil {
+			s.logger.Warn("Failed to unmarshal node IP whitelist", logger.Err(err), logger.F("node_id", rn.ID))
+			ipWhitelist = []string{}
+		}
 	}
 	if rn.Protocols != "" {
-		_ = json.Unmarshal([]byte(rn.Protocols), &protocols)
+		if err := json.Unmarshal([]byte(rn.Protocols), &protocols); err != nil {
+			s.logger.Warn("Failed to unmarshal node protocols", logger.Err(err), logger.F("node_id", rn.ID))
+			protocols = []string{}
+		}
 	}
 	if rn.InstallSteps != "" {
-		_ = json.Unmarshal([]byte(rn.InstallSteps), &installSteps)
+		if err := json.Unmarshal([]byte(rn.InstallSteps), &installSteps); err != nil {
+			s.logger.Warn("Failed to unmarshal node install steps", logger.Err(err), logger.F("node_id", rn.ID))
+			installSteps = []DeployStep{}
+		}
 	}
 
 	sshPassword, err := DecryptSSHPassword(rn.SSHPassword)

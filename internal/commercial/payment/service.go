@@ -41,18 +41,14 @@ type Service struct {
 	rechargeHandler RechargeCallbackHandler
 	logger          logger.Logger
 	mu              sync.RWMutex
-
-	processedCallbacks map[string]bool
-	callbackMu         sync.Mutex
 }
 
 // NewService creates a new payment service.
 func NewService(orderService *order.Service, log logger.Logger) *Service {
 	return &Service{
-		gateways:           make(map[string]PaymentGateway),
-		orderService:       orderService,
-		logger:             log,
-		processedCallbacks: make(map[string]bool),
+		gateways:     make(map[string]PaymentGateway),
+		orderService: orderService,
+		logger:       log,
 	}
 }
 
@@ -240,8 +236,6 @@ func (s *Service) HandleCallback(ctx context.Context, method string, data []byte
 		return ErrInvalidCallback
 	}
 
-	callbackKey := fmt.Sprintf("%s:%s", method, paymentNo)
-
 	ord, err := s.orderService.GetByOrderNo(ctx, orderNo)
 	if err == nil {
 		if result.Amount > 0 && ord.PayAmount != result.Amount {
@@ -252,14 +246,11 @@ func (s *Service) HandleCallback(ctx context.Context, method string, data []byte
 			return ErrAmountMismatch
 		}
 
+		// Check if already processed in database
 		if ord.PaymentNo == paymentNo && (ord.Status == order.StatusPaid || ord.Status == order.StatusCompleted) {
-			s.logger.Info("Duplicate callback ignored after persisted payment lookup",
+			s.logger.Info("Duplicate callback ignored (already processed in database)",
 				logger.F("orderNo", orderNo),
 				logger.F("paymentNo", paymentNo))
-			return nil
-		}
-
-		if s.markCallbackProcessing(callbackKey, paymentNo) {
 			return nil
 		}
 
@@ -267,7 +258,6 @@ func (s *Service) HandleCallback(ctx context.Context, method string, data []byte
 			s.logger.Error("Failed to mark order as paid",
 				logger.Err(err),
 				logger.F("orderNo", orderNo))
-			s.unmarkCallbackProcessing(callbackKey)
 			return err
 		}
 
@@ -295,14 +285,11 @@ func (s *Service) HandleCallback(ctx context.Context, method string, data []byte
 		return ErrAmountMismatch
 	}
 
+	// Check if already processed in database
 	if persistedPaymentNo == paymentNo && status == order.StatusPaid {
-		s.logger.Info("Duplicate recharge callback ignored after persisted payment lookup",
+		s.logger.Info("Duplicate recharge callback ignored (already processed in database)",
 			logger.F("orderNo", orderNo),
 			logger.F("paymentNo", paymentNo))
-		return nil
-	}
-
-	if s.markCallbackProcessing(callbackKey, paymentNo) {
 		return nil
 	}
 
@@ -310,7 +297,6 @@ func (s *Service) HandleCallback(ctx context.Context, method string, data []byte
 		s.logger.Error("Failed to mark recharge order as paid",
 			logger.Err(err),
 			logger.F("orderNo", orderNo))
-		s.unmarkCallbackProcessing(callbackKey)
 		return err
 	}
 
@@ -320,26 +306,6 @@ func (s *Service) HandleCallback(ctx context.Context, method string, data []byte
 		logger.F("amount", result.Amount))
 
 	return nil
-}
-
-func (s *Service) markCallbackProcessing(callbackKey string, paymentNo string) bool {
-	s.callbackMu.Lock()
-	defer s.callbackMu.Unlock()
-
-	if s.processedCallbacks[callbackKey] {
-		s.logger.Info("Duplicate callback ignored",
-			logger.F("paymentNo", paymentNo))
-		return true
-	}
-
-	s.processedCallbacks[callbackKey] = true
-	return false
-}
-
-func (s *Service) unmarkCallbackProcessing(callbackKey string) {
-	s.callbackMu.Lock()
-	defer s.callbackMu.Unlock()
-	delete(s.processedCallbacks, callbackKey)
 }
 
 // QueryPayment queries the payment status.
@@ -407,12 +373,10 @@ func (s *Service) ProcessRefund(ctx context.Context, orderID int64, amount int64
 	return result, nil
 }
 
-// IsCallbackProcessed checks if a callback has been processed (for idempotency).
+// IsCallbackProcessed checks if a callback has been processed (deprecated - use database check).
 func (s *Service) IsCallbackProcessed(method, paymentNo string) bool {
-	callbackKey := fmt.Sprintf("%s:%s", method, paymentNo)
-	s.callbackMu.Lock()
-	defer s.callbackMu.Unlock()
-	return s.processedCallbacks[callbackKey]
+	// This method is deprecated - callback idempotency is now handled by database checks
+	return false
 }
 
 // GetPaymentStatus returns the payment status for an order.

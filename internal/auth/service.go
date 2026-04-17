@@ -2,6 +2,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha1"
@@ -42,7 +43,14 @@ type Config struct {
 
 // Service provides authentication operations.
 type Service struct {
-	config Config
+	config         Config
+	tokenBlacklist TokenBlacklistInterface
+}
+
+// TokenBlacklistInterface defines the interface for token blacklist operations.
+type TokenBlacklistInterface interface {
+	IsRevoked(ctx context.Context, token string) bool
+	RevokeToken(ctx context.Context, token string, expiresAt time.Time) error
 }
 
 // NewService creates a new authentication service.
@@ -54,6 +62,28 @@ func NewService(cfg Config) *Service {
 		cfg.RefreshTokenExpiry = 7 * 24 * time.Hour
 	}
 	return &Service{config: cfg}
+}
+
+// WithTokenBlacklist adds token blacklist support to the service.
+func (s *Service) WithTokenBlacklist(blacklist TokenBlacklistInterface) *Service {
+	s.tokenBlacklist = blacklist
+	return s
+}
+
+// IsTokenBlacklisted checks if a token has been revoked.
+func (s *Service) IsTokenBlacklisted(ctx context.Context, token string) bool {
+	if s.tokenBlacklist == nil {
+		return false
+	}
+	return s.tokenBlacklist.IsRevoked(ctx, token)
+}
+
+// RevokeToken adds a token to the blacklist.
+func (s *Service) RevokeToken(ctx context.Context, token string, expiresAt time.Time) error {
+	if s.tokenBlacklist == nil {
+		return fmt.Errorf("token blacklist not configured")
+	}
+	return s.tokenBlacklist.RevokeToken(ctx, token, expiresAt)
 }
 
 // GenerateToken generates a JWT token for a user.
