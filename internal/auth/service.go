@@ -197,11 +197,11 @@ func (s *Service) GenerateTemporaryPassword() string {
 	for i := range b {
 		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
 		if err != nil {
-			// Fallback to time-based if crypto/rand fails
-			b[i] = charset[time.Now().UnixNano()%int64(len(charset))]
-		} else {
-			b[i] = charset[n.Int64()]
+			// SECURITY FIX: Do not fall back to weak randomness
+			// If crypto/rand fails, the system is in a bad state
+			panic(fmt.Sprintf("crypto/rand failed: %v - system entropy exhausted", err))
 		}
+		b[i] = charset[n.Int64()]
 	}
 	return string(b)
 }

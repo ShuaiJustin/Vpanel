@@ -195,9 +195,9 @@ func ensureAdminUser(userRepo repository.UserRepository, authService *auth.Servi
 			updated = true
 		}
 		
-		// Set default nickname if empty
-		if existingUser.Nickname == "" {
-			existingUser.Nickname = "系统管理员"
+		// Set default display name if empty
+		if existingUser.DisplayName == "" {
+			existingUser.DisplayName = "系统管理员"
 			updated = true
 		}
 		
@@ -217,7 +217,7 @@ func ensureAdminUser(userRepo repository.UserRepository, authService *auth.Servi
 		Username:     cfg.Auth.AdminUsername,
 		PasswordHash: passwordHash,
 		Email:        "",
-		Nickname:     "系统管理员", // Set default nickname
+		DisplayName:  "系统管理员", // Set default display name
 		Role:         "admin",
 		Enabled:      true,
 	}

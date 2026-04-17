@@ -137,6 +137,12 @@ func (r *Router) Setup() {
 	r.engine.Use(middleware.CORS(r.config.Server.CORSOrigins))
 	r.engine.Use(middleware.RequestID())
 	r.engine.Use(middleware.ErrorHandler(r.logger)) // 统一错误处理
+	
+	// SECURITY: Add CSRF protection for authenticated requests
+	// Note: CSRF middleware will skip GET/HEAD/OPTIONS and unauthenticated requests
+	r.engine.Use(middleware.CSRFTokenProvider()) // Provide CSRF tokens to clients
+	r.engine.Use(middleware.CSRFProtection())    // Validate CSRF tokens on state-changing operations
+	
 	// Removed global rate limit - too restrictive for development
 	// r.engine.Use(middleware.RateLimit(100)) // 100 requests per second per IP
 
@@ -439,7 +445,8 @@ func (r *Router) Setup() {
 		// Auth routes (public)
 		auth := api.Group("/auth")
 		{
-			auth.POST("/login", authHandler.Login)
+			// SECURITY: Add rate limiting to prevent brute force attacks
+			auth.POST("/login", middleware.AuthRateLimit("login"), authHandler.Login)
 			auth.POST("/refresh", authHandler.RefreshToken)
 		}
 
@@ -1412,13 +1419,14 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 		// Public auth routes
 		portalAuth := portal.Group("/auth")
 		{
-			portalAuth.POST("/register", portalAuthHandler.Register)
-			portalAuth.POST("/login", portalAuthHandler.Login)
-			portalAuth.POST("/forgot-password", portalAuthHandler.ForgotPassword)
-			portalAuth.POST("/reset-password", portalAuthHandler.ResetPassword)
+			// SECURITY: Add rate limiting to prevent brute force attacks
+			portalAuth.POST("/register", middleware.AuthRateLimit("register"), portalAuthHandler.Register)
+			portalAuth.POST("/login", middleware.AuthRateLimit("login"), portalAuthHandler.Login)
+			portalAuth.POST("/forgot-password", middleware.AuthRateLimit("password-reset"), portalAuthHandler.ForgotPassword)
+			portalAuth.POST("/reset-password", middleware.AuthRateLimit("password-reset"), portalAuthHandler.ResetPassword)
 			portalAuth.GET("/verify-email", portalAuthHandler.VerifyEmail)
 			portalAuth.GET("/avatar/:filename", portalAuthHandler.GetAvatar)
-			portalAuth.POST("/2fa/login", portalAuthHandler.Verify2FALogin)
+			portalAuth.POST("/2fa/login", middleware.AuthRateLimit("login"), portalAuthHandler.Verify2FALogin)
 		}
 
 		// Public help center routes

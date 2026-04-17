@@ -30,6 +30,113 @@ import (
 	apperrors "v/pkg/errors"
 )
 
+// Input validation patterns
+var (
+	// Email validation (RFC 5322 simplified)
+	emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+	// Domain validation (supports wildcards)
+	domainRegex = regexp.MustCompile(`^(\*\.)?([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$`)
+	// DNS provider validation (alphanumeric and underscore only)
+	dnsProviderRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+	// Environment variable key validation (alphanumeric and underscore only)
+	envKeyRegex = regexp.MustCompile(`^[A-Z0-9_]+$`)
+)
+
+// sanitizeDomainForPath sanitizes domain name for safe use in file paths
+// Prevents path traversal attacks
+func sanitizeDomainForPath(domain string) (string, error) {
+	// Remove wildcard prefix if present
+	domain = strings.TrimPrefix(domain, "*.")
+	
+	// Validate domain format
+	if err := validateDomain(domain); err != nil {
+		return "", err
+	}
+	
+	// Clean the path to remove any .. or . components
+	cleaned := filepath.Clean(domain)
+	
+	// Ensure the cleaned path doesn't contain path separators
+	// (which would indicate an attempt to escape the directory)
+	if strings.Contains(cleaned, string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid domain: contains path separators")
+	}
+	
+	// Ensure the cleaned path is the same as the original
+	// (prevents attempts to use . or .. in domain names)
+	if cleaned != domain {
+		return "", fmt.Errorf("invalid domain: path traversal attempt detected")
+	}
+	
+	return cleaned, nil
+}
+
+// validateEmail validates and sanitizes email addresses
+func validateEmail(email string) error {
+	if email == "" {
+		return nil // Empty email is allowed
+	}
+	if len(email) > 254 {
+		return fmt.Errorf("email too long (max 254 characters)")
+	}
+	if !emailRegex.MatchString(email) {
+		return fmt.Errorf("invalid email format")
+	}
+	// Check for shell metacharacters
+	if strings.ContainsAny(email, ";|&$`<>(){}[]!*?~") {
+		return fmt.Errorf("email contains invalid characters")
+	}
+	return nil
+}
+
+// validateDomain validates domain names
+func validateDomain(domain string) error {
+	if domain == "" {
+		return fmt.Errorf("domain cannot be empty")
+	}
+	if len(domain) > 253 {
+		return fmt.Errorf("domain too long (max 253 characters)")
+	}
+	if !domainRegex.MatchString(domain) {
+		return fmt.Errorf("invalid domain format")
+	}
+	return nil
+}
+
+// validateDNSProvider validates DNS provider names
+func validateDNSProvider(provider string) error {
+	if provider == "" {
+		return nil
+	}
+	if !dnsProviderRegex.MatchString(provider) {
+		return fmt.Errorf("invalid DNS provider format (alphanumeric and underscore only)")
+	}
+	if len(provider) > 50 {
+		return fmt.Errorf("DNS provider name too long")
+	}
+	return nil
+}
+
+// validateEnvVars validates environment variable keys and values
+func validateEnvVars(envVars map[string]string) error {
+	for key, value := range envVars {
+		if !envKeyRegex.MatchString(key) {
+			return fmt.Errorf("invalid environment variable key: %s (must be uppercase alphanumeric with underscores)", key)
+		}
+		if len(key) > 100 {
+			return fmt.Errorf("environment variable key too long: %s", key)
+		}
+		if len(value) > 1000 {
+			return fmt.Errorf("environment variable value too long for key: %s", key)
+		}
+		// Check for shell metacharacters in values
+		if strings.ContainsAny(value, ";|&$`<>(){}[]!*?~\n\r") {
+			return fmt.Errorf("environment variable value contains invalid characters: %s", key)
+		}
+	}
+	return nil
+}
+
 // Service provides certificate management operations.
 type Service struct {
 	certRepo       repository.CertificateRepository
@@ -85,12 +192,36 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 		logger.F("provider", req.Provider),
 		logger.F("method", req.Method))
 
+	// SECURITY: Validate all user inputs to prevent command injection
+	if err := validateDomain(req.Domain); err != nil {
+		return nil, apperrors.NewBadRequestError(fmt.Sprintf("invalid domain: %v", err))
+	}
+	if err := validateEmail(req.Email); err != nil {
+		return nil, apperrors.NewBadRequestError(fmt.Sprintf("invalid email: %v", err))
+	}
+	if err := validateDNSProvider(req.DNSProvider); err != nil {
+		return nil, apperrors.NewBadRequestError(fmt.Sprintf("invalid DNS provider: %v", err))
+	}
+	if err := validateEnvVars(req.DNSEnv); err != nil {
+		return nil, apperrors.NewBadRequestError(fmt.Sprintf("invalid DNS credentials: %v", err))
+	}
+
 	// 设置默认值
 	if req.Provider == "" {
 		req.Provider = "letsencrypt"
 	}
 	if req.Method == "" {
 		req.Method = "http"
+	}
+
+	// Validate provider
+	if req.Provider != "letsencrypt" && req.Provider != "zerossl" {
+		return nil, apperrors.NewBadRequestError("provider must be 'letsencrypt' or 'zerossl'")
+	}
+
+	// Validate method
+	if req.Method != "http" && req.Method != "dns" {
+		return nil, apperrors.NewBadRequestError("method must be 'http' or 'dns'")
 	}
 
 	// 检查通配符域名
@@ -416,6 +547,13 @@ func (s *Service) ensureAcmeInstalled(ctx context.Context, email string) error {
 func (s *Service) installAcme(ctx context.Context, email string) error {
 	s.logger.Info("开始安装 acme.sh")
 
+	// SECURITY: Validate email to prevent command injection
+	if email != "" {
+		if err := validateEmail(email); err != nil {
+			return fmt.Errorf("invalid email for acme.sh installation: %w", err)
+		}
+	}
+
 	installScript := filepath.Join(os.TempDir(), fmt.Sprintf("acme-install-%d.sh", time.Now().UnixNano()))
 	defer os.Remove(installScript)
 
@@ -424,8 +562,10 @@ func (s *Service) installAcme(ctx context.Context, email string) error {
 		return fmt.Errorf("下载安装脚本失败: %w", err)
 	}
 
+	// SECURITY: Pass email as separate argument, not embedded in string
 	installArgs := []string{installScript}
 	if email != "" {
+		// Email is validated above, safe to use
 		installArgs = append(installArgs, fmt.Sprintf("email=%s", email))
 	}
 
@@ -509,6 +649,11 @@ func (s *Service) updateAcmeAccount(ctx context.Context, email string) error {
 		return nil // 如果没有提供邮箱，跳过更新
 	}
 
+	// SECURITY: Validate email to prevent command injection
+	if err := validateEmail(email); err != nil {
+		return fmt.Errorf("invalid email: %w", err)
+	}
+
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("获取用户目录失败: %w", err)
@@ -516,7 +661,7 @@ func (s *Service) updateAcmeAccount(ctx context.Context, email string) error {
 
 	acmePath := filepath.Join(homeDir, ".acme.sh", "acme.sh")
 
-	// 更新账户邮箱
+	// 更新账户邮箱 - email is now validated, safe to use
 	cmd := exec.CommandContext(ctx, acmePath, "--update-account", "--accountemail", email)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -839,8 +984,19 @@ func (s *Service) issueWithAcme(ctx context.Context, req *ApplyRequest, cert *re
 
 	s.logger.Info("证书申请成功", logger.F("domain", req.Domain))
 
+	// SECURITY: Sanitize domain for safe path construction
+	safeDomain, err := sanitizeDomainForPath(req.Domain)
+	if err != nil {
+		return fmt.Errorf("invalid domain for path: %w", err)
+	}
+
 	// 安装证书到指定目录
-	certPath := filepath.Join(s.certDir, req.Domain)
+	certPath := filepath.Join(s.certDir, safeDomain)
+	// Validate that certPath is within certDir (防止路径遍历)
+	if !strings.HasPrefix(filepath.Clean(certPath), filepath.Clean(s.certDir)) {
+		return fmt.Errorf("path traversal attempt detected")
+	}
+	
 	// 使用安全的目录权限 (0700)
 	if err := os.MkdirAll(certPath, 0700); err != nil {
 		return fmt.Errorf("创建证书目录失败: %w", err)
@@ -924,8 +1080,19 @@ func (s *Service) Upload(ctx context.Context, domain string, certData, keyData [
 		return nil, fmt.Errorf("无效的私钥格式")
 	}
 
+	// SECURITY: Sanitize domain for safe path construction
+	safeDomain, err := sanitizeDomainForPath(domain)
+	if err != nil {
+		return nil, fmt.Errorf("invalid domain for path: %w", err)
+	}
+
 	// 保存证书文件
-	certPath := filepath.Join(s.certDir, domain)
+	certPath := filepath.Join(s.certDir, safeDomain)
+	// Validate that certPath is within certDir (防止路径遍历)
+	if !strings.HasPrefix(filepath.Clean(certPath), filepath.Clean(s.certDir)) {
+		return nil, fmt.Errorf("path traversal attempt detected")
+	}
+	
 	// 使用安全的目录权限 (0700)
 	if err := os.MkdirAll(certPath, 0700); err != nil {
 		return nil, fmt.Errorf("创建证书目录失败: %w", err)
@@ -1186,8 +1353,19 @@ func (s *Service) GenerateSelfSigned(ctx context.Context, domain string) (*repos
 		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
 	})
 
+	// SECURITY: Sanitize domain for safe path construction
+	safeDomain, err := sanitizeDomainForPath(domain)
+	if err != nil {
+		return nil, fmt.Errorf("invalid domain for path: %w", err)
+	}
+
 	// 保存文件
-	certPath := filepath.Join(s.certDir, domain)
+	certPath := filepath.Join(s.certDir, safeDomain)
+	// Validate that certPath is within certDir (防止路径遍历)
+	if !strings.HasPrefix(filepath.Clean(certPath), filepath.Clean(s.certDir)) {
+		return nil, fmt.Errorf("path traversal attempt detected")
+	}
+	
 	// 使用安全的目录权限 (0700)
 	if err := os.MkdirAll(certPath, 0700); err != nil {
 		return nil, fmt.Errorf("创建证书目录失败: %w", err)
