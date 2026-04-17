@@ -13,12 +13,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"v/internal/agent"
 	"v/internal/api/middleware"
+	"v/internal/cache"
 	"v/internal/logger"
 	"v/internal/node"
 	"v/pkg/errors"
@@ -31,7 +33,12 @@ type NodeHandler struct {
 	deployService   *node.RemoteDeployService
 	recoveryTracker *NodeRecoveryTracker
 	httpClient      *http.Client
+	cache           cache.Cache
 	logger          logger.Logger
+
+	// In-progress tracking for async diagnosis
+	diagInProgressMu sync.RWMutex
+	diagInProgress   map[int64]bool
 }
 
 type queueNodeCommandFunc func(nodeID int64, source, reason string) (Command, bool)
@@ -45,7 +52,14 @@ func NewNodeHandler(nodeService *node.Service, groupService *node.GroupService, 
 		recoveryTracker: recoveryTracker,
 		httpClient:      &http.Client{Timeout: 5 * time.Second},
 		logger:          log,
+		diagInProgress:  make(map[int64]bool),
 	}
+}
+
+// WithCache sets the cache for the node handler.
+func (h *NodeHandler) WithCache(c cache.Cache) *NodeHandler {
+	h.cache = c
+	return h
 }
 
 // NodeResponse represents a node in API responses.
@@ -304,7 +318,8 @@ func toNodeResponse(n *node.Node) *NodeResponse {
 		TLSDomain:  n.TLSDomain,
 
 		// 节点分组
-		GroupID: n.GroupID,
+		GroupID:  n.GroupID,
+		GroupIDs: n.Groups, // Use preloaded groups from repository
 
 		// 排序和优先级
 		Priority: n.Priority,
@@ -423,11 +438,21 @@ func (h *NodeHandler) populateNodeGroupIDs(ctx context.Context, resp *NodeRespon
 		return
 	}
 
+	// If groups are already loaded (from Preload), just normalize them
+	if len(resp.GroupIDs) > 0 {
+		resp.GroupIDs = normalizeNodeGroupIDs(resp.GroupIDs, resp.GroupID)
+		if len(resp.GroupIDs) > 0 && resp.GroupID == nil {
+			resp.GroupID = &resp.GroupIDs[0]
+		}
+		return
+	}
+
 	resp.GroupIDs = normalizeNodeGroupIDs(resp.GroupIDs, resp.GroupID)
 	if h == nil || h.groupService == nil {
 		return
 	}
 
+	// Fallback: load groups from database if not preloaded
 	groups, err := h.groupService.GetGroupsForNode(ctx, resp.ID)
 	if err != nil {
 		return
@@ -594,6 +619,29 @@ func nodeTrafficDiagnosticMessage(
 	}
 }
 
+// diagCacheKey generates the cache key for node diagnosis results.
+func diagCacheKey(nodeID int64) string {
+	return fmt.Sprintf("node:diag:%d", nodeID)
+}
+
+// isDiagInProgress checks if a diagnosis is currently in progress for the given node.
+func (h *NodeHandler) isDiagInProgress(nodeID int64) bool {
+	h.diagInProgressMu.RLock()
+	defer h.diagInProgressMu.RUnlock()
+	return h.diagInProgress[nodeID]
+}
+
+// setDiagInProgress sets the in-progress status for a node diagnosis.
+func (h *NodeHandler) setDiagInProgress(nodeID int64, inProgress bool) {
+	h.diagInProgressMu.Lock()
+	defer h.diagInProgressMu.Unlock()
+	if inProgress {
+		h.diagInProgress[nodeID] = true
+	} else {
+		delete(h.diagInProgress, nodeID)
+	}
+}
+
 func (h *NodeHandler) fetchTrafficCollectorStatus(
 	ctx context.Context,
 	n *node.Node,
@@ -640,10 +688,66 @@ func (h *NodeHandler) buildTrafficDiagnosticResponse(
 	ctx context.Context,
 	n *node.Node,
 ) *TrafficDiagnosticResponse {
+	// Try to get cached result first
+	if h.cache != nil {
+		cacheKey := diagCacheKey(n.ID)
+		if cachedData, err := h.cache.Get(ctx, cacheKey); err == nil {
+			var cachedResp TrafficDiagnosticResponse
+			if err := json.Unmarshal(cachedData, &cachedResp); err == nil {
+				// Return cached result immediately
+				return &cachedResp
+			}
+		}
+	}
+
+	// Trigger async update if not already in progress
+	if h.cache != nil && !h.isDiagInProgress(n.ID) {
+		go h.runDiagnosisAsync(n)
+	}
+
+	// Return empty/placeholder result for first request
+	// or when cache is not available, fall back to synchronous call
+	if h.cache == nil {
+		collector, statusCode, fetchErr := h.fetchTrafficCollectorStatus(ctx, n)
+		diagnosticStatus := nodeTrafficDiagnosticStatus(collector, statusCode, fetchErr)
+		return &TrafficDiagnosticResponse{
+			NodeID:           n.ID,
+			NodeName:         n.Name,
+			Address:          n.Address,
+			Port:             n.Port,
+			DiagnosticStatus: diagnosticStatus,
+			Message:          nodeTrafficDiagnosticMessage(diagnosticStatus, collector, statusCode, fetchErr),
+			Traffic:          collector,
+		}
+	}
+
+	// Return placeholder response indicating diagnosis is in progress
+	return &TrafficDiagnosticResponse{
+		NodeID:           n.ID,
+		NodeName:         n.Name,
+		Address:          n.Address,
+		Port:             n.Port,
+		DiagnosticStatus: "pending",
+		Message:          "诊断正在进行中，请稍后刷新",
+		Traffic:          nil,
+	}
+}
+
+// runDiagnosisAsync performs the diagnosis in the background and caches the result.
+func (h *NodeHandler) runDiagnosisAsync(n *node.Node) {
+	// Mark as in progress
+	h.setDiagInProgress(n.ID, true)
+	defer h.setDiagInProgress(n.ID, false)
+
+	// Create a background context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Fetch the diagnosis result
 	collector, statusCode, fetchErr := h.fetchTrafficCollectorStatus(ctx, n)
 	diagnosticStatus := nodeTrafficDiagnosticStatus(collector, statusCode, fetchErr)
 
-	return &TrafficDiagnosticResponse{
+	response := &TrafficDiagnosticResponse{
 		NodeID:           n.ID,
 		NodeName:         n.Name,
 		Address:          n.Address,
@@ -652,7 +756,20 @@ func (h *NodeHandler) buildTrafficDiagnosticResponse(
 		Message:          nodeTrafficDiagnosticMessage(diagnosticStatus, collector, statusCode, fetchErr),
 		Traffic:          collector,
 	}
+
+	// Cache the result with 5-minute TTL
+	if h.cache != nil {
+		cacheKey := diagCacheKey(n.ID)
+		if data, err := json.Marshal(response); err == nil {
+			if err := h.cache.Set(ctx, cacheKey, data, 5*time.Minute); err != nil {
+				h.logger.Warn("Failed to cache diagnosis result",
+					logger.Err(err),
+					logger.F("node_id", n.ID))
+			}
+		}
+	}
 }
+
 
 // List returns all nodes with optional filtering.
 // GET /api/admin/nodes

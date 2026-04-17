@@ -27,6 +27,7 @@ import (
 func setupTestDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
 		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
+		DisableForeignKeyConstraintWhenMigrating: true,
 	})
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
@@ -36,7 +37,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	db.Exec("PRAGMA foreign_keys = ON")
 
 	// Auto migrate
-	if err := db.AutoMigrate(&repository.User{}, &repository.Proxy{}, &repository.Subscription{}); err != nil {
+	if err := db.AutoMigrate(&repository.User{}, &repository.Proxy{}, &repository.Subscription{}, &repository.Trial{}); err != nil {
 		t.Fatalf("Failed to migrate: %v", err)
 	}
 

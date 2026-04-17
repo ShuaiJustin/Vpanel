@@ -99,6 +99,9 @@ type Node struct {
 
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime"`
+
+	// Many-to-many relationship with NodeGroup through node_group_members
+	Groups []*NodeGroup `gorm:"many2many:node_group_members;foreignKey:ID;joinForeignKey:NodeID;References:ID;joinReferences:GroupID"`
 }
 
 // TableName returns the table name for Node.
@@ -208,7 +211,7 @@ func (r *nodeRepository) Create(ctx context.Context, node *Node) error {
 // GetByID retrieves a node by ID.
 func (r *nodeRepository) GetByID(ctx context.Context, id int64) (*Node, error) {
 	var node Node
-	result := r.db.WithContext(ctx).First(&node, id)
+	result := r.db.WithContext(ctx).Preload("Groups").First(&node, id)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			return nil, errors.NewNotFoundError("node", id)
@@ -242,7 +245,7 @@ func (r *nodeRepository) Delete(ctx context.Context, id int64) error {
 // List retrieves nodes with filtering and pagination.
 func (r *nodeRepository) List(ctx context.Context, filter *NodeFilter) ([]*Node, error) {
 	var nodes []*Node
-	query := r.db.WithContext(ctx).Model(&Node{})
+	query := r.db.WithContext(ctx).Model(&Node{}).Preload("Groups")
 
 	if filter != nil {
 		if filter.Status != "" {

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"v/internal/cache"
 	"v/internal/database/repository"
 	"v/internal/logger"
 )
@@ -88,7 +89,8 @@ type Node struct {
 	TLSKeyPath  string `json:"tls_key_path,omitempty"`
 
 	// 节点分组
-	GroupID *int64 `json:"group_id"`
+	GroupID *int64  `json:"group_id"`
+	Groups  []int64 `json:"group_ids,omitempty"` // Group IDs this node belongs to
 
 	// 排序和优先级
 	Priority int `json:"priority"`
@@ -235,6 +237,8 @@ type Service struct {
 	assignmentRepo repository.UserNodeAssignmentRepository
 	proxyRepo      repository.ProxyRepository
 	logger         logger.Logger
+	cache          cache.Cache
+	invalidator    *cache.Invalidator
 }
 
 // NewService creates a new node service.
@@ -249,7 +253,16 @@ func NewService(
 		assignmentRepo: assignmentRepo,
 		proxyRepo:      proxyRepo,
 		logger:         log,
+		cache:          nil,
+		invalidator:    nil,
 	}
+}
+
+// WithCache adds cache support to the service.
+func (s *Service) WithCache(c cache.Cache) *Service {
+	s.cache = c
+	s.invalidator = cache.NewInvalidator(c)
+	return s
 }
 
 // Create creates a new node.
@@ -470,6 +483,15 @@ func (s *Service) Create(ctx context.Context, req *CreateNodeRequest) (*Node, er
 	if err := s.nodeRepo.Create(ctx, repoNode); err != nil {
 		s.logger.Error("Failed to create node", logger.Err(err))
 		return nil, fmt.Errorf("创建节点失败: %w", err)
+	}
+
+	// Invalidate node statistics cache
+	if s.cache != nil {
+		cacheKey := "node:stats:all"
+		if err := s.cache.Delete(ctx, cacheKey); err != nil {
+			// Log but don't fail the request
+			s.logger.Warn("Failed to invalidate node statistics cache", logger.Err(err))
+		}
 	}
 
 	s.logger.Info("Node created successfully",
@@ -736,6 +758,15 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdateNodeRequest) 
 		return nil, fmt.Errorf("更新节点失败: %w", err)
 	}
 
+	// Invalidate node statistics cache
+	if s.cache != nil {
+		cacheKey := "node:stats:all"
+		if err := s.cache.Delete(ctx, cacheKey); err != nil {
+			// Log but don't fail the request
+			s.logger.Warn("Failed to invalidate node statistics cache", logger.Err(err))
+		}
+	}
+
 	s.logger.Info("Node updated successfully",
 		logger.F("node_id", id),
 		logger.F("name", repoNode.Name))
@@ -796,6 +827,15 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 			logger.Err(err),
 			logger.F("node_id", id))
 		return fmt.Errorf("节点删除失败: %w", err)
+	}
+
+	// Invalidate node statistics cache
+	if s.cache != nil {
+		cacheKey := "node:stats:all"
+		if err := s.cache.Delete(ctx, cacheKey); err != nil {
+			// Log but don't fail the request
+			s.logger.Warn("Failed to invalidate node statistics cache", logger.Err(err))
+		}
 	}
 
 	s.logger.Info("Node deleted successfully",
@@ -943,6 +983,16 @@ func (s *Service) UpdateStatus(ctx context.Context, id int64, status string) err
 		s.logger.Error("Failed to update node status", logger.Err(err), logger.F("id", id), logger.F("status", status))
 		return err
 	}
+	
+	// Invalidate node statistics cache since status affects statistics
+	if s.cache != nil {
+		cacheKey := "node:stats:all"
+		if err := s.cache.Delete(ctx, cacheKey); err != nil {
+			// Log but don't fail the request
+			s.logger.Warn("Failed to invalidate node statistics cache", logger.Err(err))
+		}
+	}
+	
 	return nil
 }
 
@@ -1234,6 +1284,17 @@ func (s *Service) toNode(rn *repository.Node) *Node {
 		s.logger.Warn("Failed to decrypt node SSH password", logger.Err(err), logger.F("node_id", rn.ID))
 	}
 
+	// Extract group IDs from preloaded Groups
+	var groupIDs []int64
+	if len(rn.Groups) > 0 {
+		groupIDs = make([]int64, 0, len(rn.Groups))
+		for _, group := range rn.Groups {
+			if group != nil {
+				groupIDs = append(groupIDs, group.ID)
+			}
+		}
+	}
+
 	return &Node{
 		ID:                rn.ID,
 		Name:              rn.Name,
@@ -1287,6 +1348,7 @@ func (s *Service) toNode(rn *repository.Node) *Node {
 
 		// 节点分组
 		GroupID: rn.GroupID,
+		Groups:  groupIDs,
 
 		// 排序和优先级
 		Priority: rn.Priority,
@@ -1321,7 +1383,50 @@ func (s *Service) toNode(rn *repository.Node) *Node {
 
 // GetStatistics returns node statistics.
 func (s *Service) GetStatistics(ctx context.Context) (map[string]int64, error) {
-	return s.nodeRepo.CountByStatus(ctx)
+	// Try cache first if available
+	if s.cache != nil {
+		cacheKey := "node:stats:all"
+		
+		// Try to get from cache
+		data, err := s.cache.Get(ctx, cacheKey)
+		if err == nil {
+			// Cache hit - unmarshal and return
+			var stats map[string]int64
+			unmarshalErr := json.Unmarshal(data, &stats)
+			if unmarshalErr == nil {
+				return stats, nil
+			}
+			// If unmarshal fails, continue to query database
+			s.logger.Warn("Failed to unmarshal cached node statistics", logger.Err(unmarshalErr))
+		} else if !errors.Is(err, cache.ErrCacheMiss) {
+			// Log cache errors but continue to database
+			s.logger.Warn("Failed to get node statistics from cache", logger.Err(err))
+		}
+	}
+	
+	// Cache miss or cache unavailable - query database
+	stats, err := s.nodeRepo.CountByStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Store in cache if available
+	if s.cache != nil {
+		cacheKey := "node:stats:all"
+		ttl := cache.GetTTL("node:stats")
+		
+		data, marshalErr := json.Marshal(stats)
+		if marshalErr == nil {
+			if cacheErr := s.cache.Set(ctx, cacheKey, data, ttl); cacheErr != nil {
+				// Log cache errors but don't fail the request
+				s.logger.Warn("Failed to cache node statistics", logger.Err(cacheErr))
+			}
+		} else {
+			s.logger.Warn("Failed to marshal node statistics for caching", logger.Err(marshalErr))
+		}
+	}
+	
+	return stats, nil
 }
 
 // GetTotalUsers returns the total number of users across all nodes.

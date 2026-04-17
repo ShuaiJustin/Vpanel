@@ -57,45 +57,106 @@ func (h *PortalDashboardHandler) GetDashboard(c *gin.Context) {
 		return
 	}
 
+	// Define result types for parallel execution
+	type userResult struct {
+		user *repository.User
+		err  error
+	}
+	type trafficResult struct {
+		summary *stats.TrafficSummary
+		err     error
+	}
+	type entitlementResult struct {
+		accessState *entitlement.AccessState
+		err         error
+	}
+	type announcementResult struct {
+		count int64
+		err   error
+	}
+
+	// Create channels for parallel execution
+	userCh := make(chan userResult, 1)
+	trafficCh := make(chan trafficResult, 1)
+	entitlementCh := make(chan entitlementResult, 1)
+	announcementCh := make(chan announcementResult, 1)
+
+	ctx := c.Request.Context()
+
+	// Execute queries in parallel using goroutines
 	// Get user info
-	user, err := h.userRepo.GetByID(c.Request.Context(), userID)
-	if err != nil {
+	go func() {
+		user, err := h.userRepo.GetByID(ctx, userID)
+		userCh <- userResult{user: user, err: err}
+	}()
+
+	// Get traffic summary
+	go func() {
+		var summary *stats.TrafficSummary
+		var err error
+		if h.statsService != nil {
+			summary, err = h.statsService.GetTrafficSummary(ctx, userID)
+		}
+		trafficCh <- trafficResult{summary: summary, err: err}
+	}()
+
+	// Get entitlement access state
+	go func() {
+		var accessState *entitlement.AccessState
+		var err error
+		if h.entitlement != nil {
+			accessState, err = h.entitlement.EvaluateAccess(ctx, userID)
+		}
+		entitlementCh <- entitlementResult{accessState: accessState, err: err}
+	}()
+
+	// Get unread announcement count
+	go func() {
+		var count int64
+		var err error
+		if h.announcementService != nil {
+			count, err = h.announcementService.GetUnreadCount(ctx, userID)
+		}
+		announcementCh <- announcementResult{count: count, err: err}
+	}()
+
+	// Aggregate results from all goroutines
+	userRes := <-userCh
+	trafficRes := <-trafficCh
+	entitlementRes := <-entitlementCh
+	announcementRes := <-announcementCh
+
+	// Handle user result (critical error)
+	if userRes.err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
 		return
 	}
+	user := userRes.user
 
-	// Get traffic summary
-	var trafficSummary *stats.TrafficSummary
-	if h.statsService != nil {
-		trafficSummary, err = h.statsService.GetTrafficSummary(c.Request.Context(), userID)
-		if err != nil {
-			h.logger.Warn("failed to get portal dashboard traffic summary", logger.F("error", err), logger.F("user_id", userID))
-		}
+	// Handle traffic summary result (non-critical)
+	trafficSummary := trafficRes.summary
+	if trafficRes.err != nil {
+		h.logger.Warn("failed to get portal dashboard traffic summary", logger.F("error", trafficRes.err), logger.F("user_id", userID))
 	}
 
+	// Handle entitlement result and calculate effective traffic
 	effectiveTrafficLimit := user.TrafficLimit
 	effectiveTrafficUsed := user.TrafficUsed
-	if h.entitlement != nil {
-		accessState, accessErr := h.entitlement.EvaluateAccess(c.Request.Context(), userID)
-		if accessState != nil {
-			effectiveTrafficLimit = accessState.EffectiveTrafficLimit
-			effectiveTrafficUsed = accessState.EffectiveTrafficUsed
-		}
-		if accessErr != nil && !pkgerrors.IsForbidden(accessErr) {
-			h.logger.Warn("failed to evaluate portal dashboard entitlement",
-				logger.F("user_id", userID),
-				logger.F("error", accessErr),
-			)
-		}
+	if entitlementRes.accessState != nil {
+		effectiveTrafficLimit = entitlementRes.accessState.EffectiveTrafficLimit
+		effectiveTrafficUsed = entitlementRes.accessState.EffectiveTrafficUsed
+	}
+	if entitlementRes.err != nil && !pkgerrors.IsForbidden(entitlementRes.err) {
+		h.logger.Warn("failed to evaluate portal dashboard entitlement",
+			logger.F("user_id", userID),
+			logger.F("error", entitlementRes.err),
+		)
 	}
 
-	// Get unread announcement count
-	var unreadCount int64
-	if h.announcementService != nil {
-		unreadCount, err = h.announcementService.GetUnreadCount(c.Request.Context(), userID)
-		if err != nil {
-			h.logger.Warn("failed to get portal dashboard unread announcement count", logger.F("error", err), logger.F("user_id", userID))
-		}
+	// Handle announcement result (non-critical)
+	unreadCount := announcementRes.count
+	if announcementRes.err != nil {
+		h.logger.Warn("failed to get portal dashboard unread announcement count", logger.F("error", announcementRes.err), logger.F("user_id", userID))
 	}
 
 	// Calculate traffic percentage

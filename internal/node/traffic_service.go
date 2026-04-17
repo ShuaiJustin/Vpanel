@@ -3,11 +3,14 @@ package node
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"sort"
 	"time"
 
 	"gorm.io/gorm"
 
+	"v/internal/cache"
 	"v/internal/database/repository"
 	"v/internal/logger"
 	apperrors "v/pkg/errors"
@@ -102,6 +105,7 @@ type TrafficService struct {
 	userRepo                     repository.UserRepository
 	nodeRepo                     repository.NodeRepository
 	groupRepo                    repository.NodeGroupRepository
+	cache                        cache.Cache
 	userAccessCheck              func(context.Context, int64) error
 	accessRevokedHook            func(context.Context, int64, []int64, string)
 	nodeTrafficLimitExceededHook func(context.Context, int64, string)
@@ -154,6 +158,38 @@ func (s *TrafficService) WithNodeTrafficLimitExceededHook(hook func(context.Cont
 func (s *TrafficService) WithNodeTrafficAlertHook(hook func(context.Context, *NodeTrafficAlert)) *TrafficService {
 	s.nodeTrafficAlertHook = hook
 	return s
+}
+
+// WithCache injects cache for proxy statistics invalidation.
+func (s *TrafficService) WithCache(cache cache.Cache) *TrafficService {
+	s.cache = cache
+	return s
+}
+
+// invalidateProxyStatsCache invalidates cached statistics for a proxy.
+func (s *TrafficService) invalidateProxyStatsCache(ctx context.Context, proxyID int64) {
+	if s.cache == nil {
+		return
+	}
+	cacheKey := fmt.Sprintf("proxy:stats:%d", proxyID)
+	if err := s.cache.Delete(ctx, cacheKey); err != nil {
+		s.logger.Warn("failed to invalidate proxy stats cache",
+			logger.F("proxy_id", proxyID),
+			logger.F("error", err))
+	}
+}
+
+// invalidateUserTrafficCache invalidates cached traffic statistics for a user.
+func (s *TrafficService) invalidateUserTrafficCache(ctx context.Context, userID int64) {
+	if s.cache == nil {
+		return
+	}
+	cacheKey := fmt.Sprintf("user:traffic:%d", userID)
+	if err := s.cache.Delete(ctx, cacheKey); err != nil {
+		s.logger.Warn("failed to invalidate user traffic cache",
+			logger.F("user_id", userID),
+			logger.F("error", err))
+	}
 }
 
 // RecordTraffic records a traffic entry for a node.
@@ -247,6 +283,27 @@ func (s *TrafficService) RecordTrafficBatch(ctx context.Context, records []*Traf
 				}
 			}
 		}
+
+		// Invalidate cache for affected proxies and users
+		if s.cache != nil {
+			proxyIDs := make(map[int64]struct{})
+			userIDs := make(map[int64]struct{})
+			for _, record := range normalized {
+				if record.ProxyID != nil && *record.ProxyID > 0 {
+					proxyIDs[*record.ProxyID] = struct{}{}
+				}
+				if record.UserID > 0 {
+					userIDs[record.UserID] = struct{}{}
+				}
+			}
+			for proxyID := range proxyIDs {
+				s.invalidateProxyStatsCache(ctx, proxyID)
+			}
+			for userID := range userIDs {
+				s.invalidateUserTrafficCache(ctx, userID)
+			}
+		}
+
 		return nil
 	}
 
@@ -333,6 +390,26 @@ func (s *TrafficService) RecordTrafficBatch(ctx context.Context, records []*Traf
 	}); err != nil {
 		s.logger.Error("Failed to record traffic batch", logger.Err(err))
 		return err
+	}
+
+	// Invalidate proxy stats cache for affected proxies
+	if s.cache != nil {
+		proxyIDs := make(map[int64]struct{})
+		userIDs := make(map[int64]struct{})
+		for _, record := range normalized {
+			if record.ProxyID != nil && *record.ProxyID > 0 {
+				proxyIDs[*record.ProxyID] = struct{}{}
+			}
+			if record.UserID > 0 {
+				userIDs[record.UserID] = struct{}{}
+			}
+		}
+		for proxyID := range proxyIDs {
+			s.invalidateProxyStatsCache(ctx, proxyID)
+		}
+		for userID := range userIDs {
+			s.invalidateUserTrafficCache(ctx, userID)
+		}
 	}
 
 	s.notifyNodeTrafficAlerts(ctx, beforeNodes, normalized, now)
@@ -728,6 +805,24 @@ func (s *TrafficService) GetTrafficByNode(ctx context.Context, nodeID int64, sta
 
 // GetTrafficByUser returns traffic statistics for a specific user across all nodes.
 func (s *TrafficService) GetTrafficByUser(ctx context.Context, userID int64, start, end time.Time) (*UserTrafficStats, error) {
+	// Try cache first if cache is available
+	if s.cache != nil {
+		cacheKey := fmt.Sprintf("user:traffic:%d", userID)
+		cachedData, err := s.cache.Get(ctx, cacheKey)
+		if err == nil {
+			// Cache hit - unmarshal and return cached data
+			var cachedStats UserTrafficStats
+			if err := json.Unmarshal(cachedData, &cachedStats); err == nil {
+				return &cachedStats, nil
+			}
+			// If unmarshal fails, log and continue to query database
+			s.logger.Warn("failed to unmarshal cached user traffic stats",
+				logger.F("user_id", userID),
+				logger.F("error", err))
+		}
+		// Cache miss - continue to query database
+	}
+
 	upload, download, err := s.nodeTrafficRepo.GetTotalByUserInRange(ctx, userID, start, end)
 	if err != nil {
 		s.logger.Error("Failed to get traffic by user",
@@ -736,12 +831,27 @@ func (s *TrafficService) GetTrafficByUser(ctx context.Context, userID int64, sta
 		return nil, err
 	}
 
-	return &UserTrafficStats{
+	stats := &UserTrafficStats{
 		UserID:   userID,
 		Upload:   upload,
 		Download: download,
 		Total:    upload + download,
-	}, nil
+	}
+
+	// Store in cache with 60s TTL if cache is available
+	if s.cache != nil {
+		cacheKey := fmt.Sprintf("user:traffic:%d", userID)
+		statsJSON, err := json.Marshal(stats)
+		if err == nil {
+			if err := s.cache.Set(ctx, cacheKey, statsJSON, 60*time.Second); err != nil {
+				s.logger.Warn("failed to cache user traffic stats",
+					logger.F("user_id", userID),
+					logger.F("error", err))
+			}
+		}
+	}
+
+	return stats, nil
 }
 
 // GetTrafficByUserOnNode returns traffic statistics for a user on a specific node.

@@ -162,7 +162,9 @@ type Proxy struct {
 	UpdatedAt time.Time      `gorm:"autoUpdateTime"`
 
 	// Relations
-	Node *Node `gorm:"foreignKey:NodeID"`
+	User  *User  `gorm:"foreignKey:UserID"`
+	Node  *Node  `gorm:"foreignKey:NodeID"`
+	Trial *Trial `gorm:"foreignKey:UserID;references:UserID"`
 }
 
 // TableName returns the table name for Proxy.

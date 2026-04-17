@@ -28,6 +28,7 @@ func setupNodeServiceDeleteTestDB(t *testing.T) *gorm.DB {
 		&repository.Node{},
 		&repository.Proxy{},
 		&repository.UserNodeAssignment{},
+		&repository.Trial{},
 	); err != nil {
 		t.Fatalf("failed to migrate test schema: %v", err)
 	}

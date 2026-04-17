@@ -125,7 +125,7 @@ export default defineConfig({
     assetsDir: 'assets',
     sourcemap: enableBuildSourceMap,
     reportCompressedSize: false,
-    chunkSizeWarningLimit: 1500,
+    chunkSizeWarningLimit: 500,
     minify: 'terser',
     terserOptions: {
       compress: {
@@ -139,12 +139,27 @@ export default defineConfig({
         entryFileNames: 'assets/js/[name]-[hash].js',
         assetFileNames: 'assets/[ext]/[name]-[hash].[ext]',
         manualChunks: {
-          'vue-vendor': ['vue', 'vue-router', 'pinia'],
+          // Vue core (~100KB) - Core Vue framework and state management
+          'vue-core': ['vue', 'vue-router', 'pinia'],
+          
+          // Element Plus (~400KB) - UI component library
           'element-plus': ['element-plus', '@element-plus/icons-vue'],
-          'echarts': ['echarts', 'vue-echarts'],
+          
+          // ECharts (~200KB with selective imports) - Only used chart types
+          // Selective imports in utils/charts.ts: LineChart, BarChart, PieChart
+          // Components: Title, Tooltip, Grid, Legend
+          // Renderer: CanvasRenderer only
+          'echarts': [
+            'echarts/core',
+            'echarts/renderers',
+            'vue-echarts'
+          ],
+          
+          // Chart.js (~200KB) - Used in user stats
           'chartjs': ['chart.js'],
-          'axios': ['axios'],
-          'qrcode': ['qrcode'],
+          
+          // Utils (~100KB) - HTTP client and utilities
+          'utils': ['axios', 'qrcode'],
         }
       }
     }

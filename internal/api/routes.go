@@ -70,6 +70,7 @@ type Router struct {
 	nodeTrafficResetScheduler *node.TrafficResetScheduler
 	runtimeReconciler         *entitlement.RuntimeReconciler
 	nodeRecoveryTracker       *handlers.NodeRecoveryTracker
+	cache                     cache.Cache
 }
 
 // CertificateService defines the interface for certificate operations.
@@ -144,6 +145,9 @@ func (r *Router) Setup() {
 		MaxMemoryItems: 512,
 		KeyPrefix:      "stats:",
 	})
+	
+	// Store cache in router for use by handlers
+	r.cache = statsCache
 
 	// Create handlers
 	authHandler := handlers.NewAuthHandler(r.authService, r.repos.User, r.repos.LoginHistory, r.logger).
@@ -152,7 +156,8 @@ func (r *Router) Setup() {
 	proxyHandler := handlers.NewProxyHandlerWithTraffic(r.proxyManager, r.repos.Proxy, r.repos.Traffic, r.logger).
 		WithNodeRepository(r.repos.Node).
 		WithUserRepositories(r.repos.User, r.repos.Trial).
-		WithIPTracker(ip.NewTracker(r.repos.DB()))
+		WithIPTracker(ip.NewTracker(r.repos.DB())).
+		WithCache(statsCache)
 	systemHandler := handlers.NewSystemHandler(r.config, r.logger)
 	healthHandler := handlers.NewHealthHandler(r.repos, r.logger, r.xrayManager, nil)
 	roleHandler := handlers.NewRoleHandler(r.logger, r.repos.Role)
@@ -256,7 +261,7 @@ func (r *Router) Setup() {
 		r.repos.UserNodeAssignment,
 		r.repos.Proxy,
 		r.logger,
-	)
+	).WithCache(statsCache)
 	nodeGroupService := node.NewGroupService(r.repos.NodeGroup, r.repos.Node, r.logger)
 	r.nodeHealthChecker = node.NewHealthChecker(nil, r.repos.Node, r.repos.Proxy, r.repos.Certificate, r.repos.HealthCheck, r.logger)
 	r.nodeHealthChecker.SetNotificationService(r.notificationService)
@@ -270,6 +275,7 @@ func (r *Router) Setup() {
 		r.repos.NodeGroup,
 		r.logger,
 	).
+		WithCache(statsCache).
 		WithUserAccessCheck(func(ctx context.Context, userID int64) error {
 			_, err := r.entitlementService.EvaluateExistingAccess(ctx, userID)
 			return err
@@ -336,6 +342,11 @@ func (r *Router) Setup() {
 		geoService = ipService.GeoService()
 	}
 	nodeHandler := handlers.NewNodeHandler(nodeService, nodeGroupService, nodeDeployService, r.nodeRecoveryTracker, r.logger)
+	
+	// Add cache support for async diagnosis if available
+	if r.cache != nil {
+		nodeHandler = nodeHandler.WithCache(r.cache)
+	}
 	nodeNameSuggestionHandler := handlers.NewNodeNameSuggestionHandler(r.logger, geoService)
 	nodeGroupHandler := handlers.NewNodeGroupHandler(nodeGroupService, r.logger)
 	nodeHealthHandler := handlers.NewNodeHealthHandler(r.nodeHealthChecker, r.repos.HealthCheck, r.repos.Node, r.logger)
@@ -1367,6 +1378,12 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 	portalAuthService := portalauth.NewService(r.repos.User, r.repos.AuthToken)
 	ticketService := ticket.NewService(r.repos.Ticket, r.repos.User)
 	announcementService := announcement.NewService(r.repos.Announcement)
+	
+	// Add cache support for announcement service if available
+	if r.cache != nil {
+		announcementService = announcementService.WithCache(r.cache)
+	}
+	
 	helpService := help.NewService(r.repos.HelpArticle)
 	portalNodeService := portalnode.NewService(r.repos.Proxy, r.repos.User, r.repos.Node).
 		WithEntitlementService(r.entitlementService)

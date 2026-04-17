@@ -3,8 +3,10 @@ package proxy
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
 
+	"v/internal/cache"
 	"v/internal/database/repository"
 	"v/pkg/errors"
 )
@@ -47,9 +49,11 @@ type Manager interface {
 
 // manager implements Manager.
 type manager struct {
-	mu        sync.RWMutex
-	protocols map[string]Protocol
-	proxyRepo repository.ProxyRepository
+	mu          sync.RWMutex
+	protocols   map[string]Protocol
+	proxyRepo   repository.ProxyRepository
+	cache       cache.Cache
+	invalidator *cache.Invalidator
 }
 
 // NewManager creates a new proxy manager.
@@ -57,6 +61,16 @@ func NewManager(proxyRepo repository.ProxyRepository) Manager {
 	return &manager{
 		protocols: make(map[string]Protocol),
 		proxyRepo: proxyRepo,
+	}
+}
+
+// NewManagerWithCache creates a new proxy manager with caching support.
+func NewManagerWithCache(proxyRepo repository.ProxyRepository, cacheInstance cache.Cache) Manager {
+	return &manager{
+		protocols:   make(map[string]Protocol),
+		proxyRepo:   proxyRepo,
+		cache:       cacheInstance,
+		invalidator: cache.NewInvalidator(cacheInstance),
 	}
 }
 
@@ -134,20 +148,62 @@ func (m *manager) UpdateProxy(ctx context.Context, settings *Settings) error {
 	proxy.Enabled = settings.Enabled
 	proxy.Remark = settings.Remark
 
-	return m.proxyRepo.Update(ctx, proxy)
+	if err := m.proxyRepo.Update(ctx, proxy); err != nil {
+		return err
+	}
+
+	// Invalidate cache after successful update
+	if m.invalidator != nil {
+		_ = m.invalidator.InvalidateProxyConfig(ctx, uint(settings.ID))
+	}
+
+	return nil
 }
 
 // DeleteProxy deletes a proxy configuration.
 func (m *manager) DeleteProxy(ctx context.Context, id int64) error {
-	return m.proxyRepo.Delete(ctx, id)
+	if err := m.proxyRepo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	// Invalidate cache after successful deletion
+	if m.invalidator != nil {
+		_ = m.invalidator.InvalidateProxyConfig(ctx, uint(id))
+	}
+
+	return nil
 }
 
 // GetProxy retrieves a proxy configuration.
 func (m *manager) GetProxy(ctx context.Context, id int64) (*Settings, error) {
+	// Try cache first if caching is enabled
+	if m.cache != nil {
+		cacheKey := fmt.Sprintf(cache.KeyProxyConfig, id)
+		if data, err := m.cache.Get(ctx, cacheKey); err == nil {
+			// Cache hit - deserialize and return
+			var proxy repository.Proxy
+			if err := json.Unmarshal(data, &proxy); err == nil {
+				return m.proxyToSettings(&proxy), nil
+			}
+			// If deserialization fails, fall through to database query
+		}
+	}
+
+	// Cache miss or caching disabled - query database
 	proxy, err := m.proxyRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
+
+	// Store in cache if caching is enabled
+	if m.cache != nil {
+		cacheKey := fmt.Sprintf(cache.KeyProxyConfig, id)
+		if data, err := json.Marshal(proxy); err == nil {
+			ttl := cache.GetTTL("proxy:config")
+			_ = m.cache.Set(ctx, cacheKey, data, ttl)
+		}
+	}
+
 	return m.proxyToSettings(proxy), nil
 }
 

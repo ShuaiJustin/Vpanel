@@ -303,22 +303,10 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { User, Connection, DataLine, Monitor, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import * as echarts from 'echarts/core'
-import { LineChart, PieChart } from 'echarts/charts'
-import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
+import echarts from '@/utils/charts'
 import { statsApi } from '@/api/index'
 import { useViewport } from '@/composables/useViewport'
 import { formatTrafficBytes } from '@/utils/traffic'
-
-echarts.use([
-  TooltipComponent,
-  LegendComponent,
-  GridComponent,
-  PieChart,
-  LineChart,
-  CanvasRenderer,
-])
 
 const loading = ref(false)
 const trafficPeriod = ref('today')

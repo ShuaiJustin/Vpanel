@@ -247,23 +247,10 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import * as echarts from 'echarts/core'
-import { BarChart, LineChart } from 'echarts/charts'
-import { GridComponent, LegendComponent, TitleComponent, TooltipComponent } from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
+import echarts from '@/utils/charts'
 import { systemApi } from '@/api'
 import { ElMessage } from 'element-plus'
 import { useViewport } from '@/composables/useViewport'
-
-echarts.use([
-  TitleComponent,
-  TooltipComponent,
-  LegendComponent,
-  GridComponent,
-  BarChart,
-  LineChart,
-  CanvasRenderer,
-])
 
 const { isMobile, isTablet } = useViewport()
 const SYSTEM_MONITOR_REFRESH_INTERVAL = 60000

@@ -75,7 +75,12 @@ func (r *proxyRepository) Delete(ctx context.Context, id int64) error {
 // List retrieves proxies with pagination.
 func (r *proxyRepository) List(ctx context.Context, limit, offset int) ([]*Proxy, error) {
 	var proxies []*Proxy
-	result := r.getDB(ctx).Limit(limit).Offset(offset).Find(&proxies)
+	result := r.getDB(ctx).
+		Preload("User").
+		Preload("Trial").
+		Limit(limit).
+		Offset(offset).
+		Find(&proxies)
 	if result.Error != nil {
 		return nil, errors.NewDatabaseError("failed to list proxies", result.Error)
 	}

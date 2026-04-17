@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -9,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	trialsvc "v/internal/commercial/trial"
+	"v/internal/cache"
 	"v/internal/database/repository"
 	"v/internal/ip"
 	"v/internal/logger"
@@ -26,6 +29,7 @@ type ProxyHandler struct {
 	trialService    *trialsvc.Service
 	ipTracker       *ip.Tracker
 	recoveryTracker *NodeRecoveryTracker
+	cache           cache.Cache
 	logger          logger.Logger
 }
 
@@ -76,6 +80,30 @@ func (h *ProxyHandler) WithIPTracker(ipTracker *ip.Tracker) *ProxyHandler {
 func (h *ProxyHandler) WithRecoveryTracker(recoveryTracker *NodeRecoveryTracker) *ProxyHandler {
 	h.recoveryTracker = recoveryTracker
 	return h
+}
+
+// WithCache injects cache for proxy statistics caching.
+func (h *ProxyHandler) WithCache(cache cache.Cache) *ProxyHandler {
+	h.cache = cache
+	return h
+}
+
+// getStatsCacheKey generates cache key for proxy statistics.
+func (h *ProxyHandler) getStatsCacheKey(proxyID int64) string {
+	return fmt.Sprintf("proxy:stats:%d", proxyID)
+}
+
+// invalidateStatsCache removes cached statistics for a proxy.
+func (h *ProxyHandler) invalidateStatsCache(ctx context.Context, proxyID int64) {
+	if h.cache == nil {
+		return
+	}
+	cacheKey := h.getStatsCacheKey(proxyID)
+	if err := h.cache.Delete(ctx, cacheKey); err != nil {
+		h.logger.Warn("failed to invalidate proxy stats cache",
+			logger.F("proxy_id", proxyID),
+			logger.F("error", err))
+	}
 }
 
 func (h *ProxyHandler) queueNodeConfigSync(nodeID *int64, source, reason string) {
@@ -741,7 +769,20 @@ func (h *ProxyHandler) GetStats(c *gin.Context) {
 		return
 	}
 
-	// Get traffic statistics from traffic repository
+	// Try to get from cache first
+	cacheKey := h.getStatsCacheKey(id)
+	if h.cache != nil {
+		cachedData, err := h.cache.Get(c.Request.Context(), cacheKey)
+		if err == nil {
+			var stats map[string]interface{}
+			if err := json.Unmarshal(cachedData, &stats); err == nil {
+				c.JSON(http.StatusOK, stats)
+				return
+			}
+		}
+	}
+
+	// Cache miss or unavailable, query database
 	var upload, download int64
 	if h.trafficRepo != nil {
 		upload, download, err = h.trafficRepo.GetTotalByProxy(c.Request.Context(), id)
@@ -765,13 +806,27 @@ func (h *ProxyHandler) GetStats(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	stats := gin.H{
 		"upload":           upload,
 		"download":         download,
 		"total":            upload + download,
 		"connection_count": connectionCount,
 		"last_active":      p.UpdatedAt.Format("2006-01-02T15:04:05Z"),
-	})
+	}
+
+	// Store in cache with 30s TTL
+	if h.cache != nil {
+		statsJSON, err := json.Marshal(stats)
+		if err == nil {
+			if err := h.cache.Set(c.Request.Context(), cacheKey, statsJSON, 30*time.Second); err != nil {
+				h.logger.Warn("failed to cache proxy stats",
+					logger.F("proxy_id", id),
+					logger.F("error", err))
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, stats)
 }
 
 // BatchOperation represents a batch operation request.

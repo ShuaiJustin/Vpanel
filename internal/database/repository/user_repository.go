@@ -23,8 +23,9 @@ func applyUserListFilter(query *gorm.DB, filter UserListFilter) *gorm.DB {
 	search := strings.ToLower(strings.TrimSpace(filter.Search))
 	if search != "" {
 		likePattern := "%" + search + "%"
+		// Remove LOWER/TRIM from WHERE clause to enable index usage
 		query = query.Where(
-			"LOWER(TRIM(username)) LIKE ? OR LOWER(TRIM(COALESCE(email, ''))) LIKE ?",
+			"username LIKE ? OR COALESCE(email, '') LIKE ?",
 			likePattern,
 			likePattern,
 		)
@@ -213,29 +214,45 @@ func (r *userRepository) ListFiltered(ctx context.Context, filter UserListFilter
 // GetFilteredSummary returns aggregated counts for a filtered admin user list.
 func (r *userRepository) GetFilteredSummary(ctx context.Context, filter UserListFilter) (UserListSummary, error) {
 	summary := UserListSummary{}
-	baseQuery := applyUserListFilter(r.db.WithContext(ctx).Model(&User{}), filter)
-
-	if err := baseQuery.Count(&summary.Total).Error; err != nil {
-		return summary, errors.NewDatabaseError("failed to count filtered users", err)
+	
+	// Build the base query with filters
+	query := r.db.WithContext(ctx).Model(&User{})
+	
+	// Apply search filter
+	search := strings.ToLower(strings.TrimSpace(filter.Search))
+	if search != "" {
+		likePattern := "%" + search + "%"
+		query = query.Where(
+			"username LIKE ? OR COALESCE(email, '') LIKE ?",
+			likePattern,
+			likePattern,
+		)
 	}
-	if summary.Total == 0 {
-		return summary, nil
+	
+	// Apply role filter
+	role := strings.TrimSpace(filter.Role)
+	if role != "" {
+		query = query.Where("role = ?", role)
 	}
-
-	if err := applyUserListFilter(r.db.WithContext(ctx).Model(&User{}), filter).
-		Where("role = ?", "admin").
-		Count(&summary.Admin).Error; err != nil {
-		return summary, errors.NewDatabaseError("failed to count admin users", err)
+	
+	// Apply status filter
+	switch strings.TrimSpace(filter.Status) {
+	case "enabled":
+		query = query.Where("enabled = ?", true)
+	case "disabled":
+		query = query.Where("enabled = ?", false)
 	}
-	if err := applyUserListFilter(r.db.WithContext(ctx).Model(&User{}), filter).
-		Where("enabled = ?", true).
-		Count(&summary.Enabled).Error; err != nil {
-		return summary, errors.NewDatabaseError("failed to count enabled users", err)
-	}
-	if err := applyUserListFilter(r.db.WithContext(ctx).Model(&User{}), filter).
-		Where("enabled = ?", false).
-		Count(&summary.Disabled).Error; err != nil {
-		return summary, errors.NewDatabaseError("failed to count disabled users", err)
+	
+	// Use single aggregated query with CASE statements for conditional counts
+	err := query.Select(`
+		COUNT(*) as total,
+		SUM(CASE WHEN role = 'admin' THEN 1 ELSE 0 END) as admin,
+		SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) as enabled,
+		SUM(CASE WHEN enabled = 0 THEN 1 ELSE 0 END) as disabled
+	`).Row().Scan(&summary.Total, &summary.Admin, &summary.Enabled, &summary.Disabled)
+	
+	if err != nil {
+		return summary, errors.NewDatabaseError("failed to get filtered summary", err)
 	}
 
 	return summary, nil
