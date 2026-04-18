@@ -223,7 +223,6 @@
           <el-table-column
             label="操作"
             width="240"
-            fixed="right"
             align="right"
           >
             <template #default="{ row }">

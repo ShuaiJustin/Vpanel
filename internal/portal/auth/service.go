@@ -512,7 +512,7 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest, ip string, rateL
 			if rateLimiter != nil {
 				rateLimiter.RecordFailedAttempt(ip, config)
 			}
-			return nil, errors.NewNotFoundError("user", req.Username)
+			return nil, errors.NewUnauthorizedError("用户名或密码错误")
 		}
 		return nil, err
 	}

@@ -96,6 +96,94 @@ func (i *XrayInstaller) InstallXray(ctx context.Context) error {
 	}
 }
 
+// InstallXrayVersion downloads and installs a specific Xray version, replacing
+// any existing binary. An empty version means "latest release".
+// Supports Linux and macOS.
+func (i *XrayInstaller) InstallXrayVersion(ctx context.Context, version string) error {
+	version = strings.TrimSpace(version)
+	version = strings.TrimPrefix(version, "v")
+
+	arch := runtime.GOARCH
+	archMap := map[string]string{
+		"amd64": "64",
+		"386":   "32",
+		"arm64": "arm64-v8a",
+		"arm":   "arm32-v7a",
+	}
+	xrayArch, ok := archMap[arch]
+	if !ok {
+		return fmt.Errorf("unsupported architecture: %s", arch)
+	}
+
+	osLabel := "linux"
+	if runtime.GOOS == "darwin" {
+		osLabel = "macos"
+	} else if runtime.GOOS != "linux" {
+		return fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
+	}
+
+	var downloadURL string
+	if version == "" {
+		downloadURL = fmt.Sprintf(
+			"https://github.com/XTLS/Xray-core/releases/latest/download/Xray-%s-%s.zip",
+			osLabel, xrayArch,
+		)
+		i.logger.Info("Downloading latest Xray", logger.F("url", downloadURL))
+	} else {
+		downloadURL = fmt.Sprintf(
+			"https://github.com/XTLS/Xray-core/releases/download/v%s/Xray-%s-%s.zip",
+			version, osLabel, xrayArch,
+		)
+		i.logger.Info("Downloading Xray version", logger.F("version", version), logger.F("url", downloadURL))
+	}
+
+	tmpDir, err := os.MkdirTemp("", "xray-install-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp directory: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	zipFile := filepath.Join(tmpDir, "xray.zip")
+	if err := exec.CommandContext(ctx, "curl", "-fL", "--max-time", "300", "-o", zipFile, downloadURL).Run(); err != nil {
+		return fmt.Errorf("failed to download xray %q: %w", version, err)
+	}
+
+	if err := exec.CommandContext(ctx, "unzip", "-o", zipFile, "-d", tmpDir).Run(); err != nil {
+		return fmt.Errorf("failed to extract xray: %w", err)
+	}
+
+	xrayBinary := filepath.Join(tmpDir, "xray")
+	if _, err := os.Stat(xrayBinary); err != nil {
+		return fmt.Errorf("xray binary not found in release archive: %w", err)
+	}
+
+	installPath := i.resolveInstallPath()
+	if err := exec.CommandContext(ctx, "install", "-m", "755", xrayBinary, installPath).Run(); err != nil {
+		return fmt.Errorf("failed to install xray binary to %s: %w", installPath, err)
+	}
+
+	installedVersion, _ := i.GetXrayVersion()
+	i.logger.Info("Xray installed",
+		logger.F("path", installPath),
+		logger.F("requested_version", version),
+		logger.F("installed_version", installedVersion))
+
+	return nil
+}
+
+// resolveInstallPath returns the existing xray binary path or a sensible default.
+func (i *XrayInstaller) resolveInstallPath() string {
+	if path, err := exec.LookPath("xray"); err == nil {
+		return path
+	}
+	for _, p := range []string{"/usr/local/bin/xray", "/usr/bin/xray", "/opt/xray/xray"} {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return "/usr/local/bin/xray"
+}
+
 // installXrayLinux installs Xray on Linux using the official script.
 func (i *XrayInstaller) installXrayLinux(ctx context.Context) error {
 	i.logger.Info("Installing Xray on Linux...")

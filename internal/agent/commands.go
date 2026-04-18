@@ -17,10 +17,11 @@ type CommandType string
 
 const (
 	// Xray commands
-	CommandXrayStart   CommandType = "xray_start"
-	CommandXrayStop    CommandType = "xray_stop"
-	CommandXrayRestart CommandType = "xray_restart"
-	CommandXrayStatus  CommandType = "xray_status"
+	CommandXrayStart          CommandType = "xray_start"
+	CommandXrayStop           CommandType = "xray_stop"
+	CommandXrayRestart        CommandType = "xray_restart"
+	CommandXrayStatus         CommandType = "xray_status"
+	CommandXrayInstallVersion CommandType = "xray_install_version"
 
 	// Configuration commands
 	CommandConfigSync   CommandType = "config_sync"
@@ -78,6 +79,8 @@ func (e *CommandExecutor) Execute(ctx context.Context, cmd *Command) *CommandRes
 		result = e.executeXrayRestart(ctx, cmd)
 	case CommandXrayStatus:
 		result = e.executeXrayStatus(ctx, cmd)
+	case CommandXrayInstallVersion:
+		result = e.executeXrayInstallVersion(ctx, cmd)
 
 	// Configuration commands
 	case CommandConfigSync:
@@ -170,6 +173,46 @@ func (e *CommandExecutor) executeXrayStatus(ctx context.Context, cmd *Command) *
 	result.Success = true
 	result.Message = "Status retrieved"
 	result.Data = status
+	return result
+}
+
+// executeXrayInstallVersion downloads and installs a specific Xray version then restarts.
+// Payload: {"version": "1.8.4"} — empty means latest release.
+func (e *CommandExecutor) executeXrayInstallVersion(ctx context.Context, cmd *Command) *CommandResult {
+	result := &CommandResult{CommandID: cmd.ID}
+
+	var payload struct {
+		Version string `json:"version"`
+	}
+	if len(bytes.TrimSpace(cmd.Payload)) > 0 && string(bytes.TrimSpace(cmd.Payload)) != "null" {
+		if err := json.Unmarshal(cmd.Payload, &payload); err != nil {
+			result.Success = false
+			result.Message = fmt.Sprintf("invalid payload: %v", err)
+			return result
+		}
+	}
+
+	installer := NewXrayInstaller(e.logger)
+	if err := installer.InstallXrayVersion(ctx, payload.Version); err != nil {
+		result.Success = false
+		result.Message = fmt.Sprintf("failed to install xray version %q: %v", payload.Version, err)
+		return result
+	}
+
+	// Restart xray so the new binary takes over.
+	if err := e.agent.restartXray(ctx); err != nil {
+		result.Success = false
+		result.Message = fmt.Sprintf("installed but failed to restart xray: %v", err)
+		return result
+	}
+
+	version, _ := installer.GetXrayVersion()
+	result.Success = true
+	result.Message = fmt.Sprintf("Xray upgraded to %s", version)
+	result.Data = map[string]any{
+		"requested_version": payload.Version,
+		"installed_version": version,
+	}
 	return result
 }
 

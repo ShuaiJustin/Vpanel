@@ -9,12 +9,13 @@ import (
 )
 
 const (
-	commandTypeXrayStart        = "xray_start"
-	commandTypeXrayRestart      = "xray_restart"
-	commandTypeXrayStatus       = "xray_status"
-	commandTypeConfigSync       = "config_sync"
-	xrayRecoveryCommandCooldown = 20 * time.Second
-	maxNodeRecoveryEvents       = 12
+	commandTypeXrayStart           = "xray_start"
+	commandTypeXrayRestart         = "xray_restart"
+	commandTypeXrayStatus          = "xray_status"
+	commandTypeConfigSync          = "config_sync"
+	commandTypeXrayInstallVersion  = "xray_install_version"
+	xrayRecoveryCommandCooldown    = 20 * time.Second
+	maxNodeRecoveryEvents          = 12
 )
 
 type NodeRecoveryEvent struct {
@@ -100,6 +101,15 @@ func (t *NodeRecoveryTracker) QueueConfigSyncCommandDetailed(nodeID int64, sourc
 		return Command{}, false
 	}
 	return t.queueCommand(nodeID, commandTypeConfigSync, source, reason, nil)
+}
+
+func (t *NodeRecoveryTracker) QueueXrayInstallVersionCommand(nodeID int64, source, reason, version string) (Command, bool) {
+	if t == nil || nodeID <= 0 {
+		return Command{}, false
+	}
+	return t.queueCommand(nodeID, commandTypeXrayInstallVersion, source, reason, map[string]any{
+		"version": version,
+	})
 }
 
 func (t *NodeRecoveryTracker) queueCommand(nodeID int64, commandType, source, reason string, payload any) (Command, bool) {

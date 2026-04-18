@@ -539,7 +539,7 @@ func TestPortalAuthHandler_Login(t *testing.T) {
 				"password": "wrongpassword",
 			},
 			wantStatus: http.StatusUnauthorized,
-			wantBody:   "密码错误，请重新输入",
+			wantBody:   "用户名或密码错误",
 		},
 		{
 			name: "non-existent user",
@@ -547,8 +547,8 @@ func TestPortalAuthHandler_Login(t *testing.T) {
 				"username": "nonexistent",
 				"password": "password123",
 			},
-			wantStatus: http.StatusNotFound,
-			wantBody:   "账号不存在，请检查邮箱/用户名是否正确",
+			wantStatus: http.StatusUnauthorized,
+			wantBody:   "用户名或密码错误",
 		},
 	}
 

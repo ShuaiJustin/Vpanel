@@ -403,14 +403,12 @@ func (h *PortalAuthHandler) handleLoginError(c *gin.Context, err error) {
 		switch appErr.Code {
 		case pkgerrors.ErrCodeValidation, pkgerrors.ErrCodeBadRequest:
 			c.JSON(http.StatusBadRequest, gin.H{"error": appErr.Message})
-		case pkgerrors.ErrCodeUnauthorized:
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "密码错误，请重新输入"})
+		case pkgerrors.ErrCodeUnauthorized, pkgerrors.ErrCodeNotFound:
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "用户名或密码错误"})
 		case pkgerrors.ErrCodeForbidden:
 			c.JSON(http.StatusForbidden, gin.H{"error": appErr.Message})
 		case pkgerrors.ErrCodeRateLimit:
 			c.JSON(http.StatusTooManyRequests, gin.H{"error": "登录尝试过于频繁，请稍后再试"})
-		case pkgerrors.ErrCodeNotFound:
-			c.JSON(http.StatusNotFound, gin.H{"error": "账号不存在，请检查邮箱/用户名是否正确"})
 		default:
 			h.logger.Error("portal login error", logger.F("error", err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器内部错误，请稍后重试"})
@@ -422,14 +420,12 @@ func (h *PortalAuthHandler) handleLoginError(c *gin.Context, err error) {
 	switch {
 	case contains(errStr, "validation"):
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
-	case contains(errStr, "unauthorized"), contains(errStr, "密码错误"), contains(errStr, "invalid credentials"):
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "密码错误，请重新输入"})
+	case contains(errStr, "unauthorized"), contains(errStr, "密码错误"), contains(errStr, "invalid credentials"), contains(errStr, "not found"):
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户名或密码错误"})
 	case contains(errStr, "forbidden"), contains(errStr, "禁用"), contains(errStr, "disabled"):
 		c.JSON(http.StatusForbidden, gin.H{"error": "账号已被禁用，请联系管理员"})
 	case contains(errStr, "rate limit"), contains(errStr, "过于频繁"), contains(errStr, "too many"):
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": "登录尝试过于频繁，请稍后再试"})
-	case contains(errStr, "not found"):
-		c.JSON(http.StatusNotFound, gin.H{"error": "账号不存在，请检查邮箱/用户名是否正确"})
 	case contains(errStr, "expired"), contains(errStr, "过期"):
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "账号已过期，请续费"})
 	default:

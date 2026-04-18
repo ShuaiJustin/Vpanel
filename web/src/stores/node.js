@@ -340,6 +340,20 @@ export const useNodeStore = defineStore('node', () => {
     }
   }
 
+  const installNodeCoreVersion = async (id, version = '') => {
+    loading.value = true
+    error.value = null
+
+    try {
+      return await nodesApi.installCoreVersion(id, version)
+    } catch (err) {
+      error.value = err.message || '切换节点内核版本失败'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   // 统计和健康
   const fetchStatistics = async () => {
     error.value = null
@@ -466,6 +480,7 @@ export const useNodeStore = defineStore('node', () => {
     startNodeCore,
     restartNodeCore,
     syncNodeCoreConfig,
+    installNodeCoreVersion,
     fetchStatistics,
     fetchClusterHealth,
     getNodeTraffic,

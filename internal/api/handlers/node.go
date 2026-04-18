@@ -1587,6 +1587,48 @@ func (h *NodeHandler) SyncCoreConfig(c *gin.Context) {
 	)
 }
 
+// InstallCoreVersionRequest represents a request to install a specific Xray version on a node.
+type InstallCoreVersionRequest struct {
+	Version string `json:"version"`
+}
+
+// InstallCoreVersion queues an Xray version install/switch command on a node.
+// Empty version means "latest release".
+// POST /api/admin/nodes/:id/core/install-version
+func (h *NodeHandler) InstallCoreVersion(c *gin.Context) {
+	var req InstallCoreVersionRequest
+	_ = c.ShouldBindJSON(&req)
+	targetVersion := strings.TrimSpace(req.Version)
+	targetVersion = strings.TrimPrefix(targetVersion, "v")
+
+	// Light-weight validation: allow empty (= latest) or semver-ish "x.y.z"
+	if targetVersion != "" {
+		for _, ch := range targetVersion {
+			if (ch < '0' || ch > '9') && ch != '.' && !(ch >= 'a' && ch <= 'z') && !(ch >= 'A' && ch <= 'Z') && ch != '-' {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "版本号格式无效"})
+				return
+			}
+		}
+	}
+
+	reason := "管理员切换节点 Xray 内核版本"
+	successMsg := "版本切换命令已加入队列，节点将在下次心跳时下载并重启"
+	if targetVersion == "" {
+		reason = "管理员升级节点 Xray 内核到最新版本"
+		successMsg = "升级命令已加入队列，节点将在下次心跳时下载最新版"
+	}
+
+	h.queueNodeCommand(
+		c,
+		commandTypeXrayInstallVersion,
+		reason,
+		successMsg,
+		func(nodeID int64, source, reason string) (Command, bool) {
+			return h.recoveryTracker.QueueXrayInstallVersionCommand(nodeID, source, reason, targetVersion)
+		},
+	)
+}
+
 // GetXrayConfig returns the Xray configuration for a node.
 // GET /api/admin/nodes/:id/xray/config
 func (h *NodeHandler) GetXrayConfig(c *gin.Context) {

@@ -1,10 +1,7 @@
 <template>
   <div class="node-dashboard-page">
     <div class="page-header">
-      <div class="header-copy">
-        <p class="page-eyebrow">
-          Node Cluster
-        </p>
+      <div class="page-heading">
         <div class="title-row">
           <h1 class="page-title">
             节点集群概览
@@ -23,7 +20,7 @@
         </p>
       </div>
 
-      <div class="header-actions">
+      <div class="page-actions">
         <el-button
           :loading="loading"
           @click="refreshData"
@@ -1006,19 +1003,6 @@ onUnmounted(() => {
   margin-bottom: 20px;
 }
 
-.header-copy {
-  max-width: 760px;
-}
-
-.page-eyebrow {
-  margin: 0 0 8px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #64748b;
-}
-
 .title-row {
   display: flex;
   align-items: center;
@@ -1026,31 +1010,10 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
-.page-title {
-  margin: 0;
-  font-size: 32px;
-  font-weight: 700;
-  line-height: 1.1;
-  color: #0f172a;
-}
-
 .refresh-tag {
   border-color: rgba(59, 130, 246, 0.18);
   color: #2563eb;
   background: rgba(59, 130, 246, 0.08);
-}
-
-.page-subtitle {
-  margin: 10px 0 0;
-  font-size: 14px;
-  line-height: 1.7;
-  color: #64748b;
-}
-
-.header-actions {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
 }
 
 :deep(.hero-card.el-card),
@@ -1700,13 +1663,13 @@ onUnmounted(() => {
     flex-direction: column;
   }
 
-  .header-actions,
+  .page-actions,
   .hero-highlights,
   .focus-node-badges {
     width: 100%;
   }
 
-  .header-actions > * {
+  .page-actions > * {
     flex: 1;
   }
 
@@ -1756,20 +1719,20 @@ onUnmounted(() => {
     line-height: 1.6;
   }
 
-  .node-dashboard-page .header-actions {
+  .node-dashboard-page .page-actions {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
   }
 
-  .node-dashboard-page .header-actions > * {
+  .node-dashboard-page .page-actions > * {
     min-width: 0;
     width: 100%;
     margin-left: 0;
     flex: initial;
   }
 
-  .node-dashboard-page .header-actions > :last-child {
+  .node-dashboard-page .page-actions > :last-child {
     grid-column: 1 / -1;
   }
 

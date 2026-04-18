@@ -321,7 +321,7 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="负载与同步" min-width="200">
+          <el-table-column label="负载与同步" min-width="220">
             <template #default="{ row }">
               <div class="stack-cell">
                 <div class="stack-item">
@@ -343,6 +343,14 @@
                     :class="['stack-value', getLatencyValueClass(row.latency)]"
                     >{{ row.latency }}ms</span
                   >
+                </div>
+                <div class="stack-item">
+                  <span class="stack-label">最后在线</span>
+                  <span class="stack-value">{{ formatTime(row.last_seen_at) }}</span>
+                </div>
+                <div class="stack-item">
+                  <span class="stack-label">最后同步</span>
+                  <span class="stack-value">{{ formatTime(row.synced_at) }}</span>
                 </div>
                 <div class="stack-tags">
                   <span
@@ -392,25 +400,6 @@
                   <span v-if="hasNodeTrafficLimit(row)" class="metric-subtle">
                     重置 {{ formatNodeTrafficResetAt(row.traffic_reset_at) }}
                   </span>
-                </div>
-              </div>
-            </template>
-          </el-table-column>
-
-          <el-table-column label="最近活动" min-width="180">
-            <template #default="{ row }">
-              <div class="stack-cell">
-                <div class="stack-item">
-                  <span class="stack-label">最后在线</span>
-                  <span class="stack-value">{{
-                    formatTime(row.last_seen_at)
-                  }}</span>
-                </div>
-                <div class="stack-item">
-                  <span class="stack-label">最后同步</span>
-                  <span class="stack-value">{{
-                    formatTime(row.synced_at)
-                  }}</span>
                 </div>
               </div>
             </template>

@@ -875,6 +875,7 @@ func (r *Router) Setup() {
 				adminNodes.POST("/:id/core/start", authMiddleware.RequirePermission("system:write"), nodeHandler.StartCore)
 				adminNodes.POST("/:id/core/restart", authMiddleware.RequirePermission("system:write"), nodeHandler.RestartCore)
 				adminNodes.POST("/:id/core/sync-config", authMiddleware.RequirePermission("system:write"), nodeHandler.SyncCoreConfig)
+				adminNodes.POST("/:id/core/install-version", authMiddleware.RequirePermission("system:write"), nodeHandler.InstallCoreVersion)
 
 				// Health check routes
 				adminNodes.POST("/:id/health-check", authMiddleware.RequirePermission("system:write"), nodeHealthHandler.CheckNode)

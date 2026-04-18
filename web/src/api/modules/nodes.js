@@ -262,6 +262,14 @@ export const nodesApi = {
   syncCoreConfig: (id) => api.post(`/admin/nodes/${id}/core/sync-config`),
 
   /**
+   * 切换/升级节点 Xray 内核版本
+   * @param {number|string} id - 节点 ID
+   * @param {string} version - 目标版本号（如 1.8.4），空字符串表示最新版
+   * @returns {Promise<Object>} 队列结果
+   */
+  installCoreVersion: (id, version = '') => api.post(`/admin/nodes/${id}/core/install-version`, { version }),
+
+  /**
    * 获取部署脚本
    * @param {number|string} id - 节点 ID
    * @param {string} panelUrl - 面板 URL (可选)

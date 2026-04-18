@@ -167,6 +167,34 @@
               同步配置
             </el-button>
           </div>
+
+          <el-divider class="core-divider" />
+
+          <div class="core-version-panel">
+            <div class="core-version-header">
+              <div class="core-version-title">
+                版本切换
+              </div>
+              <div class="core-version-subtitle">
+                从官方 Release 下载并替换节点 Xray 二进制，留空则升级到最新版。
+              </div>
+            </div>
+            <div class="core-version-controls">
+              <el-input
+                v-model="targetCoreVersion"
+                placeholder="目标版本号，例如 1.8.4（留空=最新）"
+                clearable
+                class="core-version-input"
+              />
+              <el-button
+                type="primary"
+                :loading="coreActionLoading === 'install'"
+                @click="installCoreVersion"
+              >
+                {{ targetCoreVersion ? '切换版本' : '升级到最新' }}
+              </el-button>
+            </div>
+          </div>
           <div class="core-tip">
             节点命令会进入队列，并在节点下一次心跳时执行。
           </div>
@@ -539,6 +567,7 @@ const { isMobile } = useViewport()
 const loading = ref(false)
 const syncing = ref(false)
 const coreActionLoading = ref('')
+const targetCoreVersion = ref('')
 const activeWorkspace = ref('core')
 const networkOptimizationDialogVisible = ref(false)
 const networkOptimizationAction = ref('')
@@ -843,6 +872,38 @@ const restartCore = async () => {
   }
 }
 
+const installCoreVersion = async () => {
+  if (!node.value) return
+
+  const rawVersion = (targetCoreVersion.value || '').trim().replace(/^v/i, '')
+  if (rawVersion && !/^[0-9][0-9A-Za-z.-]*$/.test(rawVersion)) {
+    ElMessage.warning('版本号格式无效，请使用如 1.8.4 的格式')
+    return
+  }
+
+  const label = rawVersion ? `切换到 Xray v${rawVersion}` : '升级 Xray 到最新版本'
+  try {
+    await ElMessageBox.confirm(
+      `${label}？节点将在下次心跳时下载新版本并自动重启。`,
+      '版本切换确认',
+      { type: 'warning' }
+    )
+  } catch {
+    return
+  }
+
+  coreActionLoading.value = 'install'
+  try {
+    const response = await nodeStore.installNodeCoreVersion(node.value.id, rawVersion)
+    ElMessage.success(response.message || '版本切换命令已加入队列')
+    await fetchNode()
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error) || '切换内核版本失败')
+  } finally {
+    coreActionLoading.value = ''
+  }
+}
+
 const getNetworkOptimizationSSHPayload = () => ({
   host: sshForm.host,
   port: sshForm.port,
@@ -1140,6 +1201,46 @@ watch(
   flex-wrap: wrap;
   gap: 12px;
   padding-top: 16px;
+}
+
+.core-divider {
+  margin: 18px 0 12px;
+}
+
+.core-version-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.core-version-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.core-version-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.core-version-subtitle {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+}
+
+.core-version-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.core-version-input {
+  flex: 1 1 260px;
+  min-width: 220px;
 }
 
 .core-tip {
