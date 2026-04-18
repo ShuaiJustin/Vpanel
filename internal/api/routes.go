@@ -1401,6 +1401,7 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 		WithEmailSender(r.notificationService, r.config.GetBaseURL()).
 		WithTelegramSender(r.notificationService).
 		WithAvatarStoragePath(filepath.Join("data", "avatars")).
+		WithRoleRepository(r.repos.Role).
 		WithEntitlementService(r.entitlementService)
 	portalDashboardHandler := handlers.NewPortalDashboardHandler(r.repos.User, statsService, announcementService, r.logger).
 		WithEntitlementService(r.entitlementService)

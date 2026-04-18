@@ -27,6 +27,7 @@ type PortalAuthHandler struct {
 	portalAuthService *portalauth.Service
 	authService       *auth.Service
 	userRepo          repository.UserRepository
+	roleRepo          repository.RoleRepository
 	proxyRepo         repository.ProxyRepository
 	entitlement       *entitlement.Service
 	emailSender       portalEmailSender
@@ -112,6 +113,36 @@ func (h *PortalAuthHandler) WithAvatarStoragePath(path string) *PortalAuthHandle
 		h.avatarStoragePath = strings.TrimSpace(path)
 	}
 	return h
+}
+
+// WithRoleRepository enables role-based permission enrichment in login responses.
+func (h *PortalAuthHandler) WithRoleRepository(roleRepo repository.RoleRepository) *PortalAuthHandler {
+	h.roleRepo = roleRepo
+	return h
+}
+
+// getRolePermissions resolves the permission list for a role name. Admins get "*".
+func (h *PortalAuthHandler) getRolePermissions(c *gin.Context, roleName string) []string {
+	if roleName == "" {
+		return nil
+	}
+	if roleName == "admin" {
+		return []string{"*"}
+	}
+	if h == nil || h.roleRepo == nil {
+		return nil
+	}
+
+	role, err := h.roleRepo.GetByName(c.Request.Context(), roleName)
+	if err != nil || role == nil {
+		return nil
+	}
+
+	perms, err := role.GetPermissionsList()
+	if err != nil {
+		return nil
+	}
+	return perms
 }
 
 func normalizePortalHost(rawHost string) string {
@@ -361,6 +392,7 @@ func (h *PortalAuthHandler) Login(c *gin.Context) {
 			"username":              result.Username,
 			"email":                 result.Email,
 			"role":                  result.Role,
+			"permissions":           h.getRolePermissions(c, result.Role),
 			"force_password_change": result.ForcePasswordChange,
 		},
 	})
@@ -1178,6 +1210,7 @@ func (h *PortalAuthHandler) Verify2FALogin(c *gin.Context) {
 			"username":              result.Username,
 			"email":                 result.Email,
 			"role":                  result.Role,
+			"permissions":           h.getRolePermissions(c, result.Role),
 			"force_password_change": result.ForcePasswordChange,
 		},
 	})

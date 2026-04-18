@@ -14,6 +14,10 @@ export const useUserStore = defineStore('user', () => {
     return sessionStorage
   }
 
+  const getStoredToken = () => {
+    return sessionStorage.getItem('token') || localStorage.getItem('token') || ''
+  }
+
   const restoreStoredUser = () => {
     try {
       const raw = localStorage.getItem(ADMIN_USER_INFO_KEY) || sessionStorage.getItem(ADMIN_USER_INFO_KEY)
@@ -24,7 +28,7 @@ export const useUserStore = defineStore('user', () => {
   }
 
   // 状态
-  const token = ref(localStorage.getItem('token') || '')
+  const token = ref(getStoredToken())
   const user = ref(restoreStoredUser())
   const loading = ref(false)
   const error = ref(null)
@@ -111,8 +115,11 @@ export const useUserStore = defineStore('user', () => {
   }
 
   const getUser = async () => {
+    if (!token.value) {
+      token.value = getStoredToken()
+    }
     if (!token.value) return null
-    
+
     loading.value = true
     error.value = null
     

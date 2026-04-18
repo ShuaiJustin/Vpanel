@@ -288,10 +288,12 @@ func (hc *HealthChecker) performCheck(node *repository.Node) *HealthCheckResult 
 		CheckedAt: time.Now(),
 	}
 
-	start := time.Now()
-
-	// Check TCP connectivity
+	tcpStart := time.Now()
 	result.TCPOk = hc.checkTCP(node.Address, node.Port)
+	result.Latency = int(time.Since(tcpStart).Milliseconds())
+	if !result.TCPOk {
+		result.Latency = -1
+	}
 
 	// Check API responsiveness
 	if result.TCPOk {
@@ -307,8 +309,6 @@ func (hc *HealthChecker) performCheck(node *repository.Node) *HealthCheckResult 
 	certWarning := hc.checkCertificateExpiration(node)
 	heartbeatHealthy := shouldTrustRecentHeartbeat(node, hc.config.Interval, time.Now())
 	proxyReachable, hasSampledProxy := hc.checkReachableProxyEndpoint(node)
-
-	result.Latency = int(time.Since(start).Milliseconds())
 
 	if nodeTrafficLimitExceeded(node) {
 		result.Status = repository.HealthCheckStatusFailed
