@@ -183,7 +183,7 @@ func (p *Protocol) ParseLink(link string) (*proxy.Settings, error) {
 	}
 
 	encoded := link[8:]
-	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	decoded, err := decodeVMessLinkPayload(encoded)
 	if err != nil {
 		return nil, errors.NewValidationError("failed to decode vmess link", err)
 	}
@@ -297,4 +297,21 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// decodeVMessLinkPayload decodes the base64 payload of a vmess:// link,
+// tolerating the stripped/URL-safe variants that appear in share links.
+func decodeVMessLinkPayload(value string) ([]byte, error) {
+	decoders := []*base64.Encoding{
+		base64.StdEncoding,
+		base64.RawStdEncoding,
+		base64.URLEncoding,
+		base64.RawURLEncoding,
+	}
+	for _, decoder := range decoders {
+		if decoded, err := decoder.DecodeString(value); err == nil {
+			return decoded, nil
+		}
+	}
+	return nil, fmt.Errorf("invalid base64 vmess payload")
 }

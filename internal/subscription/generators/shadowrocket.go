@@ -251,8 +251,8 @@ func (g *ShadowrocketGenerator) generateShadowsocksLink(info *ProxyInfo) (string
 		return "", fmt.Errorf("password is required for Shadowsocks")
 	}
 
-	// SIP002 format: ss://base64(method:password)@server:port#name
-	userInfo := base64.URLEncoding.EncodeToString([]byte(method + ":" + password))
+	// SIP002 requires URL-safe Base64 without padding; Shadowrocket rejects padded variants.
+	userInfo := base64.RawURLEncoding.EncodeToString([]byte(method + ":" + password))
 	link := fmt.Sprintf("ss://%s@%s:%d#%s", userInfo, info.Server, info.Port, url.PathEscape(info.Name))
 
 	return link, nil

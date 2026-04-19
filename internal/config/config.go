@@ -91,18 +91,13 @@ type PaymentWeChatConfig struct {
 	IsSandbox bool   `yaml:"is_sandbox" env:"V_PAYMENT_WECHAT_SANDBOX" default:"false"`
 }
 
-// XrayConfig contains Xray-core settings.
+// XrayConfig contains Xray-core settings (used by node agents).
 type XrayConfig struct {
-	BinaryPath  string `yaml:"binary_path" env:"V_XRAY_BINARY_PATH" default:"xray"`
-	BinPath     string `yaml:"bin_path" env:"V_XRAY_BIN_PATH" default:"./xray/bin"`
-	ConfigPath  string `yaml:"config_path" env:"V_XRAY_CONFIG_PATH" default:"./xray/config.json"`
-	BackupDir   string `yaml:"backup_dir" env:"V_XRAY_BACKUP_DIR" default:"/tmp/xray-backups"`
-	Version     string `yaml:"version" env:"V_XRAY_VERSION" default:"latest"`
-	// PanelLocal enables the panel-local Xray process and its /api/xray/* routes.
-	// Only needed for single-node (all-in-one) deployments where the panel itself
-	// serves proxy traffic. Multi-node deployments should keep this disabled —
-	// Xray runs on nodes via the agent, not on the panel host.
-	PanelLocal  bool   `yaml:"panel_local" env:"V_XRAY_PANEL_LOCAL" default:"false"`
+	BinaryPath string `yaml:"binary_path" env:"V_XRAY_BINARY_PATH" default:"xray"`
+	BinPath    string `yaml:"bin_path" env:"V_XRAY_BIN_PATH" default:"./xray/bin"`
+	ConfigPath string `yaml:"config_path" env:"V_XRAY_CONFIG_PATH" default:"./xray/config.json"`
+	BackupDir  string `yaml:"backup_dir" env:"V_XRAY_BACKUP_DIR" default:"/tmp/xray-backups"`
+	Version    string `yaml:"version" env:"V_XRAY_VERSION" default:"latest"`
 }
 
 // LogConfig contains logging settings.

@@ -233,10 +233,12 @@
     <el-card shadow="never">
       <template #header>
         <div class="card-header">
-          <span>节点列表</span>
-          <span class="toolbar-summary"
-            >集中处理详情、部署、Token 和脚本下载</span
-          >
+          <div>
+            <div class="section-title">节点列表</div>
+            <div class="section-subtitle">
+              集中处理详情、部署、Token 和脚本下载
+            </div>
+          </div>
         </div>
       </template>
 
@@ -405,7 +407,7 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="操作" width="220" fixed="right" align="right">
+          <el-table-column label="操作" width="180" fixed="right" align="right">
             <template #default="{ row }">
               <div class="operation-btns">
                 <el-button
@@ -2318,7 +2320,7 @@ onUnmounted(() => {
 
 .nodes-table {
   width: 100%;
-  min-width: 1080px;
+  min-width: 1120px;
 }
 
 .toolbar-card {
@@ -2481,6 +2483,13 @@ onUnmounted(() => {
 
 .admin-nodes-page :deep(.row-action) {
   min-width: 54px;
+}
+
+.admin-nodes-page :deep(.row-action--more) {
+  min-width: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
 }
 
 .admin-nodes-page :deep(.row-action--primary) {

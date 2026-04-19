@@ -990,17 +990,6 @@ onUnmounted(() => {
 <style scoped>
 .node-dashboard-page {
   padding: 24px;
-  --panel-border: rgba(148, 163, 184, 0.18);
-  --panel-shadow: 0 20px 40px rgba(15, 23, 42, 0.06);
-  --panel-radius: 22px;
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 20px;
-  margin-bottom: 20px;
 }
 
 .title-row {
@@ -1014,14 +1003,6 @@ onUnmounted(() => {
   border-color: rgba(59, 130, 246, 0.18);
   color: #2563eb;
   background: rgba(59, 130, 246, 0.08);
-}
-
-:deep(.hero-card.el-card),
-:deep(.metric-card.el-card),
-:deep(.panel-card.el-card) {
-  border: 1px solid var(--panel-border);
-  border-radius: var(--panel-radius);
-  box-shadow: var(--panel-shadow);
 }
 
 .hero-card {
@@ -1687,7 +1668,6 @@ onUnmounted(() => {
 @media (max-width: 640px) {
   .node-dashboard-page {
     padding: 12px;
-    --panel-radius: 18px;
   }
 
   :deep(.hero-card .el-card__body),

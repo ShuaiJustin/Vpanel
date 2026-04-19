@@ -270,6 +270,14 @@ export const nodesApi = {
   installCoreVersion: (id, version = '') => api.post(`/admin/nodes/${id}/core/install-version`, { version }),
 
   /**
+   * 从 GitHub 获取可用的 Xray 版本列表（面板代理，带缓存）
+   * @param {boolean} refresh - true 强制重新拉取，跳过缓存
+   * @returns {Promise<{versions: Array, cached: boolean, cached_at: string}>}
+   */
+  listAvailableCoreVersions: (refresh = false) =>
+    api.get('/admin/nodes/xray/available-versions', { params: refresh ? { refresh: 1 } : {} }),
+
+  /**
    * 获取部署脚本
    * @param {number|string} id - 节点 ID
    * @param {string} panelUrl - 面板 URL (可选)

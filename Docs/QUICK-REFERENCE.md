@@ -68,8 +68,7 @@ V/
 ├── vpanel                      # Panel 二进制
 ├── vpanel-agent                # Agent 二进制
 ├── configs/                    # 配置文件
-│   ├── config.yaml            # Panel 配置
-│   └── xray.json.example      # Xray 配置示例
+│   └── config.yaml            # Panel 配置
 ├── scripts/                    # 脚本工具
 │   ├── dev-setup.sh           # 开发环境设置
 │   ├── build-agent.sh         # 编译 Agent

@@ -207,7 +207,7 @@ func (m *manager) GetProxy(ctx context.Context, id int64) (*Settings, error) {
 	return m.proxyToSettings(proxy), nil
 }
 
-// ListProxies lists all proxy configurations.
+// ListProxies lists proxy configurations with pagination.
 func (m *manager) ListProxies(ctx context.Context, page, pageSize int) ([]*Settings, int64, error) {
 	offset := (page - 1) * pageSize
 	if offset < 0 {
@@ -218,19 +218,22 @@ func (m *manager) ListProxies(ctx context.Context, page, pageSize int) ([]*Setti
 		return nil, 0, err
 	}
 
+	total, err := m.proxyRepo.Count(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	settings := make([]*Settings, len(proxies))
 	for i, proxy := range proxies {
 		settings[i] = m.proxyToSettings(proxy)
 	}
 
-	return settings, int64(len(proxies)), nil
+	return settings, total, nil
 }
 
 // GetProxiesByUser retrieves proxies for a user.
-// Note: This method is not fully implemented as the repository doesn't support user-based filtering.
 func (m *manager) GetProxiesByUser(ctx context.Context, userID int64) ([]*Settings, error) {
-	// For now, return all proxies since the repository doesn't have GetByUserID
-	proxies, err := m.proxyRepo.List(ctx, 1000, 0)
+	proxies, err := m.proxyRepo.GetByUserID(ctx, userID, 1000, 0)
 	if err != nil {
 		return nil, err
 	}

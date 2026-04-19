@@ -132,6 +132,7 @@
           border
           stripe
           row-key="id"
+          class="nodes-table"
           :empty-text="hasActiveFilters ? '暂无匹配节点' : '暂无节点'"
         >
           <el-table-column
@@ -140,14 +141,22 @@
           >
             <template #default="{ row }">
               <div class="entity-cell">
-                <div class="entity-title">
-                  {{ row.name }}
-                </div>
-                <div class="entity-meta">
+                <div
+                  class="node-address"
+                  :title="`${row.address}:${row.port}`"
+                >
                   {{ row.address }}:{{ row.port }}
                 </div>
-                <div class="entity-meta">
-                  地区 {{ row.region || '未设置' }} · 权重 {{ row.weight }}
+                <div class="entity-cell__header">
+                  <span class="entity-cell__title">{{ row.name }}</span>
+                  <span :class="['metric-pill', getStatusPillClass(row.status)]">
+                    {{ getStatusText(row.status) }}
+                  </span>
+                </div>
+                <div class="entity-cell__meta">
+                  <span>ID：{{ row.id }}</span>
+                  <span>地区：{{ row.region || '未设置' }}</span>
+                  <span>权重：{{ row.weight }}</span>
                 </div>
               </div>
             </template>
@@ -155,37 +164,36 @@
 
           <el-table-column
             label="运行状态"
-            min-width="220"
+            min-width="240"
           >
             <template #default="{ row }">
-              <div class="status-stack">
-                <div class="status-chip-row">
-                  <el-tag :type="getStatusType(row.status)">
+              <div class="stack-cell">
+                <div class="stack-item stack-item--inline">
+                  <span class="stack-label">运行状态</span>
+                  <span :class="['metric-pill', getStatusPillClass(row.status)]">
                     {{ getStatusText(row.status) }}
-                  </el-tag>
-                  <el-tag
-                    :type="getSyncStatusType(row.sync_status)"
-                    effect="plain"
-                  >
-                    {{ getSyncStatusText(row.sync_status) }}
-                  </el-tag>
+                  </span>
                 </div>
-                <div class="status-metric-grid">
-                  <div class="status-metric-card">
-                    <span class="metric-label">Xray</span>
-                    <strong :class="['status-metric-value', row.xray_running ? 'is-success-text' : 'is-danger-text']">
-                      {{ row.xray_running ? '运行中' : '已停止' }}
-                    </strong>
-                  </div>
-                  <div class="status-metric-card">
-                    <span class="metric-label">最后心跳</span>
-                    <strong
-                      class="status-metric-value"
-                      :title="formatTime(row.last_seen_at)"
-                    >
-                      {{ formatCompactTime(row.last_seen_at) }}
-                    </strong>
-                  </div>
+                <div class="stack-item stack-item--inline">
+                  <span class="stack-label">同步状态</span>
+                  <span :class="['metric-pill', getSyncPillClass(row.sync_status)]">
+                    {{ getSyncStatusText(row.sync_status) }}
+                  </span>
+                </div>
+                <div class="stack-item">
+                  <span class="stack-label">Xray 运行</span>
+                  <span :class="['stack-value', 'is-strong', row.xray_running ? 'is-success' : 'is-danger']">
+                    {{ row.xray_running ? '运行中' : '已停止' }}
+                  </span>
+                </div>
+                <div class="stack-item">
+                  <span class="stack-label">最后心跳</span>
+                  <span
+                    class="stack-value"
+                    :title="formatTime(row.last_seen_at)"
+                  >
+                    {{ formatCompactTime(row.last_seen_at) }}
+                  </span>
                 </div>
               </div>
             </template>
@@ -193,24 +201,33 @@
 
           <el-table-column
             label="运维概况"
-            min-width="260"
+            min-width="240"
           >
             <template #default="{ row }">
-              <div class="status-stack">
-                <div class="status-metric-grid">
-                  <div class="status-metric-card">
-                    <span class="metric-label">用户负载</span>
-                    <strong class="status-metric-value">{{ row.current_users }}/{{ row.max_users || '∞' }}</strong>
-                  </div>
-                  <div class="status-metric-card">
-                    <span class="metric-label">节点延迟</span>
-                    <strong :class="['status-metric-value', getLatencyClass(row.latency)]">{{ row.latency }}ms</strong>
-                  </div>
+              <div class="stack-cell">
+                <div class="stack-item">
+                  <span class="stack-label">用户负载</span>
+                  <span class="stack-value is-strong">
+                    {{ row.current_users }}/{{ row.max_users || '∞' }}
+                  </span>
                 </div>
-                <div class="status-inline">
-                  <span class="metric-label">内核版本</span>
+                <el-progress
+                  v-if="row.max_users > 0"
+                  :percentage="getLoadPercent(row)"
+                  :stroke-width="6"
+                  :show-text="false"
+                  :status="getLoadStatus(row)"
+                />
+                <div class="stack-item">
+                  <span class="stack-label">节点延迟</span>
+                  <span :class="['stack-value', getLatencyValueClass(row.latency)]">
+                    {{ row.latency }}ms
+                  </span>
+                </div>
+                <div class="stack-item">
+                  <span class="stack-label">内核版本</span>
                   <span
-                    class="metric-value metric-value-wrap"
+                    class="stack-value"
                     :title="formatCoreVersion(row.xray_version)"
                   >
                     {{ formatCoreVersionCompact(row.xray_version) }}
@@ -222,7 +239,8 @@
 
           <el-table-column
             label="操作"
-            width="240"
+            width="220"
+            fixed="right"
             align="right"
           >
             <template #default="{ row }">
@@ -230,12 +248,14 @@
                 <el-button
                   size="small"
                   type="primary"
+                  class="row-action"
                   @click="openOperations(row)"
                 >
                   进入运维
                 </el-button>
                 <el-button
                   size="small"
+                  class="row-action row-action--primary"
                   @click="viewNodeDetail(row)"
                 >
                   详情
@@ -243,6 +263,7 @@
                 <el-button
                   size="small"
                   plain
+                  class="row-action"
                   @click="editNode(row)"
                 >
                   编辑
@@ -352,19 +373,18 @@ const averageLatency = computed(() => {
   return Math.round(total / available.length)
 })
 
-const getStatusType = (status) => {
-  const map = { online: 'success', offline: 'info', unhealthy: 'danger' }
-  return map[status] || 'info'
-}
-
 const getStatusText = (status) => {
   const map = { online: '在线', offline: '离线', unhealthy: '不健康' }
   return map[status] || status || '未知'
 }
 
-const getSyncStatusType = (status) => {
-  const map = { synced: 'success', pending: 'warning', failed: 'danger' }
-  return map[status] || 'info'
+const getStatusPillClass = (status) => {
+  const classes = {
+    online: 'is-success',
+    offline: 'is-muted',
+    unhealthy: 'is-danger'
+  }
+  return classes[status] || 'is-muted'
 }
 
 const getSyncStatusText = (status) => {
@@ -372,12 +392,34 @@ const getSyncStatusText = (status) => {
   return map[status] || status || '未知'
 }
 
-const getLatencyClass = (latency) => {
+const getSyncPillClass = (status) => {
+  const classes = {
+    synced: 'is-success',
+    pending: 'is-warning',
+    failed: 'is-danger'
+  }
+  return classes[status] || 'is-muted'
+}
+
+const getLatencyValueClass = (latency) => {
   const value = Number(latency) || 0
   if (value <= 0) return ''
-  if (value < 100) return 'latency-good'
-  if (value < 300) return 'latency-medium'
-  return 'latency-bad'
+  if (value < 100) return 'is-success'
+  if (value < 300) return 'is-warning'
+  return 'is-danger'
+}
+
+const getLoadPercent = (node) => {
+  if (!node.max_users) return 0
+  return Math.min(100, Math.round((node.current_users / node.max_users) * 100))
+}
+
+const getLoadStatus = (node) => {
+  if (!node.max_users) return ''
+  const ratio = node.current_users / node.max_users
+  if (ratio >= 0.9) return 'exception'
+  if (ratio >= 0.7) return 'warning'
+  return 'success'
 }
 
 const formatTime = (time) => {
@@ -657,99 +699,68 @@ onUnmounted(() => {
   overflow-x: auto;
 }
 
-.entity-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.nodes-table {
+  width: 100%;
+  min-width: 980px;
 }
 
-.entity-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-
-.entity-meta {
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-  line-height: 1.5;
-  word-break: break-word;
-}
-
-.status-stack {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.status-row,
-.status-inline {
-  display: flex;
-  min-width: 0;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.status-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.status-metric-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.status-metric-card {
-  display: flex;
-  min-height: 72px;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid var(--el-border-color-lighter);
+.node-address {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 6px 10px;
   border-radius: 12px;
-  background: var(--el-fill-color-light);
-}
-
-.status-metric-value {
-  font-size: 20px;
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+  font-size: 12px;
   font-weight: 700;
-  line-height: 1.2;
-  color: var(--el-text-color-primary);
+  line-height: 1.4;
+  word-break: break-all;
 }
 
-.metric-label {
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
+.node-operations-index-page :deep(.nodes-table td.el-table__cell),
+.node-operations-index-page :deep(.nodes-table th.el-table__cell) {
+  vertical-align: middle !important;
 }
 
-.metric-value {
-  min-width: 0;
-  color: var(--el-text-color-primary);
-  font-size: 13px;
-  text-align: right;
-  line-height: 1.5;
+.node-operations-index-page :deep(.nodes-table .el-table__header-wrapper .cell) {
+  display: flex;
+  align-items: center;
+  min-height: 52px;
 }
 
-.metric-value-wrap {
-  display: inline-block;
-  max-width: 168px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.node-operations-index-page
+  :deep(.nodes-table .el-table__body td.el-table__cell > .cell) {
+  display: flex;
+  align-items: center;
+  min-height: 100%;
+  padding-top: 14px;
+  padding-bottom: 14px;
 }
 
-.is-success-text {
-  color: var(--el-color-success);
+.node-operations-index-page :deep(.nodes-table .entity-cell),
+.node-operations-index-page :deep(.nodes-table .stack-cell),
+.node-operations-index-page :deep(.nodes-table .operation-btns) {
+  width: 100%;
 }
 
-.is-danger-text {
-  color: var(--el-color-danger);
+.node-operations-index-page :deep(.nodes-table .entity-cell),
+.node-operations-index-page :deep(.nodes-table .stack-cell) {
+  justify-content: center;
+}
+
+.node-operations-index-page :deep(.nodes-table .operation-btns) {
+  align-items: center;
+  gap: 8px;
+  min-height: 100%;
+}
+
+.node-operations-index-page :deep(.row-action) {
+  min-width: 54px;
+}
+
+.node-operations-index-page :deep(.row-action--primary) {
+  background: #eff6ff;
 }
 
 .operation-btns {
@@ -765,19 +776,12 @@ onUnmounted(() => {
   margin-top: 20px;
 }
 
-.latency-good {
-  color: var(--el-color-success);
-}
-
-.latency-medium {
-  color: var(--el-color-warning);
-}
-
-.latency-bad {
-  color: var(--el-color-danger);
-}
-
 /* ── dark mode ── */
+:global(.dark) .node-address {
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.14);
+}
+
 :global(.dark) .overview-card {
   background: rgba(30, 41, 59, 0.7);
   border-color: rgba(100, 116, 139, 0.22);
@@ -798,37 +802,16 @@ onUnmounted(() => {
   background: rgba(59, 130, 246, 0.16);
 }
 
-:global(.dark) .status-metric-card {
-  background: rgba(51, 65, 85, 0.5);
-  border-color: rgba(100, 116, 139, 0.2);
-}
-
-:global(.dark) .status-metric-value {
-  color: #e2e8f0;
-}
-
-:global(.dark) .metric-label {
-  color: #94a3b8;
-}
-
-:global(.dark) .metric-value {
-  color: #cbd5e1;
-}
-
-:global(.dark) .entity-title {
-  color: #f1f5f9;
-}
-
-:global(.dark) .entity-meta {
-  color: #94a3b8;
-}
-
 :global(.dark) .section-title {
   color: #f1f5f9;
 }
 
 :global(.dark) .section-subtitle {
   color: #94a3b8;
+}
+
+:global(.dark) .node-operations-index-page :deep(.row-action--primary) {
+  background: rgba(59, 130, 246, 0.14);
 }
 
 @media (max-width: 768px) {
@@ -873,21 +856,6 @@ onUnmounted(() => {
   .toolbar-filters :deep(.el-select),
   .toolbar-search {
     width: 100%;
-  }
-
-  .status-metric-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .status-row {
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .metric-value,
-  .metric-value-wrap {
-    max-width: none;
-    text-align: left;
   }
 
   .operation-btns {

@@ -2,6 +2,7 @@
 package trojan
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -256,13 +257,19 @@ func (p *Protocol) DefaultSettings() map[string]any {
 	}
 }
 
-// generateRandomPassword generates a random password for Trojan.
+// generateRandomPassword generates a cryptographically random Trojan password.
 func generateRandomPassword() string {
-	// Use a simple random string generator
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	password := make([]byte, 16)
-	for i := range password {
-		password[i] = charset[i%len(charset)]
+	const length = 32
+	b := make([]byte, length)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand should never fail on supported platforms; if it does, the
+		// only safe action is to refuse a predictable fallback. Return empty so
+		// the caller's validation ("password is required") rejects the proxy.
+		return ""
 	}
-	return string(password)
+	for i := range b {
+		b[i] = charset[int(b[i])%len(charset)]
+	}
+	return string(b)
 }

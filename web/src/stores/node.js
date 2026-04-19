@@ -354,6 +354,15 @@ export const useNodeStore = defineStore('node', () => {
     }
   }
 
+  const listAvailableCoreVersions = async (refresh = false) => {
+    try {
+      return await nodesApi.listAvailableCoreVersions(refresh)
+    } catch (err) {
+      error.value = err.message || '获取可用版本失败'
+      throw err
+    }
+  }
+
   // 统计和健康
   const fetchStatistics = async () => {
     error.value = null
@@ -481,6 +490,7 @@ export const useNodeStore = defineStore('node', () => {
     restartNodeCore,
     syncNodeCoreConfig,
     installNodeCoreVersion,
+    listAvailableCoreVersions,
     fetchStatistics,
     fetchClusterHealth,
     getNodeTraffic,

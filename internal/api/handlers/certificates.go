@@ -371,10 +371,22 @@ func (h *CertificateHandler) Update(c *gin.Context) {
 
 	// Update fields
 	if req.Certificate != nil {
-		cert.Certificate = *req.Certificate
-		// TODO: 从新证书中提取过期时间
-		cert.ExpiresAt = time.Now().AddDate(0, 3, 0)
-		cert.ExpireDate = &cert.ExpiresAt
+		newCert := strings.TrimSpace(*req.Certificate)
+		if newCert == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "证书内容不能为空"})
+			return
+		}
+		expiresAt, parseErr := parseCertificateNotAfter([]byte(newCert))
+		if parseErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "证书内容无效",
+				"details": parseErr.Error(),
+			})
+			return
+		}
+		cert.Certificate = newCert
+		cert.ExpiresAt = expiresAt
+		cert.ExpireDate = &expiresAt
 	}
 	if req.PrivateKey != nil {
 		cert.PrivateKey = *req.PrivateKey
@@ -741,6 +753,28 @@ func addZipFile(zw *zip.Writer, name string, data []byte) error {
 	}
 	_, err = w.Write(data)
 	return err
+}
+
+// parseCertificateNotAfter extracts the NotAfter timestamp from the first
+// certificate block in a PEM bundle. Returns an error when the input does not
+// contain a valid CERTIFICATE block.
+func parseCertificateNotAfter(pemData []byte) (time.Time, error) {
+	rest := pemData
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			return time.Time{}, fmt.Errorf("未找到 CERTIFICATE 块")
+		}
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		parsed, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("证书解析失败: %w", err)
+		}
+		return parsed.NotAfter.UTC(), nil
+	}
 }
 
 func (h *CertificateHandler) readCertificateMaterial(cert *repository.Certificate) ([]byte, []byte, error) {

@@ -2,7 +2,6 @@
 package generators
 
 import (
-	"encoding/base64"
 	"fmt"
 	"strings"
 
@@ -150,13 +149,14 @@ func (g *QuantumultXGenerator) generateTrojanLine(info *ProxyInfo) (string, erro
 func (g *QuantumultXGenerator) generateShadowsocksLine(info *ProxyInfo) (string, error) {
 	method := GetSettingString(info.Settings, "method", "aes-256-gcm")
 	password := GetSettingString(info.Settings, "password", "")
-	
-	// Quantumult X Shadowsocks format:
+
+	// Quantumult X Shadowsocks format expects the raw password; base64 encoding
+	// would make the client authenticate with the wrong bytes.
 	// shadowsocks=server:port, method=xxx, password=xxx, tag=name
 	parts := []string{
 		fmt.Sprintf("shadowsocks=%s:%d", info.Server, info.Port),
 		fmt.Sprintf("method=%s", method),
-		fmt.Sprintf("password=%s", base64.StdEncoding.EncodeToString([]byte(password))),
+		fmt.Sprintf("password=%s", password),
 	}
 
 	// UDP relay

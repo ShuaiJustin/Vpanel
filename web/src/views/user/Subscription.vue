@@ -302,7 +302,7 @@ const { isMobile } = useViewport()
 const qrcodeCanvas = ref(null)
 
 // 状态
-const selectedFormat = ref('clash')
+const selectedFormat = ref('clashmeta')
 const showResetDialog = ref(false)
 const resetting = ref(false)
 const loading = ref(false)
@@ -313,14 +313,16 @@ const SUBSCRIPTION_REFRESH_INTERVAL = 30 * 1000
 let subscriptionRefreshTimer = null
 
 // 订阅格式
+// Clash Meta/Mihomo 放第一位，覆盖 Clash Verge/Stash 等现代 Clash 内核；
+// 基础 Clash 只支持 VMess/Trojan/SS，VLESS 与 Reality 节点会被丢弃
 const formats = [
-  { value: 'clash', label: 'Clash' },
   { value: 'clashmeta', label: 'Clash Meta' },
+  { value: 'clash', label: 'Clash' },
+  { value: 'singbox', label: 'Sing-box' },
   { value: 'v2rayn', label: 'V2Ray' },
   { value: 'shadowrocket', label: 'Shadowrocket' },
   { value: 'surge', label: 'Surge' },
-  { value: 'quantumultx', label: 'Quantumult X' },
-  { value: 'singbox', label: 'Sing-box' }
+  { value: 'quantumultx', label: 'Quantumult X' }
 ]
 
 // 推荐客户端

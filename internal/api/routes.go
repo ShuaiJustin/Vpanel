@@ -63,7 +63,6 @@ type Router struct {
 	notificationService       *notification.Service
 	trialService              *trial.Service
 	entitlementService        *entitlement.Service
-	xrayManager               xray.Manager
 	logService                *logservice.Service
 	certificateService        CertificateService
 	nodeHealthChecker         *node.HealthChecker
@@ -101,13 +100,6 @@ func NewRouter(
 	// Create settings service
 	settingsService := settings.NewService(repos.Settings)
 
-	// Create Xray manager
-	xrayManager := xray.NewManager(xray.Config{
-		BinaryPath: cfg.Xray.BinaryPath,
-		ConfigPath: cfg.Xray.ConfigPath,
-		BackupDir:  cfg.Xray.BackupDir,
-	}, log)
-
 	return &Router{
 		engine:                    engine,
 		config:                    cfg,
@@ -117,7 +109,6 @@ func NewRouter(
 		repos:                     repos,
 		settingsService:           settingsService,
 		notificationService:       notification.NewService(&notification.NotificationConfig{}),
-		xrayManager:               xrayManager,
 		logService:                logService,
 		certificateService:        certService,
 		nodeHealthChecker:         nil, // 将在 Setup() 中初始化
@@ -165,11 +156,11 @@ func (r *Router) Setup() {
 		WithIPTracker(ip.NewTracker(r.repos.DB())).
 		WithCache(statsCache)
 	systemHandler := handlers.NewSystemHandler(r.config, r.logger)
-	healthHandler := handlers.NewHealthHandler(r.repos, r.logger, r.xrayManager, nil)
+	healthHandler := handlers.NewHealthHandler(r.repos, r.logger, nil)
 	roleHandler := handlers.NewRoleHandler(r.logger, r.repos.Role)
 	statsHandler := handlers.NewStatsHandler(r.logger, r.repos, statsCache)
 	settingsHandler := handlers.NewSettingsHandler(r.logger, r.settingsService)
-	xrayHandler := handlers.NewXrayHandler(r.xrayManager, r.logger)
+	xrayReleasesHandler := handlers.NewXrayReleasesHandler(r.logger)
 	certificateHandler := handlers.NewCertificateHandler(r.repos.Certificate, r.repos.Node, r.certificateService, r.logger)
 	logHandler := handlers.NewLogHandler(r.logService, r.logger)
 
@@ -565,28 +556,6 @@ func (r *Router) Setup() {
 				settingsRoutes.POST("/protocols", authMiddleware.RequirePermission("system:write"), settingsHandler.UpdateProtocolSettings)
 			}
 
-			// Xray routes (admin only)
-			xrayRoutes := protected.Group("/xray")
-			{
-				xrayRoutes.GET("/status", authMiddleware.RequirePermission("system:read"), xrayHandler.GetStatus)
-				xrayRoutes.POST("/start", authMiddleware.RequirePermission("system:write"), xrayHandler.Start)
-				xrayRoutes.POST("/stop", authMiddleware.RequirePermission("system:write"), xrayHandler.Stop)
-				xrayRoutes.POST("/restart", authMiddleware.RequirePermission("system:write"), xrayHandler.Restart)
-				xrayRoutes.GET("/config", authMiddleware.RequirePermission("system:read"), xrayHandler.GetConfig)
-				xrayRoutes.PUT("/config", authMiddleware.RequirePermission("system:write"), xrayHandler.UpdateConfig)
-				xrayRoutes.POST("/validate", authMiddleware.RequirePermission("system:write"), xrayHandler.ValidateConfig)
-				xrayRoutes.POST("/test-config", authMiddleware.RequirePermission("system:write"), xrayHandler.TestConfig)
-				xrayRoutes.GET("/version", authMiddleware.RequirePermission("system:read"), xrayHandler.GetVersion)
-				xrayRoutes.GET("/version/:version/details", authMiddleware.RequirePermission("system:read"), xrayHandler.GetVersionDetails)
-				xrayRoutes.GET("/versions", authMiddleware.RequirePermission("system:read"), xrayHandler.GetVersions)
-				xrayRoutes.POST("/sync-versions", authMiddleware.RequirePermission("system:write"), xrayHandler.SyncVersions)
-				xrayRoutes.GET("/check-updates", authMiddleware.RequirePermission("system:read"), xrayHandler.CheckUpdates)
-				xrayRoutes.POST("/download", authMiddleware.RequirePermission("system:write"), xrayHandler.Download)
-				xrayRoutes.POST("/install", authMiddleware.RequirePermission("system:write"), xrayHandler.Install)
-				xrayRoutes.POST("/update", authMiddleware.RequirePermission("system:write"), xrayHandler.Update)
-				xrayRoutes.POST("/switch-version", authMiddleware.RequirePermission("system:write"), xrayHandler.SwitchVersion)
-			}
-
 			// Certificates routes (admin only)
 			certificatesRoutes := protected.Group("/certificates")
 			{
@@ -876,6 +845,10 @@ func (r *Router) Setup() {
 				adminNodes.POST("/:id/core/restart", authMiddleware.RequirePermission("system:write"), nodeHandler.RestartCore)
 				adminNodes.POST("/:id/core/sync-config", authMiddleware.RequirePermission("system:write"), nodeHandler.SyncCoreConfig)
 				adminNodes.POST("/:id/core/install-version", authMiddleware.RequirePermission("system:write"), nodeHandler.InstallCoreVersion)
+
+				// Xray version list from GitHub (panel proxy, no local state).
+				// Used by the per-node "切换版本" dropdown.
+				adminNodes.GET("/xray/available-versions", authMiddleware.RequirePermission("system:read"), xrayReleasesHandler.List)
 
 				// Health check routes
 				adminNodes.POST("/:id/health-check", authMiddleware.RequirePermission("system:write"), nodeHealthHandler.CheckNode)

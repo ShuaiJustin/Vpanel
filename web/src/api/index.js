@@ -19,7 +19,6 @@ import { settingsApi } from './modules/settings'
 import { statsApi } from './modules/stats'
 import { certificatesApi } from './modules/certificates'
 import { rolesApi } from './modules/roles'
-import { xrayApi } from './modules/xray'
 import { logsApi } from './modules/logs'
 import { subscriptionApi } from './modules/subscription'
 
@@ -72,9 +71,6 @@ export {
 
   // 角色
   rolesApi,
-
-  // Xray
-  xrayApi,
 
   // 日志
   logsApi,

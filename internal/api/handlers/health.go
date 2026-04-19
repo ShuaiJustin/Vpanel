@@ -12,14 +12,12 @@ import (
 
 	"v/internal/database/repository"
 	"v/internal/logger"
-	"v/internal/xray"
 )
 
 // HealthHandler handles health check requests.
 type HealthHandler struct {
 	repos     *repository.Repositories
 	logger    logger.Logger
-	xrayMgr   xray.Manager
 	diskPath  string
 	minDiskGB float64
 }
@@ -31,7 +29,7 @@ type HealthHandlerConfig struct {
 }
 
 // NewHealthHandler creates a new HealthHandler.
-func NewHealthHandler(repos *repository.Repositories, log logger.Logger, xrayMgr xray.Manager, cfg *HealthHandlerConfig) *HealthHandler {
+func NewHealthHandler(repos *repository.Repositories, log logger.Logger, cfg *HealthHandlerConfig) *HealthHandler {
 	diskPath := "/"
 	minDiskGB := 1.0
 
@@ -47,7 +45,6 @@ func NewHealthHandler(repos *repository.Repositories, log logger.Logger, xrayMgr
 	return &HealthHandler{
 		repos:     repos,
 		logger:    log,
-		xrayMgr:   xrayMgr,
 		diskPath:  diskPath,
 		minDiskGB: minDiskGB,
 	}
@@ -92,13 +89,6 @@ func (h *HealthHandler) Ready(c *gin.Context) {
 	dbCheck := h.checkDatabase()
 	checks["database"] = dbCheck
 	if dbCheck.Status != "ok" {
-		allHealthy = false
-	}
-
-	// Check Xray process status
-	xrayCheck := h.checkXray()
-	checks["xray"] = xrayCheck
-	if xrayCheck.Status != "ok" {
 		allHealthy = false
 	}
 
@@ -153,48 +143,6 @@ func (h *HealthHandler) checkDatabase() Check {
 
 	return Check{
 		Status:  "ok",
-		Latency: latency.String(),
-	}
-}
-
-// checkXray checks the Xray process status.
-func (h *HealthHandler) checkXray() Check {
-	start := time.Now()
-
-	if h.xrayMgr == nil {
-		return Check{
-			Status:  "ok",
-			Message: "xray manager not configured",
-			Latency: time.Since(start).String(),
-		}
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	status, err := h.xrayMgr.GetStatus(ctx)
-	latency := time.Since(start)
-
-	if err != nil {
-		h.logger.Warn("xray health check failed", logger.F("error", err))
-		return Check{
-			Status:  "error",
-			Message: err.Error(),
-			Latency: latency.String(),
-		}
-	}
-
-	if status == nil || !status.Running {
-		return Check{
-			Status:  "error",
-			Message: "xray process not running",
-			Latency: latency.String(),
-		}
-	}
-
-	return Check{
-		Status:  "ok",
-		Message: "xray process running",
 		Latency: latency.String(),
 	}
 }

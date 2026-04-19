@@ -176,16 +176,45 @@
                 版本切换
               </div>
               <div class="core-version-subtitle">
-                从官方 Release 下载并替换节点 Xray 二进制，留空则升级到最新版。
+                从 Xray 官方 Release 下载并替换节点二进制，留空则升级到最新版。
+                <span
+                  v-if="availableVersionsCachedAt"
+                  class="core-version-sub-meta"
+                >
+                  版本列表缓存于 {{ formatTime(availableVersionsCachedAt) }}
+                </span>
               </div>
             </div>
             <div class="core-version-controls">
-              <el-input
+              <el-select
                 v-model="targetCoreVersion"
-                placeholder="目标版本号，例如 1.8.4（留空=最新）"
+                class="core-version-select"
+                placeholder="选择版本（留空=最新）"
+                filterable
+                allow-create
+                default-first-option
                 clearable
-                class="core-version-input"
-              />
+                :loading="availableVersionsLoading"
+              >
+                <el-option
+                  v-for="item in availableVersions"
+                  :key="item.version"
+                  :label="item.version"
+                  :value="item.version"
+                >
+                  <span>v{{ item.version }}</span>
+                  <span
+                    v-if="node?.xray_version && normalizeVersion(node.xray_version) === item.version"
+                    class="core-version-current-tag"
+                  >当前</span>
+                </el-option>
+              </el-select>
+              <el-button
+                :loading="availableVersionsLoading"
+                @click="loadAvailableVersions(true)"
+              >
+                从 GitHub 同步
+              </el-button>
               <el-button
                 type="primary"
                 :loading="coreActionLoading === 'install'"
@@ -568,6 +597,9 @@ const loading = ref(false)
 const syncing = ref(false)
 const coreActionLoading = ref('')
 const targetCoreVersion = ref('')
+const availableVersions = ref([])
+const availableVersionsLoading = ref(false)
+const availableVersionsCachedAt = ref('')
 const activeWorkspace = ref('core')
 const networkOptimizationDialogVisible = ref(false)
 const networkOptimizationAction = ref('')
@@ -904,6 +936,26 @@ const installCoreVersion = async () => {
   }
 }
 
+function normalizeVersion(raw) {
+  return String(raw || '').trim().replace(/^v/i, '').split(/\s+/)[0]
+}
+
+const loadAvailableVersions = async (refresh = false) => {
+  availableVersionsLoading.value = true
+  try {
+    const resp = await nodeStore.listAvailableCoreVersions(refresh)
+    availableVersions.value = Array.isArray(resp?.versions) ? resp.versions : []
+    availableVersionsCachedAt.value = resp?.cached_at || ''
+    if (refresh) {
+      ElMessage.success(`已获取 ${availableVersions.value.length} 个可用版本`)
+    }
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error) || '获取可用版本失败')
+  } finally {
+    availableVersionsLoading.value = false
+  }
+}
+
 const getNetworkOptimizationSSHPayload = () => ({
   host: sshForm.host,
   port: sshForm.port,
@@ -1017,6 +1069,7 @@ const rollbackNetworkOptimization = async () => {
 
 onMounted(async () => {
   await refreshData()
+  loadAvailableVersions(false)
 })
 
 watch(
@@ -1238,9 +1291,22 @@ watch(
   align-items: center;
 }
 
-.core-version-input {
-  flex: 1 1 260px;
+.core-version-select {
+  flex: 1 1 280px;
   min-width: 220px;
+}
+
+.core-version-sub-meta {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+}
+
+.core-version-current-tag {
+  float: right;
+  margin-left: 12px;
+  color: var(--el-color-success);
+  font-size: 12px;
 }
 
 .core-tip {

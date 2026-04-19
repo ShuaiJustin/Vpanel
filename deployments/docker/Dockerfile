@@ -149,7 +149,6 @@ COPY --from=backend-builder --chown=vpanel:vpanel /out/bin ${APP_HOME}/bin
 COPY --from=frontend-builder --chown=vpanel:vpanel /app/web/dist ${APP_HOME}/web/dist
 COPY --chown=vpanel:vpanel Docs ${APP_HOME}/Docs
 COPY --chown=vpanel:vpanel configs/config.yaml.example ${APP_HOME}/configs/config.yaml.example
-COPY --chown=vpanel:vpanel configs/xray.json.example ${APP_HOME}/configs/xray.json.example
 COPY --chown=vpanel:vpanel deployments/scripts/entrypoint.sh ${APP_HOME}/entrypoint.sh
 
 RUN chmod +x ${APP_HOME}/entrypoint.sh

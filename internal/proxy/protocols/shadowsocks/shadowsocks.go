@@ -2,6 +2,7 @@
 package shadowsocks
 
 import (
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -128,8 +129,9 @@ func (p *Protocol) GenerateLink(settings *proxy.Settings) (string, error) {
 		return "", errors.NewValidationError("server address is required", nil)
 	}
 
-	// Use SIP002 format: ss://base64(method:password)@host:port#name
-	userInfo := base64.URLEncoding.EncodeToString([]byte(method + ":" + password))
+	// Use SIP002 format: ss://base64url-nopad(method:password)@host:port#name
+	// https://shadowsocks.org/doc/sip002.html mandates URL-safe Base64 without padding.
+	userInfo := base64.RawURLEncoding.EncodeToString([]byte(method + ":" + password))
 
 	link := fmt.Sprintf("ss://%s@%s:%d", userInfo, server, settings.Port)
 
@@ -189,14 +191,11 @@ func (p *Protocol) ParseLink(link string) (*proxy.Settings, error) {
 		userInfo := link[:atIdx]
 		hostPort := link[atIdx+1:]
 
-		// Decode userinfo
-		decoded, err := base64.URLEncoding.DecodeString(userInfo)
+		// Decode userinfo. Try every base64 variant SIP002 implementations
+		// use in the wild (padded/unpadded, URL-safe/std).
+		decoded, err := decodeShadowsocksUserinfo(userInfo)
 		if err != nil {
-			// Try standard base64
-			decoded, err = base64.StdEncoding.DecodeString(userInfo)
-			if err != nil {
-				return nil, errors.NewValidationError("failed to decode userinfo", err)
-			}
+			return nil, errors.NewValidationError("failed to decode userinfo", err)
 		}
 
 		parts := strings.SplitN(string(decoded), ":", 2)
@@ -219,12 +218,9 @@ func (p *Protocol) ParseLink(link string) (*proxy.Settings, error) {
 		}
 	} else {
 		// Legacy format: base64(method:password@host:port)
-		decoded, err := base64.URLEncoding.DecodeString(link)
+		decoded, err := decodeShadowsocksUserinfo(link)
 		if err != nil {
-			decoded, err = base64.StdEncoding.DecodeString(link)
-			if err != nil {
-				return nil, errors.NewValidationError("failed to decode legacy link", err)
-			}
+			return nil, errors.NewValidationError("failed to decode legacy link", err)
 		}
 
 		// Parse method:password@host:port
@@ -311,12 +307,35 @@ func (p *Protocol) DefaultSettings() map[string]any {
 	}
 }
 
-// generateRandomPassword generates a random password for Shadowsocks.
+// generateRandomPassword generates a cryptographically random Shadowsocks password.
 func generateRandomPassword() string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	password := make([]byte, 16)
-	for i := range password {
-		password[i] = charset[i%len(charset)]
+	const length = 32
+	b := make([]byte, length)
+	if _, err := rand.Read(b); err != nil {
+		// See Trojan protocol for rationale: return empty on failure so
+		// validation fails safely rather than creating a predictable password.
+		return ""
 	}
-	return string(password)
+	for i := range b {
+		b[i] = charset[int(b[i])%len(charset)]
+	}
+	return string(b)
+}
+
+// decodeShadowsocksUserinfo decodes the SIP002 userinfo segment, accepting all
+// four base64 variants seen in the wild (URL-safe/std, padded/raw).
+func decodeShadowsocksUserinfo(value string) ([]byte, error) {
+	decoders := []*base64.Encoding{
+		base64.RawURLEncoding,
+		base64.URLEncoding,
+		base64.RawStdEncoding,
+		base64.StdEncoding,
+	}
+	for _, decoder := range decoders {
+		if decoded, err := decoder.DecodeString(value); err == nil {
+			return decoded, nil
+		}
+	}
+	return nil, fmt.Errorf("invalid base64 shadowsocks userinfo")
 }
