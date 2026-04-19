@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"gorm.io/gorm"
+
 	"v/internal/commercial/balance"
 	"v/internal/database/repository"
 	"v/internal/logger"
@@ -179,6 +181,11 @@ func (s *Service) GetByCode(ctx context.Context, code string) (*GiftCard, error)
 }
 
 // Redeem redeems a gift card and credits the value to user's balance.
+// Flips the card status BEFORE crediting balance so a concurrent redemption
+// attempt loses the status guard and cannot double-credit. If the balance
+// credit fails after the flip, the card is locked in "redeemed" state with no
+// corresponding credit — preferable to the double-credit failure mode and
+// recoverable by admin adjustment.
 func (s *Service) Redeem(ctx context.Context, code string, userID int64) (*GiftCard, error) {
 	// Get gift card
 	repoGC, err := s.giftCardRepo.GetByCode(ctx, strings.ToUpper(code))
@@ -186,7 +193,7 @@ func (s *Service) Redeem(ctx context.Context, code string, userID int64) (*GiftC
 		return nil, ErrGiftCardNotFound
 	}
 
-	// Validate gift card status
+	// Validate gift card status (pre-check for friendly error messages)
 	if repoGC.Status == StatusRedeemed {
 		return nil, ErrGiftCardAlreadyUsed
 	}
@@ -209,20 +216,27 @@ func (s *Service) Redeem(ctx context.Context, code string, userID int64) (*GiftC
 		return nil, ErrSelfRedeem
 	}
 
-	// Credit balance to user
-	description := fmt.Sprintf("Gift card redemption: %s", repoGC.Code)
-	if err := s.balanceService.Recharge(ctx, userID, repoGC.Value, nil, description); err != nil {
-		s.logger.Error("Failed to credit gift card balance", logger.Err(err),
-			logger.F("code", repoGC.Code),
-			logger.F("userID", userID))
+	// Atomically flip status to redeemed. Race losers get ErrRecordNotFound
+	// (they see the new status via the WHERE guard) and fail here cleanly.
+	if err := s.giftCardRepo.MarkRedeemed(ctx, repoGC.ID, userID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrGiftCardAlreadyUsed
+		}
+		s.logger.Error("Failed to mark gift card as redeemed", logger.Err(err),
+			logger.F("code", repoGC.Code))
 		return nil, err
 	}
 
-	// Mark as redeemed
-	if err := s.giftCardRepo.MarkRedeemed(ctx, repoGC.ID, userID); err != nil {
-		s.logger.Error("Failed to mark gift card as redeemed", logger.Err(err),
-			logger.F("code", repoGC.Code))
-		// Note: Balance was already credited, but we should still try to mark as redeemed
+	// Credit balance. If this fails the card is already marked redeemed
+	// (prevents double-credit); surface the error and let admin reconcile.
+	description := fmt.Sprintf("Gift card redemption: %s", repoGC.Code)
+	if err := s.balanceService.Recharge(ctx, userID, repoGC.Value, nil, description); err != nil {
+		s.logger.Error("Gift card redeemed but balance credit failed — admin must reconcile",
+			logger.Err(err),
+			logger.F("code", repoGC.Code),
+			logger.F("userID", userID),
+			logger.F("giftcard_id", repoGC.ID),
+			logger.F("value", repoGC.Value))
 		return nil, err
 	}
 

@@ -3,9 +3,18 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"gorm.io/gorm"
+)
+
+// Common balance repository errors.
+var (
+	// ErrInsufficientBalance is returned by DecrementBalance when the row-level
+	// balance guard rejects the update (0 rows affected). Prevents the service
+	// layer from treating a losing race as success and writing a bogus audit row.
+	ErrInsufficientBalance = errors.New("insufficient balance")
 )
 
 // BalanceTransaction represents a balance transaction in the database.
@@ -104,11 +113,21 @@ func (r *balanceRepository) IncrementBalance(ctx context.Context, userID int64, 
 }
 
 // DecrementBalance subtracts from the balance for a user.
+// Row-level guard keeps the subtract atomic at the DB, so concurrent deductions
+// can never drive the balance negative. Returns ErrInsufficientBalance when
+// the guard rejects the update.
 func (r *balanceRepository) DecrementBalance(ctx context.Context, userID int64, amount int64) error {
-	return r.db.WithContext(ctx).
+	result := r.db.WithContext(ctx).
 		Model(&User{}).
 		Where("id = ? AND balance >= ?", userID, amount).
-		Update("balance", gorm.Expr("balance - ?", amount)).Error
+		Update("balance", gorm.Expr("balance - ?", amount))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrInsufficientBalance
+	}
+	return nil
 }
 
 // CreateTransaction creates a new balance transaction.

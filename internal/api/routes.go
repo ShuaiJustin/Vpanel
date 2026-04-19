@@ -194,7 +194,9 @@ func (r *Router) Setup() {
 	planService := plan.NewService(r.repos.Plan, r.logger)
 	balanceService := balance.NewService(r.repos.Balance, r.logger).WithRechargeRepository(r.repos.BalanceRecharge)
 	couponService := coupon.NewService(r.repos.Coupon, r.logger)
-	orderService := order.NewService(r.repos.Order, r.repos.Plan, r.logger, nil).WithUserRepository(r.repos.User)
+	orderService := order.NewService(r.repos.Order, r.repos.Plan, r.logger, nil).
+		WithUserRepository(r.repos.User).
+		WithBalanceRefunder(balanceService.Refund)
 	paymentService := payment.NewService(orderService, r.logger).WithBalanceService(balanceService).WithRechargeHandler(balanceService)
 	r.registerConfiguredPaymentGateways(paymentService)
 	r.loadStoredPaymentSettings(context.Background(), paymentService)

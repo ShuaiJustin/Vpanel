@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"time"
 
+	"gorm.io/gorm"
+
 	trialsvc "v/internal/commercial/trial"
 	"v/internal/database/repository"
 	"v/internal/logger"
@@ -94,6 +96,7 @@ type Service struct {
 	userRepo         repository.UserRepository
 	trialRepo        trialMarker
 	afterPlanApplied func(ctx context.Context, userID int64) error
+	refundBalance    func(ctx context.Context, userID int64, amount int64, orderID *int64, description string) error
 	logger           logger.Logger
 	config           *Config
 }
@@ -135,6 +138,15 @@ func (s *Service) WithTrialMarker(trialRepo trialMarker) *Service {
 // WithAfterPlanAppliedHook runs best-effort post-processing after a paid plan is applied.
 func (s *Service) WithAfterPlanAppliedHook(hook func(ctx context.Context, userID int64) error) *Service {
 	s.afterPlanApplied = hook
+	return s
+}
+
+// WithBalanceRefunder injects a callback that refunds a user's balance. The
+// order service calls it on Cancel/expire when the order consumed balance
+// (balance_used > 0) so cancelled purchases don't silently forfeit wallet
+// funds. The callback should be idempotent-safe at the caller's discretion.
+func (s *Service) WithBalanceRefunder(fn func(ctx context.Context, userID int64, amount int64, orderID *int64, description string) error) *Service {
+	s.refundBalance = fn
 	return s
 }
 
@@ -285,7 +297,9 @@ func (s *Service) List(ctx context.Context, filter OrderFilter, page, pageSize i
 	return orders, total, nil
 }
 
-// Cancel cancels a pending order.
+// Cancel cancels a pending order and refunds any balance that was consumed
+// during checkout. Without the balance refund, a canceled order with
+// balance_used > 0 would silently eat the user's wallet funds.
 func (s *Service) Cancel(ctx context.Context, id int64) error {
 	order, err := s.orderRepo.GetByID(ctx, id)
 	if err != nil {
@@ -301,10 +315,43 @@ func (s *Service) Cancel(ctx context.Context, id int64) error {
 		return err
 	}
 
+	s.refundCancelledBalance(ctx, order, "cancel")
 	return nil
 }
 
+// refundCancelledBalance credits back any balance the order had reserved. Best
+// effort: failures are logged but do not undo the cancellation — the order is
+// still cancelled, the user retains their plan state, and admin can reconcile.
+func (s *Service) refundCancelledBalance(ctx context.Context, ord *repository.Order, reason string) {
+	if s == nil || ord == nil || ord.BalanceUsed <= 0 {
+		return
+	}
+	if s.refundBalance == nil {
+		s.logger.Warn("Order cancelled with balance_used but no refunder wired",
+			logger.F("order_id", ord.ID),
+			logger.F("order_no", ord.OrderNo),
+			logger.F("balance_used", ord.BalanceUsed),
+			logger.F("reason", reason))
+		return
+	}
+
+	orderID := ord.ID
+	description := fmt.Sprintf("Refund for cancelled order %s (%s)", ord.OrderNo, reason)
+	if err := s.refundBalance(ctx, ord.UserID, ord.BalanceUsed, &orderID, description); err != nil {
+		s.logger.Error("Failed to refund balance for cancelled order",
+			logger.Err(err),
+			logger.F("order_id", ord.ID),
+			logger.F("order_no", ord.OrderNo),
+			logger.F("user_id", ord.UserID),
+			logger.F("balance_used", ord.BalanceUsed),
+			logger.F("reason", reason))
+	}
+}
+
 // MarkPaid marks an order as paid.
+// Safe against concurrent payment callbacks: the underlying repo update uses a
+// status guard, so only the first caller flips "pending" → "paid" and runs the
+// post-payment side effects. Race losers see ErrOrderAlreadyPaid.
 func (s *Service) MarkPaid(ctx context.Context, orderNo string, paymentNo string) error {
 	order, err := s.orderRepo.GetByOrderNo(ctx, orderNo)
 	if err != nil {
@@ -320,6 +367,12 @@ func (s *Service) MarkPaid(ctx context.Context, orderNo string, paymentNo string
 	}
 
 	if err := s.orderRepo.MarkPaid(ctx, order.ID, paymentNo, time.Now()); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Lost the concurrent race — another callback has already paid
+			// the order. Treat as idempotent success for the caller so the
+			// payment gateway does not keep retrying.
+			return ErrOrderAlreadyPaid
+		}
 		s.logger.Error("Failed to mark order as paid", logger.Err(err), logger.F("orderNo", orderNo))
 		return err
 	}
@@ -351,12 +404,30 @@ func (s *Service) Complete(ctx context.Context, id int64) error {
 	return nil
 }
 
-// ExpirePendingOrders cancels all expired pending orders.
+// ExpirePendingOrders cancels all expired pending orders and refunds any
+// balance they had reserved. Iterates by order so each refund is attributable,
+// falling back to the bulk-cancel path when no balance refunds are needed.
 func (s *Service) ExpirePendingOrders(ctx context.Context) (int64, error) {
-	count, err := s.orderRepo.CancelExpired(ctx)
+	expired, err := s.orderRepo.GetExpiredPending(ctx)
 	if err != nil {
-		s.logger.Error("Failed to expire pending orders", logger.Err(err))
+		s.logger.Error("Failed to load expired pending orders", logger.Err(err))
 		return 0, err
+	}
+	if len(expired) == 0 {
+		return 0, nil
+	}
+
+	var count int64
+	for _, ord := range expired {
+		if updateErr := s.orderRepo.UpdateStatus(ctx, ord.ID, StatusCancelled); updateErr != nil {
+			s.logger.Error("Failed to cancel expired order",
+				logger.Err(updateErr),
+				logger.F("order_id", ord.ID),
+				logger.F("order_no", ord.OrderNo))
+			continue
+		}
+		count++
+		s.refundCancelledBalance(ctx, ord, "expired")
 	}
 
 	if count > 0 {

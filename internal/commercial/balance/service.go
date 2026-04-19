@@ -172,6 +172,9 @@ func (s *Service) Recharge(ctx context.Context, userID int64, amount int64, orde
 }
 
 // Deduct subtracts funds from a user's balance.
+// The repository performs the decrement atomically (row-level guard), so even
+// if a concurrent deduction wins the race we refuse cleanly here instead of
+// logging a phantom audit entry for a deduction that never actually happened.
 func (s *Service) Deduct(ctx context.Context, userID int64, amount int64, orderID *int64, description string) error {
 	if amount <= 0 {
 		return fmt.Errorf("%w: amount must be positive", ErrInvalidAmount)
@@ -190,15 +193,16 @@ func (s *Service) Deduct(ctx context.Context, userID int64, amount int64, orderI
 		return ErrInsufficientBalance
 	}
 
-	newBalance := currentBalance - amount
-	if newBalance < 0 {
-		return ErrNegativeBalance
-	}
-
 	if err := s.balanceRepo.DecrementBalance(ctx, userID, amount); err != nil {
+		if errors.Is(err, repository.ErrInsufficientBalance) {
+			// Concurrent deduction emptied the balance after the check above.
+			return ErrInsufficientBalance
+		}
 		s.logger.Error("Failed to decrement balance", logger.Err(err), logger.F("userID", userID))
 		return err
 	}
+
+	newBalance := currentBalance - amount
 
 	tx := &repository.BalanceTransaction{
 		UserID:      userID,
@@ -327,6 +331,9 @@ func (s *Service) Adjust(ctx context.Context, userID int64, amount int64, reason
 		}
 	} else {
 		if err := s.balanceRepo.DecrementBalance(ctx, userID, -amount); err != nil {
+			if errors.Is(err, repository.ErrInsufficientBalance) {
+				return ErrNegativeBalance
+			}
 			s.logger.Error("Failed to decrement balance for adjustment", logger.Err(err), logger.F("userID", userID))
 			return err
 		}

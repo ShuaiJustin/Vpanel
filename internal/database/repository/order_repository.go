@@ -210,15 +210,26 @@ func (r *orderRepository) UpdateStatus(ctx context.Context, id int64, status str
 }
 
 // MarkPaid marks an order as paid.
+// Uses a status guard so concurrent payment callbacks cannot both flip the
+// order to "paid" and trigger the post-payment side effects twice. Returns
+// gorm.ErrRecordNotFound if the order is no longer pending (already paid,
+// cancelled, or expired), letting callers skip the duplicate side effects.
 func (r *orderRepository) MarkPaid(ctx context.Context, id int64, paymentNo string, paidAt time.Time) error {
-	return r.db.WithContext(ctx).
+	result := r.db.WithContext(ctx).
 		Model(&Order{}).
-		Where("id = ?", id).
+		Where("id = ? AND status = ?", id, OrderStatusPending).
 		Updates(map[string]interface{}{
 			"status":     OrderStatusPaid,
 			"payment_no": paymentNo,
 			"paid_at":    paidAt,
-		}).Error
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 // GetExpiredPending retrieves all expired pending orders.

@@ -168,16 +168,27 @@ func (r *giftCardRepository) SetStatus(ctx context.Context, id int64, status str
 }
 
 // MarkRedeemed marks a gift card as redeemed.
+// Uses a status guard so concurrent redemption attempts cannot both succeed.
+// Returns gorm.ErrRecordNotFound when the card no longer satisfies the guard
+// (e.g. already redeemed, disabled, expired), allowing callers to treat the
+// race loser as "already used".
 func (r *giftCardRepository) MarkRedeemed(ctx context.Context, id int64, userID int64) error {
 	now := time.Now()
-	return r.db.WithContext(ctx).
+	result := r.db.WithContext(ctx).
 		Model(&GiftCard{}).
-		Where("id = ?", id).
+		Where("id = ? AND status = ?", id, GiftCardStatusActive).
 		Updates(map[string]interface{}{
 			"status":      GiftCardStatusRedeemed,
 			"redeemed_by": userID,
 			"redeemed_at": now,
-		}).Error
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 // MarkPurchased marks a gift card as purchased.
