@@ -241,7 +241,9 @@ func (s *Service) GetSubscriptionByUserID(ctx context.Context, userID int64) (*r
 }
 
 // RegenerateToken regenerates the subscription token for a user.
-// This invalidates the old token immediately.
+// This invalidates the old token immediately and, because the user expressed a
+// desire to "reset" the link, also clears the historic access counters and
+// last-seen IP/UA so no prior footprint leaks into the new link.
 func (s *Service) RegenerateToken(ctx context.Context, userID int64) (*repository.Subscription, error) {
 	// Get existing subscription
 	subscription, err := s.subscriptionRepo.GetByUserID(ctx, userID)
@@ -265,10 +267,14 @@ func (s *Service) RegenerateToken(ctx context.Context, userID int64) (*repositor
 		return nil, err
 	}
 
-	// Update subscription with new token and short code
+	// Update subscription with new token + short code, and wipe access footprint.
 	oldToken := subscription.Token
 	subscription.Token = newToken
 	subscription.ShortCode = newShortCode
+	subscription.AccessCount = 0
+	subscription.LastAccessAt = nil
+	subscription.LastIP = ""
+	subscription.LastUA = ""
 	subscription.UpdatedAt = time.Now()
 
 	if err := s.subscriptionRepo.Update(ctx, subscription); err != nil {

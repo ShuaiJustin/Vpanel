@@ -26,15 +26,15 @@
         <strong class="overview-value">{{ total }}</strong>
       </div>
       <div class="overview-card">
-        <span class="overview-label">已访问</span>
+        <span class="overview-label">当前页已访问</span>
         <strong class="overview-value is-success">{{ visitedCount }}</strong>
       </div>
       <div class="overview-card">
-        <span class="overview-label">从未访问</span>
+        <span class="overview-label">当前页未访问</span>
         <strong class="overview-value is-muted">{{ neverVisitedCount }}</strong>
       </div>
       <div class="overview-card">
-        <span class="overview-label">近7天活跃</span>
+        <span class="overview-label">当前页近 7 天活跃</span>
         <strong class="overview-value is-primary">{{ recentActiveCount }}</strong>
       </div>
     </div>

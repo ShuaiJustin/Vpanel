@@ -255,6 +255,11 @@ func (h *SubscriptionHandler) Regenerate(c *gin.Context) {
 		return
 	}
 
+	// Also clear the historical IP access records so a "reset link" action is a
+	// clean privacy slate. Failure is non-fatal — the token/stats have already
+	// been wiped in RegenerateToken above.
+	h.clearSubscriptionAccessIPs(c.Request.Context(), sub)
+
 	h.logger.Info("subscription token regenerated", logger.UserID(userID.(int64)))
 
 	// Get full subscription info
@@ -520,6 +525,28 @@ const handlerBackgroundTaskTimeout = 5 * time.Second
 
 func newHandlerBackgroundTaskContext(parent context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.WithoutCancel(parent), handlerBackgroundTaskTimeout)
+}
+
+// clearSubscriptionAccessIPs wipes the historic IP access rows for a
+// subscription. Used when the user regenerates their link so prior footprint
+// does not leak into the new link's access reports.
+func (h *SubscriptionHandler) clearSubscriptionAccessIPs(ctx context.Context, sub *repository.Subscription) {
+	if h == nil || h.ipService == nil || sub == nil || sub.ID <= 0 {
+		return
+	}
+
+	tracker := h.ipService.Tracker()
+	if tracker == nil || tracker.GetDB() == nil {
+		return
+	}
+
+	subscriptionIPService := ip.NewSubscriptionIPService(tracker.GetDB(), h.ipService.GeoService())
+	if err := subscriptionIPService.ClearAccessList(ctx, uint(sub.ID)); err != nil {
+		h.logger.Warn("failed to clear subscription access ip list after regenerate",
+			logger.F("error", err),
+			logger.UserID(sub.UserID),
+			logger.F("subscription_id", sub.ID))
+	}
 }
 
 // detectFormat detects the subscription format from query param or User-Agent.

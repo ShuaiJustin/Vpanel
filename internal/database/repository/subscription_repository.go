@@ -244,15 +244,21 @@ func (r *subscriptionRepository) ListAll(ctx context.Context, filter *Subscripti
 		}
 		if keyword := strings.ToLower(strings.TrimSpace(filter.Keyword)); keyword != "" {
 			like := "%" + keyword + "%"
-			query = query.Joins("LEFT JOIN users ON users.id = subscriptions.user_id").
-				Where(
-					"LOWER(subscriptions.token) LIKE ? OR LOWER(COALESCE(subscriptions.short_code, '')) LIKE ? OR LOWER(COALESCE(subscriptions.last_ip, '')) LIKE ? OR LOWER(COALESCE(users.username, '')) LIKE ?",
-					like, like, like, like,
-				)
+			query = query.Joins("LEFT JOIN users ON users.id = subscriptions.user_id")
 
+			// Group the keyword clauses so the OR stays scoped to them and does
+			// NOT dissolve earlier AND filters (e.g. UserID, MinAccessCount).
+			keywordCondition := r.db.Where(
+				"LOWER(subscriptions.token) LIKE ? OR LOWER(COALESCE(subscriptions.short_code, '')) LIKE ? OR LOWER(COALESCE(subscriptions.last_ip, '')) LIKE ? OR LOWER(COALESCE(users.username, '')) LIKE ?",
+				like, like, like, like,
+			)
 			if numericID, err := strconv.ParseInt(keyword, 10, 64); err == nil {
-				query = query.Or("subscriptions.user_id = ? OR subscriptions.id = ?", numericID, numericID)
+				keywordCondition = keywordCondition.Or(
+					"subscriptions.user_id = ? OR subscriptions.id = ?",
+					numericID, numericID,
+				)
 			}
+			query = query.Where(keywordCondition)
 		}
 	}
 
