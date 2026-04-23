@@ -132,13 +132,10 @@ func buildSubscriptionProxyName(proxy *repository.Proxy, server string) string {
 
 // ExtractProxyInfo extracts proxy information from a repository.Proxy.
 func ExtractProxyInfo(proxy *repository.Proxy) *ProxyInfo {
-	server := proxylib.ResolveExternalServerAddress(proxy.Settings)
+	settingsCopy := normalizeGeneratorSettings(proxy.Settings)
+	server := proxylib.ResolveExternalServerAddress(settingsCopy)
 	if server == "" {
-		server = proxylib.ResolveServerAddress(proxy.Host, proxy.Settings)
-	}
-	settingsCopy := cloneGeneratorSettings(proxy.Settings)
-	if settingsCopy == nil {
-		settingsCopy = map[string]interface{}{}
+		server = proxylib.ResolveServerAddress(proxy.Host, settingsCopy)
 	}
 	settingsCopy["server"] = server
 	return &ProxyInfo{
@@ -162,16 +159,215 @@ func cloneGeneratorSettings(settings map[string]interface{}) map[string]interfac
 	return cloned
 }
 
+func normalizeGeneratorSettings(settings map[string]interface{}) map[string]interface{} {
+	normalized := cloneGeneratorSettings(settings)
+	if normalized == nil {
+		normalized = map[string]interface{}{}
+	}
+
+	normalizeAlterIDSettings(normalized)
+	normalizeLegacyTLSSettings(normalized)
+	normalizeNestedTransportSettings(normalized)
+	return normalized
+}
+
+func normalizeAlterIDSettings(settings map[string]interface{}) {
+	value, exists := firstExistingSetting(settings, "alterId", "alter_id")
+	if !exists {
+		return
+	}
+	settings["alterId"] = value
+	settings["alter_id"] = value
+}
+
+func normalizeLegacyTLSSettings(settings map[string]interface{}) {
+	security := strings.ToLower(strings.TrimSpace(GetSettingString(settings, "security", "")))
+	if security == "" && GetSettingBool(settings, "tls", false) {
+		settings["security"] = "tls"
+		return
+	}
+	if security == "none" {
+		delete(settings, "tls")
+	}
+}
+
+func normalizeNestedTransportSettings(settings map[string]interface{}) {
+	network := strings.ToLower(strings.TrimSpace(GetSettingString(settings, "network", "")))
+	switch network {
+	case "ws":
+		normalizeWebSocketSettings(settings)
+	case "grpc":
+		normalizeGRPCSettings(settings)
+	case "http", "h2":
+		normalizeHTTPSettings(settings)
+	case "tcp":
+		normalizeTCPHeaderSettings(settings)
+	default:
+		if _, ok := settings["ws_settings"]; ok {
+			normalizeWebSocketSettings(settings)
+		}
+		if _, ok := settings["grpc_settings"]; ok {
+			normalizeGRPCSettings(settings)
+		}
+	}
+}
+
+func normalizeWebSocketSettings(settings map[string]interface{}) {
+	wsSettings := getSettingMap(settings, "ws_settings")
+	if path := GetSettingString(settings, "path", ""); path == "" {
+		if nestedPath := GetSettingString(wsSettings, "path", ""); nestedPath != "" {
+			settings["path"] = nestedPath
+		}
+	}
+	if host := GetSettingString(settings, "host", ""); host == "" {
+		if nestedHost := GetSettingString(wsSettings, "host", ""); nestedHost != "" {
+			settings["host"] = nestedHost
+		} else if headerHost := getHeaderHost(wsSettings["headers"]); headerHost != "" {
+			settings["host"] = headerHost
+		}
+	}
+}
+
+func normalizeGRPCSettings(settings map[string]interface{}) {
+	grpcSettings := getSettingMap(settings, "grpc_settings")
+	serviceName := GetSettingString(settings, "serviceName", "")
+	if serviceName == "" {
+		serviceName = GetSettingString(grpcSettings, "serviceName", "")
+	}
+	if serviceName == "" {
+		return
+	}
+	settings["serviceName"] = serviceName
+	settings["service_name"] = serviceName
+}
+
+func normalizeHTTPSettings(settings map[string]interface{}) {
+	httpSettings := getSettingMap(settings, "http_settings")
+	if path := GetSettingString(settings, "path", ""); path == "" {
+		if nestedPath := GetSettingString(httpSettings, "path", ""); nestedPath != "" {
+			settings["path"] = nestedPath
+		}
+	}
+	if host := GetSettingString(settings, "host", ""); host == "" {
+		if nestedHost := GetSettingString(httpSettings, "host", ""); nestedHost != "" {
+			settings["host"] = nestedHost
+		}
+	}
+}
+
+func normalizeTCPHeaderSettings(settings map[string]interface{}) {
+	if GetSettingString(settings, "type", "") != "" {
+		return
+	}
+	tcpSettings := getSettingMap(settings, "tcp_settings")
+	header := getSettingMap(tcpSettings, "header")
+	if !strings.EqualFold(GetSettingString(header, "type", ""), "http") {
+		return
+	}
+	settings["type"] = "http"
+	settings["headerType"] = "http"
+
+	request := getSettingMap(header, "request")
+	if path := GetSettingString(settings, "path", ""); path == "" {
+		if nestedPath := GetSettingString(request, "path", ""); nestedPath != "" {
+			settings["path"] = nestedPath
+		}
+	}
+	if host := GetSettingString(settings, "host", ""); host == "" {
+		headers := getSettingMap(request, "headers")
+		if headerHost := getHeaderHost(headers); headerHost != "" {
+			settings["host"] = headerHost
+		}
+	}
+}
+
+func firstExistingSetting(settings map[string]interface{}, keys ...string) (interface{}, bool) {
+	for _, key := range keys {
+		if value, ok := settings[key]; ok && value != nil {
+			return value, true
+		}
+	}
+	return nil, false
+}
+
+func getSettingMap(settings map[string]interface{}, key string) map[string]interface{} {
+	if settings == nil {
+		return map[string]interface{}{}
+	}
+	value, ok := settings[key]
+	if !ok || value == nil {
+		return map[string]interface{}{}
+	}
+	if typed, ok := value.(map[string]interface{}); ok {
+		return typed
+	}
+	if typed, ok := value.(map[string]string); ok {
+		converted := make(map[string]interface{}, len(typed))
+		for mapKey, mapValue := range typed {
+			converted[mapKey] = mapValue
+		}
+		return converted
+	}
+	return map[string]interface{}{}
+}
+
+func getHeaderHost(value interface{}) string {
+	headers, ok := value.(map[string]interface{})
+	if !ok {
+		if stringHeaders, ok := value.(map[string]string); ok {
+			for _, key := range []string{"Host", "host"} {
+				if host := strings.TrimSpace(stringHeaders[key]); host != "" {
+					return host
+				}
+			}
+		}
+		return ""
+	}
+	for _, key := range []string{"Host", "host"} {
+		if host := strings.TrimSpace(GetSettingString(headers, key, "")); host != "" {
+			return host
+		}
+	}
+	return ""
+}
+
 // GetSettingString safely gets a string setting value.
 func GetSettingString(settings map[string]interface{}, key string, defaultValue string) string {
 	for _, candidate := range settingAliases(key) {
-		if v, ok := settings[candidate].(string); ok {
-			if trimmed := strings.TrimSpace(v); trimmed != "" {
-				return trimmed
+		if v, ok := settings[candidate]; ok {
+			switch typed := v.(type) {
+			case string:
+				if trimmed := strings.TrimSpace(typed); trimmed != "" {
+					return trimmed
+				}
+			case []string:
+				if joined := joinStringValues(typed); joined != "" {
+					return joined
+				}
+			case []interface{}:
+				values := make([]string, 0, len(typed))
+				for _, item := range typed {
+					if text, ok := item.(string); ok {
+						values = append(values, text)
+					}
+				}
+				if joined := joinStringValues(values); joined != "" {
+					return joined
+				}
 			}
 		}
 	}
 	return defaultValue
+}
+
+func joinStringValues(values []string) string {
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			normalized = append(normalized, trimmed)
+		}
+	}
+	return strings.Join(normalized, ",")
 }
 
 // GetSettingInt safely gets an int setting value.
@@ -204,7 +400,11 @@ func GetSettingBool(settings map[string]interface{}, key string, defaultValue bo
 				return typed
 			case string:
 				trimmed := strings.TrimSpace(typed)
-				return strings.EqualFold(trimmed, "true") || trimmed == "1"
+				return strings.EqualFold(trimmed, "true") || strings.EqualFold(trimmed, "tls") || trimmed == "1"
+			case int:
+				return typed != 0
+			case float64:
+				return typed != 0
 			}
 		}
 	}
@@ -213,6 +413,8 @@ func GetSettingBool(settings map[string]interface{}, key string, defaultValue bo
 
 func settingAliases(key string) []string {
 	switch key {
+	case "alterId", "alter_id":
+		return []string{"alterId", "alter_id"}
 	case "fingerprint", "fp":
 		return []string{"fingerprint", "fp"}
 	case "publicKey", "pbk":
@@ -225,6 +427,8 @@ func settingAliases(key string) []string {
 		return []string{"allowInsecure", "skipCertVerify"}
 	case "serviceName", "service_name":
 		return []string{"serviceName", "service_name"}
+	case "type", "headerType":
+		return []string{"type", "headerType"}
 	default:
 		return []string{key}
 	}

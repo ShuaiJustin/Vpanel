@@ -10,8 +10,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	trialsvc "v/internal/commercial/trial"
 	"v/internal/cache"
+	trialsvc "v/internal/commercial/trial"
 	"v/internal/database/repository"
 	"v/internal/ip"
 	"v/internal/logger"
@@ -605,13 +605,17 @@ func (h *ProxyHandler) GetShareLink(c *gin.Context) {
 	if resolvedServer != "" {
 		settingsMap["server"] = resolvedServer
 	}
+	settingsHost := p.Host
+	if resolvedServer != "" {
+		settingsHost = resolvedServer
+	}
 
 	settings := &proxy.Settings{
 		ID:       p.ID,
 		Name:     p.Name,
 		Protocol: p.Protocol,
 		Port:     proxy.ResolveServerPort(p.Port, settingsMap),
-		Host:     p.Host,
+		Host:     settingsHost,
 		Settings: settingsMap,
 		Enabled:  p.Enabled,
 		Remark:   p.Remark,

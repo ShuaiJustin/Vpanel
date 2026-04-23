@@ -316,11 +316,11 @@ let subscriptionRefreshTimer = null
 // Clash Meta/Mihomo 放第一位，覆盖 Clash Verge/Stash 等现代 Clash 内核；
 // 基础 Clash 只支持 VMess/Trojan/SS，VLESS 与 Reality 节点会被丢弃
 const formats = [
-  { value: 'clashmeta', label: 'Clash Meta' },
-  { value: 'clash', label: 'Clash' },
+  { value: 'clashmeta', label: 'Clash Meta/Mihomo' },
   { value: 'singbox', label: 'Sing-box' },
   { value: 'v2rayn', label: 'V2Ray' },
   { value: 'shadowrocket', label: 'Shadowrocket' },
+  { value: 'clash', label: 'Clash Legacy' },
   { value: 'surge', label: 'Surge' },
   { value: 'quantumultx', label: 'Quantumult X' }
 ]

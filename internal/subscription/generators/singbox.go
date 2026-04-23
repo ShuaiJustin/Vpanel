@@ -180,7 +180,7 @@ func (g *SingboxGenerator) generateVLESSOutbound(info *ProxyInfo) (map[string]in
 		}
 
 		outbound["tls"] = tls
-	} else if security == "tls" || GetSettingBool(info.Settings, "tls", false) {
+	} else if proxylib.HasTLSSettings(info.Settings) {
 		tls := map[string]interface{}{
 			"enabled": true,
 		}

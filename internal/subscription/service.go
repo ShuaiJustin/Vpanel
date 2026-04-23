@@ -381,13 +381,13 @@ func isLocalBaseURL(rawURL string) bool {
 // buildFormatLinks builds format-specific subscription links.
 func (s *Service) buildFormatLinks(baseLink string) []FormatInfo {
 	return []FormatInfo{
+		{Name: string(FormatClashMeta), DisplayName: "Clash Meta/Mihomo", Link: baseLink + "?format=clashmeta"},
+		{Name: string(FormatSingbox), DisplayName: "Sing-box", Link: baseLink + "?format=singbox"},
 		{Name: string(FormatV2rayN), DisplayName: "V2rayN/V2rayNG", Link: baseLink + "?format=v2rayn"},
-		{Name: string(FormatClash), DisplayName: "Clash", Link: baseLink + "?format=clash"},
-		{Name: string(FormatClashMeta), DisplayName: "Clash Meta", Link: baseLink + "?format=clashmeta"},
 		{Name: string(FormatShadowrocket), DisplayName: "Shadowrocket", Link: baseLink + "?format=shadowrocket"},
+		{Name: string(FormatClash), DisplayName: "Clash Legacy", Link: baseLink + "?format=clash"},
 		{Name: string(FormatSurge), DisplayName: "Surge", Link: baseLink + "?format=surge"},
 		{Name: string(FormatQuantumultX), DisplayName: "Quantumult X", Link: baseLink + "?format=quantumultx"},
-		{Name: string(FormatSingbox), DisplayName: "Sing-box", Link: baseLink + "?format=singbox"},
 	}
 }
 
@@ -472,13 +472,10 @@ func (s *Service) DetectClientFormat(userAgent string) ClientFormat {
 	ua := strings.ToLower(userAgent)
 
 	switch {
-	case strings.Contains(ua, "clash"):
-		if strings.Contains(ua, "meta") {
-			return FormatClashMeta
-		}
-		return FormatClash
-	case strings.Contains(ua, "mihomo"):
+	case looksLikeClashMetaUserAgent(ua):
 		return FormatClashMeta
+	case strings.Contains(ua, "clash"):
+		return FormatClash
 	case strings.Contains(ua, "shadowrocket"):
 		return FormatShadowrocket
 	case strings.Contains(ua, "surge"):
@@ -493,6 +490,27 @@ func (s *Service) DetectClientFormat(userAgent string) ClientFormat {
 		// Default to V2rayN format for unknown clients
 		return FormatV2rayN
 	}
+}
+
+func looksLikeClashMetaUserAgent(ua string) bool {
+	for _, marker := range []string{
+		"mihomo",
+		"clash.meta",
+		"clash-meta",
+		"clash meta",
+		"clashverge",
+		"clash-verge",
+		"clash verge",
+		"stash",
+		"flclash",
+		"mihomo-party",
+		"nikki",
+	} {
+		if strings.Contains(ua, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // GetUserEnabledProxies returns all enabled proxies for a user.

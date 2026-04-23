@@ -319,9 +319,9 @@ func subscriptionRequestHostname(c *gin.Context) string {
 func subscriptionFormatDisplayName(format subscription.ClientFormat) string {
 	switch format {
 	case subscription.FormatClash:
-		return "Clash"
+		return "Clash Legacy"
 	case subscription.FormatClashMeta:
-		return "Clash Meta"
+		return "Clash Meta/Mihomo"
 	case subscription.FormatShadowrocket:
 		return "Shadowrocket"
 	case subscription.FormatSurge:

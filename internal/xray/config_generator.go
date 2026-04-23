@@ -409,6 +409,7 @@ func (g *ConfigGenerator) proxyToInbound(ctx context.Context, proxy *repository.
 	if settings == nil {
 		settings = make(map[string]any)
 	}
+	settings = normalizeInboundSettings(proxy.Protocol, settings)
 
 	switch proxy.Protocol {
 	case "vless":
@@ -425,6 +426,60 @@ func (g *ConfigGenerator) proxyToInbound(ctx context.Context, proxy *repository.
 	}
 
 	return inbound
+}
+
+func normalizeInboundSettings(protocol string, settings map[string]any) map[string]any {
+	normalized := make(map[string]any, len(settings)+2)
+	for key, value := range settings {
+		normalized[key] = value
+	}
+
+	protocol = strings.ToLower(strings.TrimSpace(protocol))
+	security := strings.ToLower(strings.TrimSpace(getStringSetting(normalized, "security")))
+	if protocol == "vmess" && security != "" && !isInboundStreamSecurity(security) {
+		if getStringSetting(normalized, "cipher") == "" && getStringSetting(normalized, "scy") == "" {
+			normalized["cipher"] = security
+			normalized["scy"] = security
+		}
+		security = ""
+	}
+	if security == "" {
+		if protocol == "trojan" || hasInboundTLSIntent(normalized) {
+			security = "tls"
+		}
+	}
+	if security != "" {
+		normalized["security"] = security
+	}
+	if security == "none" {
+		delete(normalized, "tls")
+	}
+
+	return normalized
+}
+
+func isInboundStreamSecurity(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "none", "tls", "xtls", "reality":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasInboundTLSIntent(settings map[string]any) bool {
+	switch typed := settings["tls"].(type) {
+	case bool:
+		if typed {
+			return true
+		}
+	case string:
+		normalized := strings.ToLower(strings.TrimSpace(typed))
+		if normalized == "tls" || normalized == "true" || normalized == "1" {
+			return true
+		}
+	}
+	return getStringSetting(settings, "sni") != "" || getStringSetting(settings, "server_name") != "" || getStringSetting(settings, "tls_domain") != ""
 }
 
 // generateVLESSSettings generates VLESS protocol settings.
@@ -459,12 +514,7 @@ func (g *ConfigGenerator) generateVMessSettings(proxy *repository.Proxy, setting
 			"level": 0,
 		}
 
-		// Optional: alterId
-		if alterId, ok := settings["alter_id"]; ok {
-			client["alterId"] = alterId
-		} else {
-			client["alterId"] = 0
-		}
+		client["alterId"] = getIntSetting(settings, "alterId")
 
 		clients = append(clients, client)
 	}
@@ -533,7 +583,7 @@ func (g *ConfigGenerator) generateStreamSettings(ctx context.Context, settings m
 		if security == "tls" {
 			stream.TLSSettings = &TLSSettings{}
 
-			if serverName, ok := settings["server_name"].(string); ok {
+			if serverName := getStringSetting(settings, "server_name"); serverName != "" {
 				stream.TLSSettings.ServerName = serverName
 			}
 
@@ -555,15 +605,15 @@ func (g *ConfigGenerator) generateStreamSettings(ctx context.Context, settings m
 	// Network-specific settings
 	switch stream.Network {
 	case "ws":
-		if wsSettings, ok := settings["ws_settings"].(map[string]any); ok {
+		if wsSettings := buildWSSettings(settings); len(wsSettings) > 0 {
 			stream.WSSettings = wsSettings
 		}
 	case "tcp":
-		if tcpSettings, ok := settings["tcp_settings"].(map[string]any); ok {
+		if tcpSettings := buildTCPSettings(settings); len(tcpSettings) > 0 {
 			stream.TCPSettings = tcpSettings
 		}
 	case "http":
-		if httpSettings, ok := settings["http_settings"].(map[string]any); ok {
+		if httpSettings := buildHTTPSettings(settings); len(httpSettings) > 0 {
 			stream.HTTPSettings = httpSettings
 		}
 	case "quic":
@@ -571,7 +621,7 @@ func (g *ConfigGenerator) generateStreamSettings(ctx context.Context, settings m
 			stream.QUICSettings = quicSettings
 		}
 	case "grpc":
-		if grpcSettings, ok := settings["grpc_settings"].(map[string]any); ok {
+		if grpcSettings := buildGRPCSettings(settings); len(grpcSettings) > 0 {
 			stream.GRPCSettings = grpcSettings
 		}
 	}
@@ -581,6 +631,94 @@ func (g *ConfigGenerator) generateStreamSettings(ctx context.Context, settings m
 	}
 
 	return stream
+}
+
+func buildWSSettings(settings map[string]any) map[string]any {
+	wsSettings := cloneMapSetting(getMapSetting(settings, "ws_settings"))
+	path := getStringSetting(wsSettings, "path")
+	if path == "" {
+		path = getStringSetting(settings, "path")
+	}
+	host := getStringSetting(wsSettings, "host")
+	if host == "" {
+		host = getHeaderHost(wsSettings["headers"])
+	}
+	if host == "" {
+		host = getStringSetting(settings, "host")
+	}
+
+	if path != "" {
+		wsSettings["path"] = path
+	}
+	if host != "" {
+		headers := cloneMapSetting(getMapFromValue(wsSettings["headers"]))
+		headers["Host"] = host
+		wsSettings["headers"] = headers
+	}
+	return wsSettings
+}
+
+func buildTCPSettings(settings map[string]any) map[string]any {
+	tcpSettings := cloneMapSetting(getMapSetting(settings, "tcp_settings"))
+	if len(tcpSettings) > 0 {
+		return tcpSettings
+	}
+
+	headerType := getStringSetting(settings, "headerType")
+	if headerType == "" {
+		headerType = getStringSetting(settings, "type")
+	}
+	if !strings.EqualFold(headerType, "http") {
+		return nil
+	}
+
+	path := getStringSetting(settings, "path")
+	if path == "" {
+		path = "/"
+	}
+	request := map[string]any{
+		"path": []string{path},
+	}
+	if host := getStringSetting(settings, "host"); host != "" {
+		request["headers"] = map[string]any{"Host": []string{host}}
+	}
+	return map[string]any{
+		"header": map[string]any{
+			"type":    "http",
+			"request": request,
+		},
+	}
+}
+
+func buildHTTPSettings(settings map[string]any) map[string]any {
+	httpSettings := cloneMapSetting(getMapSetting(settings, "http_settings"))
+	path := getStringSetting(httpSettings, "path")
+	if path == "" {
+		path = getStringSetting(settings, "path")
+	}
+	host := getStringSetting(httpSettings, "host")
+	if host == "" {
+		host = getStringSetting(settings, "host")
+	}
+	if path != "" {
+		httpSettings["path"] = path
+	}
+	if host != "" {
+		httpSettings["host"] = []string{host}
+	}
+	return httpSettings
+}
+
+func buildGRPCSettings(settings map[string]any) map[string]any {
+	grpcSettings := cloneMapSetting(getMapSetting(settings, "grpc_settings"))
+	serviceName := getStringSetting(grpcSettings, "serviceName")
+	if serviceName == "" {
+		serviceName = getStringSetting(settings, "serviceName")
+	}
+	if serviceName != "" {
+		grpcSettings["serviceName"] = serviceName
+	}
+	return grpcSettings
 }
 
 func buildStreamSockopt(network string, optimizationSettings node.NetworkOptimizationSettings) map[string]any {
@@ -838,24 +976,51 @@ func normalizeTLSDomain(domain string) string {
 	return strings.TrimPrefix(domain, "*.")
 }
 
-func getStringSetting(settings map[string]any, key string) string {
-	value, ok := settings[key]
-	if !ok || value == nil {
-		return ""
+func xraySettingAliases(key string) []string {
+	switch key {
+	case "alterId", "alter_id":
+		return []string{"alterId", "alter_id"}
+	case "fingerprint", "fp":
+		return []string{"fingerprint", "fp"}
+	case "publicKey", "pbk":
+		return []string{"publicKey", "pbk"}
+	case "shortId", "sid":
+		return []string{"shortId", "sid"}
+	case "sni", "server_name":
+		return []string{"sni", "server_name"}
+	case "serviceName", "service_name":
+		return []string{"serviceName", "service_name"}
+	case "type", "headerType":
+		return []string{"type", "headerType"}
+	default:
+		return []string{key}
 	}
-	switch typed := value.(type) {
-	case string:
-		return strings.TrimSpace(typed)
-	case []string:
-		if len(typed) > 0 {
-			return strings.TrimSpace(typed[0])
+}
+
+func getStringSetting(settings map[string]any, key string) string {
+	for _, candidate := range xraySettingAliases(key) {
+		value, ok := settings[candidate]
+		if !ok || value == nil {
+			continue
 		}
-	case []any:
-		for _, item := range typed {
-			if text, ok := item.(string); ok {
-				text = strings.TrimSpace(text)
-				if text != "" {
-					return text
+		switch typed := value.(type) {
+		case string:
+			if trimmed := strings.TrimSpace(typed); trimmed != "" {
+				return trimmed
+			}
+		case []string:
+			for _, item := range typed {
+				if trimmed := strings.TrimSpace(item); trimmed != "" {
+					return trimmed
+				}
+			}
+		case []any:
+			for _, item := range typed {
+				if text, ok := item.(string); ok {
+					text = strings.TrimSpace(text)
+					if text != "" {
+						return text
+					}
 				}
 			}
 		}
@@ -864,11 +1029,6 @@ func getStringSetting(settings map[string]any, key string) string {
 }
 
 func getStringSliceSetting(settings map[string]any, key string) []string {
-	value, ok := settings[key]
-	if !ok || value == nil {
-		return nil
-	}
-
 	values := make([]string, 0)
 	appendValue := func(item string) {
 		for _, part := range strings.Split(item, ",") {
@@ -880,37 +1040,78 @@ func getStringSliceSetting(settings map[string]any, key string) []string {
 		}
 	}
 
-	switch typed := value.(type) {
-	case string:
-		appendValue(typed)
-	case []string:
-		for _, item := range typed {
-			appendValue(item)
+	for _, candidate := range xraySettingAliases(key) {
+		value, ok := settings[candidate]
+		if !ok || value == nil {
+			continue
 		}
-	case []any:
-		for _, item := range typed {
-			if text, ok := item.(string); ok {
-				appendValue(text)
+		switch typed := value.(type) {
+		case string:
+			appendValue(typed)
+		case []string:
+			for _, item := range typed {
+				appendValue(item)
 			}
+		case []any:
+			for _, item := range typed {
+				if text, ok := item.(string); ok {
+					appendValue(text)
+				}
+			}
+		}
+		if len(values) > 0 {
+			return values
 		}
 	}
 
-	if len(values) == 0 {
-		return nil
-	}
-	return values
+	return nil
 }
 
 func getMapSetting(settings map[string]any, key string) map[string]any {
-	value, ok := settings[key]
-	if !ok || value == nil {
+	for _, candidate := range xraySettingAliases(key) {
+		if mapped := getMapFromValue(settings[candidate]); mapped != nil {
+			return mapped
+		}
+	}
+	return nil
+}
+
+func getMapFromValue(value any) map[string]any {
+	if value == nil {
 		return nil
 	}
-	typed, ok := value.(map[string]any)
-	if !ok {
-		return nil
+	if typed, ok := value.(map[string]any); ok {
+		return typed
 	}
-	return typed
+	if typed, ok := value.(map[string]string); ok {
+		converted := make(map[string]any, len(typed))
+		for mapKey, mapValue := range typed {
+			converted[mapKey] = mapValue
+		}
+		return converted
+	}
+	return nil
+}
+
+func cloneMapSetting(settings map[string]any) map[string]any {
+	if len(settings) == 0 {
+		return map[string]any{}
+	}
+	cloned := make(map[string]any, len(settings))
+	for key, value := range settings {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func getHeaderHost(value any) string {
+	headers := getMapFromValue(value)
+	for _, key := range []string{"Host", "host"} {
+		if host := getStringSetting(headers, key); host != "" {
+			return host
+		}
+	}
+	return ""
 }
 
 func getBoolSetting(settings map[string]any, key string) bool {
@@ -935,21 +1136,23 @@ func getBoolSetting(settings map[string]any, key string) bool {
 }
 
 func getIntSetting(settings map[string]any, key string) int {
-	value, ok := settings[key]
-	if !ok || value == nil {
-		return 0
+	for _, candidate := range xraySettingAliases(key) {
+		value, ok := settings[candidate]
+		if !ok || value == nil {
+			continue
+		}
+		switch typed := value.(type) {
+		case int:
+			return typed
+		case int64:
+			return int(typed)
+		case float64:
+			return int(typed)
+		default:
+			continue
+		}
 	}
-
-	switch typed := value.(type) {
-	case int:
-		return typed
-	case int64:
-		return int(typed)
-	case float64:
-		return int(typed)
-	default:
-		return 0
-	}
+	return 0
 }
 
 func buildRealitySettings(settings map[string]any) map[string]any {

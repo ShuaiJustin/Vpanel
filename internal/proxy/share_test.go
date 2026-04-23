@@ -57,3 +57,19 @@ func TestResolveServerPort_UsesExternalPortOverride(t *testing.T) {
 		t.Fatalf("expected external port 80, got %d", port)
 	}
 }
+
+func TestHasTLSSettings_RespectsExplicitSecurityNone(t *testing.T) {
+	if HasTLSSettings(map[string]any{
+		"security": "none",
+		"tls":      true,
+		"sni":      "vpn.example.com",
+	}) {
+		t.Fatal("expected explicit security=none to disable TLS inference")
+	}
+}
+
+func TestHasTLSSettings_AcceptsLegacyTLSString(t *testing.T) {
+	if !HasTLSSettings(map[string]any{"tls": "tls"}) {
+		t.Fatal("expected legacy tls string to enable TLS inference")
+	}
+}

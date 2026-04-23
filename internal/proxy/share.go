@@ -97,16 +97,19 @@ func HasTLSSettings(settings map[string]any) bool {
 		return false
 	}
 
+	switch strings.ToLower(getSettingString(settings, "security")) {
+	case "none":
+		return false
+	case "tls", "xtls", "reality":
+		return true
+	}
+
 	if enabled, ok := settings["tls"].(bool); ok && enabled {
 		return true
 	}
 
-	if strings.EqualFold(getSettingString(settings, "tls"), "tls") {
-		return true
-	}
-
-	switch strings.ToLower(getSettingString(settings, "security")) {
-	case "tls", "xtls", "reality":
+	switch strings.ToLower(getSettingString(settings, "tls")) {
+	case "tls", "true", "1":
 		return true
 	}
 

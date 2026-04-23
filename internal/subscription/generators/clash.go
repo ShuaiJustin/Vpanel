@@ -64,8 +64,6 @@ func (g *ClashGenerator) Generate(proxies []*repository.Proxy, options *Generato
 		switch strings.ToLower(info.Protocol) {
 		case ProtocolVMess:
 			clashProxy, err = g.generateVMessProxy(info)
-		case ProtocolVLESS:
-			clashProxy, err = g.generateVLESSProxy(info)
 		case ProtocolTrojan:
 			clashProxy, err = g.generateTrojanProxy(info)
 		case ProtocolShadowsocks, ProtocolSS:
@@ -104,7 +102,7 @@ func (g *ClashGenerator) FileExtension() string {
 // SupportsProtocol checks if Clash format supports a specific protocol.
 func (g *ClashGenerator) SupportsProtocol(protocol string) bool {
 	switch strings.ToLower(protocol) {
-	case ProtocolVMess, ProtocolVLESS, ProtocolTrojan, ProtocolShadowsocks, ProtocolSS:
+	case ProtocolVMess, ProtocolTrojan, ProtocolShadowsocks, ProtocolSS:
 		return true
 	default:
 		return false
@@ -187,7 +185,7 @@ func (g *ClashGenerator) generateVLESSProxy(info *ProxyInfo) (map[string]interfa
 
 	// TLS settings
 	security := GetSettingString(info.Settings, "security", "")
-	if security == "tls" || GetSettingBool(info.Settings, "tls", false) {
+	if security != "reality" && proxylib.HasTLSSettings(info.Settings) {
 		proxy["tls"] = true
 		if sni := GetSettingString(info.Settings, "sni", ""); sni != "" {
 			proxy["servername"] = sni

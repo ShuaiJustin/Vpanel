@@ -73,7 +73,7 @@ func TestClashGenerator_SupportsProtocol(t *testing.T) {
 		expected bool
 	}{
 		{"vmess", true},
-		{"vless", true},
+		{"vless", false},
 		{"trojan", true},
 		{"shadowsocks", true},
 		{"ss", true},
@@ -88,6 +88,36 @@ func TestClashGenerator_SupportsProtocol(t *testing.T) {
 				t.Errorf("SupportsProtocol(%s) = %v, want %v", tt.protocol, result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestClashGenerator_SkipsVLESSForLegacyCompatibility(t *testing.T) {
+	generator := NewClashGenerator()
+
+	result, err := generator.Generate([]*repository.Proxy{
+		{
+			ID:       1,
+			Name:     "VLESS Reality",
+			Protocol: "vless",
+			Host:     "vless.example.com",
+			Port:     443,
+			Settings: map[string]interface{}{
+				"uuid":     "12345678-1234-1234-1234-123456789012",
+				"security": "reality",
+			},
+			Enabled: true,
+		},
+	}, nil)
+	if err != nil {
+		t.Fatalf("Failed to generate: %v", err)
+	}
+
+	var config ClashConfig
+	if err := yaml.Unmarshal(result, &config); err != nil {
+		t.Fatalf("Failed to parse YAML: %v", err)
+	}
+	if len(config.Proxies) != 0 {
+		t.Fatalf("expected legacy Clash config to skip VLESS, got %#v", config.Proxies)
 	}
 }
 

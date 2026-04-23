@@ -233,6 +233,45 @@ func TestGenerateStreamSettings_SupportsALPNInterfaceSlice(t *testing.T) {
 	assert.Equal(t, []string{"h2", "http/1.1"}, stream.TLSSettings.ALPN)
 }
 
+func TestProxyToInbound_NormalizesLegacyVMessTLSAndTransportSettings(t *testing.T) {
+	generator := &ConfigGenerator{logger: logger.NewNopLogger()}
+
+	inbound := generator.proxyToInbound(context.Background(), &repository.Proxy{
+		ID:       24,
+		UserID:   7,
+		Protocol: "vmess",
+		Port:     20004,
+		Settings: map[string]any{
+			"uuid":     "12345678-1234-1234-1234-123456789012",
+			"alter_id": 4,
+			"security": "auto",
+			"tls":      true,
+			"network":  "ws",
+			"ws_settings": map[string]any{
+				"path": "/vpws-20004",
+				"headers": map[string]any{
+					"Host": "cdn.example.com",
+				},
+			},
+		},
+	}, node.NetworkOptimizationSettings{})
+
+	require.NotNil(t, inbound)
+	require.NotNil(t, inbound.StreamSettings)
+	assert.Equal(t, "tls", inbound.StreamSettings.Security)
+	require.NotNil(t, inbound.StreamSettings.WSSettings)
+	assert.Equal(t, "/vpws-20004", inbound.StreamSettings.WSSettings["path"])
+
+	headers, ok := inbound.StreamSettings.WSSettings["headers"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "cdn.example.com", headers["Host"])
+
+	clients, ok := inbound.Settings["clients"].([]map[string]any)
+	require.True(t, ok)
+	require.Len(t, clients, 1)
+	assert.Equal(t, 4, clients[0]["alterId"])
+}
+
 func TestGenerateStreamSettings_SupportsRealitySettings(t *testing.T) {
 	generator := &ConfigGenerator{logger: logger.NewNopLogger()}
 

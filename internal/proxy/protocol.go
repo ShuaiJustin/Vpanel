@@ -59,14 +59,16 @@ func (s *Settings) GetInt(key string) int {
 	if s.Settings == nil {
 		return 0
 	}
-	if v, ok := s.Settings[key]; ok {
-		switch val := v.(type) {
-		case int:
-			return val
-		case int64:
-			return int(val)
-		case float64:
-			return int(val)
+	for _, candidate := range settingAliasKeys(key) {
+		if v, ok := s.Settings[candidate]; ok {
+			switch val := v.(type) {
+			case int:
+				return val
+			case int64:
+				return int(val)
+			case float64:
+				return int(val)
+			}
 		}
 	}
 	return 0
@@ -104,6 +106,8 @@ func (s *Settings) SetValue(key string, value any) {
 
 func settingAliasKeys(key string) []string {
 	switch key {
+	case "alterId", "alter_id":
+		return []string{"alterId", "alter_id"}
 	case "fp", "fingerprint":
 		return []string{"fp", "fingerprint"}
 	case "pbk", "publicKey":

@@ -274,6 +274,36 @@ func TestV2rayNGenerator_GenerateVLESSLinkKeepsIPWhenSNIIsSet(t *testing.T) {
 	}
 }
 
+func TestV2rayNGenerator_GenerateVLESSLinkInfersTLSFromSNI(t *testing.T) {
+	generator := NewV2rayNGenerator()
+
+	proxy := &repository.Proxy{
+		Name:     "Test VLESS TLS",
+		Protocol: "vless",
+		Host:     "64.176.54.36",
+		Port:     443,
+		Settings: map[string]interface{}{
+			"uuid": "12345678-1234-1234-1234-123456789012",
+			"sni":  "vpn.example.com",
+		},
+	}
+
+	result, err := generator.Generate([]*repository.Proxy{proxy}, nil)
+	if err != nil {
+		t.Fatalf("Failed to generate: %v", err)
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(string(result))
+	if err != nil {
+		t.Fatalf("Failed to decode base64: %v", err)
+	}
+
+	link := string(decoded)
+	if !strings.Contains(link, "security=tls") {
+		t.Fatalf("expected VLESS link to infer security=tls from SNI, got %s", link)
+	}
+}
+
 func TestV2rayNGenerator_GenerateTrojanLink(t *testing.T) {
 	generator := NewV2rayNGenerator()
 

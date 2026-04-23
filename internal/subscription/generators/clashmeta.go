@@ -210,7 +210,7 @@ func (g *ClashMetaGenerator) generateVLESSProxy(info *ProxyInfo) (map[string]int
 		if len(realityOpts) > 0 {
 			proxy["reality-opts"] = realityOpts
 		}
-	} else if security == "tls" || GetSettingBool(info.Settings, "tls", false) {
+	} else if proxylib.HasTLSSettings(info.Settings) {
 		proxy["tls"] = true
 		if sni := GetSettingString(info.Settings, "sni", ""); sni != "" {
 			proxy["servername"] = sni

@@ -149,11 +149,12 @@ func (g *V2rayNGenerator) generateVLESSLink(info *ProxyInfo) (string, error) {
 		params.Set("type", network)
 	}
 
-	if security := GetSettingString(info.Settings, "security", ""); security != "" {
+	security := GetSettingString(info.Settings, "security", "")
+	if security != "" {
 		params.Set("security", security)
 	}
 
-	if GetSettingBool(info.Settings, "tls", false) {
+	if security == "" && proxylib.HasTLSSettings(info.Settings) {
 		params.Set("security", "tls")
 	}
 

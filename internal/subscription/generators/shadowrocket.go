@@ -151,7 +151,7 @@ func (g *ShadowrocketGenerator) generateVLESSLink(info *ProxyInfo) (string, erro
 		params.Set("security", security)
 	}
 
-	if GetSettingBool(info.Settings, "tls", false) {
+	if security == "" && proxylib.HasTLSSettings(info.Settings) {
 		params.Set("security", "tls")
 	}
 

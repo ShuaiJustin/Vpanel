@@ -185,6 +185,8 @@ func TestDetectClientFormat(t *testing.T) {
 		{"Clash/1.0", FormatClash},
 		{"clash.meta/1.0", FormatClashMeta},
 		{"Mihomo/1.0", FormatClashMeta},
+		{"Clash-Verge/2.0", FormatClashMeta},
+		{"Stash/2.0", FormatClashMeta},
 		{"Shadowrocket/1.0", FormatShadowrocket},
 		{"Surge/5.0", FormatSurge},
 		{"Quantumult%20X/1.0", FormatQuantumultX},
@@ -585,6 +587,7 @@ func TestProperty_FormatOverridePriority(t *testing.T) {
 		{"Clash/1.0", FormatClash},
 		{"clash.meta/1.0", FormatClashMeta},
 		{"Mihomo/1.0", FormatClashMeta},
+		{"Clash-Verge/2.0", FormatClashMeta},
 		{"Shadowrocket/1.0", FormatShadowrocket},
 		{"Surge/5.0", FormatSurge},
 		{"Quantumult%20X/1.0", FormatQuantumultX},
@@ -980,8 +983,12 @@ func TestGenerateContent_SingboxIncludesVLESSTLSAndTransport(t *testing.T) {
 			"security":    "tls",
 			"server_name": "vpn.example.com",
 			"network":     "ws",
-			"path":        "/vless",
-			"host":        "cdn.example.com",
+			"ws_settings": map[string]interface{}{
+				"path": "/vless",
+				"headers": map[string]interface{}{
+					"Host": "cdn.example.com",
+				},
+			},
 		},
 		Enabled: true,
 	}
@@ -1014,6 +1021,10 @@ func TestGenerateContent_SingboxIncludesVLESSTLSAndTransport(t *testing.T) {
 	}
 	if transport["type"] != "ws" || transport["path"] != "/vless" {
 		t.Fatalf("unexpected sing-box transport: %#v", transport)
+	}
+	headers, ok := transport["headers"].(map[string]any)
+	if !ok || headers["Host"] != "cdn.example.com" {
+		t.Fatalf("expected sing-box ws Host header cdn.example.com, got %#v", transport["headers"])
 	}
 }
 

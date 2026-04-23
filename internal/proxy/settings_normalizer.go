@@ -12,6 +12,21 @@ import (
 // can rely on a stable field layout regardless of which aliases the caller sent.
 func NormalizeSettings(protocol string, settings map[string]any) (map[string]any, error) {
 	normalized := cloneSettingsMap(settings)
+	protocolName := strings.ToLower(strings.TrimSpace(protocol))
+
+	normalizeAlterIDSettings(normalized)
+	normalizeTransportSettings(normalized)
+
+	cipherFromSecurity := ""
+	rawSecurity := strings.ToLower(strings.TrimSpace(firstSettingString(normalized, "security")))
+	if protocolName == "vmess" && rawSecurity != "" && !isStreamSecurity(rawSecurity) {
+		cipherFromSecurity = rawSecurity
+		rawSecurity = ""
+	}
+	if cipherFromSecurity != "" && firstSettingString(normalized, "cipher", "scy") == "" {
+		normalized["cipher"] = cipherFromSecurity
+		normalized["scy"] = cipherFromSecurity
+	}
 
 	serviceName := firstSettingString(normalized, "serviceName", "service_name")
 	if serviceName != "" {
@@ -34,20 +49,26 @@ func NormalizeSettings(protocol string, settings map[string]any) (map[string]any
 		delete(normalized, "fp")
 	}
 
-	security := strings.ToLower(strings.TrimSpace(firstSettingString(normalized, "security")))
+	security := rawSecurity
 	if security == "" {
-		security = "none"
+		if defaultSecurityForProtocol(protocolName) == "tls" || hasTLSIntent(normalized) {
+			security = "tls"
+		} else {
+			security = "none"
+		}
 	}
 	normalized["security"] = security
 
 	if security == "tls" {
+		normalized["tls"] = true
 		normalized["allowInsecure"] = getSettingBoolValue(normalized, "allowInsecure")
 	} else {
 		delete(normalized, "allowInsecure")
+		delete(normalized, "tls")
 	}
 
 	if security == "reality" {
-		if strings.ToLower(strings.TrimSpace(protocol)) != "vless" {
+		if protocolName != "vless" {
 			return nil, fmt.Errorf("Reality 目前仅支持 VLESS")
 		}
 
@@ -119,6 +140,172 @@ func NormalizeSettings(protocol string, settings map[string]any) (map[string]any
 	}
 
 	return normalized, nil
+}
+
+func normalizeAlterIDSettings(settings map[string]any) {
+	value, ok := firstExistingSetting(settings, "alterId", "alter_id")
+	if !ok {
+		return
+	}
+	settings["alterId"] = value
+	settings["alter_id"] = value
+}
+
+func normalizeTransportSettings(settings map[string]any) {
+	network := strings.ToLower(strings.TrimSpace(firstSettingString(settings, "network")))
+	if network != "" {
+		settings["network"] = network
+	}
+
+	switch network {
+	case "ws":
+		normalizeWebSocketSettings(settings)
+	case "grpc":
+		normalizeGRPCSettings(settings)
+	case "http", "h2":
+		normalizeHTTPSettings(settings)
+	case "tcp":
+		normalizeTCPHeaderSettings(settings)
+	default:
+		if _, ok := settings["ws_settings"]; ok {
+			normalizeWebSocketSettings(settings)
+		}
+		if _, ok := settings["grpc_settings"]; ok {
+			normalizeGRPCSettings(settings)
+		}
+	}
+}
+
+func normalizeWebSocketSettings(settings map[string]any) {
+	wsSettings := getSettingMap(settings, "ws_settings")
+	path := firstSettingString(settings, "path")
+	if path == "" {
+		path = firstSettingString(wsSettings, "path")
+	}
+	host := firstSettingString(settings, "host")
+	if host == "" {
+		host = firstSettingString(wsSettings, "host")
+	}
+	if host == "" {
+		host = getHeaderHost(wsSettings["headers"])
+	}
+
+	if path != "" {
+		settings["path"] = path
+	}
+	if host != "" {
+		settings["host"] = host
+	}
+	if len(wsSettings) > 0 || path != "" || host != "" {
+		normalizedWS := cloneSettingsMap(wsSettings)
+		if path != "" {
+			normalizedWS["path"] = path
+		}
+		if host != "" {
+			headers := getSettingMap(normalizedWS, "headers")
+			headers["Host"] = host
+			normalizedWS["headers"] = headers
+		}
+		settings["ws_settings"] = normalizedWS
+	}
+}
+
+func normalizeGRPCSettings(settings map[string]any) {
+	grpcSettings := getSettingMap(settings, "grpc_settings")
+	serviceName := firstSettingString(settings, "serviceName", "service_name")
+	if serviceName == "" {
+		serviceName = firstSettingString(grpcSettings, "serviceName", "service_name")
+	}
+	if serviceName == "" {
+		return
+	}
+	settings["serviceName"] = serviceName
+	settings["service_name"] = serviceName
+
+	normalizedGRPC := cloneSettingsMap(grpcSettings)
+	normalizedGRPC["serviceName"] = serviceName
+	normalizedGRPC["service_name"] = serviceName
+	settings["grpc_settings"] = normalizedGRPC
+}
+
+func normalizeHTTPSettings(settings map[string]any) {
+	httpSettings := getSettingMap(settings, "http_settings")
+	path := firstSettingString(settings, "path")
+	if path == "" {
+		path = firstSettingString(httpSettings, "path")
+	}
+	host := firstSettingString(settings, "host")
+	if host == "" {
+		host = firstSettingString(httpSettings, "host")
+	}
+	if path != "" {
+		settings["path"] = path
+	}
+	if host != "" {
+		settings["host"] = host
+	}
+}
+
+func normalizeTCPHeaderSettings(settings map[string]any) {
+	headerType := firstSettingString(settings, "type", "headerType")
+	if headerType != "" {
+		settings["type"] = headerType
+		settings["headerType"] = headerType
+		return
+	}
+
+	tcpSettings := getSettingMap(settings, "tcp_settings")
+	header := getSettingMap(tcpSettings, "header")
+	if !strings.EqualFold(firstSettingString(header, "type"), "http") {
+		return
+	}
+
+	settings["type"] = "http"
+	settings["headerType"] = "http"
+	request := getSettingMap(header, "request")
+	if path := firstSettingString(settings, "path"); path == "" {
+		if nestedPath := firstSettingString(request, "path"); nestedPath != "" {
+			settings["path"] = nestedPath
+		}
+	}
+	if host := firstSettingString(settings, "host"); host == "" {
+		headers := getSettingMap(request, "headers")
+		if headerHost := getHeaderHost(headers); headerHost != "" {
+			settings["host"] = headerHost
+		}
+	}
+}
+
+func firstExistingSetting(settings map[string]any, keys ...string) (any, bool) {
+	for _, key := range keys {
+		if value, ok := settings[key]; ok && value != nil {
+			return value, true
+		}
+	}
+	return nil, false
+}
+
+func defaultSecurityForProtocol(protocol string) string {
+	if protocol == "trojan" {
+		return "tls"
+	}
+	return "none"
+}
+
+func isStreamSecurity(value string) bool {
+	switch value {
+	case "", "none", "tls", "xtls", "reality":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasTLSIntent(settings map[string]any) bool {
+	if getSettingBoolValue(settings, "tls") {
+		return true
+	}
+	return firstSettingString(settings, "sni", "server_name", "tls_domain") != ""
 }
 
 // DeriveRealityPublicKey derives the X25519 public key from an Xray-style
@@ -195,7 +382,32 @@ func getSettingMap(settings map[string]any, key string) map[string]any {
 	if typed, ok := value.(map[string]any); ok {
 		return cloneSettingsMap(typed)
 	}
+	if typed, ok := value.(map[string]string); ok {
+		converted := make(map[string]any, len(typed))
+		for mapKey, mapValue := range typed {
+			converted[mapKey] = mapValue
+		}
+		return converted
+	}
 	return map[string]any{}
+}
+
+func getHeaderHost(value any) string {
+	switch typed := value.(type) {
+	case map[string]any:
+		for _, key := range []string{"Host", "host"} {
+			if host := firstSettingString(typed, key); host != "" {
+				return host
+			}
+		}
+	case map[string]string:
+		for _, key := range []string{"Host", "host"} {
+			if host := strings.TrimSpace(typed[key]); host != "" {
+				return host
+			}
+		}
+	}
+	return ""
 }
 
 func getSettingStringSlice(settings map[string]any, key string) []string {
