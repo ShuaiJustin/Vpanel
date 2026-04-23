@@ -29,9 +29,7 @@ func (g *V2rayNGenerator) Generate(proxies []*repository.Proxy, options *Generat
 
 	var links []string
 
-	for _, proxy := range proxies {
-		info := ExtractProxyInfo(proxy)
-
+	for _, info := range ExtractProxyInfos(proxies) {
 		var link string
 		var err error
 
@@ -99,6 +97,7 @@ type vmessConfig struct {
 	SNI  string `json:"sni"`
 	ALPN string `json:"alpn"`
 	FP   string `json:"fp"`
+	AI   bool   `json:"allowInsecure,omitempty"`
 }
 
 // generateVMessLink generates a VMess link.
@@ -119,6 +118,7 @@ func (g *V2rayNGenerator) generateVMessLink(info *ProxyInfo) (string, error) {
 		SNI:  proxylib.ResolveSNI(info.Settings),
 		ALPN: GetSettingString(info.Settings, "alpn", ""),
 		FP:   GetSettingString(info.Settings, "fingerprint", ""),
+		AI:   proxylib.ResolveTLSSkipVerify(info.Settings),
 	}
 
 	if proxylib.HasTLSSettings(info.Settings) {
@@ -180,6 +180,9 @@ func (g *V2rayNGenerator) generateVLESSLink(info *ProxyInfo) (string, error) {
 	if flow := GetSettingString(info.Settings, "flow", ""); flow != "" {
 		params.Set("flow", flow)
 	}
+	if GetSettingBool(info.Settings, "allowInsecure", false) {
+		params.Set("allowInsecure", "1")
+	}
 
 	// Reality settings
 	if pbk := GetSettingString(info.Settings, "publicKey", ""); pbk != "" {
@@ -219,6 +222,9 @@ func (g *V2rayNGenerator) generateTrojanLink(info *ProxyInfo) (string, error) {
 
 	if fp := GetSettingString(info.Settings, "fingerprint", ""); fp != "" {
 		params.Set("fp", fp)
+	}
+	if GetSettingBool(info.Settings, "allowInsecure", false) {
+		params.Set("allowInsecure", "1")
 	}
 
 	if network := GetSettingString(info.Settings, "network", ""); network != "" && network != "tcp" {

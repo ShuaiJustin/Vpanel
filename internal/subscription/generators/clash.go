@@ -57,9 +57,7 @@ func (g *ClashGenerator) Generate(proxies []*repository.Proxy, options *Generato
 
 	var proxyNames []string
 
-	for _, proxy := range proxies {
-		info := ExtractProxyInfo(proxy)
-		
+	for _, info := range ExtractProxyInfos(proxies) {
 		var clashProxy map[string]interface{}
 		var err error
 
@@ -113,17 +111,16 @@ func (g *ClashGenerator) SupportsProtocol(protocol string) bool {
 	}
 }
 
-
 // generateVMessProxy generates a Clash VMess proxy configuration.
 func (g *ClashGenerator) generateVMessProxy(info *ProxyInfo) (map[string]interface{}, error) {
 	proxy := map[string]interface{}{
-		"name":     info.Name,
-		"type":     "vmess",
-		"server":   info.Server,
-		"port":     info.Port,
-		"uuid":     GetSettingString(info.Settings, "uuid", ""),
-		"alterId":  GetSettingInt(info.Settings, "alterId", 0),
-		"cipher":   proxylib.ResolveVMessCipher(info.Settings),
+		"name":    info.Name,
+		"type":    "vmess",
+		"server":  info.Server,
+		"port":    info.Port,
+		"uuid":    GetSettingString(info.Settings, "uuid", ""),
+		"alterId": GetSettingInt(info.Settings, "alterId", 0),
+		"cipher":  proxylib.ResolveVMessCipher(info.Settings),
 	}
 
 	// Network settings
@@ -215,6 +212,12 @@ func (g *ClashGenerator) generateVLESSProxy(info *ProxyInfo) (map[string]interfa
 		}
 		if sid := GetSettingString(info.Settings, "shortId", ""); sid != "" {
 			realityOpts["short-id"] = sid
+		}
+		if sni := GetSettingString(info.Settings, "sni", ""); sni != "" {
+			proxy["servername"] = sni
+		}
+		if fp := GetSettingString(info.Settings, "fingerprint", ""); fp != "" {
+			proxy["client-fingerprint"] = fp
 		}
 		if len(realityOpts) > 0 {
 			proxy["reality-opts"] = realityOpts

@@ -2,6 +2,9 @@ package subscription
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,7 +29,7 @@ import (
 // setupTestDB creates an in-memory SQLite database for testing.
 func setupTestDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
-		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
+		Logger:                                   gormlogger.Default.LogMode(gormlogger.Silent),
 		DisableForeignKeyConstraintWhenMigrating: true,
 	})
 	if err != nil {
@@ -898,6 +901,159 @@ func TestGetUserEnabledProxies_PreservesExternalHostOverride(t *testing.T) {
 	server, ok := proxies[0].Settings["server"].(string)
 	if !ok || server != "edge.example.com" {
 		t.Fatalf("Expected external host edge.example.com, got %#v", proxies[0].Settings["server"])
+	}
+}
+
+func TestGenerateContent_UsesResolvedNodeHostInsteadOfStaleProxyHost(t *testing.T) {
+	db := setupTestDB(t)
+	if err := db.AutoMigrate(&repository.Node{}); err != nil {
+		t.Fatalf("Failed to migrate node model: %v", err)
+	}
+	service := createTestService(t, db).WithNodeRepository(repository.NewNodeRepository(db))
+	ctx := context.Background()
+
+	userID := createTestUser(t, db, "content-node-address-user")
+	node := &repository.Node{Name: "sub-node", Address: "64.176.54.36", Token: "node-token", Status: repository.NodeStatusOnline}
+	if err := db.Create(node).Error; err != nil {
+		t.Fatalf("Failed to create node: %v", err)
+	}
+
+	proxyModel := &repository.Proxy{
+		UserID:   userID,
+		NodeID:   &node.ID,
+		Name:     "Node VMess",
+		Protocol: "vmess",
+		Host:     "old.example.com",
+		Port:     443,
+		Settings: map[string]interface{}{
+			"uuid":        "12345678-1234-1234-1234-123456789012",
+			"security":    "tls",
+			"server":      "old.example.com",
+			"server_name": "vpn.example.com",
+		},
+		Enabled: true,
+	}
+	if err := db.Create(proxyModel).Error; err != nil {
+		t.Fatalf("Failed to create proxy: %v", err)
+	}
+
+	content, _, _, err := service.GenerateContent(ctx, userID, FormatV2rayN, nil)
+	if err != nil {
+		t.Fatalf("GenerateContent returned error: %v", err)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(string(content))
+	if err != nil {
+		t.Fatalf("failed to decode subscription body: %v", err)
+	}
+	link := strings.TrimPrefix(string(decoded), "vmess://")
+	payload, err := base64.StdEncoding.DecodeString(link)
+	if err != nil {
+		t.Fatalf("failed to decode vmess payload: %v", err)
+	}
+
+	var vmess map[string]any
+	if err := json.Unmarshal(payload, &vmess); err != nil {
+		t.Fatalf("failed to parse vmess payload: %v", err)
+	}
+	if vmess["add"] != "64.176.54.36" {
+		t.Fatalf("expected generated content to use node address 64.176.54.36, got %#v", vmess["add"])
+	}
+	if vmess["sni"] != "vpn.example.com" {
+		t.Fatalf("expected generated content to preserve SNI vpn.example.com, got %#v", vmess["sni"])
+	}
+}
+
+func TestGenerateContent_SingboxIncludesVLESSTLSAndTransport(t *testing.T) {
+	db := setupTestDB(t)
+	service := createTestService(t, db)
+	ctx := context.Background()
+
+	userID := createTestUser(t, db, "singbox-vless-user")
+	proxyModel := &repository.Proxy{
+		UserID:   userID,
+		Name:     "VLESS WS TLS",
+		Protocol: "vless",
+		Host:     "edge.example.com",
+		Port:     443,
+		Settings: map[string]interface{}{
+			"uuid":        "12345678-1234-1234-1234-123456789012",
+			"security":    "tls",
+			"server_name": "vpn.example.com",
+			"network":     "ws",
+			"path":        "/vless",
+			"host":        "cdn.example.com",
+		},
+		Enabled: true,
+	}
+	if err := db.Create(proxyModel).Error; err != nil {
+		t.Fatalf("Failed to create proxy: %v", err)
+	}
+
+	content, _, _, err := service.GenerateContent(ctx, userID, FormatSingbox, nil)
+	if err != nil {
+		t.Fatalf("GenerateContent returned error: %v", err)
+	}
+
+	var config map[string]any
+	if err := json.Unmarshal(content, &config); err != nil {
+		t.Fatalf("failed to parse sing-box content: %v", err)
+	}
+	outbounds := config["outbounds"].([]any)
+	outbound := outbounds[0].(map[string]any)
+
+	tls, ok := outbound["tls"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected VLESS sing-box outbound to include tls, got %#v", outbound)
+	}
+	if tls["server_name"] != "vpn.example.com" {
+		t.Fatalf("expected tls server_name vpn.example.com, got %#v", tls["server_name"])
+	}
+	transport, ok := outbound["transport"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected VLESS sing-box outbound to include transport, got %#v", outbound)
+	}
+	if transport["type"] != "ws" || transport["path"] != "/vless" {
+		t.Fatalf("unexpected sing-box transport: %#v", transport)
+	}
+}
+
+func TestGenerateContent_ShadowrocketUsesShadowrocketVMessFormat(t *testing.T) {
+	db := setupTestDB(t)
+	service := createTestService(t, db)
+	ctx := context.Background()
+
+	userID := createTestUser(t, db, "shadowrocket-vmess-user")
+	proxyModel := &repository.Proxy{
+		UserID:   userID,
+		Name:     "Shadowrocket VMess",
+		Protocol: "vmess",
+		Host:     "vmess.example.com",
+		Port:     443,
+		Settings: map[string]interface{}{
+			"uuid":        "12345678-1234-1234-1234-123456789012",
+			"security":    "tls",
+			"server_name": "vmess.example.com",
+		},
+		Enabled: true,
+	}
+	if err := db.Create(proxyModel).Error; err != nil {
+		t.Fatalf("Failed to create proxy: %v", err)
+	}
+
+	content, _, _, err := service.GenerateContent(ctx, userID, FormatShadowrocket, nil)
+	if err != nil {
+		t.Fatalf("GenerateContent returned error: %v", err)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(string(content))
+	if err != nil {
+		t.Fatalf("failed to decode subscription body: %v", err)
+	}
+	link := string(decoded)
+	if !strings.HasPrefix(link, "vmess://") {
+		t.Fatalf("expected vmess link, got %s", link)
+	}
+	if !strings.Contains(link, "@vmess.example.com:443") {
+		t.Fatalf("expected Shadowrocket VMess URI authority, got %s", link)
 	}
 }
 

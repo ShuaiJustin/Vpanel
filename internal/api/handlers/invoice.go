@@ -42,6 +42,21 @@ func (h *InvoiceHandler) ListInvoices(c *gin.Context) {
 
 // DownloadInvoice downloads an invoice PDF.
 func (h *InvoiceHandler) DownloadInvoice(c *gin.Context) {
+	// Must run behind an auth middleware that populates user_id / role.
+	// Be defensive — a misconfigured route (e.g. someone exposing this path
+	// on an unauthenticated group) would otherwise crash the process via the
+	// bare type assertion below.
+	userIDVal, hasUser := c.Get("user_id")
+	if !hasUser {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	userID, ok := userIDVal.(int64)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid invoice ID"})
@@ -53,9 +68,8 @@ func (h *InvoiceHandler) DownloadInvoice(c *gin.Context) {
 		return
 	}
 	// Check ownership
-	userID, _ := c.Get("user_id")
 	role, _ := c.Get("role")
-	if role != "admin" && inv.UserID != userID.(int64) {
+	if role != "admin" && inv.UserID != userID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}

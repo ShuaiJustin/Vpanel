@@ -431,9 +431,17 @@ func (r *Router) Setup() {
 		errorReportHandler := handlers.NewErrorReportHandler(r.logger)
 		api.POST("/errors/report", errorReportHandler.ReportErrors)
 
-		// Agent download endpoint (public, for remote deployment)
-		// 注意：这是公开端点，用于远程节点下载 Agent
-		api.GET("/admin/nodes/agent/download", agentDownloadHandler.DownloadAgent)
+		// Agent binary download endpoint (public, for remote deployment).
+		//
+		// 该端点供远程节点执行部署脚本时 curl/wget 拉取 agent 二进制用。
+		// 出于远程部署便利性保持公开，但必须限流以防带宽/资源 DoS，并避免
+		// 匿名批量拉取——二进制本身不包含机密但每个请求数十 MB。
+		// 限制：每 IP 每小时 12 次（相当于平均 5 分钟一次），足够正常部署
+		// 节奏，扫描类批量下载会被挡下。
+		agentDownloadRateLimiter := middleware.NewAgentDownloadRateLimiter(12)
+		api.GET("/admin/nodes/agent/download",
+			agentDownloadRateLimiter.RateLimit(),
+			agentDownloadHandler.DownloadAgent)
 
 		// Auth routes (public)
 		auth := api.Group("/auth")
@@ -1414,7 +1422,9 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 			portalHelp.GET("/search", portalHelpHandler.SearchArticles)
 			portalHelp.GET("/featured", portalHelpHandler.GetFeaturedArticles)
 			portalHelp.GET("/categories", portalHelpHandler.GetCategories)
-			portalHelp.POST("/articles/:slug/helpful", portalHelpHandler.MarkHelpful)
+			portalHelp.POST("/articles/:slug/helpful",
+				middleware.HelpfulVoteRateLimit(),
+				portalHelpHandler.MarkHelpful)
 		}
 
 		// Protected portal routes
@@ -1426,7 +1436,9 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 			portalProtected.GET("/auth/profile", portalAuthHandler.GetProfile)
 			portalProtected.PUT("/auth/profile", portalAuthHandler.UpdateProfile)
 			portalProtected.POST("/auth/avatar", portalAuthHandler.UploadAvatar)
-			portalProtected.POST("/auth/telegram/bind", portalAuthHandler.BindTelegram)
+			portalProtected.POST("/auth/telegram/bind",
+				middleware.UserActionRateLimit("telegram-bind"),
+				portalAuthHandler.BindTelegram)
 			portalProtected.DELETE("/auth/telegram/bind", portalAuthHandler.UnbindTelegram)
 			portalProtected.POST("/auth/verify-email/resend", portalAuthHandler.ResendVerificationEmail)
 			portalProtected.PUT("/auth/password", portalAuthHandler.ChangePassword)
@@ -1442,7 +1454,9 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 			// Node routes
 			portalProtected.GET("/nodes", portalNodeHandler.ListNodes)
 			portalProtected.GET("/nodes/:id", portalNodeHandler.GetNode)
-			portalProtected.POST("/nodes/:id/ping", portalNodeHandler.TestLatency)
+			portalProtected.POST("/nodes/:id/ping",
+				middleware.UserActionRateLimit("latency-test"),
+				portalNodeHandler.TestLatency)
 
 			// Ticket routes
 			portalProtected.GET("/tickets", portalTicketHandler.ListTickets)

@@ -63,6 +63,19 @@ type BalanceRepository interface {
 	IncrementBalance(ctx context.Context, userID int64, amount int64) error
 	DecrementBalance(ctx context.Context, userID int64, amount int64) error
 
+	// Atomic balance mutations
+	//
+	// CreditAtomic adds `amount` to the user's balance AND inserts the supplied
+	// audit transaction in a single DB transaction. Returns the authoritative
+	// post-update balance read inside the same transaction so callers don't
+	// have to estimate from a stale snapshot.
+	//
+	// DebitAtomic subtracts `amount` with a row-level guard in the same DB
+	// transaction as the audit row. Returns ErrInsufficientBalance if the
+	// guard rejects the update (no audit row is written on failure).
+	CreditAtomic(ctx context.Context, userID int64, amount int64, tx *BalanceTransaction) (int64, error)
+	DebitAtomic(ctx context.Context, userID int64, amount int64, tx *BalanceTransaction) (int64, error)
+
 	// Transaction operations
 	CreateTransaction(ctx context.Context, tx *BalanceTransaction) error
 	GetTransactionByID(ctx context.Context, id int64) (*BalanceTransaction, error)
@@ -133,6 +146,89 @@ func (r *balanceRepository) DecrementBalance(ctx context.Context, userID int64, 
 // CreateTransaction creates a new balance transaction.
 func (r *balanceRepository) CreateTransaction(ctx context.Context, tx *BalanceTransaction) error {
 	return r.db.WithContext(ctx).Create(tx).Error
+}
+
+// CreditAtomic adds amount to the user's balance and inserts the audit row in
+// a single DB transaction. Returns the authoritative post-update balance read
+// inside the same transaction, so callers don't risk logging a snapshot that
+// was stale by the time it was written.
+func (r *balanceRepository) CreditAtomic(ctx context.Context, userID int64, amount int64, tx *BalanceTransaction) (int64, error) {
+	if tx == nil {
+		return 0, errors.New("nil balance transaction")
+	}
+	if amount <= 0 {
+		return 0, errors.New("credit amount must be positive")
+	}
+
+	var newBalance int64
+	err := r.db.WithContext(ctx).Transaction(func(dbTx *gorm.DB) error {
+		if err := dbTx.Model(&User{}).
+			Where("id = ?", userID).
+			Update("balance", gorm.Expr("balance + ?", amount)).Error; err != nil {
+			return err
+		}
+
+		if err := dbTx.Model(&User{}).
+			Where("id = ?", userID).
+			Select("balance").
+			Scan(&newBalance).Error; err != nil {
+			return err
+		}
+
+		// Always persist the definitive post-update balance. Callers can pass
+		// a stale guess in tx.Balance; the repo overrides it here.
+		tx.UserID = userID
+		tx.Amount = amount
+		tx.Balance = newBalance
+		return dbTx.Create(tx).Error
+	})
+	if err != nil {
+		return 0, err
+	}
+	return newBalance, nil
+}
+
+// DebitAtomic subtracts amount from the user's balance (row-level guard) and
+// inserts the audit row in a single DB transaction. Returns
+// ErrInsufficientBalance if the guard rejects the update; in that case no
+// audit row is written so the transaction log never records a debit that
+// didn't actually happen.
+func (r *balanceRepository) DebitAtomic(ctx context.Context, userID int64, amount int64, tx *BalanceTransaction) (int64, error) {
+	if tx == nil {
+		return 0, errors.New("nil balance transaction")
+	}
+	if amount <= 0 {
+		return 0, errors.New("debit amount must be positive")
+	}
+
+	var newBalance int64
+	err := r.db.WithContext(ctx).Transaction(func(dbTx *gorm.DB) error {
+		result := dbTx.Model(&User{}).
+			Where("id = ? AND balance >= ?", userID, amount).
+			Update("balance", gorm.Expr("balance - ?", amount))
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return ErrInsufficientBalance
+		}
+
+		if err := dbTx.Model(&User{}).
+			Where("id = ?", userID).
+			Select("balance").
+			Scan(&newBalance).Error; err != nil {
+			return err
+		}
+
+		tx.UserID = userID
+		tx.Amount = -amount
+		tx.Balance = newBalance
+		return dbTx.Create(tx).Error
+	})
+	if err != nil {
+		return 0, err
+	}
+	return newBalance, nil
 }
 
 // GetTransactionByID retrieves a transaction by ID.

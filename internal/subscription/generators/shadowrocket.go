@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"v/internal/database/repository"
+	proxylib "v/internal/proxy"
 )
 
 // ShadowrocketGenerator generates subscription content in Shadowrocket format.
@@ -27,9 +28,7 @@ func (g *ShadowrocketGenerator) Generate(proxies []*repository.Proxy, options *G
 
 	var links []string
 
-	for _, proxy := range proxies {
-		info := ExtractProxyInfo(proxy)
-
+	for _, info := range ExtractProxyInfos(proxies) {
 		var link string
 		var err error
 
@@ -86,7 +85,7 @@ func (g *ShadowrocketGenerator) generateVMessLink(info *ProxyInfo) (string, erro
 	// vmess://method:uuid@server:port?params#name
 
 	uuid := GetSettingString(info.Settings, "uuid", "")
-	security := GetSettingString(info.Settings, "security", "auto")
+	security := proxylib.ResolveVMessCipher(info.Settings)
 
 	params := url.Values{}
 
@@ -107,10 +106,13 @@ func (g *ShadowrocketGenerator) generateVMessLink(info *ProxyInfo) (string, erro
 	}
 
 	// TLS settings
-	if GetSettingBool(info.Settings, "tls", false) {
+	if proxylib.HasTLSSettings(info.Settings) {
 		params.Set("tls", "1")
-		if sni := GetSettingString(info.Settings, "sni", ""); sni != "" {
+		if sni := proxylib.ResolveSNI(info.Settings); sni != "" {
 			params.Set("peer", sni)
+		}
+		if proxylib.ResolveTLSSkipVerify(info.Settings) {
+			params.Set("allowInsecure", "1")
 		}
 	}
 
@@ -177,6 +179,9 @@ func (g *ShadowrocketGenerator) generateVLESSLink(info *ProxyInfo) (string, erro
 	if fp := GetSettingString(info.Settings, "fingerprint", ""); fp != "" {
 		params.Set("fp", fp)
 	}
+	if GetSettingBool(info.Settings, "allowInsecure", false) {
+		params.Set("allowInsecure", "1")
+	}
 
 	// Reality settings
 	if pbk := GetSettingString(info.Settings, "publicKey", ""); pbk != "" {
@@ -218,6 +223,9 @@ func (g *ShadowrocketGenerator) generateTrojanLink(info *ProxyInfo) (string, err
 	// Fingerprint
 	if fp := GetSettingString(info.Settings, "fingerprint", ""); fp != "" {
 		params.Set("fp", fp)
+	}
+	if GetSettingBool(info.Settings, "allowInsecure", false) {
+		params.Set("allowInsecure", "1")
 	}
 
 	// Network type (for WebSocket/gRPC)

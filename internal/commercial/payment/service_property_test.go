@@ -8,90 +8,12 @@ import (
 	"v/internal/logger"
 )
 
-// Feature: commercial-system, Property 10: Payment Callback Idempotency
-// Validates: Requirements 14.8
-// For any payment callback processed multiple times with the same payment_no,
-// the order status and balance SHALL only be updated once.
-
-func TestProperty_CallbackIdempotency(t *testing.T) {
-	log := logger.NewNopLogger()
-	svc := NewService(nil, log)
-
-	// Property: Processing the same callback multiple times should be idempotent
-	f := func(method string, paymentNo string, times uint8) bool {
-		if method == "" || paymentNo == "" {
-			return true
-		}
-
-		// Limit times to reasonable range
-		n := int(times%10) + 1
-
-		// First call should mark as processed
-		for i := 0; i < n; i++ {
-			// Simulate marking callback as processed
-			callbackKey := method + ":" + paymentNo
-			svc.callbackMu.Lock()
-			wasProcessed := svc.processedCallbacks[callbackKey]
-			if !wasProcessed {
-				svc.processedCallbacks[callbackKey] = true
-			}
-			svc.callbackMu.Unlock()
-
-			// After first iteration, should always be marked as processed
-			if i > 0 && !wasProcessed {
-				return false
-			}
-		}
-
-		// Verify it's marked as processed
-		return svc.IsCallbackProcessed(method, paymentNo)
-	}
-
-	config := &quick.Config{
-		MaxCount: 100,
-	}
-
-	if err := quick.Check(f, config); err != nil {
-		t.Errorf("Property test failed: %v", err)
-	}
-}
-
-// Property: Different payment numbers should be tracked independently
-func TestProperty_IndependentCallbackTracking(t *testing.T) {
-	log := logger.NewNopLogger()
-	svc := NewService(nil, log)
-
-	f := func(method1, paymentNo1, method2, paymentNo2 string) bool {
-		if method1 == "" || paymentNo1 == "" || method2 == "" || paymentNo2 == "" {
-			return true
-		}
-
-		// Mark first callback as processed
-		svc.callbackMu.Lock()
-		svc.processedCallbacks[method1+":"+paymentNo1] = true
-		svc.callbackMu.Unlock()
-
-		// Check first is processed
-		if !svc.IsCallbackProcessed(method1, paymentNo1) {
-			return false
-		}
-
-		// If different, second should not be processed
-		if method1+":"+paymentNo1 != method2+":"+paymentNo2 {
-			return !svc.IsCallbackProcessed(method2, paymentNo2)
-		}
-
-		return true
-	}
-
-	config := &quick.Config{
-		MaxCount: 100,
-	}
-
-	if err := quick.Check(f, config); err != nil {
-		t.Errorf("Property test failed: %v", err)
-	}
-}
+// Callback idempotency is now enforced at the database layer inside
+// HandleCallback (order status + persisted payment_no checks) rather than via
+// an in-memory map. The previously exercised TestProperty_CallbackIdempotency
+// and TestProperty_IndependentCallbackTracking tests poked at private fields
+// that no longer exist; integration coverage for the DB-level idempotency
+// lives in internal/api/handlers/payment_test.go.
 
 // Feature: commercial-system, Property 13: Subscription Activation on Payment
 // Validates: Requirements 4.7

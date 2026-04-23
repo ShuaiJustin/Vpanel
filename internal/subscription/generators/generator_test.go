@@ -60,3 +60,18 @@ func TestMakeUniqueNames_UsesNumericSuffixesBeyondNine(t *testing.T) {
 		t.Fatalf("expected eleventh duplicate suffix Shared-11, got %q", proxies[10].Name)
 	}
 }
+
+func TestExtractProxyInfos_MakesNamesUniqueBeforeGeneration(t *testing.T) {
+	proxies := []*repository.Proxy{
+		{Name: "Shared", Protocol: "vmess", Host: "one.example.com", Port: 443, Settings: map[string]any{}},
+		{Name: "Shared", Protocol: "vmess", Host: "two.example.com", Port: 443, Settings: map[string]any{}},
+	}
+
+	infos := ExtractProxyInfos(proxies)
+	if len(infos) != 2 {
+		t.Fatalf("expected two infos, got %d", len(infos))
+	}
+	if infos[0].Name != "Shared-1" || infos[1].Name != "Shared-2" {
+		t.Fatalf("expected duplicate names to be suffixed, got %q and %q", infos[0].Name, infos[1].Name)
+	}
+}

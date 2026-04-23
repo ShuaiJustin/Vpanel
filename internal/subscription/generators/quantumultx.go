@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"v/internal/database/repository"
+	proxylib "v/internal/proxy"
 )
 
 // QuantumultXGenerator generates subscription content in Quantumult X format.
@@ -24,9 +25,7 @@ func (g *QuantumultXGenerator) Generate(proxies []*repository.Proxy, options *Ge
 
 	var lines []string
 
-	for _, proxy := range proxies {
-		info := ExtractProxyInfo(proxy)
-		
+	for _, info := range ExtractProxyInfos(proxies) {
 		var line string
 		var err error
 
@@ -74,23 +73,23 @@ func (g *QuantumultXGenerator) SupportsProtocol(protocol string) bool {
 // generateVMessLine generates a Quantumult X VMess proxy line.
 func (g *QuantumultXGenerator) generateVMessLine(info *ProxyInfo) (string, error) {
 	uuid := GetSettingString(info.Settings, "uuid", "")
-	security := GetSettingString(info.Settings, "security", "auto")
-	
+	cipher := proxylib.ResolveVMessCipher(info.Settings)
+
 	// Quantumult X VMess format:
 	// vmess=server:port, method=security, password=uuid, tag=name
 	parts := []string{
 		fmt.Sprintf("vmess=%s:%d", info.Server, info.Port),
-		fmt.Sprintf("method=%s", security),
+		fmt.Sprintf("method=%s", cipher),
 		fmt.Sprintf("password=%s", uuid),
 	}
 
 	// TLS settings
-	if GetSettingBool(info.Settings, "tls", false) {
+	if proxylib.HasTLSSettings(info.Settings) {
 		parts = append(parts, "obfs=over-tls")
-		if sni := GetSettingString(info.Settings, "sni", ""); sni != "" {
+		if sni := proxylib.ResolveSNI(info.Settings); sni != "" {
 			parts = append(parts, fmt.Sprintf("obfs-host=%s", sni))
 		}
-		if skipVerify := GetSettingBool(info.Settings, "skipCertVerify", false); skipVerify {
+		if proxylib.ResolveTLSSkipVerify(info.Settings) {
 			parts = append(parts, "tls-verification=false")
 		}
 	}
@@ -98,7 +97,7 @@ func (g *QuantumultXGenerator) generateVMessLine(info *ProxyInfo) (string, error
 	// WebSocket settings
 	network := GetSettingString(info.Settings, "network", "tcp")
 	if network == "ws" {
-		if !GetSettingBool(info.Settings, "tls", false) {
+		if !proxylib.HasTLSSettings(info.Settings) {
 			parts = append(parts, "obfs=ws")
 		} else {
 			parts = append(parts, "obfs=wss")
@@ -120,7 +119,7 @@ func (g *QuantumultXGenerator) generateVMessLine(info *ProxyInfo) (string, error
 // generateTrojanLine generates a Quantumult X Trojan proxy line.
 func (g *QuantumultXGenerator) generateTrojanLine(info *ProxyInfo) (string, error) {
 	password := GetSettingString(info.Settings, "password", "")
-	
+
 	// Quantumult X Trojan format:
 	// trojan=server:port, password=xxx, tag=name
 	parts := []string{
@@ -130,7 +129,7 @@ func (g *QuantumultXGenerator) generateTrojanLine(info *ProxyInfo) (string, erro
 
 	// TLS settings
 	parts = append(parts, "over-tls=true")
-	
+
 	if sni := GetSettingString(info.Settings, "sni", ""); sni != "" {
 		parts = append(parts, fmt.Sprintf("tls-host=%s", sni))
 	}

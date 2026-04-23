@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -91,7 +90,6 @@ type Service struct {
 	balanceRepo  repository.BalanceRepository
 	rechargeRepo repository.BalanceRechargeOrderRepository
 	logger       logger.Logger
-	mu           sync.Mutex
 }
 
 // NewService creates a new balance service.
@@ -131,39 +129,23 @@ func (s *Service) CanDeduct(ctx context.Context, userID int64, amount int64) boo
 }
 
 // Recharge adds funds to a user's balance.
+// Uses a DB transaction so the audit row can never end up out of sync with
+// the user balance even if the DB connection drops mid-call.
 func (s *Service) Recharge(ctx context.Context, userID int64, amount int64, orderID *int64, description string) error {
 	if amount <= 0 {
 		return fmt.Errorf("%w: amount must be positive", ErrInvalidAmount)
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	currentBalance, err := s.balanceRepo.GetBalance(ctx, userID)
-	if err != nil {
-		s.logger.Error("Failed to get balance for recharge", logger.Err(err), logger.F("userID", userID))
-		return err
-	}
-
-	newBalance := currentBalance + amount
-
-	if err := s.balanceRepo.IncrementBalance(ctx, userID, amount); err != nil {
-		s.logger.Error("Failed to increment balance", logger.Err(err), logger.F("userID", userID))
-		return err
-	}
-
 	tx := &repository.BalanceTransaction{
-		UserID:      userID,
 		Type:        TxTypeRecharge,
-		Amount:      amount,
-		Balance:     newBalance,
 		OrderID:     orderID,
 		Description: description,
 		Operator:    "system",
 	}
 
-	if err := s.balanceRepo.CreateTransaction(ctx, tx); err != nil {
-		s.logger.Error("Failed to create recharge transaction", logger.Err(err))
+	newBalance, err := s.balanceRepo.CreditAtomic(ctx, userID, amount, tx)
+	if err != nil {
+		s.logger.Error("Failed to credit balance for recharge", logger.Err(err), logger.F("userID", userID))
 		return err
 	}
 
@@ -180,42 +162,19 @@ func (s *Service) Deduct(ctx context.Context, userID int64, amount int64, orderI
 		return fmt.Errorf("%w: amount must be positive", ErrInvalidAmount)
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	currentBalance, err := s.balanceRepo.GetBalance(ctx, userID)
-	if err != nil {
-		s.logger.Error("Failed to get balance for deduction", logger.Err(err), logger.F("userID", userID))
-		return err
-	}
-
-	if currentBalance < amount {
-		return ErrInsufficientBalance
-	}
-
-	if err := s.balanceRepo.DecrementBalance(ctx, userID, amount); err != nil {
-		if errors.Is(err, repository.ErrInsufficientBalance) {
-			// Concurrent deduction emptied the balance after the check above.
-			return ErrInsufficientBalance
-		}
-		s.logger.Error("Failed to decrement balance", logger.Err(err), logger.F("userID", userID))
-		return err
-	}
-
-	newBalance := currentBalance - amount
-
 	tx := &repository.BalanceTransaction{
-		UserID:      userID,
 		Type:        TxTypePurchase,
-		Amount:      -amount,
-		Balance:     newBalance,
 		OrderID:     orderID,
 		Description: description,
 		Operator:    "system",
 	}
 
-	if err := s.balanceRepo.CreateTransaction(ctx, tx); err != nil {
-		s.logger.Error("Failed to create deduction transaction", logger.Err(err))
+	newBalance, err := s.balanceRepo.DebitAtomic(ctx, userID, amount, tx)
+	if err != nil {
+		if errors.Is(err, repository.ErrInsufficientBalance) {
+			return ErrInsufficientBalance
+		}
+		s.logger.Error("Failed to debit balance", logger.Err(err), logger.F("userID", userID))
 		return err
 	}
 
@@ -229,34 +188,16 @@ func (s *Service) Refund(ctx context.Context, userID int64, amount int64, orderI
 		return fmt.Errorf("%w: amount must be positive", ErrInvalidAmount)
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	currentBalance, err := s.balanceRepo.GetBalance(ctx, userID)
-	if err != nil {
-		s.logger.Error("Failed to get balance for refund", logger.Err(err), logger.F("userID", userID))
-		return err
-	}
-
-	newBalance := currentBalance + amount
-
-	if err := s.balanceRepo.IncrementBalance(ctx, userID, amount); err != nil {
-		s.logger.Error("Failed to increment balance for refund", logger.Err(err), logger.F("userID", userID))
-		return err
-	}
-
 	tx := &repository.BalanceTransaction{
-		UserID:      userID,
 		Type:        TxTypeRefund,
-		Amount:      amount,
-		Balance:     newBalance,
 		OrderID:     orderID,
 		Description: description,
 		Operator:    "system",
 	}
 
-	if err := s.balanceRepo.CreateTransaction(ctx, tx); err != nil {
-		s.logger.Error("Failed to create refund transaction", logger.Err(err))
+	newBalance, err := s.balanceRepo.CreditAtomic(ctx, userID, amount, tx)
+	if err != nil {
+		s.logger.Error("Failed to credit balance for refund", logger.Err(err), logger.F("userID", userID))
 		return err
 	}
 
@@ -270,33 +211,15 @@ func (s *Service) AddCommission(ctx context.Context, userID int64, amount int64,
 		return fmt.Errorf("%w: amount must be positive", ErrInvalidAmount)
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	currentBalance, err := s.balanceRepo.GetBalance(ctx, userID)
-	if err != nil {
-		s.logger.Error("Failed to get balance for commission", logger.Err(err), logger.F("userID", userID))
-		return err
-	}
-
-	newBalance := currentBalance + amount
-
-	if err := s.balanceRepo.IncrementBalance(ctx, userID, amount); err != nil {
-		s.logger.Error("Failed to increment balance for commission", logger.Err(err), logger.F("userID", userID))
-		return err
-	}
-
 	tx := &repository.BalanceTransaction{
-		UserID:      userID,
 		Type:        TxTypeCommission,
-		Amount:      amount,
-		Balance:     newBalance,
 		Description: description,
 		Operator:    "system",
 	}
 
-	if err := s.balanceRepo.CreateTransaction(ctx, tx); err != nil {
-		s.logger.Error("Failed to create commission transaction", logger.Err(err))
+	newBalance, err := s.balanceRepo.CreditAtomic(ctx, userID, amount, tx)
+	if err != nil {
+		s.logger.Error("Failed to credit commission", logger.Err(err), logger.F("userID", userID))
 		return err
 	}
 
@@ -310,46 +233,28 @@ func (s *Service) Adjust(ctx context.Context, userID int64, amount int64, reason
 		return fmt.Errorf("%w: amount cannot be zero", ErrInvalidAmount)
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	currentBalance, err := s.balanceRepo.GetBalance(ctx, userID)
-	if err != nil {
-		s.logger.Error("Failed to get balance for adjustment", logger.Err(err), logger.F("userID", userID))
-		return err
-	}
-
-	newBalance := currentBalance + amount
-	if newBalance < 0 {
-		return ErrNegativeBalance
-	}
-
-	if amount > 0 {
-		if err := s.balanceRepo.IncrementBalance(ctx, userID, amount); err != nil {
-			s.logger.Error("Failed to increment balance for adjustment", logger.Err(err), logger.F("userID", userID))
-			return err
-		}
-	} else {
-		if err := s.balanceRepo.DecrementBalance(ctx, userID, -amount); err != nil {
-			if errors.Is(err, repository.ErrInsufficientBalance) {
-				return ErrNegativeBalance
-			}
-			s.logger.Error("Failed to decrement balance for adjustment", logger.Err(err), logger.F("userID", userID))
-			return err
-		}
-	}
-
 	tx := &repository.BalanceTransaction{
-		UserID:      userID,
 		Type:        TxTypeAdjustment,
-		Amount:      amount,
-		Balance:     newBalance,
 		Description: reason,
 		Operator:    operator,
 	}
 
-	if err := s.balanceRepo.CreateTransaction(ctx, tx); err != nil {
-		s.logger.Error("Failed to create adjustment transaction", logger.Err(err))
+	var (
+		newBalance int64
+		err        error
+	)
+	if amount > 0 {
+		newBalance, err = s.balanceRepo.CreditAtomic(ctx, userID, amount, tx)
+	} else {
+		// DebitAtomic stores tx.Amount = -(-amount) = amount, i.e. the signed
+		// negative value callers expect from an admin reduction.
+		newBalance, err = s.balanceRepo.DebitAtomic(ctx, userID, -amount, tx)
+		if errors.Is(err, repository.ErrInsufficientBalance) {
+			return ErrNegativeBalance
+		}
+	}
+	if err != nil {
+		s.logger.Error("Failed to adjust balance", logger.Err(err), logger.F("userID", userID))
 		return err
 	}
 

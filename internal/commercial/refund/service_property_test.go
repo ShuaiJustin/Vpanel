@@ -37,7 +37,34 @@ func newMockBalRepo() *mockBalRepo { return &mockBalRepo{balances: make(map[int6
 func (m *mockBalRepo) GetBalance(ctx context.Context, uid int64) (int64, error) { return m.balances[uid], nil }
 func (m *mockBalRepo) UpdateBalance(ctx context.Context, uid, amt int64) error { m.balances[uid] = amt; return nil }
 func (m *mockBalRepo) IncrementBalance(ctx context.Context, uid, amt int64) error { m.balances[uid] += amt; return nil }
-func (m *mockBalRepo) DecrementBalance(ctx context.Context, uid, amt int64) error { m.balances[uid] -= amt; return nil }
+func (m *mockBalRepo) DecrementBalance(ctx context.Context, uid, amt int64) error {
+	if m.balances[uid] < amt {
+		return repository.ErrInsufficientBalance
+	}
+	m.balances[uid] -= amt
+	return nil
+}
+func (m *mockBalRepo) CreditAtomic(ctx context.Context, uid, amt int64, tx *repository.BalanceTransaction) (int64, error) {
+	m.balances[uid] += amt
+	tx.UserID = uid
+	tx.Amount = amt
+	tx.Balance = m.balances[uid]
+	tx.ID = int64(len(m.txs) + 1)
+	m.txs = append(m.txs, tx)
+	return m.balances[uid], nil
+}
+func (m *mockBalRepo) DebitAtomic(ctx context.Context, uid, amt int64, tx *repository.BalanceTransaction) (int64, error) {
+	if m.balances[uid] < amt {
+		return 0, repository.ErrInsufficientBalance
+	}
+	m.balances[uid] -= amt
+	tx.UserID = uid
+	tx.Amount = -amt
+	tx.Balance = m.balances[uid]
+	tx.ID = int64(len(m.txs) + 1)
+	m.txs = append(m.txs, tx)
+	return m.balances[uid], nil
+}
 func (m *mockBalRepo) CreateTransaction(ctx context.Context, tx *repository.BalanceTransaction) error { tx.ID = int64(len(m.txs) + 1); m.txs = append(m.txs, tx); return nil }
 func (m *mockBalRepo) GetTransactionByID(ctx context.Context, id int64) (*repository.BalanceTransaction, error) { return nil, nil }
 func (m *mockBalRepo) ListTransactions(ctx context.Context, f repository.BalanceFilter, l, o int) ([]*repository.BalanceTransaction, int64, error) { return nil, 0, nil }

@@ -57,9 +57,7 @@ func (g *ClashMetaGenerator) Generate(proxies []*repository.Proxy, options *Gene
 
 	var proxyNames []string
 
-	for _, proxy := range proxies {
-		info := ExtractProxyInfo(proxy)
-		
+	for _, info := range ExtractProxyInfos(proxies) {
 		var clashProxy map[string]interface{}
 		var err error
 
@@ -116,13 +114,13 @@ func (g *ClashMetaGenerator) SupportsProtocol(protocol string) bool {
 // generateVMessProxy generates a Clash Meta VMess proxy configuration.
 func (g *ClashMetaGenerator) generateVMessProxy(info *ProxyInfo) (map[string]interface{}, error) {
 	proxy := map[string]interface{}{
-		"name":     info.Name,
-		"type":     "vmess",
-		"server":   info.Server,
-		"port":     info.Port,
-		"uuid":     GetSettingString(info.Settings, "uuid", ""),
-		"alterId":  GetSettingInt(info.Settings, "alterId", 0),
-		"cipher":   proxylib.ResolveVMessCipher(info.Settings),
+		"name":    info.Name,
+		"type":    "vmess",
+		"server":  info.Server,
+		"port":    info.Port,
+		"uuid":    GetSettingString(info.Settings, "uuid", ""),
+		"alterId": GetSettingInt(info.Settings, "alterId", 0),
+		"cipher":  proxylib.ResolveVMessCipher(info.Settings),
 	}
 
 	network := GetSettingString(info.Settings, "network", "tcp")
@@ -190,12 +188,12 @@ func (g *ClashMetaGenerator) generateVLESSProxy(info *ProxyInfo) (map[string]int
 
 	// Security settings
 	security := GetSettingString(info.Settings, "security", "")
-	
+
 	if security == "reality" {
 		// Reality settings (Clash Meta specific)
 		proxy["tls"] = true
 		realityOpts := map[string]interface{}{}
-		
+
 		if pbk := GetSettingString(info.Settings, "publicKey", ""); pbk != "" {
 			realityOpts["public-key"] = pbk
 		}
@@ -208,7 +206,7 @@ func (g *ClashMetaGenerator) generateVLESSProxy(info *ProxyInfo) (map[string]int
 		if fp := GetSettingString(info.Settings, "fingerprint", ""); fp != "" {
 			proxy["client-fingerprint"] = fp
 		}
-		
+
 		if len(realityOpts) > 0 {
 			proxy["reality-opts"] = realityOpts
 		}

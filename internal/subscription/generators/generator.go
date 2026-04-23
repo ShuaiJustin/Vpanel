@@ -176,11 +176,21 @@ func GetSettingString(settings map[string]interface{}, key string, defaultValue 
 
 // GetSettingInt safely gets an int setting value.
 func GetSettingInt(settings map[string]interface{}, key string, defaultValue int) int {
-	if v, ok := settings[key].(float64); ok {
-		return int(v)
-	}
-	if v, ok := settings[key].(int); ok {
-		return v
+	for _, candidate := range settingAliases(key) {
+		if v, ok := settings[candidate]; ok {
+			switch typed := v.(type) {
+			case int:
+				return typed
+			case int64:
+				return int(typed)
+			case float64:
+				return int(typed)
+			case string:
+				if parsed, err := strconv.Atoi(strings.TrimSpace(typed)); err == nil {
+					return parsed
+				}
+			}
+		}
 	}
 	return defaultValue
 }
@@ -211,9 +221,25 @@ func settingAliases(key string) []string {
 		return []string{"shortId", "sid"}
 	case "sni", "server_name":
 		return []string{"sni", "server_name"}
+	case "allowInsecure", "skipCertVerify":
+		return []string{"allowInsecure", "skipCertVerify"}
+	case "serviceName", "service_name":
+		return []string{"serviceName", "service_name"}
 	default:
 		return []string{key}
 	}
+}
+
+func ExtractProxyInfos(proxies []*repository.Proxy) []*ProxyInfo {
+	infos := make([]*ProxyInfo, 0, len(proxies))
+	for _, proxy := range proxies {
+		if proxy == nil {
+			continue
+		}
+		infos = append(infos, ExtractProxyInfo(proxy))
+	}
+	MakeUniqueNames(infos)
+	return infos
 }
 
 // MakeUniqueNames ensures all proxy names are unique by appending suffixes if needed.

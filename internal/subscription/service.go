@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -295,16 +296,44 @@ func (s *Service) GetSubscriptionInfo(ctx context.Context, userID int64) (*Subsc
 	return s.GetSubscriptionInfoWithBaseURL(ctx, userID, "")
 }
 
-// GetSubscriptionInfoWithBaseURL returns subscription information using request-aware base URL when provided.
+// GetSubscriptionInfoWithBaseURL returns subscription information.
+//
+// baseURL resolution order (highest priority first):
+//  1. service.baseURL (from V_SERVER_PUBLIC_URL / V_SERVER_BASE_URL, i.e. the
+//     admin-configured canonical public URL). This is what subscription clients
+//     MUST reach, and may differ from the URL the admin uses to browse the
+//     panel UI (common when the panel is fronted by Cloudflare / an internal
+//     reverse-proxy exposing the admin UI on a different port than the
+//     subscription endpoint).
+//  2. baseURLOverride (derived from the current request's Host header). Used
+//     as a best-effort fallback when no public URL is configured, or when the
+//     configured URL points at a clearly local address (0.0.0.0, localhost,
+//     loopback) — in those cases the request host is more likely to actually
+//     be reachable by clients.
+//  3. service.baseURL again (even if it looks local) as a last resort, so
+//     the response is never empty.
+//
+// The OLD behaviour preferred the request host unconditionally, which baked
+// the admin's browser address (e.g. `shcrystal.top:13212`) into the
+// subscription URL — breaking clients when that port/host was only reachable
+// through the admin path.
 func (s *Service) GetSubscriptionInfoWithBaseURL(ctx context.Context, userID int64, baseURLOverride string) (*SubscriptionInfo, error) {
 	subscription, err := s.GetOrCreateSubscription(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	baseURL := strings.TrimSuffix(strings.TrimSpace(baseURLOverride), "/")
-	if baseURL == "" {
-		baseURL = strings.TrimSuffix(strings.TrimSpace(s.baseURL), "/")
+	configured := strings.TrimSuffix(strings.TrimSpace(s.baseURL), "/")
+	override := strings.TrimSuffix(strings.TrimSpace(baseURLOverride), "/")
+
+	var baseURL string
+	switch {
+	case configured != "" && !isLocalBaseURL(configured):
+		baseURL = configured
+	case override != "":
+		baseURL = override
+	default:
+		baseURL = configured
 	}
 
 	baseLink := fmt.Sprintf("%s/api/subscription/%s", baseURL, subscription.Token)
@@ -325,6 +354,28 @@ func (s *Service) GetSubscriptionInfoWithBaseURL(ctx context.Context, userID int
 		AccessCount:  subscription.AccessCount,
 		Formats:      formats,
 	}, nil
+}
+
+// isLocalBaseURL reports whether a base URL points at a loopback / wildcard /
+// "empty" host and therefore isn't useful as a canonical subscription URL.
+// The check is deliberately loose: we'd rather occasionally fall back to the
+// request host than silently ship a 127.0.0.1-bound URL to a mobile client.
+func isLocalBaseURL(rawURL string) bool {
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return true
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return false
+	}
+	host := strings.TrimSpace(parsed.Hostname())
+	switch strings.ToLower(host) {
+	case "", "localhost", "127.0.0.1", "0.0.0.0", "::", "::1":
+		return true
+	default:
+		return false
+	}
 }
 
 // buildFormatLinks builds format-specific subscription links.
@@ -483,6 +534,7 @@ func (s *Service) GetUserEnabledProxies(ctx context.Context, userID int64) ([]*r
 			settingsCopy = map[string]any{}
 		}
 		settingsCopy["server"] = resolvedServer
+		proxyCopy.Host = resolvedServer
 		proxyCopy.Settings = settingsCopy
 		enabledProxies = append(enabledProxies, &proxyCopy)
 	}

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"v/internal/database/repository"
+	proxylib "v/internal/proxy"
 )
 
 // SingboxGenerator generates subscription content in Sing-box JSON format.
@@ -31,9 +32,7 @@ func (g *SingboxGenerator) Generate(proxies []*repository.Proxy, options *Genera
 		Outbounds: make([]map[string]interface{}, 0),
 	}
 
-	for _, proxy := range proxies {
-		info := ExtractProxyInfo(proxy)
-		
+	for _, info := range ExtractProxyInfos(proxies) {
 		var outbound map[string]interface{}
 		var err error
 
@@ -88,19 +87,19 @@ func (g *SingboxGenerator) generateVMessOutbound(info *ProxyInfo) (map[string]in
 		"server":      info.Server,
 		"server_port": info.Port,
 		"uuid":        GetSettingString(info.Settings, "uuid", ""),
-		"security":    GetSettingString(info.Settings, "security", "auto"),
+		"security":    proxylib.ResolveVMessCipher(info.Settings),
 		"alter_id":    GetSettingInt(info.Settings, "alterId", 0),
 	}
 
 	// TLS settings
-	if GetSettingBool(info.Settings, "tls", false) {
+	if proxylib.HasTLSSettings(info.Settings) {
 		tls := map[string]interface{}{
 			"enabled": true,
 		}
-		if sni := GetSettingString(info.Settings, "sni", ""); sni != "" {
+		if sni := proxylib.ResolveSNI(info.Settings); sni != "" {
 			tls["server_name"] = sni
 		}
-		if skipVerify := GetSettingBool(info.Settings, "skipCertVerify", false); skipVerify {
+		if proxylib.ResolveTLSSkipVerify(info.Settings) {
 			tls["insecure"] = true
 		}
 		if alpn := GetSettingString(info.Settings, "alpn", ""); alpn != "" {
@@ -154,13 +153,13 @@ func (g *SingboxGenerator) generateVLESSOutbound(info *ProxyInfo) (map[string]in
 
 	// Security settings
 	security := GetSettingString(info.Settings, "security", "")
-	
+
 	if security == "reality" {
 		tls := map[string]interface{}{
 			"enabled":     true,
 			"server_name": GetSettingString(info.Settings, "sni", ""),
 		}
-		
+
 		reality := map[string]interface{}{
 			"enabled": true,
 		}
@@ -170,16 +169,16 @@ func (g *SingboxGenerator) generateVLESSOutbound(info *ProxyInfo) (map[string]in
 		if sid := GetSettingString(info.Settings, "shortId", ""); sid != "" {
 			reality["short_id"] = sid
 		}
-		
+
 		tls["reality"] = reality
-		
+
 		if fp := GetSettingString(info.Settings, "fingerprint", ""); fp != "" {
 			tls["utls"] = map[string]interface{}{
 				"enabled":     true,
 				"fingerprint": fp,
 			}
 		}
-		
+
 		outbound["tls"] = tls
 	} else if security == "tls" || GetSettingBool(info.Settings, "tls", false) {
 		tls := map[string]interface{}{

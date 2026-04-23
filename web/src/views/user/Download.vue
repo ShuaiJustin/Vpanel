@@ -101,9 +101,21 @@
 
     <!-- 客户端列表 -->
     <div class="clients-section">
-      <div class="clients-grid">
-        <div 
-          v-for="client in filteredClients" 
+      <div
+        v-if="filteredClients.length === 0"
+        class="clients-empty"
+      >
+        <el-empty
+          :description="`暂无适合 ${currentPlatform?.label || '当前'} 平台的推荐客户端`"
+          :image-size="96"
+        />
+      </div>
+      <div
+        v-else
+        class="clients-grid"
+      >
+        <div
+          v-for="client in filteredClients"
           :key="client.name"
           class="client-card"
         >
@@ -377,12 +389,14 @@ const platforms = [
 ]
 
 // 客户端列表
+// 注：version 字段历史上用于显示版本号，当前 UI 已改为显示下载渠道
+// (getClientReleaseLabel)，即"GitHub Releases / App Store / 官网"，避免硬编码
+// 版本号随上游迭代过期。保留 name/platform/description/features/downloadUrl 即可。
 const clients = [
   // Windows
   {
     name: 'Clash Verge',
     platform: 'windows',
-    version: 'v1.4.0',
     description: '基于 Clash Meta 的现代化代理客户端，界面美观，功能强大。',
     features: ['Clash 规则', '自动更新', '系统代理'],
     recommended: true,
@@ -392,7 +406,6 @@ const clients = [
   {
     name: 'v2rayN',
     platform: 'windows',
-    version: 'v6.0',
     description: '功能全面的 V2Ray 客户端，支持多种协议。',
     features: ['多协议', '路由规则', '订阅管理'],
     recommended: false,
@@ -402,18 +415,16 @@ const clients = [
   {
     name: 'Clash for Windows',
     platform: 'windows',
-    version: 'v0.20.39',
-    description: '经典的 Clash 客户端，稳定可靠（已停止更新）。',
+    description: '经典的 Clash 客户端，稳定可靠（已停止更新，建议改用 Clash Verge）。',
     features: ['Clash 规则', 'TUN 模式', '配置管理'],
     recommended: false,
-    downloadUrl: 'https://archive.org/download/clash_for_windows_pkg',
+    downloadUrl: 'https://archive.org/download/clash_for_windows_pkg/',
     tutorialUrl: '#'
   },
   // macOS
   {
     name: 'ClashX Pro',
     platform: 'macos',
-    version: 'v1.118.0',
     description: 'macOS 上最受欢迎的 Clash 客户端，支持增强模式。',
     features: ['增强模式', '菜单栏', '自动更新'],
     recommended: true,
@@ -423,7 +434,6 @@ const clients = [
   {
     name: 'Clash Verge',
     platform: 'macos',
-    version: 'v1.4.0',
     description: '跨平台的现代化 Clash 客户端。',
     features: ['Clash Meta', '美观界面', '跨平台'],
     recommended: false,
@@ -433,7 +443,6 @@ const clients = [
   {
     name: 'Surge',
     platform: 'macos',
-    version: 'v5',
     description: '专业级网络调试工具，功能强大（付费软件）。',
     features: ['专业级', '网络调试', 'MitM'],
     recommended: false,
@@ -443,7 +452,6 @@ const clients = [
   {
     name: 'V2RayXS',
     platform: 'macos',
-    version: 'v1.0',
     description: '简洁的 V2Ray 客户端，轻量级。',
     features: ['轻量级', '简洁', '开源'],
     recommended: false,
@@ -454,7 +462,6 @@ const clients = [
   {
     name: 'Clash Verge',
     platform: 'linux',
-    version: 'v1.4.0',
     description: '支持 Linux 的现代化 Clash 客户端。',
     features: ['Clash Meta', 'AppImage', 'deb/rpm'],
     recommended: true,
@@ -464,7 +471,6 @@ const clients = [
   {
     name: 'Clash Meta',
     platform: 'linux',
-    version: 'v1.16.0',
     description: '命令行版本的 Clash，适合服务器使用。',
     features: ['命令行', '轻量级', '服务器'],
     recommended: false,
@@ -474,8 +480,7 @@ const clients = [
   {
     name: 'Qv2ray',
     platform: 'linux',
-    version: 'v2.7.0',
-    description: '跨平台的 V2Ray 图形客户端。',
+    description: '跨平台的 V2Ray 图形客户端（已停止维护）。',
     features: ['图形界面', '插件系统', '跨平台'],
     recommended: false,
     downloadUrl: 'https://github.com/Qv2ray/Qv2ray/releases',
@@ -485,7 +490,6 @@ const clients = [
   {
     name: 'Shadowrocket',
     platform: 'ios',
-    version: 'v2.2.40',
     description: 'iOS 上最流行的代理客户端，功能全面。',
     features: ['多协议', '规则分流', '按需连接'],
     recommended: true,
@@ -495,7 +499,6 @@ const clients = [
   {
     name: 'Quantumult X',
     platform: 'ios',
-    version: 'v1.4.0',
     description: '功能强大的网络工具，支持复杂规则。',
     features: ['脚本支持', '规则分流', 'MitM'],
     recommended: false,
@@ -505,7 +508,6 @@ const clients = [
   {
     name: 'Surge',
     platform: 'ios',
-    version: 'v5',
     description: '专业级网络调试工具（付费软件）。',
     features: ['专业级', '网络调试', 'MitM'],
     recommended: false,
@@ -515,7 +517,6 @@ const clients = [
   {
     name: 'Loon',
     platform: 'ios',
-    version: 'v3.0',
     description: '功能强大的代理工具，支持脚本。',
     features: ['脚本支持', '规则分流', '插件系统'],
     recommended: false,
@@ -526,7 +527,6 @@ const clients = [
   {
     name: 'Clash Meta for Android',
     platform: 'android',
-    version: 'v2.9.0',
     description: 'Android 上的 Clash Meta 客户端。',
     features: ['Clash Meta', '规则分流', '自动更新'],
     recommended: true,
@@ -536,7 +536,6 @@ const clients = [
   {
     name: 'v2rayNG',
     platform: 'android',
-    version: 'v1.8.0',
     description: 'Android 上的 V2Ray 客户端。',
     features: ['多协议', '轻量级', '订阅管理'],
     recommended: false,
@@ -546,7 +545,6 @@ const clients = [
   {
     name: 'Surfboard',
     platform: 'android',
-    version: 'v2.22.0',
     description: '支持 Surge 配置的 Android 客户端。',
     features: ['Surge 配置', '规则分流', '美观界面'],
     recommended: false,
@@ -556,8 +554,7 @@ const clients = [
   {
     name: 'SagerNet',
     platform: 'android',
-    version: 'v0.10.0',
-    description: '基于 sing-box 的通用代理工具箱。',
+    description: '基于 sing-box 的通用代理工具箱（已停止维护，改用 sing-box）。',
     features: ['多协议', '插件系统', '开源'],
     recommended: false,
     downloadUrl: 'https://github.com/SagerNet/SagerNet/releases',
@@ -1254,6 +1251,127 @@ export https_proxy=http://127.0.0.1:7890</code></pre>
         </ul>
       </div>
     `
+  },
+  'ClashX Pro': {
+    step1: `
+      <ol>
+        <li>点击下载按钮，前往 App Center 页面</li>
+        <li>点击页面上的 <strong>"Download"</strong> 下载 dmg 安装包</li>
+        <li>双击 dmg，将 ClashX Pro 拖入 <code>Applications</code> 文件夹</li>
+        <li>首次启动如被 Gatekeeper 拦截，前往 <strong>"系统设置 → 隐私与安全性"</strong> 点击 <strong>"仍要打开"</strong></li>
+      </ol>
+    `,
+    step2: `
+      <ol>
+        <li>点击菜单栏 <strong>ClashX Pro 图标</strong></li>
+        <li>选择 <strong>"配置" → "远程配置" → "管理"</strong></li>
+        <li>点击 <strong>"添加"</strong>，填入订阅链接并保存</li>
+        <li>回到菜单选择该配置，点击 <strong>"更新配置"</strong> 或开启 <strong>"自动更新"</strong></li>
+      </ol>
+    `,
+    step3: `
+      <ol>
+        <li>在菜单中选择 <strong>"出站模式 → 规则"</strong>（或 <strong>"全局"</strong>）</li>
+        <li>勾选 <strong>"设置为系统代理"</strong></li>
+        <li>需要全局路由时，启用 <strong>"增强模式"</strong>（需授权一次性安装 helper）</li>
+        <li>浏览器测试连接；可在 <strong>"代理节点"</strong> 中切换</li>
+      </ol>
+      <div class="tip-box">
+        <strong>提示：</strong>
+        <ul>
+          <li>增强模式可代理无法感知系统代理的应用</li>
+          <li>"配置 → 实验性功能" 里可以开启 TUN 模式</li>
+        </ul>
+      </div>
+    `
+  },
+  'Clash Meta for Android': {
+    step1: `
+      <ol>
+        <li>点击下载按钮，前往 GitHub Releases 页面</li>
+        <li>下载带 <code>-premium-</code> 或 <code>-meta-</code> 后缀的最新 apk（根据手机 ABI 选择 arm64-v8a / armeabi-v7a）</li>
+        <li>手机上打开下载的 apk，按系统提示允许"从此来源安装"</li>
+        <li>完成安装后启动 Clash Meta for Android</li>
+      </ol>
+    `,
+    step2: `
+      <ol>
+        <li>打开 Clash Meta for Android，进入 <strong>"配置"</strong> 页</li>
+        <li>点击右下角 <strong>"+"</strong>，选择 <strong>"URL"</strong></li>
+        <li>名称自填，链接粘贴您的订阅链接</li>
+        <li>保存后点击配置右侧的 <strong>下载按钮</strong> 拉取节点</li>
+      </ol>
+    `,
+    step3: `
+      <ol>
+        <li>回到主页选中刚才导入的配置</li>
+        <li>点击主界面的 <strong>启动开关</strong>，首次启动允许建立 VPN 连接</li>
+        <li>进入 <strong>"代理"</strong> 选择节点 / 策略组</li>
+        <li>打开浏览器测试连接</li>
+      </ol>
+      <div class="tip-box">
+        <strong>提示：</strong>可在"设置 → 网络 → 访问控制"指定哪些应用走代理。
+      </div>
+    `
+  },
+  'Shadowrocket': {
+    step1: `
+      <ol>
+        <li>在 <strong>海外 Apple ID</strong> 的 App Store 搜索 Shadowrocket 下载（¥18-30）</li>
+        <li>首次启动时，根据提示允许通知及 VPN 配置</li>
+      </ol>
+      <div class="tip-box">
+        <strong>注意：</strong>国区 App Store 已下架 Shadowrocket，需使用其他区域的 Apple ID 购买。
+      </div>
+    `,
+    step2: `
+      <ol>
+        <li>打开 Shadowrocket，点击右上角 <strong>"+"</strong></li>
+        <li>将订阅链接复制到剪贴板，Shadowrocket 会自动识别；或选择 <strong>"Subscribe"</strong> 手动粘贴</li>
+        <li>保存后返回首页，下拉刷新订阅</li>
+      </ol>
+    `,
+    step3: `
+      <ol>
+        <li>在节点列表中选择要使用的节点</li>
+        <li>打开主页顶部的连接开关，系统弹出"添加 VPN 配置"请允许</li>
+        <li>浏览器测试连接；切换节点只需在节点列表点击其他节点</li>
+      </ol>
+      <div class="tip-box">
+        <strong>提示：</strong>
+        <ul>
+          <li>"设置 → 配置"可切换全局 / 规则 / 直连模式</li>
+          <li>建议打开"自动连接"，让 Shadowrocket 开机自动启用</li>
+        </ul>
+      </div>
+    `
+  },
+  'v2rayNG': {
+    step1: `
+      <ol>
+        <li>点击下载按钮，前往 GitHub Releases 页面</li>
+        <li>下载与手机 ABI 对应的 apk（大多为 <code>v2rayNG_x.x.x_arm64-v8a.apk</code>）</li>
+        <li>在手机上安装该 apk（允许未知来源安装）</li>
+      </ol>
+    `,
+    step2: `
+      <ol>
+        <li>打开 v2rayNG，点击右上角 <strong>"≡"</strong></li>
+        <li>选择 <strong>"订阅设置" → "+"</strong></li>
+        <li>备注随意，URL 填入订阅链接，其他保持默认，保存</li>
+        <li>回到主页下拉刷新订阅，等待节点列表出现</li>
+      </ol>
+    `,
+    step3: `
+      <ol>
+        <li>点击节点行测速，选择延迟较低的节点</li>
+        <li>按右下角 <strong>V 型圆形按钮</strong> 连接，允许添加 VPN 配置</li>
+        <li>打开浏览器测试；长按节点可设为默认</li>
+      </ol>
+      <div class="tip-box">
+        <strong>提示：</strong>在"设置 → 内核类型"可切换 Xray / v2ray-core；遇到连不上可尝试改用 Xray。
+      </div>
+    `
   }
 }
 
@@ -1672,6 +1790,15 @@ onMounted(async () => {
 /* 客户端网格 */
 .clients-section {
   margin-bottom: 24px;
+}
+
+.clients-empty {
+  display: flex;
+  justify-content: center;
+  padding: 32px 0;
+  background: var(--color-bg-card);
+  border: 1px dashed var(--color-border);
+  border-radius: 12px;
 }
 
 .clients-grid {

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"v/internal/database/repository"
+	proxylib "v/internal/proxy"
 )
 
 // SurgeGenerator generates subscription content in Surge proxy list format.
@@ -25,9 +26,7 @@ func (g *SurgeGenerator) Generate(proxies []*repository.Proxy, options *Generato
 	var lines []string
 	lines = append(lines, "[Proxy]")
 
-	for _, proxy := range proxies {
-		info := ExtractProxyInfo(proxy)
-		
+	for _, info := range ExtractProxyInfos(proxies) {
 		var line string
 		var err error
 
@@ -75,7 +74,7 @@ func (g *SurgeGenerator) SupportsProtocol(protocol string) bool {
 // generateVMessLine generates a Surge VMess proxy line.
 func (g *SurgeGenerator) generateVMessLine(info *ProxyInfo) (string, error) {
 	uuid := GetSettingString(info.Settings, "uuid", "")
-	
+
 	// Basic format: name = vmess, server, port, username=uuid
 	parts := []string{
 		fmt.Sprintf("%s = vmess", info.Name),
@@ -85,16 +84,16 @@ func (g *SurgeGenerator) generateVMessLine(info *ProxyInfo) (string, error) {
 	}
 
 	// Encryption method
-	security := GetSettingString(info.Settings, "security", "auto")
-	parts = append(parts, fmt.Sprintf("encrypt-method=%s", security))
+	cipher := proxylib.ResolveVMessCipher(info.Settings)
+	parts = append(parts, fmt.Sprintf("encrypt-method=%s", cipher))
 
 	// TLS settings
-	if GetSettingBool(info.Settings, "tls", false) {
+	if proxylib.HasTLSSettings(info.Settings) {
 		parts = append(parts, "tls=true")
-		if sni := GetSettingString(info.Settings, "sni", ""); sni != "" {
+		if sni := proxylib.ResolveSNI(info.Settings); sni != "" {
 			parts = append(parts, fmt.Sprintf("sni=%s", sni))
 		}
-		if skipVerify := GetSettingBool(info.Settings, "skipCertVerify", false); skipVerify {
+		if proxylib.ResolveTLSSkipVerify(info.Settings) {
 			parts = append(parts, "skip-cert-verify=true")
 		}
 	}
@@ -117,7 +116,7 @@ func (g *SurgeGenerator) generateVMessLine(info *ProxyInfo) (string, error) {
 // generateTrojanLine generates a Surge Trojan proxy line.
 func (g *SurgeGenerator) generateTrojanLine(info *ProxyInfo) (string, error) {
 	password := GetSettingString(info.Settings, "password", "")
-	
+
 	// Basic format: name = trojan, server, port, password=xxx
 	parts := []string{
 		fmt.Sprintf("%s = trojan", info.Name),
@@ -143,7 +142,7 @@ func (g *SurgeGenerator) generateTrojanLine(info *ProxyInfo) (string, error) {
 func (g *SurgeGenerator) generateShadowsocksLine(info *ProxyInfo) (string, error) {
 	method := GetSettingString(info.Settings, "method", "aes-256-gcm")
 	password := GetSettingString(info.Settings, "password", "")
-	
+
 	// Basic format: name = ss, server, port, encrypt-method=xxx, password=xxx
 	parts := []string{
 		fmt.Sprintf("%s = ss", info.Name),
