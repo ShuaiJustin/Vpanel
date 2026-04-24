@@ -466,6 +466,42 @@ func TestUserAccessControl_ExpiringToday(t *testing.T) {
 	}
 }
 
+// Unit test: admins should be able to manage proxies even if their own
+// subscription metadata is expired or over limit.
+func TestUserAccessControl_AdminBypassesProxyAccessChecks(t *testing.T) {
+	db := setupAccessControlTestDB(t)
+	userRepo := repository.NewUserRepository(db)
+	log := logger.NewNopLogger()
+
+	expiredTime := time.Now().Add(-time.Hour)
+	user := createAccessControlTestUser(t, db, "adminexpired", true, 1024, 2048, &expiredTime)
+	if err := db.Model(user).Update("role", "admin").Error; err != nil {
+		t.Fatalf("Failed to update user role: %v", err)
+	}
+	user.Role = "admin"
+
+	middleware := NewAccessControlMiddleware(userRepo, log)
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", user.ID)
+		c.Next()
+	})
+	router.Use(middleware.CheckProxyAccess())
+	router.GET("/proxies", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/proxies", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200 for admin, got %d", w.Code)
+	}
+}
+
 // Unit test: no user_id in context should pass through
 func TestUserAccessControl_NoUserID(t *testing.T) {
 	db := setupAccessControlTestDB(t)

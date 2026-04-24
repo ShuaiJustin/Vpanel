@@ -44,6 +44,13 @@ func (m *AccessControlMiddleware) CheckAccess() gin.HandlerFunc {
 			return
 		}
 
+		// Administrative operators must be able to access management routes
+		// regardless of subscription lifecycle state.
+		if user.Role == "admin" {
+			c.Next()
+			return
+		}
+
 		// Check if user account has expired
 		if user.IsExpired() {
 			m.logger.Warn("access denied: account expired", logger.F("user_id", userID), logger.F("username", user.Username))
@@ -89,6 +96,13 @@ func (m *AccessControlMiddleware) CheckProxyAccess() gin.HandlerFunc {
 		user, err := m.userRepo.GetByID(c.Request.Context(), userID.(int64))
 		if err != nil {
 			m.logger.Error("failed to get user for proxy access check", logger.F("user_id", userID), logger.F("error", err))
+			c.Next()
+			return
+		}
+
+		// Proxy management is also used by admins to recover and repair nodes.
+		// They should not be blocked by end-user subscription checks.
+		if user.Role == "admin" {
 			c.Next()
 			return
 		}
