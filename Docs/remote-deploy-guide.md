@@ -188,7 +188,7 @@ GET /api/admin/nodes/:id/deploy/script
 - **操作系统**: Linux (Ubuntu, Debian, CentOS, RHEL)
 - **内存**: 最少 512MB
 - **磁盘**: 最少 1GB 可用空间
-- **网络**: 能访问 GitHub 和 Panel 服务器
+- **网络**: 能访问 Panel 服务器；Xray 下载默认会依次尝试 GitHub 和内置镜像
 - **权限**: root 或 sudo 权限
 
 ### SSH 要求
@@ -293,6 +293,11 @@ apt-get install -y curl wget unzip
 3. 手动下载安装
 
 ```bash
+# 页面下载的部署脚本支持覆盖 GitHub 加速镜像，多个地址用空格分隔
+export XRAY_GITHUB_PROXY_PREFIXES="https://gh.llkk.cc https://gh-proxy.com https://ghproxy.net https://hub.gitmirror.com"
+# 默认镜像优先；如需官方 GitHub 优先，可设置为 0
+export XRAY_GITHUB_PROXY_FIRST=1
+
 # 手动安装 Xray
 bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
 ```
@@ -335,6 +340,8 @@ yum install -y curl wget unzip
 ### 2. 安装 Xray
 
 ```bash
+# 如果目标机器访问 GitHub 不稳定，优先使用页面下载的部署脚本；
+# 该脚本会按官方源和 XRAY_GITHUB_PROXY_PREFIXES 镜像顺序自动重试。
 bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
 ```
 

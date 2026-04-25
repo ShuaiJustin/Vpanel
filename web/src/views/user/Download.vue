@@ -369,7 +369,21 @@ const { isMobile } = useViewport()
 // 常量
 const TOTAL_TUTORIAL_STEPS = 3
 const paidClientNames = new Set(['Shadowrocket', 'Quantumult X', 'Surge', 'Loon'])
-const legacyClientNames = new Set(['Clash for Windows', 'Qv2ray', 'SagerNet'])
+const archivedClientNames = new Set(['Clash for Windows', 'Qv2ray', 'SagerNet'])
+const legacyClientNames = new Set(['ClashX Pro', 'V2RayXS'])
+const cliClientNames = new Set(['Mihomo CLI', 'sing-box CLI', 'Xray-core'])
+const clientFormatLabels = {
+  clash: 'Clash Legacy',
+  clashmeta: 'Clash Meta/Mihomo',
+  singbox: 'Sing-box',
+  v2rayn: 'V2Ray',
+  shadowrocket: 'Shadowrocket',
+  surge: 'Surge',
+  quantumultx: 'Quantumult X'
+}
+const tutorialAliases = {
+  'Clash Verge Rev': 'Clash Verge'
+}
 
 // 状态
 const selectedPlatform = ref('windows')
@@ -395,10 +409,11 @@ const platforms = [
 const clients = [
   // Windows
   {
-    name: 'Clash Verge',
+    name: 'Clash Verge Rev',
     platform: 'windows',
-    description: '基于 Clash Meta 的现代化代理客户端，界面美观，功能强大。',
-    features: ['Clash 规则', '自动更新', '系统代理'],
+    description: '现代化桌面客户端，内置 Mihomo 核心，适合大多数 Windows 用户。',
+    features: ['规则分流', 'TUN 模式', '系统代理'],
+    format: 'clashmeta',
     recommended: true,
     downloadUrl: 'https://github.com/clash-verge-rev/clash-verge-rev/releases',
     tutorialUrl: '#'
@@ -406,94 +421,176 @@ const clients = [
   {
     name: 'v2rayN',
     platform: 'windows',
-    description: '功能全面的 V2Ray 客户端，支持多种协议。',
-    features: ['多协议', '路由规则', '订阅管理'],
+    description: '老牌 Windows 客户端，适合直接导入 V2Ray/Xray 通用订阅。',
+    features: ['Xray 核心', 'sing-box 核心', '订阅管理'],
+    format: 'v2rayn',
     recommended: false,
     downloadUrl: 'https://github.com/2dust/v2rayN/releases',
     tutorialUrl: '#'
   },
   {
+    name: 'Hiddify',
+    platform: 'windows',
+    description: '跨平台通用代理客户端，界面简单，适合新手和 sing-box/Xray 节点。',
+    features: ['跨平台', '自动选择', 'TUN 模式'],
+    format: 'singbox',
+    recommended: false,
+    downloadUrl: 'https://github.com/hiddify/hiddify-app/releases',
+    tutorialUrl: '#'
+  },
+  {
     name: 'Clash for Windows',
     platform: 'windows',
-    description: '经典的 Clash 客户端，稳定可靠（已停止更新，建议改用 Clash Verge）。',
-    features: ['Clash 规则', 'TUN 模式', '配置管理'],
+    description: '经典 Clash 客户端，已停止维护，仅建议兼容旧配置时使用。',
+    features: ['旧版客户端', '规则分流', '归档版本'],
+    format: 'clash',
     recommended: false,
     downloadUrl: 'https://archive.org/download/clash_for_windows_pkg/',
     tutorialUrl: '#'
   },
   // macOS
   {
-    name: 'ClashX Pro',
+    name: 'Clash Verge Rev',
     platform: 'macos',
-    description: 'macOS 上最受欢迎的 Clash 客户端，支持增强模式。',
-    features: ['增强模式', '菜单栏', '自动更新'],
+    description: '现代化 macOS 桌面客户端，支持 Apple Silicon 与 Intel。',
+    features: ['规则分流', 'TUN 模式', '跨平台'],
+    format: 'clashmeta',
     recommended: true,
-    downloadUrl: 'https://install.appcenter.ms/users/clashx/apps/clashx-pro/distribution_groups/public',
+    downloadUrl: 'https://github.com/clash-verge-rev/clash-verge-rev/releases',
     tutorialUrl: '#'
   },
   {
-    name: 'Clash Verge',
+    name: 'Hiddify',
     platform: 'macos',
-    description: '跨平台的现代化 Clash 客户端。',
-    features: ['Clash Meta', '美观界面', '跨平台'],
+    description: '跨平台通用代理客户端，适合想要简单导入和自动选择节点的用户。',
+    features: ['跨平台', '自动选择', 'TUN 模式'],
+    format: 'singbox',
     recommended: false,
-    downloadUrl: 'https://github.com/clash-verge-rev/clash-verge-rev/releases',
+    downloadUrl: 'https://github.com/hiddify/hiddify-app/releases',
+    tutorialUrl: '#'
+  },
+  {
+    name: 'sing-box VT',
+    platform: 'macos',
+    description: 'sing-box 官方 Apple 平台客户端，适合使用 sing-box 配置的用户。',
+    features: ['sing-box', 'TUN 模式', 'Apple 平台'],
+    format: 'singbox',
+    recommended: false,
+    downloadUrl: 'https://sing-box.sagernet.org/clients/apple/',
     tutorialUrl: '#'
   },
   {
     name: 'Surge',
     platform: 'macos',
-    description: '专业级网络调试工具，功能强大（付费软件）。',
-    features: ['专业级', '网络调试', 'MitM'],
+    description: '专业级网络调试与代理工具，适合高级用户（付费软件）。',
+    features: ['专业级', '网络调试', '规则分流'],
+    format: 'surge',
     recommended: false,
     downloadUrl: 'https://nssurge.com/',
     tutorialUrl: '#'
   },
   {
-    name: 'V2RayXS',
+    name: 'ClashX Pro',
     platform: 'macos',
-    description: '简洁的 V2Ray 客户端，轻量级。',
-    features: ['轻量级', '简洁', '开源'],
+    description: '老牌 macOS Clash 客户端，适合保留旧使用习惯的用户。',
+    features: ['旧版客户端', '菜单栏', '增强模式'],
+    format: 'clashmeta',
     recommended: false,
-    downloadUrl: 'https://github.com/tzmax/V2RayXS/releases',
+    downloadUrl: 'https://install.appcenter.ms/users/clashx/apps/clashx-pro/distribution_groups/public',
     tutorialUrl: '#'
   },
   // Linux
   {
-    name: 'Clash Verge',
+    name: 'Clash Verge Rev',
     platform: 'linux',
-    description: '支持 Linux 的现代化 Clash 客户端。',
-    features: ['Clash Meta', 'AppImage', 'deb/rpm'],
+    description: 'Linux 桌面首选客户端，提供 deb/rpm/AppImage 安装包。',
+    features: ['图形界面', 'TUN 模式', 'deb/rpm'],
+    format: 'clashmeta',
     recommended: true,
     downloadUrl: 'https://github.com/clash-verge-rev/clash-verge-rev/releases',
     tutorialUrl: '#'
   },
   {
-    name: 'Clash Meta',
+    name: 'Mihomo CLI',
     platform: 'linux',
-    description: '命令行版本的 Clash，适合服务器使用。',
-    features: ['命令行', '轻量级', '服务器'],
+    description: 'Clash Meta 的命令行核心，适合 Linux 服务器、Shell 环境和规则分流。',
+    features: ['命令行', '规则分流', '服务器'],
+    format: 'clashmeta',
     recommended: false,
-    downloadUrl: 'https://github.com/MetaCubeX/mihomo/releases',
+    downloadUrl: '/downloads/mihomo-manager.sh',
+    downloadFileName: 'mihomo-manager.sh',
     tutorialUrl: '#'
   },
   {
-    name: 'Qv2ray',
+    name: 'sing-box CLI',
     platform: 'linux',
-    description: '跨平台的 V2Ray 图形客户端（已停止维护）。',
-    features: ['图形界面', '插件系统', '跨平台'],
+    description: '现代通用代理核心，适合使用 sing-box 配置和新协议的命令行用户。',
+    features: ['命令行', '现代配置', '新协议'],
+    format: 'singbox',
     recommended: false,
-    downloadUrl: 'https://github.com/Qv2ray/Qv2ray/releases',
+    downloadUrl: 'https://github.com/SagerNet/sing-box/releases',
+    tutorialUrl: '#'
+  },
+  {
+    name: 'Xray-core',
+    platform: 'linux',
+    description: 'Xray 官方核心，适合只需要 VLESS/VMess/Trojan/SS 的用户。',
+    features: ['命令行', 'Xray 核心', '轻量级'],
+    format: 'v2rayn',
+    recommended: false,
+    downloadUrl: '/downloads/xray-manager.sh',
+    downloadFileName: 'xray-manager.sh',
+    tutorialUrl: '#'
+  },
+  {
+    name: 'Hiddify',
+    platform: 'linux',
+    description: 'Linux 图形客户端，适合不想手写命令行配置的新手用户。',
+    features: ['图形界面', '自动选择', 'AppImage'],
+    format: 'singbox',
+    recommended: false,
+    downloadUrl: 'https://github.com/hiddify/hiddify-app/releases',
+    tutorialUrl: '#'
+  },
+  {
+    name: 'v2rayN',
+    platform: 'linux',
+    description: '支持 Linux 的图形客户端，适合习惯 V2Ray/Xray 订阅的用户。',
+    features: ['图形界面', 'Xray 核心', 'sing-box 核心'],
+    format: 'v2rayn',
+    recommended: false,
+    downloadUrl: 'https://github.com/2dust/v2rayN/releases',
     tutorialUrl: '#'
   },
   // iOS
   {
     name: 'Shadowrocket',
     platform: 'ios',
-    description: 'iOS 上最流行的代理客户端，功能全面。',
+    description: 'iOS 常用代理客户端，兼容性好，适合多数用户（付费软件）。',
     features: ['多协议', '规则分流', '按需连接'],
+    format: 'shadowrocket',
     recommended: true,
     downloadUrl: 'https://apps.apple.com/app/shadowrocket/id932747118',
+    tutorialUrl: '#'
+  },
+  {
+    name: 'Hiddify',
+    platform: 'ios',
+    description: '免费跨平台客户端，适合希望简单导入订阅的新手用户。',
+    features: ['免费', '跨平台', '自动选择'],
+    format: 'singbox',
+    recommended: false,
+    downloadUrl: 'https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532',
+    tutorialUrl: '#'
+  },
+  {
+    name: 'sing-box VT',
+    platform: 'ios',
+    description: 'sing-box 官方 Apple 平台客户端，适合使用 sing-box 配置。',
+    features: ['sing-box', 'TUN 模式', '免费'],
+    format: 'singbox',
+    recommended: false,
+    downloadUrl: 'https://apps.apple.com/us/app/sing-box-vt/id6673731168',
     tutorialUrl: '#'
   },
   {
@@ -501,6 +598,7 @@ const clients = [
     platform: 'ios',
     description: '功能强大的网络工具，支持复杂规则。',
     features: ['脚本支持', '规则分流', 'MitM'],
+    format: 'quantumultx',
     recommended: false,
     downloadUrl: 'https://apps.apple.com/app/quantumult-x/id1443988620',
     tutorialUrl: '#'
@@ -510,6 +608,7 @@ const clients = [
     platform: 'ios',
     description: '专业级网络调试工具（付费软件）。',
     features: ['专业级', '网络调试', 'MitM'],
+    format: 'surge',
     recommended: false,
     downloadUrl: 'https://apps.apple.com/app/surge-5/id1442620678',
     tutorialUrl: '#'
@@ -519,6 +618,7 @@ const clients = [
     platform: 'ios',
     description: '功能强大的代理工具，支持脚本。',
     features: ['脚本支持', '规则分流', '插件系统'],
+    format: 'shadowrocket',
     recommended: false,
     downloadUrl: 'https://apps.apple.com/app/loon/id1373567447',
     tutorialUrl: '#'
@@ -527,8 +627,9 @@ const clients = [
   {
     name: 'Clash Meta for Android',
     platform: 'android',
-    description: 'Android 上的 Clash Meta 客户端。',
+    description: 'Android 上的 Clash Meta/Mihomo 客户端，适合规则分流用户。',
     features: ['Clash Meta', '规则分流', '自动更新'],
+    format: 'clashmeta',
     recommended: true,
     downloadUrl: 'https://github.com/MetaCubeX/ClashMetaForAndroid/releases',
     tutorialUrl: '#'
@@ -536,10 +637,41 @@ const clients = [
   {
     name: 'v2rayNG',
     platform: 'android',
-    description: 'Android 上的 V2Ray 客户端。',
+    description: 'Android 上的 V2Ray/Xray 客户端，轻量稳定。',
     features: ['多协议', '轻量级', '订阅管理'],
+    format: 'v2rayn',
     recommended: false,
     downloadUrl: 'https://github.com/2dust/v2rayNG/releases',
+    tutorialUrl: '#'
+  },
+  {
+    name: 'Hiddify',
+    platform: 'android',
+    description: '免费跨平台客户端，适合新手导入订阅后直接使用。',
+    features: ['免费', '跨平台', '自动选择'],
+    format: 'singbox',
+    recommended: false,
+    downloadUrl: 'https://github.com/hiddify/hiddify-app/releases',
+    tutorialUrl: '#'
+  },
+  {
+    name: 'NekoBox for Android',
+    platform: 'android',
+    description: '基于 sing-box 的 Android 通用代理客户端，适合进阶用户。',
+    features: ['sing-box', '多协议', '订阅管理'],
+    format: 'singbox',
+    recommended: false,
+    downloadUrl: 'https://github.com/MatsuriDayo/NekoBoxForAndroid/releases',
+    tutorialUrl: '#'
+  },
+  {
+    name: 'FlClash',
+    platform: 'android',
+    description: '基于 Clash Meta 的多平台客户端，Android 上界面简洁。',
+    features: ['Clash Meta', '规则分流', '跨平台'],
+    format: 'clashmeta',
+    recommended: false,
+    downloadUrl: 'https://github.com/chen08209/FlClash/releases',
     tutorialUrl: '#'
   },
   {
@@ -547,17 +679,9 @@ const clients = [
     platform: 'android',
     description: '支持 Surge 配置的 Android 客户端。',
     features: ['Surge 配置', '规则分流', '美观界面'],
+    format: 'surge',
     recommended: false,
     downloadUrl: 'https://github.com/getsurfboard/surfboard/releases',
-    tutorialUrl: '#'
-  },
-  {
-    name: 'SagerNet',
-    platform: 'android',
-    description: '基于 sing-box 的通用代理工具箱（已停止维护，改用 sing-box）。',
-    features: ['多协议', '插件系统', '开源'],
-    recommended: false,
-    downloadUrl: 'https://github.com/SagerNet/SagerNet/releases',
     tutorialUrl: '#'
   }
 ]
@@ -617,16 +741,21 @@ const tutorials = {
     step1: `
       <ol>
         <li>点击下载按钮，前往 GitHub Releases 页面</li>
-        <li>下载 <code>v2rayN-With-Core.zip</code>（包含核心文件）</li>
-        <li>解压到任意目录（建议：<code>C:\\Program Files\\v2rayN</code>）</li>
-        <li>运行 <code>v2rayN.exe</code></li>
-        <li>首次运行会在系统托盘显示图标</li>
+        <li>根据系统下载对应版本：
+          <ul>
+            <li>Windows：<code>v2rayN-With-Core.zip</code></li>
+            <li>Linux：<code>v2rayN-linux-64.deb</code> 或 Linux 压缩包</li>
+            <li>macOS：选择 macOS 对应压缩包或安装包</li>
+          </ul>
+        </li>
+        <li>Windows 解压后运行 <code>v2rayN.exe</code>；Linux/macOS 按 Release 页面说明安装后启动</li>
+        <li>首次运行可能会在托盘或菜单栏显示图标</li>
       </ol>
     `,
     step2: `
       <ol>
-        <li>右键点击系统托盘的 v2rayN 图标</li>
-        <li>选择 <strong>"订阅分组" → "订阅分组设置"</strong></li>
+        <li>打开 v2rayN 主界面或右键托盘图标</li>
+        <li>进入 <strong>"订阅分组" → "订阅分组设置"</strong></li>
         <li>点击 <strong>"添加"</strong> 按钮</li>
         <li>填写信息：
           <ul>
@@ -635,7 +764,7 @@ const tutorials = {
           </ul>
         </li>
         <li>点击 <strong>"确定"</strong> 保存</li>
-        <li>右键托盘图标，选择 <strong>"订阅分组" → "更新全部订阅"</strong></li>
+        <li>返回主界面，选择 <strong>"订阅分组" → "更新全部订阅"</strong></li>
       </ol>
     `,
     step3: `
@@ -782,29 +911,27 @@ const tutorials = {
       </div>
     `
   },
-  'Clash Meta': {
+  'Mihomo CLI': {
     step1: `
       <ol>
-        <li>点击下载按钮，前往 GitHub Releases 页面</li>
-        <li>下载对应系统的版本：
-          <ul>
-            <li>Linux: <code>mihomo-linux-amd64-xxx.gz</code></li>
-            <li>其他系统请选择对应架构的文件</li>
-          </ul>
+        <li>点击下载按钮，下载 <code>mihomo-manager.sh</code> 管理脚本</li>
+        <li>上传到 Linux 服务器后执行：
+          <pre><code>chmod +x mihomo-manager.sh
+sudo ./mihomo-manager.sh</code></pre>
         </li>
-        <li>解压文件：<code>gunzip mihomo-linux-amd64-xxx.gz</code></li>
-        <li>添加执行权限：<code>chmod +x mihomo-linux-amd64-xxx</code></li>
-        <li>移动到系统路径：<code>sudo mv mihomo-linux-amd64-xxx /usr/local/bin/mihomo</code></li>
+        <li>进入菜单后选择 <strong>1) 安装 Mihomo</strong>；也可以直接执行 <code>sudo ./mihomo-manager.sh install</code></li>
+        <li>脚本会自动识别系统架构、下载 Mihomo、创建 systemd 服务和示例配置</li>
+        <li>国内访问 GitHub 慢时，脚本默认优先使用内置加速地址，低速会自动切换下一个地址</li>
       </ol>
     `,
     step2: `
       <ol>
-        <li>创建配置目录：<code>mkdir -p ~/.config/mihomo</code></li>
-        <li>下载订阅配置到本地：
-          <pre><code>wget -O ~/.config/mihomo/config.yaml "您的订阅链接"</code></pre>
+        <li>在订阅管理页选择 <strong>Clash Meta/Mihomo</strong> 格式并复制订阅链接</li>
+        <li>使用脚本更新订阅：
+          <pre><code>sudo ./mihomo-manager.sh update "您的订阅链接"</code></pre>
         </li>
-        <li>或者手动创建配置文件，将订阅内容保存到 <code>~/.config/mihomo/config.yaml</code></li>
-        <li>验证配置文件格式正确</li>
+        <li>脚本会保存订阅链接、校验配置，并自动备份旧配置</li>
+        <li>以后更新可直接执行：<code>sudo ./mihomo-manager.sh update</code></li>
       </ol>
       <div class="tip-box">
         <strong>提示：</strong>订阅链接需要用引号包裹，避免特殊字符导致命令错误。
@@ -812,11 +939,14 @@ const tutorials = {
     `,
     step3: `
       <ol>
-        <li>启动 Clash Meta：<code>mihomo -d ~/.config/mihomo</code></li>
+        <li>启动服务：<code>sudo ./mihomo-manager.sh start</code></li>
+        <li>启用开机自启：<code>sudo ./mihomo-manager.sh enable</code></li>
+        <li>一键验证是否可用：<code>sudo ./mihomo-manager.sh verify</code></li>
         <li>默认监听端口：
           <ul>
-            <li>HTTP 代理：7890</li>
-            <li>SOCKS5 代理：7891</li>
+            <li>Mixed/HTTP 代理：7890</li>
+            <li>HTTP 代理：7891</li>
+            <li>SOCKS5 代理：7892</li>
             <li>控制面板：9090</li>
           </ul>
         </li>
@@ -824,17 +954,174 @@ const tutorials = {
           <pre><code>export http_proxy=http://127.0.0.1:7890
 export https_proxy=http://127.0.0.1:7890</code></pre>
         </li>
-        <li>测试连接：<code>curl -I https://www.google.com</code></li>
-        <li>后台运行：<code>nohup mihomo -d ~/.config/mihomo &gt; /dev/null 2&gt;&1 &</code></li>
+        <li>查看状态：<code>sudo ./mihomo-manager.sh status</code></li>
+        <li>查看日志：<code>sudo ./mihomo-manager.sh logs</code></li>
       </ol>
       <div class="tip-box">
         <strong>提示：</strong>
         <ul>
           <li>可以访问 <code>http://127.0.0.1:9090/ui</code> 使用 Web 控制面板</li>
-          <li>建议使用 systemd 服务管理，实现开机自启</li>
-          <li>定期更新订阅：重新下载配置文件并重启服务</li>
+          <li>默认不会写入全局系统代理，避免服务停止时影响系统下载</li>
+          <li>需要写入环境代理时执行：<code>sudo ./mihomo-manager.sh proxy on</code></li>
         </ul>
       </div>
+    `
+  },
+  'sing-box CLI': {
+    step1: `
+      <ol>
+        <li>点击下载按钮，前往 sing-box Releases 页面</li>
+        <li>根据架构下载 Linux 压缩包：
+          <ul>
+            <li><code>sing-box-x.x.x-linux-amd64.tar.gz</code>：x86_64 服务器</li>
+            <li><code>sing-box-x.x.x-linux-arm64.tar.gz</code>：ARM64 服务器</li>
+          </ul>
+        </li>
+        <li>解压并安装：
+          <pre><code>tar -xzf sing-box-*.tar.gz
+sudo install -m 755 sing-box-*/sing-box /usr/local/bin/sing-box</code></pre>
+        </li>
+        <li>检查版本：<code>sing-box version</code></li>
+      </ol>
+    `,
+    step2: `
+      <ol>
+        <li>创建配置目录：<code>mkdir -p ~/.config/sing-box</code></li>
+        <li>在订阅管理页选择 <strong>Sing-box</strong> 格式并复制链接</li>
+        <li>下载配置：
+          <pre><code>wget -O ~/.config/sing-box/config.json "您的 Sing-box 订阅链接"</code></pre>
+        </li>
+        <li>检查配置：<code>sing-box check -c ~/.config/sing-box/config.json</code></li>
+      </ol>
+    `,
+    step3: `
+      <ol>
+        <li>启动：<code>sing-box run -c ~/.config/sing-box/config.json</code></li>
+        <li>如配置内启用了 TUN，需要 root 或 <code>CAP_NET_ADMIN</code> 权限</li>
+        <li>仅需要本机代理时，可使用配置中的 HTTP/SOCKS 监听端口</li>
+        <li>测试连接：<code>curl -I https://www.google.com</code></li>
+      </ol>
+      <div class="tip-box">
+        <strong>提示：</strong>生产环境建议写成 systemd 服务，方便开机自启和日志管理。
+      </div>
+    `
+  },
+  'Xray-core': {
+    step1: `
+      <ol>
+        <li>点击下载按钮，下载 <code>xray-manager.sh</code> 管理脚本</li>
+        <li>上传到 Linux 服务器后执行：
+          <pre><code>chmod +x xray-manager.sh
+sudo ./xray-manager.sh</code></pre>
+        </li>
+        <li>进入菜单后选择 <strong>1) 安装 Xray-core</strong>；也可以直接执行 <code>sudo ./xray-manager.sh install</code></li>
+        <li>脚本会自动识别架构，优先使用内置加速地址下载 Xray-core，并创建 systemd 服务</li>
+        <li>检查状态：<code>sudo ./xray-manager.sh status</code></li>
+      </ol>
+    `,
+    step2: `
+      <ol>
+        <li>配置文件位置：<code>/usr/local/etc/xray/config.json</code></li>
+        <li>编辑配置：<code>sudo ./xray-manager.sh edit</code></li>
+        <li>Xray-core 通常使用单节点 JSON 配置；<code>format=clashmeta</code> 链接请使用 Mihomo CLI，V2Ray/v2rayN 分享链接订阅也不能被 Xray-core 直接加载</li>
+        <li>如果已有完整 Xray JSON 配置链接，也可以执行：
+          <pre><code>sudo ./xray-manager.sh update "您的 Xray JSON 配置链接"</code></pre>
+        </li>
+        <li>验证配置：<code>sudo ./xray-manager.sh test</code></li>
+      </ol>
+      <div class="tip-box">
+        <strong>提示：</strong>Xray-core 更适合熟悉 JSON 配置的用户；需要直接使用平台订阅或规则分流时优先用 Mihomo 或 sing-box。
+      </div>
+    `,
+    step3: `
+      <ol>
+        <li>启动服务：<code>sudo ./xray-manager.sh start</code></li>
+        <li>启用开机自启：<code>sudo ./xray-manager.sh enable</code></li>
+        <li>一键验证是否可用：<code>sudo ./xray-manager.sh verify</code></li>
+        <li>查看日志：<code>sudo ./xray-manager.sh logs</code></li>
+        <li>默认示例入口端口：HTTP <code>10809</code>，SOCKS <code>10808</code></li>
+        <li>根据配置中的 inbound 端口设置系统代理或应用代理</li>
+        <li>测试连接：<code>curl -I https://www.google.com</code></li>
+      </ol>
+    `
+  },
+  'Hiddify': {
+    step1: `
+      <ol>
+        <li>点击下载按钮，前往 Hiddify 官方下载页或应用商店</li>
+        <li>按当前系统下载安装包：
+          <ul>
+            <li>Windows：便携版或安装版</li>
+            <li>macOS：<code>.pkg</code> 安装包</li>
+            <li>Linux：<code>.AppImage</code> 或对应发行版包</li>
+            <li>iOS / Android：从 App Store、Google Play 或 GitHub Releases 安装</li>
+          </ul>
+        </li>
+        <li>安装完成后打开 Hiddify</li>
+      </ol>
+    `,
+    step2: `
+      <ol>
+        <li>复制您的订阅链接</li>
+        <li>在 Hiddify 中点击添加配置或导入配置</li>
+        <li>粘贴订阅链接并保存</li>
+        <li>等待客户端拉取节点列表</li>
+      </ol>
+    `,
+    step3: `
+      <ol>
+        <li>选择自动节点或手动选择一个节点</li>
+        <li>点击连接开关</li>
+        <li>桌面端可按需开启系统代理或 TUN 模式</li>
+        <li>打开浏览器测试连接</li>
+      </ol>
+    `
+  },
+  'sing-box VT': {
+    step1: `
+      <ol>
+        <li>点击下载按钮，打开 sing-box Apple 平台客户端页面</li>
+        <li>根据页面提示从 App Store / TestFlight 安装</li>
+        <li>安装完成后打开 sing-box VT</li>
+      </ol>
+    `,
+    step2: `
+      <ol>
+        <li>在订阅管理页选择 <strong>Sing-box</strong> 格式并复制链接</li>
+        <li>在 sing-box VT 中新建远程配置</li>
+        <li>粘贴订阅链接并更新配置</li>
+      </ol>
+    `,
+    step3: `
+      <ol>
+        <li>选中刚导入的配置</li>
+        <li>启动连接，首次使用按系统提示允许 VPN/TUN 权限</li>
+        <li>打开浏览器测试连接</li>
+      </ol>
+    `
+  },
+  'NekoBox for Android': {
+    step1: `
+      <ol>
+        <li>点击下载按钮，前往 GitHub Releases 页面</li>
+        <li>下载与手机 ABI 对应的 apk，通常选择 <code>arm64-v8a</code> 或 universal</li>
+        <li>允许安装未知来源应用并完成安装</li>
+      </ol>
+    `,
+    step2: `
+      <ol>
+        <li>打开 NekoBox for Android</li>
+        <li>添加订阅或从剪贴板导入订阅链接</li>
+        <li>建议使用 <strong>Sing-box</strong> 格式订阅</li>
+        <li>保存后更新订阅</li>
+      </ol>
+    `,
+    step3: `
+      <ol>
+        <li>选择一个节点</li>
+        <li>点击连接按钮，首次使用允许创建 VPN 连接</li>
+        <li>打开浏览器测试连接</li>
+      </ol>
     `
   },
   'v2rayNG': {
@@ -1429,7 +1716,8 @@ const recommendedClient = computed(() => {
 
 const currentTutorial = computed(() => {
   if (!currentClient.value) return defaultTutorial
-  return tutorials[currentClient.value.name] || defaultTutorial
+  const tutorialName = tutorialAliases[currentClient.value.name] || currentClient.value.name
+  return tutorials[tutorialName] || defaultTutorial
 })
 
 const subscriptionLink = computed(() => subscriptionStore.link || '')
@@ -1499,6 +1787,9 @@ function detectPlatform() {
 function getClientReleaseLabel(client) {
   const url = client?.downloadUrl || ''
 
+  if (url.startsWith('/')) {
+    return '本地下载'
+  }
   if (url.includes('apps.apple.com')) {
     return 'App Store'
   }
@@ -1517,8 +1808,20 @@ function getClientReleaseLabel(client) {
 function getClientBadges(client) {
   const badges = []
 
-  if (legacyClientNames.has(client.name)) {
+  if (client.format && clientFormatLabels[client.format]) {
+    badges.push({ label: `订阅：${clientFormatLabels[client.format]}`, type: 'success' })
+  }
+
+  if (cliClientNames.has(client.name)) {
+    badges.push({ label: '命令行', type: 'info' })
+  }
+
+  if (archivedClientNames.has(client.name)) {
     badges.push({ label: '已停更', type: 'warning' })
+  }
+
+  if (legacyClientNames.has(client.name)) {
+    badges.push({ label: '旧版', type: 'warning' })
   }
 
   if (paidClientNames.has(client.name)) {
@@ -1549,8 +1852,18 @@ function updateSubscriptionUnavailableMessage(error = null) {
   subscriptionUnavailableMessage.value = '订阅链接暂时无法加载，您可以先安装客户端，稍后再来复制订阅链接。'
 }
 
-function openExternal(url) {
+function openExternal(url, downloadFileName = '') {
   if (typeof window === 'undefined' || !url) {
+    return
+  }
+
+  if (url.startsWith('/') && downloadFileName) {
+    const link = document.createElement('a')
+    link.href = url
+    link.download = downloadFileName
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
     return
   }
 
@@ -1596,8 +1909,12 @@ function downloadClient(client) {
     return
   }
 
-  openExternal(client.downloadUrl)
-  ElMessage.success(`已为您打开 ${client.name} 下载页`)
+  openExternal(client.downloadUrl, client.downloadFileName)
+  if (client.downloadUrl.startsWith('/')) {
+    ElMessage.success(`已开始下载 ${client.name}`)
+  } else {
+    ElMessage.success(`已为您打开 ${client.name} 下载页`)
+  }
 }
 
 function showTutorial(client) {

@@ -34,6 +34,16 @@ type AccessState struct {
 	EffectiveTrafficUsed  int64
 }
 
+// NodeProvisionResult summarizes proactive proxy provisioning for a node.
+type NodeProvisionResult struct {
+	NodeID        int64
+	ScannedUsers  int
+	EntitledUsers int
+	Created       int
+	Existing      int
+	Skipped       int
+}
+
 // Service provides user entitlement and node assignment logic.
 type Service struct {
 	userRepo       repository.UserRepository
@@ -421,6 +431,90 @@ func (s *Service) GetSubscriptionProxies(ctx context.Context, userID int64) ([]*
 	}
 
 	return result, state, nil
+}
+
+// ProvisionNodeProxies proactively creates default proxies for all currently entitled portal users on a node.
+func (s *Service) ProvisionNodeProxies(ctx context.Context, nodeID int64) (*NodeProvisionResult, error) {
+	result := &NodeProvisionResult{NodeID: nodeID}
+	if s == nil || !s.canAutoProvisionDefaultProxy() || s.userRepo == nil {
+		return result, nil
+	}
+	if nodeID <= 0 {
+		return result, errors.NewValidationError("invalid node id", fmt.Sprintf("%d", nodeID))
+	}
+
+	nodeModel, err := s.nodeRepo.GetByID(ctx, nodeID)
+	if err != nil {
+		return result, err
+	}
+	if nodeModel.Status != repository.NodeStatusOnline {
+		result.Skipped++
+		return result, nil
+	}
+
+	const pageLimit = 200
+	for offset := 0; ; offset += pageLimit {
+		users, listErr := s.userRepo.List(ctx, pageLimit, offset)
+		if listErr != nil {
+			return result, listErr
+		}
+		if len(users) == 0 {
+			break
+		}
+
+		for _, user := range users {
+			if user == nil {
+				continue
+			}
+			result.ScannedUsers++
+			if !user.Enabled || strings.TrimSpace(user.Role) != "user" {
+				result.Skipped++
+				continue
+			}
+
+			if _, accessErr := s.EvaluateExistingAccess(ctx, user.ID); accessErr != nil {
+				result.Skipped++
+				continue
+			}
+			result.EntitledUsers++
+
+			existed := false
+			existing, proxyErr := s.proxyRepo.GetByUserID(ctx, user.ID, 10000, 0)
+			if proxyErr != nil {
+				return result, proxyErr
+			}
+			for _, proxyModel := range enabledOnly(existing) {
+				if proxyModel != nil && proxyModel.NodeID != nil && *proxyModel.NodeID == nodeID {
+					existed = true
+					break
+				}
+			}
+			if existed {
+				result.Existing++
+				continue
+			}
+
+			proxyModel, provisionErr := s.ensureAutoProvisionedProxyOnNode(ctx, user.ID, nodeID)
+			if provisionErr != nil {
+				s.logger.Warn("failed to provision proxy on newly available node",
+					logger.Err(provisionErr),
+					logger.UserID(user.ID),
+					logger.F("node_id", nodeID),
+				)
+				result.Skipped++
+				continue
+			}
+			if proxyModel != nil {
+				result.Created++
+			}
+		}
+
+		if len(users) < pageLimit {
+			break
+		}
+	}
+
+	return result, nil
 }
 
 // GetAccessibleProxy returns a specific accessible proxy for a user.

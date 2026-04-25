@@ -771,80 +771,19 @@ exit 1
 	return nil
 }
 
-// installXray installs Xray using the official script.
+// installXray installs Xray using the official script first, then mirror-backed zip downloads.
 func (s *RemoteDeployService) installXray(ctx context.Context, client *ssh.Client, logBuffer *bytes.Buffer) error {
 	script := `
 set -e
 
-download() {
-    local url="$1"
-    local output="$2"
-    if command -v curl >/dev/null 2>&1; then
-        curl -fsSL --connect-timeout 15 --max-time 180 --retry 2 --retry-delay 2 -o "$output" "$url"
-        return
-    fi
-    if command -v wget >/dev/null 2>&1; then
-        wget --timeout=30 --tries=2 -O "$output" "$url"
-        return
-    fi
-    echo "错误: 未找到 curl 或 wget"
-    exit 1
-}
+` + xrayInstallShellFunctions() + `
 
 # 检查 Xray 是否已安装
 if command -v xray &> /dev/null; then
     echo "Xray 已安装，跳过"
     xray version | head -n 1
 else
-    echo "正在安装 Xray..."
-
-    # 尝试使用官方安装脚本
-    if download "https://github.com/XTLS/Xray-install/raw/main/install-release.sh" /tmp/install-xray.sh; then
-        chmod +x /tmp/install-xray.sh
-        bash /tmp/install-xray.sh install
-        rm -f /tmp/install-xray.sh
-    else
-        echo "官方脚本下载失败，尝试手动安装..."
-        
-        # 检测系统架构
-        ARCH=$(uname -m)
-        case "$ARCH" in
-            x86_64)
-                XRAY_ARCH="linux-64"
-                ;;
-            aarch64|arm64)
-                XRAY_ARCH="linux-arm64-v8a"
-                ;;
-            armv7l)
-                XRAY_ARCH="linux-arm32-v7a"
-                ;;
-            *)
-                echo "错误: 不支持的架构: $ARCH"
-                exit 1
-                ;;
-        esac
-
-        XRAY_URL="https://github.com/XTLS/Xray-core/releases/latest/download/Xray-${XRAY_ARCH}.zip"
-
-        echo "下载 Xray for ${XRAY_ARCH}..."
-        download "$XRAY_URL" /tmp/xray.zip
-
-        echo "解压并安装..."
-        mkdir -p /tmp/xray
-        unzip -o /tmp/xray.zip -d /tmp/xray >/dev/null
-        mv /tmp/xray/xray /usr/local/bin/
-        chmod +x /usr/local/bin/xray
-        rm -rf /tmp/xray /tmp/xray.zip
-    fi
-    
-    # 验证安装
-    if command -v xray &> /dev/null; then
-        echo "✓ Xray 安装成功"
-        xray version | head -n 1
-    else
-        echo "✗ Xray 安装失败"
-        exit 1
-    fi
+    install_xray_with_mirrors
 fi
 
 # 创建 Xray 配置目录
@@ -859,6 +798,171 @@ echo "✓ Xray 目录创建完成"
 
 	logBuffer.WriteString("✓ Xray 安装完成\n")
 	return nil
+}
+
+func xrayInstallShellFunctions() string {
+	return `download_file() {
+    local url="$1"
+    local output="$2"
+    rm -f "$output"
+    echo "尝试下载: $url"
+    if command -v curl >/dev/null 2>&1; then
+        if curl -fL --connect-timeout 10 --max-time 120 --retry 1 --retry-delay 2 -o "$output" "$url"; then
+            return 0
+        fi
+    elif command -v wget >/dev/null 2>&1; then
+        if wget --timeout=25 --tries=2 -O "$output" "$url"; then
+            return 0
+        fi
+    else
+        echo "错误: 未找到 curl 或 wget"
+        return 127
+    fi
+    rm -f "$output"
+    return 1
+}
+
+github_url_candidates() {
+    local github_url="$1"
+    local prefixes="${XRAY_GITHUB_PROXY_PREFIXES:-https://gh.llkk.cc https://gh-proxy.com https://ghproxy.net https://hub.gitmirror.com}"
+    local proxy_first="${XRAY_GITHUB_PROXY_FIRST:-1}"
+    local prefix
+
+    if [ "$proxy_first" != "1" ]; then
+        echo "$github_url"
+    fi
+
+    for prefix in $prefixes; do
+        prefix="${prefix%/}"
+        if [ -n "$prefix" ]; then
+            echo "${prefix}/${github_url}"
+        fi
+    done
+
+    if [ "$proxy_first" = "1" ]; then
+        echo "$github_url"
+    fi
+}
+
+download_github_asset() {
+    local github_url="$1"
+    local output="$2"
+    local url
+
+    while IFS= read -r url; do
+        if [ -z "$url" ]; then
+            continue
+        fi
+        if download_file "$url" "$output"; then
+            echo "下载成功: $url"
+            return 0
+        fi
+        echo "下载失败: $url"
+    done <<EOF
+$(github_url_candidates "$github_url")
+EOF
+
+    return 1
+}
+
+install_xray_from_zip() {
+    local arch
+    local xray_arch
+    local xray_url
+    local tmpdir
+
+    arch=$(uname -m)
+    case "$arch" in
+        x86_64)
+            xray_arch="linux-64"
+            ;;
+        aarch64|arm64)
+            xray_arch="linux-arm64-v8a"
+            ;;
+        armv7l)
+            xray_arch="linux-arm32-v7a"
+            ;;
+        *)
+            echo "错误: 不支持的架构: $arch"
+            return 1
+            ;;
+    esac
+
+    if ! tmpdir=$(mktemp -d); then
+        echo "错误: 无法创建临时目录"
+        return 1
+    fi
+    xray_url="https://github.com/XTLS/Xray-core/releases/latest/download/Xray-${xray_arch}.zip"
+
+    echo "下载 Xray for ${xray_arch}..."
+    if ! download_github_asset "$xray_url" "$tmpdir/xray.zip"; then
+        rm -rf "$tmpdir"
+        return 1
+    fi
+
+    echo "解压并安装 Xray..."
+    if ! unzip -o "$tmpdir/xray.zip" -d "$tmpdir" >/dev/null; then
+        echo "错误: Xray 压缩包解压失败"
+        rm -rf "$tmpdir"
+        return 1
+    fi
+    if [ ! -f "$tmpdir/xray" ]; then
+        echo "错误: Xray 压缩包中未找到 xray 二进制文件"
+        rm -rf "$tmpdir"
+        return 1
+    fi
+
+    if ! install -m 755 "$tmpdir/xray" /usr/local/bin/xray; then
+        echo "错误: 无法安装 xray 二进制文件"
+        rm -rf "$tmpdir"
+        return 1
+    fi
+    mkdir -p /usr/local/share/xray
+    if [ -f "$tmpdir/geoip.dat" ]; then
+        install -m 644 "$tmpdir/geoip.dat" /usr/local/share/xray/geoip.dat
+    fi
+    if [ -f "$tmpdir/geosite.dat" ]; then
+        install -m 644 "$tmpdir/geosite.dat" /usr/local/share/xray/geosite.dat
+    fi
+    rm -rf "$tmpdir"
+}
+
+run_official_xray_installer() {
+    local install_script="/tmp/install-xray.sh"
+    local install_script_url="https://github.com/XTLS/Xray-install/raw/main/install-release.sh"
+
+    if ! download_github_asset "$install_script_url" "$install_script"; then
+        echo "官方安装脚本下载失败，转为 zip 包安装"
+        return 1
+    fi
+
+    chmod +x "$install_script"
+    if TERM="${TERM:-dumb}" bash "$install_script" install; then
+        rm -f "$install_script"
+        return 0
+    fi
+
+    rm -f "$install_script"
+    echo "官方安装脚本执行失败，转为 zip 包安装"
+    return 1
+}
+
+install_xray_with_mirrors() {
+    echo "正在安装 Xray..."
+
+    if ! run_official_xray_installer; then
+        install_xray_from_zip
+    fi
+
+    if command -v xray &> /dev/null; then
+        echo "✓ Xray 安装成功"
+        xray version | head -n 1
+    else
+        echo "✗ Xray 安装失败"
+        return 1
+    fi
+}
+`
 }
 
 // stopOldAgentProcesses 停止所有旧的 Agent 进程
@@ -1308,12 +1412,11 @@ fi
 
 echo -e "${GREEN}✓ 依赖安装完成${NC}"
 
+%s
+
 # 安装 Xray
 if ! command -v xray &> /dev/null; then
-    echo "正在安装 Xray..."
-    if curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh -o /tmp/install-xray.sh 2>&1; then
-        bash /tmp/install-xray.sh install
-        rm -f /tmp/install-xray.sh
+    if install_xray_with_mirrors; then
         echo -e "${GREEN}✓ Xray 安装完成${NC}"
     else
         echo -e "${YELLOW}警告: Xray 安装失败，请手动安装${NC}"
@@ -1433,7 +1536,7 @@ echo "  查看日志: journalctl -u vpanel-agent -f"
 echo "  重启服务: systemctl restart vpanel-agent"
 echo "  停止服务: systemctl stop vpanel-agent"
 echo ""
-`, panelURL, nodeToken, agentPort)
+`, panelURL, nodeToken, xrayInstallShellFunctions(), agentPort)
 }
 
 // TestConnection tests SSH connection without deploying.

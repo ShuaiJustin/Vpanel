@@ -21,6 +21,7 @@ import (
 	"v/internal/agent"
 	"v/internal/api/middleware"
 	"v/internal/cache"
+	"v/internal/entitlement"
 	"v/internal/logger"
 	"v/internal/node"
 	"v/pkg/errors"
@@ -31,6 +32,7 @@ type NodeHandler struct {
 	nodeService     *node.Service
 	groupService    *node.GroupService
 	deployService   *node.RemoteDeployService
+	entitlementSvc  *entitlement.Service
 	recoveryTracker *NodeRecoveryTracker
 	httpClient      *http.Client
 	cache           cache.Cache
@@ -60,6 +62,38 @@ func NewNodeHandler(nodeService *node.Service, groupService *node.GroupService, 
 func (h *NodeHandler) WithCache(c cache.Cache) *NodeHandler {
 	h.cache = c
 	return h
+}
+
+// WithEntitlementService enables proactive proxy provisioning after successful node deployment.
+func (h *NodeHandler) WithEntitlementService(svc *entitlement.Service) *NodeHandler {
+	h.entitlementSvc = svc
+	return h
+}
+
+func provisionNodeProxiesAfterDeploy(svc *entitlement.Service, log logger.Logger, nodeID int64) {
+	if svc == nil || nodeID <= 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	result, err := svc.ProvisionNodeProxies(ctx, nodeID)
+	if err != nil {
+		log.Warn("failed to provision proxies for newly deployed node",
+			logger.Err(err),
+			logger.F("node_id", nodeID))
+		return
+	}
+	if result == nil {
+		return
+	}
+	log.Info("provisioned proxies for newly deployed node",
+		logger.F("node_id", result.NodeID),
+		logger.F("scanned_users", result.ScannedUsers),
+		logger.F("entitled_users", result.EntitledUsers),
+		logger.F("created", result.Created),
+		logger.F("existing", result.Existing),
+		logger.F("skipped", result.Skipped))
 }
 
 // NodeResponse represents a node in API responses.
@@ -770,7 +804,6 @@ func (h *NodeHandler) runDiagnosisAsync(n *node.Node) {
 	}
 }
 
-
 // List returns all nodes with optional filtering.
 // GET /api/admin/nodes
 func (h *NodeHandler) List(c *gin.Context) {
@@ -1109,6 +1142,7 @@ func (h *NodeHandler) Create(c *gin.Context) {
 			h.logger.Info("Auto-install completed successfully",
 				logger.F("node_id", nodeID),
 				logger.F("host", host))
+			provisionNodeProxiesAfterDeploy(h.entitlementSvc, h.logger, nodeID)
 		}(n.ID, req.SSH.Host, deployConfig)
 
 		c.JSON(http.StatusCreated, struct {

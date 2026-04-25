@@ -478,7 +478,12 @@
               <el-form-item label="服务器 IP">
                 <el-input
                   v-model="form.ssh_host"
-                  placeholder="服务器 IP 地址"
+                  :placeholder="
+                    normalizeText(form.address)
+                      ? `默认使用 ${normalizeText(form.address)}`
+                      : '默认使用上方节点地址'
+                  "
+                  @input="handleSSHHostInput"
                 />
               </el-form-item>
 
@@ -701,6 +706,8 @@ let latestSuggestionRequestId = 0;
 // SSH 自动安装相关
 const enableAutoInstall = ref(false);
 const testingConnection = ref(false);
+const isSSHHostManuallyEdited = ref(false);
+const isApplyingSSHHostDefault = ref(false);
 const currentTrafficTotal = ref(0);
 const currentTrafficResetAt = ref("");
 
@@ -767,6 +774,41 @@ const rules = {
 
 const normalizeText = (value) =>
   typeof value === "string" ? value.trim() : "";
+
+const getDefaultSSHHost = () => normalizeText(form.address);
+
+const getEffectiveSSHHost = () =>
+  normalizeText(form.ssh_host) || getDefaultSSHHost();
+
+const syncSSHHostWithNodeAddress = () => {
+  if (isEdit.value || !enableAutoInstall.value) return;
+
+  const defaultHost = getDefaultSSHHost();
+  const currentHost = normalizeText(form.ssh_host);
+  if (currentHost && currentHost === defaultHost) {
+    isSSHHostManuallyEdited.value = false;
+  }
+  if (isSSHHostManuallyEdited.value) return;
+
+  if (form.ssh_host !== defaultHost) {
+    isApplyingSSHHostDefault.value = true;
+    form.ssh_host = defaultHost;
+    isApplyingSSHHostDefault.value = false;
+  }
+};
+
+const handleSSHHostInput = () => {
+  if (isApplyingSSHHostDefault.value) return;
+
+  const currentHost = normalizeText(form.ssh_host);
+  if (!currentHost) {
+    isSSHHostManuallyEdited.value = false;
+    syncSSHHostWithNodeAddress();
+    return;
+  }
+
+  isSSHHostManuallyEdited.value = currentHost !== getDefaultSSHHost();
+};
 
 const namingModeLabel = computed(() => {
   if (suggestionLoading.value) return "识别中";
@@ -913,7 +955,7 @@ const summaryChecklist = computed(() => {
   if (
     !isEdit.value &&
     enableAutoInstall.value &&
-    !normalizeText(form.ssh_host)
+    !getEffectiveSSHHost()
   ) {
     return "自动部署已开启，请继续填写服务器 SSH 信息。";
   }
@@ -1349,8 +1391,9 @@ const submitForm = async () => {
 
     // 如果开启了自动安装，添加 SSH 信息
     if (enableAutoInstall.value) {
-      if (!form.ssh_host) {
-        ElMessage.error("请输入服务器 IP");
+      const sshHost = getEffectiveSSHHost();
+      if (!sshHost) {
+        ElMessage.error("请先填写节点地址或服务器 IP");
         return;
       }
       if (form.ssh_auth_type === "password" && !form.ssh_password) {
@@ -1363,7 +1406,7 @@ const submitForm = async () => {
       }
 
       data.ssh = {
-        host: form.ssh_host,
+        host: sshHost,
         port: form.ssh_port,
         username: form.ssh_username,
         password: form.ssh_auth_type === "password" ? form.ssh_password : "",
@@ -1409,8 +1452,9 @@ const copyToken = async () => {
 
 // 测试 SSH 连接
 const testSSHConnection = async () => {
-  if (!form.ssh_host) {
-    ElMessage.error("请输入服务器 IP");
+  const sshHost = getEffectiveSSHHost();
+  if (!sshHost) {
+    ElMessage.error("请先填写节点地址或服务器 IP");
     return;
   }
   if (form.ssh_auth_type === "password" && !form.ssh_password) {
@@ -1425,7 +1469,7 @@ const testSSHConnection = async () => {
   testingConnection.value = true;
   try {
     const res = await nodesApi.testConnection({
-      host: form.ssh_host,
+      host: sshHost,
       port: form.ssh_port,
       username: form.ssh_username,
       password: form.ssh_auth_type === "password" ? form.ssh_password : "",
@@ -1469,6 +1513,13 @@ watch(
       return;
     }
     debouncedSuggestName();
+  },
+);
+
+watch(
+  () => [enableAutoInstall.value, normalizeText(form.address)],
+  () => {
+    syncSSHHostWithNodeAddress();
   },
 );
 

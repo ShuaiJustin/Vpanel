@@ -9,16 +9,18 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"v/internal/config"
+	"v/internal/entitlement"
 	"v/internal/logger"
 	"v/internal/node"
 )
 
 // NodeDeployHandler handles node deployment requests.
 type NodeDeployHandler struct {
-	deployService *node.RemoteDeployService
-	nodeService   *node.Service
-	config        *config.Config
-	logger        logger.Logger
+	deployService  *node.RemoteDeployService
+	nodeService    *node.Service
+	entitlementSvc *entitlement.Service
+	config         *config.Config
+	logger         logger.Logger
 }
 
 // NewNodeDeployHandler creates a new node deploy handler.
@@ -34,6 +36,12 @@ func NewNodeDeployHandler(
 		config:        cfg,
 		logger:        log,
 	}
+}
+
+// WithEntitlementService enables proactive proxy provisioning after successful node deployment.
+func (h *NodeDeployHandler) WithEntitlementService(svc *entitlement.Service) *NodeDeployHandler {
+	h.entitlementSvc = svc
+	return h
 }
 
 // DeployAgentRequest represents a deploy agent request.
@@ -216,6 +224,7 @@ func (h *NodeDeployHandler) DeployAgent(c *gin.Context) {
 	h.logger.Info("Agent deployed successfully",
 		logger.F("node_id", nodeID),
 		logger.F("host", req.Host))
+	provisionNodeProxiesAfterDeploy(h.entitlementSvc, h.logger, nodeID)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

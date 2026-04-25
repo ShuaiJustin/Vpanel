@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/mail"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -128,12 +129,12 @@ func (r *Router) Setup() {
 	r.engine.Use(middleware.CORS(r.config.Server.CORSOrigins))
 	r.engine.Use(middleware.RequestID())
 	r.engine.Use(middleware.ErrorHandler(r.logger)) // 统一错误处理
-	
+
 	// SECURITY: Add CSRF protection for authenticated requests
 	// Note: CSRF middleware will skip GET/HEAD/OPTIONS and unauthenticated requests
 	r.engine.Use(middleware.CSRFTokenProvider()) // Provide CSRF tokens to clients
 	r.engine.Use(middleware.CSRFProtection())    // Validate CSRF tokens on state-changing operations
-	
+
 	// Removed global rate limit - too restrictive for development
 	// r.engine.Use(middleware.RateLimit(100)) // 100 requests per second per IP
 
@@ -142,7 +143,7 @@ func (r *Router) Setup() {
 		MaxMemoryItems: 512,
 		KeyPrefix:      "stats:",
 	})
-	
+
 	// Store cache in router for use by handlers
 	r.cache = statsCache
 
@@ -340,8 +341,9 @@ func (r *Router) Setup() {
 	if ipService != nil {
 		geoService = ipService.GeoService()
 	}
-	nodeHandler := handlers.NewNodeHandler(nodeService, nodeGroupService, nodeDeployService, r.nodeRecoveryTracker, r.logger)
-	
+	nodeHandler := handlers.NewNodeHandler(nodeService, nodeGroupService, nodeDeployService, r.nodeRecoveryTracker, r.logger).
+		WithEntitlementService(r.entitlementService)
+
 	// Add cache support for async diagnosis if available
 	if r.cache != nil {
 		nodeHandler = nodeHandler.WithCache(r.cache)
@@ -350,7 +352,8 @@ func (r *Router) Setup() {
 	nodeGroupHandler := handlers.NewNodeGroupHandler(nodeGroupService, r.logger)
 	nodeHealthHandler := handlers.NewNodeHealthHandler(r.nodeHealthChecker, r.repos.HealthCheck, r.repos.Node, r.logger)
 	nodeStatsHandler := handlers.NewNodeStatsHandler(nodeTrafficService, nodeService, nodeGroupService, r.logger)
-	nodeDeployHandler := handlers.NewNodeDeployHandler(nodeDeployService, nodeService, r.config, r.logger)
+	nodeDeployHandler := handlers.NewNodeDeployHandler(nodeDeployService, nodeService, r.config, r.logger).
+		WithEntitlementService(r.entitlementService)
 	nodeNetworkOptimizationHandler := handlers.NewNodeNetworkOptimizationHandler(r.repos.Node, nodeDeployService, r.nodeRecoveryTracker, r.logger)
 	agentDownloadHandler := handlers.NewAgentDownloadHandler(r.logger)
 	if r.nodeHealthChecker != nil {
@@ -993,17 +996,48 @@ func (r *Router) Setup() {
 			if strings.HasPrefix(c.Request.URL.Path, "/assets/") {
 				c.Header("Cache-Control", "public, max-age=31536000, immutable")
 			}
+			if strings.HasPrefix(c.Request.URL.Path, "/downloads/") {
+				c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+			}
 			c.Next()
 		})
 
 		// Serve static assets (js, css, images, etc.)
 		r.engine.Static("/assets", staticPath+"/assets")
+		r.engine.Static("/downloads", staticPath+"/downloads")
 
-		// Serve favicon
-		r.engine.GET("/favicon.ico", func(c *gin.Context) {
+		serveFaviconSVG := func(c *gin.Context) {
 			c.Header("Cache-Control", "public, max-age=86400")
-			c.File(staticPath + "/favicon.ico")
-		})
+			c.Header("Content-Type", "image/svg+xml")
+			c.File(staticPath + "/favicon.svg")
+		}
+		serveStaticIcon := func(filename, contentType string) gin.HandlerFunc {
+			return func(c *gin.Context) {
+				c.Header("Cache-Control", "public, max-age=86400")
+				c.Header("Content-Type", contentType)
+				c.File(staticPath + "/" + filename)
+			}
+		}
+		serveFaviconICO := func(c *gin.Context) {
+			c.Header("Cache-Control", "public, max-age=86400")
+			icoPath := staticPath + "/favicon.ico"
+			if _, err := os.Stat(icoPath); err == nil {
+				c.File(icoPath)
+				return
+			}
+			c.Header("Content-Type", "image/svg+xml")
+			c.File(staticPath + "/favicon.svg")
+		}
+
+		// Serve favicon files before SPA fallback so browsers do not receive index.html.
+		r.engine.GET("/favicon.svg", serveFaviconSVG)
+		r.engine.HEAD("/favicon.svg", serveFaviconSVG)
+		r.engine.GET("/favicon.ico", serveFaviconICO)
+		r.engine.HEAD("/favicon.ico", serveFaviconICO)
+		r.engine.GET("/favicon-32.png", serveStaticIcon("favicon-32.png", "image/png"))
+		r.engine.HEAD("/favicon-32.png", serveStaticIcon("favicon-32.png", "image/png"))
+		r.engine.GET("/apple-touch-icon.png", serveStaticIcon("apple-touch-icon.png", "image/png"))
+		r.engine.HEAD("/apple-touch-icon.png", serveStaticIcon("apple-touch-icon.png", "image/png"))
 
 		// Serve documentation files
 		r.engine.Static("/docs", "Docs")
@@ -1369,12 +1403,12 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 	portalAuthService := portalauth.NewService(r.repos.User, r.repos.AuthToken)
 	ticketService := ticket.NewService(r.repos.Ticket, r.repos.User)
 	announcementService := announcement.NewService(r.repos.Announcement)
-	
+
 	// Add cache support for announcement service if available
 	if r.cache != nil {
 		announcementService = announcementService.WithCache(r.cache)
 	}
-	
+
 	helpService := help.NewService(r.repos.HelpArticle)
 	portalNodeService := portalnode.NewService(r.repos.Proxy, r.repos.User, r.repos.Node).
 		WithEntitlementService(r.entitlementService)
