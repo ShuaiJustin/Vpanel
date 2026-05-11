@@ -32,7 +32,7 @@ func (g *ShadowrocketGenerator) Generate(proxies []*repository.Proxy, options *G
 		var link string
 		var err error
 
-		switch strings.ToLower(info.Protocol) {
+		switch normalizeProtocolName(info.Protocol) {
 		case ProtocolVMess:
 			link, err = g.generateVMessLink(info)
 		case ProtocolVLESS:
@@ -71,7 +71,7 @@ func (g *ShadowrocketGenerator) FileExtension() string {
 
 // SupportsProtocol checks if Shadowrocket format supports a specific protocol.
 func (g *ShadowrocketGenerator) SupportsProtocol(protocol string) bool {
-	switch strings.ToLower(protocol) {
+	switch normalizeProtocolName(protocol) {
 	case ProtocolVMess, ProtocolVLESS, ProtocolTrojan, ProtocolShadowsocks, ProtocolSS:
 		return true
 	default:

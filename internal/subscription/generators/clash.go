@@ -61,7 +61,7 @@ func (g *ClashGenerator) Generate(proxies []*repository.Proxy, options *Generato
 		var clashProxy map[string]interface{}
 		var err error
 
-		switch strings.ToLower(info.Protocol) {
+		switch normalizeProtocolName(info.Protocol) {
 		case ProtocolVMess:
 			clashProxy, err = g.generateVMessProxy(info)
 		case ProtocolTrojan:
@@ -82,8 +82,8 @@ func (g *ClashGenerator) Generate(proxies []*repository.Proxy, options *Generato
 
 	// Add proxy groups if enabled
 	if options.IncludeProxyGroups && len(proxyNames) > 0 {
-		config.ProxyGroups = g.generateProxyGroups(proxyNames)
-		config.Rules = g.generateRules()
+		config.ProxyGroups = g.generateProxyGroups(proxyNames, options)
+		config.Rules = g.generateRules(options)
 	}
 
 	return yaml.Marshal(config)
@@ -101,7 +101,7 @@ func (g *ClashGenerator) FileExtension() string {
 
 // SupportsProtocol checks if Clash format supports a specific protocol.
 func (g *ClashGenerator) SupportsProtocol(protocol string) bool {
-	switch strings.ToLower(protocol) {
+	switch normalizeProtocolName(protocol) {
 	case ProtocolVMess, ProtocolTrojan, ProtocolShadowsocks, ProtocolSS:
 		return true
 	default:
@@ -327,37 +327,37 @@ func (g *ClashGenerator) generateShadowsocksProxy(info *ProxyInfo) (map[string]i
 }
 
 // generateProxyGroups generates default proxy groups.
-func (g *ClashGenerator) generateProxyGroups(proxyNames []string) []ClashProxyGroup {
-	// Add DIRECT and REJECT to proxy options
-	selectProxies := append([]string{"DIRECT", "REJECT"}, proxyNames...)
+func (g *ClashGenerator) generateProxyGroups(proxyNames []string, options *GeneratorOptions) []ClashProxyGroup {
+	selectProxies := append([]string{}, proxyNames...)
+	selectProxies = append(selectProxies, clashAutoGroupName(options), clashFallbackGroupName(options), "DIRECT", "REJECT")
 	autoProxies := proxyNames
 
 	return []ClashProxyGroup{
 		{
-			Name:    "Proxy",
+			Name:    clashSelectGroupName(options),
 			Type:    "select",
 			Proxies: selectProxies,
 		},
 		{
-			Name:     "Auto",
+			Name:     clashAutoGroupName(options),
 			Type:     "url-test",
 			Proxies:  autoProxies,
-			URL:      "http://www.gstatic.com/generate_204",
+			URL:      "https://www.gstatic.com/generate_204",
 			Interval: 300,
 		},
 		{
-			Name:     "Fallback",
+			Name:     clashFallbackGroupName(options),
 			Type:     "fallback",
 			Proxies:  autoProxies,
-			URL:      "http://www.gstatic.com/generate_204",
+			URL:      "https://www.gstatic.com/generate_204",
 			Interval: 300,
 		},
 	}
 }
 
 // generateRules generates default rules.
-func (g *ClashGenerator) generateRules() []string {
+func (g *ClashGenerator) generateRules(options *GeneratorOptions) []string {
 	return []string{
-		"MATCH,Proxy",
+		"MATCH," + clashSelectGroupName(options),
 	}
 }

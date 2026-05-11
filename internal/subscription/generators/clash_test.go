@@ -63,6 +63,9 @@ func TestClashGenerator_Generate(t *testing.T) {
 	if config.Mode != "rule" {
 		t.Errorf("Expected mode 'rule', got '%s'", config.Mode)
 	}
+	if len(config.ProxyGroups) == 0 || len(config.ProxyGroups[0].Proxies) == 0 || config.ProxyGroups[0].Proxies[0] != "VMess Server" {
+		t.Fatalf("expected first select option to be the first generated node, got %#v", config.ProxyGroups)
+	}
 }
 
 func TestClashGenerator_SupportsProtocol(t *testing.T) {

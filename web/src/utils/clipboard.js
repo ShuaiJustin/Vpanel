@@ -1,6 +1,6 @@
 export async function copyText(text) {
   if (!text) {
-    throw new Error('No text to copy')
+    throw new Error('没有可复制的内容')
   }
 
   if (
@@ -10,12 +10,16 @@ export async function copyText(text) {
     navigator.clipboard &&
     typeof navigator.clipboard.writeText === 'function'
   ) {
-    await navigator.clipboard.writeText(text)
-    return
+    try {
+      await navigator.clipboard.writeText(text)
+      return
+    } catch {
+      // Fall through to the legacy textarea fallback below.
+    }
   }
 
   if (typeof document === 'undefined' || !document.body) {
-    throw new Error('Clipboard is unavailable')
+    throw new Error('浏览器不支持自动复制，请手动复制')
   }
 
   const textarea = document.createElement('textarea')
@@ -38,7 +42,7 @@ export async function copyText(text) {
     textarea.setSelectionRange(0, textarea.value.length)
 
     if (!document.execCommand('copy')) {
-      throw new Error('document.execCommand(copy) returned false')
+      throw new Error('浏览器未允许自动复制，请手动复制')
     }
   } finally {
     document.body.removeChild(textarea)

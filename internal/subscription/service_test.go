@@ -24,6 +24,7 @@ import (
 	"v/internal/proxy/protocols/trojan"
 	"v/internal/proxy/protocols/vless"
 	"v/internal/proxy/protocols/vmess"
+	pkgerrors "v/pkg/errors"
 )
 
 // setupTestDB creates an in-memory SQLite database for testing.
@@ -135,6 +136,31 @@ func TestGetOrCreateSubscription(t *testing.T) {
 	}
 }
 
+func TestGetSubscriptionInfo_IncludesUniversalFormatFirst(t *testing.T) {
+	db := setupTestDB(t)
+	service := createTestService(t, db)
+	ctx := context.Background()
+
+	userID := createTestUser(t, db, "universaluser")
+	info, err := service.GetSubscriptionInfo(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetSubscriptionInfo returned error: %v", err)
+	}
+
+	if info.Link == "" {
+		t.Fatalf("expected base subscription link")
+	}
+	if len(info.Formats) == 0 {
+		t.Fatalf("expected format links")
+	}
+	if info.Formats[0].Name != string(FormatAuto) {
+		t.Fatalf("expected universal format first, got %#v", info.Formats[0])
+	}
+	if info.Formats[0].Link != info.Link {
+		t.Fatalf("expected universal format to use base link, got %q want %q", info.Formats[0].Link, info.Link)
+	}
+}
+
 // TestRegenerateToken tests token regeneration.
 func TestRegenerateToken(t *testing.T) {
 	db := setupTestDB(t)
@@ -194,8 +220,8 @@ func TestDetectClientFormat(t *testing.T) {
 		{"SingBox/1.0", FormatSingbox},
 		{"V2rayN/1.0", FormatV2rayN},
 		{"V2rayNG/1.0", FormatV2rayN},
-		{"Mozilla/5.0", FormatV2rayN}, // Unknown defaults to V2rayN
-		{"", FormatV2rayN},            // Empty defaults to V2rayN
+		{"Mozilla/5.0", FormatClashMeta}, // Unknown defaults to modern VLESS-capable ClashMeta
+		{"", FormatClashMeta},            // Empty defaults to modern VLESS-capable ClashMeta
 	}
 
 	for _, tt := range tests {
@@ -593,7 +619,7 @@ func TestProperty_FormatOverridePriority(t *testing.T) {
 		{"Quantumult%20X/1.0", FormatQuantumultX},
 		{"sing-box/1.0", FormatSingbox},
 		{"V2rayN/1.0", FormatV2rayN},
-		{"Mozilla/5.0", FormatV2rayN}, // Unknown defaults to V2rayN
+		{"Mozilla/5.0", FormatClashMeta}, // Unknown defaults to modern VLESS-capable ClashMeta
 	}
 
 	for _, tt := range tests {
@@ -963,6 +989,66 @@ func TestGenerateContent_UsesResolvedNodeHostInsteadOfStaleProxyHost(t *testing.
 	}
 	if vmess["sni"] != "vpn.example.com" {
 		t.Fatalf("expected generated content to preserve SNI vpn.example.com, got %#v", vmess["sni"])
+	}
+}
+
+func TestGenerateContent_RejectsVLESSOnlyUnsupportedFormats(t *testing.T) {
+	tests := []ClientFormat{FormatClash, FormatSurge, FormatQuantumultX}
+
+	for _, format := range tests {
+		t.Run(string(format), func(t *testing.T) {
+			db := setupTestDB(t)
+			service := createTestService(t, db)
+			ctx := context.Background()
+
+			userID := createTestUser(t, db, "vless-only-"+string(format))
+			proxyModel := &repository.Proxy{
+				UserID:   userID,
+				Name:     "VLESS Node",
+				Protocol: "vless",
+				Host:     "vless.example.com",
+				Port:     443,
+				Settings: map[string]interface{}{
+					"uuid":     "12345678-1234-1234-1234-123456789012",
+					"security": "tls",
+					"sni":      "vless.example.com",
+				},
+				Enabled: true,
+			}
+			if err := db.Create(proxyModel).Error; err != nil {
+				t.Fatalf("Failed to create proxy: %v", err)
+			}
+
+			content, _, _, err := service.GenerateContent(ctx, userID, format, nil)
+			if err == nil {
+				t.Fatalf("expected unsupported format error, got content %q", string(content))
+			}
+			if !pkgerrors.IsValidation(err) {
+				t.Fatalf("expected validation error, got %T: %v", err, err)
+			}
+			if !strings.Contains(err.Error(), "不支持现有节点协议") {
+				t.Fatalf("expected actionable unsupported protocol message, got %v", err)
+			}
+		})
+	}
+}
+
+func TestGenerateContent_RejectsEmptyNodeSet(t *testing.T) {
+	db := setupTestDB(t)
+	service := createTestService(t, db)
+	ctx := context.Background()
+
+	userID := createTestUser(t, db, "empty-node-subscription-user")
+
+	content, _, _, err := service.GenerateContent(ctx, userID, FormatClashMeta, nil)
+	if err == nil {
+		t.Fatalf("expected empty node set validation error, got content %q", string(content))
+	}
+	if !pkgerrors.IsValidation(err) {
+		t.Fatalf("expected validation error, got %T: %v", err, err)
+	}
+	if !strings.Contains(err.Error(), "当前订阅没有可用节点") {
+		t.Fatalf("expected actionable empty node message, got %v", err)
 	}
 }
 

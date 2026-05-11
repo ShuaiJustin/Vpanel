@@ -33,7 +33,7 @@ func (g *V2rayNGenerator) Generate(proxies []*repository.Proxy, options *Generat
 		var link string
 		var err error
 
-		switch strings.ToLower(info.Protocol) {
+		switch normalizeProtocolName(info.Protocol) {
 		case ProtocolVMess:
 			link, err = g.generateVMessLink(info)
 		case ProtocolVLESS:
@@ -72,7 +72,7 @@ func (g *V2rayNGenerator) FileExtension() string {
 
 // SupportsProtocol checks if V2rayN format supports a specific protocol.
 func (g *V2rayNGenerator) SupportsProtocol(protocol string) bool {
-	switch strings.ToLower(protocol) {
+	switch normalizeProtocolName(protocol) {
 	case ProtocolVMess, ProtocolVLESS, ProtocolTrojan, ProtocolShadowsocks, ProtocolSS:
 		return true
 	default:

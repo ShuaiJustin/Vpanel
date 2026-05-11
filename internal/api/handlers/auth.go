@@ -1247,6 +1247,61 @@ func (h *AuthHandler) DisableUser(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "User disabled successfully"})
 }
 
+type RebuildAutoProxiesRequest struct {
+	NodeID *int64 `json:"node_id"`
+}
+
+// RebuildAutoProxies rebuilds a user's auto provisioned proxies using current policy.
+func (h *AuthHandler) RebuildAutoProxies(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errors.NewValidationError("Invalid user ID", nil).ToResponse(""))
+		return
+	}
+	if h.entitlementService == nil {
+		c.JSON(http.StatusInternalServerError, errors.NewInternalError("Automatic proxy provisioning is not available", nil).ToResponse(""))
+		return
+	}
+
+	req := RebuildAutoProxiesRequest{}
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, errors.NewValidationError("Invalid request body", err).ToResponse(""))
+			return
+		}
+	}
+
+	result, err := h.entitlementService.RebuildAutoProvisionedProxies(c.Request.Context(), id, req.NodeID)
+	if err != nil {
+		errorResponse := func(fallback string) any {
+			if appErr, ok := errors.AsAppError(err); ok {
+				return appErr.ToResponse("")
+			}
+			return gin.H{"error": fallback}
+		}
+		switch {
+		case errors.IsValidation(err):
+			c.JSON(http.StatusBadRequest, errorResponse("Invalid rebuild request"))
+		case errors.IsNotFound(err):
+			c.JSON(http.StatusNotFound, errorResponse("User or node not found"))
+		case errors.IsForbidden(err):
+			c.JSON(http.StatusForbidden, errorResponse("User is not entitled to rebuild auto proxies"))
+		default:
+			h.logger.Error("failed to rebuild auto provisioned proxies", logger.Err(err), logger.UserID(id))
+			c.JSON(http.StatusInternalServerError, errors.NewInternalError("Failed to rebuild auto provisioned proxies", err).ToResponse(""))
+		}
+		return
+	}
+
+	h.logger.Info("auto provisioned proxies rebuilt",
+		logger.UserID(id),
+		logger.F("created", result.Created),
+		logger.F("deleted", result.Deleted),
+		logger.F("skipped", result.Skipped),
+	)
+	c.JSON(http.StatusOK, result)
+}
+
 // ResetPasswordResponse represents a password reset response.
 type ResetPasswordResponse struct {
 	TemporaryPassword string `json:"temporary_password"`

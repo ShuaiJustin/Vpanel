@@ -372,6 +372,7 @@ const paidClientNames = new Set(['Shadowrocket', 'Quantumult X', 'Surge', 'Loon'
 const archivedClientNames = new Set(['Clash for Windows', 'Qv2ray', 'SagerNet'])
 const legacyClientNames = new Set(['ClashX Pro', 'V2RayXS'])
 const cliClientNames = new Set(['Mihomo CLI', 'sing-box CLI', 'Xray-core'])
+const vlessUnsupportedFormats = new Set(['clash', 'surge', 'quantumultx'])
 const clientFormatLabels = {
   clash: 'Clash Legacy',
   clashmeta: 'Clash Meta/Mihomo',
@@ -441,8 +442,8 @@ const clients = [
   {
     name: 'Clash for Windows',
     platform: 'windows',
-    description: '经典 Clash 客户端，已停止维护，仅建议兼容旧配置时使用。',
-    features: ['旧版客户端', '规则分流', '归档版本'],
+    description: '经典 Clash 客户端，已停止维护，不支持 VLESS/Reality 节点。',
+    features: ['旧版客户端', '规则分流', '不支持 VLESS'],
     format: 'clash',
     recommended: false,
     downloadUrl: 'https://archive.org/download/clash_for_windows_pkg/',
@@ -492,9 +493,9 @@ const clients = [
   {
     name: 'ClashX Pro',
     platform: 'macos',
-    description: '老牌 macOS Clash 客户端，适合保留旧使用习惯的用户。',
-    features: ['旧版客户端', '菜单栏', '增强模式'],
-    format: 'clashmeta',
+    description: '老牌 macOS Clash 客户端，适合旧配置，不支持 VLESS/Reality 节点。',
+    features: ['旧版客户端', '菜单栏', '不支持 VLESS'],
+    format: 'clash',
     recommended: false,
     downloadUrl: 'https://install.appcenter.ms/users/clashx/apps/clashx-pro/distribution_groups/public',
     tutorialUrl: '#'
@@ -1507,7 +1508,7 @@ sudo ./xray-manager.sh</code></pre>
         <li>安装完成后打开应用</li>
       </ol>
       <div class="tip-box">
-        <strong>注意：</strong>Clash for Windows 已停止维护，建议使用 Clash Verge 替代。
+        <strong>注意：</strong>Clash for Windows 已停止维护，且不支持 VLESS/Reality 节点；这类节点请使用 Clash Verge Rev。
       </div>
     `,
     step2: `
@@ -1516,7 +1517,7 @@ sudo ./xray-manager.sh</code></pre>
         <li>点击左侧的 <strong>"Profiles"</strong></li>
         <li>在顶部输入框粘贴您的订阅链接</li>
         <li>点击 <strong>"Download"</strong></li>
-        <li>等待配置下载完成</li>
+        <li>等待配置下载完成；如果提示不支持当前协议，请改用 Clash Verge Rev</li>
         <li>点击配置文件使其生效（会显示绿色）</li>
       </ol>
     `,
@@ -1534,7 +1535,7 @@ sudo ./xray-manager.sh</code></pre>
         <ul>
           <li>TUN 模式需要安装虚拟网卡驱动</li>
           <li>可以在设置中配置开机自启动</li>
-          <li>支持规则分流和自定义规则</li>
+          <li>VLESS/Reality 节点请使用 Clash Verge Rev 或 Mihomo 客户端</li>
         </ul>
       </div>
     `
@@ -1567,7 +1568,7 @@ sudo ./xray-manager.sh</code></pre>
         <strong>提示：</strong>
         <ul>
           <li>增强模式可代理无法感知系统代理的应用</li>
-          <li>"配置 → 实验性功能" 里可以开启 TUN 模式</li>
+          <li>VLESS/Reality 节点请使用 Clash Verge Rev 或 Mihomo 客户端</li>
         </ul>
       </div>
     `
@@ -1720,7 +1721,9 @@ const currentTutorial = computed(() => {
   return tutorials[tutorialName] || defaultTutorial
 })
 
-const subscriptionLink = computed(() => subscriptionStore.link || '')
+const subscriptionLink = computed(() =>
+  buildFormattedSubscriptionLink(subscriptionStore.link || '', recommendedClient.value?.format)
+)
 
 const subscriptionLinkPreview = computed(() => {
   if (!subscriptionLink.value) {
@@ -1812,6 +1815,10 @@ function getClientBadges(client) {
     badges.push({ label: `订阅：${clientFormatLabels[client.format]}`, type: 'success' })
   }
 
+  if (vlessUnsupportedFormats.has(client.format)) {
+    badges.push({ label: '不支持 VLESS', type: 'warning' })
+  }
+
   if (cliClientNames.has(client.name)) {
     badges.push({ label: '命令行', type: 'info' })
   }
@@ -1885,16 +1892,32 @@ function openExternal(url, downloadFileName = '') {
 async function ensureSubscriptionLink() {
   if (subscriptionStore.link) {
     updateSubscriptionUnavailableMessage()
-    return subscriptionStore.link
+    return buildFormattedSubscriptionLink(subscriptionStore.link, recommendedClient.value?.format)
   }
 
   try {
     const result = await subscriptionStore.fetchLink()
     updateSubscriptionUnavailableMessage()
-    return result?.link || ''
+    return buildFormattedSubscriptionLink(result?.link || '', recommendedClient.value?.format)
   } catch (error) {
     updateSubscriptionUnavailableMessage(error)
     throw error
+  }
+}
+
+function buildFormattedSubscriptionLink(link, format) {
+  if (!link || !format || format === 'auto') {
+    return link || ''
+  }
+
+  try {
+    const base = typeof window !== 'undefined' ? window.location.origin : undefined
+    const url = base ? new URL(link, base) : new URL(link)
+    url.searchParams.set('format', format)
+    return url.toString()
+  } catch {
+    const separator = link.includes('?') ? '&' : '?'
+    return `${link}${separator}format=${encodeURIComponent(format)}`
   }
 }
 

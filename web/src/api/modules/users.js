@@ -66,6 +66,15 @@ export const usersApi = {
   resetPassword: (id) => api.post(`/users/${id}/reset-password`),
 
   /**
+   * 重建用户自动生成的代理
+   * @param {number|string} id - 用户 ID
+   * @param {Object} data - 可选参数
+   * @param {number} data.node_id - 可选，仅重建指定节点
+   * @returns {Promise<Object>} 重建结果
+   */
+  rebuildAutoProxies: (id, data = undefined) => api.post(`/users/${id}/rebuild-auto-proxies`, data),
+
+  /**
    * 获取用户登录历史
    * @param {number|string} id - 用户 ID
    * @param {Object} params - 查询参数

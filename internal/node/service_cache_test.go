@@ -88,11 +88,19 @@ func (m *mockNodeRepo) Count(ctx context.Context, filter *repository.NodeFilter)
 	return 0, nil
 }
 
+func (m *mockNodeRepo) CountByAddressPort(ctx context.Context, address string, port int, excludeID int64) (int64, error) {
+	return 0, nil
+}
+
 func (m *mockNodeRepo) Create(ctx context.Context, node *repository.Node) error {
 	return nil
 }
 
 func (m *mockNodeRepo) GetByID(ctx context.Context, id int64) (*repository.Node, error) {
+	return nil, nil
+}
+
+func (m *mockNodeRepo) GetByIDs(ctx context.Context, ids []int64) ([]*repository.Node, error) {
 	return nil, nil
 }
 
@@ -186,6 +194,10 @@ func (m *mockNodeRepo) GetOnline(ctx context.Context) ([]*repository.Node, error
 
 func (m *mockNodeRepo) GetAvailable(ctx context.Context) ([]*repository.Node, error) {
 	return nil, nil
+}
+
+func (m *mockNodeRepo) CountByName(ctx context.Context, name string, excludeID int64) (int64, error) {
+	return 0, nil
 }
 
 func (m *mockNodeRepo) GetAvailableInTx(ctx context.Context) ([]*repository.Node, error) {

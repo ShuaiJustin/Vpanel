@@ -180,7 +180,6 @@
         :latency="latencyResults[node.id]"
         :testing="testingNodes[node.id]"
         @test="testLatency(node)"
-        @copy="copyNodeConfig(node)"
       />
     </div>
 
@@ -260,7 +259,7 @@
         </template>
       </el-table-column>
 
-      <el-table-column label="操作" width="160" fixed="right">
+      <el-table-column label="操作" width="90" fixed="right">
         <template #default="{ row }">
           <el-button
             link
@@ -270,14 +269,6 @@
             @click="testLatency(row)"
           >
             测速
-          </el-button>
-          <el-button
-            link
-            type="primary"
-            :disabled="row.status !== 'online'"
-            @click="copyNodeConfig(row)"
-          >
-            复制
           </el-button>
         </template>
       </el-table-column>
@@ -299,8 +290,6 @@ import {
 } from "@element-plus/icons-vue";
 import { usePortalNodesStore } from "@/stores/portalNodes";
 import { useUserPortalStore } from "@/stores/userPortal";
-import { proxiesApi } from "@/api/modules/proxies";
-import { copyText } from "@/utils/clipboard";
 import NodeCard from "@/components/user/NodeCard.vue";
 import {
   getNodeLatencyClass,
@@ -560,17 +549,6 @@ async function testAllLatency() {
 
   testingAll.value = false;
   ElMessage.success("测速完成");
-}
-
-async function copyNodeConfig(node) {
-  try {
-    const response = await proxiesApi.generateLink(node.id);
-    const link = response?.link;
-    await copyText(link);
-    ElMessage.success(`已复制 ${getNodeDisplayName(node)} 配置`);
-  } catch (error) {
-    ElMessage.error(`复制失败: ${getNodeDisplayName(node)}`);
-  }
 }
 
 async function loadNodes() {

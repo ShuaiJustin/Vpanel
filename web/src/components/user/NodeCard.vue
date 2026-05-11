@@ -78,22 +78,13 @@
         <el-icon><Timer /></el-icon>
         测速
       </el-button>
-      <el-button
-        size="small"
-        type="primary"
-        :disabled="node.status !== 'online'"
-        @click="$emit('copy')"
-      >
-        <el-icon><CopyDocument /></el-icon>
-        复制配置
-      </el-button>
     </div>
   </div>
 </template>
 
 <script setup>
 import { computed } from "vue";
-import { Timer, CopyDocument, Loading } from "@element-plus/icons-vue";
+import { Timer, Loading } from "@element-plus/icons-vue";
 import {
   getNodeLatencyClass,
   getNodeRegionFlag,
@@ -118,7 +109,7 @@ const props = defineProps({
   },
 });
 
-defineEmits(["test", "copy"]);
+defineEmits(["test"]);
 
 const displayName = computed(
   () => props.node.display_name || props.node.name || "未命名节点",

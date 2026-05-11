@@ -302,7 +302,7 @@ const { isMobile } = useViewport()
 const qrcodeCanvas = ref(null)
 
 // 状态
-const selectedFormat = ref('clashmeta')
+const selectedFormat = ref('auto')
 const showResetDialog = ref(false)
 const resetting = ref(false)
 const loading = ref(false)
@@ -313,16 +313,17 @@ const SUBSCRIPTION_REFRESH_INTERVAL = 30 * 1000
 let subscriptionRefreshTimer = null
 
 // 订阅格式
-// Clash Meta/Mihomo 放第一位，覆盖 Clash Verge/Stash 等现代 Clash 内核；
-// 基础 Clash 只支持 VMess/Trojan/SS，VLESS 与 Reality 节点会被丢弃
+// 默认使用通用订阅，由后端按客户端 User-Agent 自动返回合适格式。
+// 下面的格式用于客户端识别失败时手动指定。
 const formats = [
+  { value: 'auto', label: '通用订阅' },
   { value: 'clashmeta', label: 'Clash Meta/Mihomo' },
   { value: 'singbox', label: 'Sing-box' },
   { value: 'v2rayn', label: 'V2Ray' },
   { value: 'shadowrocket', label: 'Shadowrocket' },
-  { value: 'clash', label: 'Clash Legacy' },
-  { value: 'surge', label: 'Surge' },
-  { value: 'quantumultx', label: 'Quantumult X' }
+  { value: 'clash', label: 'Clash Legacy（不支持 VLESS）' },
+  { value: 'surge', label: 'Surge（旧格式）' },
+  { value: 'quantumultx', label: 'Quantumult X（旧格式）' }
 ]
 
 // 推荐客户端
@@ -335,9 +336,16 @@ const recommendedClients = [
 // 计算属性
 const subscriptionUrl = computed(() => {
   if (!subscriptionStore.link) return ''
-  const url = new URL(subscriptionStore.link)
-  url.searchParams.set('format', selectedFormat.value)
-  return url.toString()
+  if (selectedFormat.value === 'auto') return subscriptionStore.link
+
+  try {
+    const url = new URL(subscriptionStore.link)
+    url.searchParams.set('format', selectedFormat.value)
+    return url.toString()
+  } catch {
+    const separator = subscriptionStore.link.includes('?') ? '&' : '?'
+    return `${subscriptionStore.link}${separator}format=${encodeURIComponent(selectedFormat.value)}`
+  }
 })
 
 const subscriptionStatus = computed(() => {

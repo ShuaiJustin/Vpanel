@@ -193,6 +193,16 @@ func (s *Service) CheckAccess(ctx context.Context, userID uint, ip string, acces
 		}
 	}
 
+	// Web/API access should not consume proxy device slots. Keep blacklist and
+	// geo checks above, then let authenticated users manage their devices even
+	// when the proxy device limit has been reached.
+	if accessType == AccessTypeAPI {
+		if err := s.tracker.RemoveActiveIPUnlessDeviceType(ctx, userID, ip, "proxy"); err != nil {
+			return nil, err
+		}
+		return &AccessResult{Allowed: true, Reason: "api access"}, nil
+	}
+
 	// Check concurrent IP limit
 	// Use provided maxConcurrentIPs, or fall back to default
 	limit := maxConcurrentIPs
@@ -292,6 +302,24 @@ func (s *Service) RecordActivity(ctx context.Context, userID uint, ip, userAgent
 		_, _ = s.tracker.CleanupInactiveIPsForUser(ctx, userID, timeout)
 	}
 
+	if accessType == AccessTypeAPI {
+		// Browser/API visits are audit history, not online proxy devices. If an
+		// older build already inserted this browser IP as an active device, remove
+		// it unless it has since been refreshed by the proxy session reporter.
+		if err := s.tracker.RemoveActiveIPUnlessDeviceType(ctx, userID, ip, "proxy"); err != nil {
+			return err
+		}
+		return s.tracker.RecordIPHistory(ctx, &IPHistory{
+			UserID:     userID,
+			IP:         ip,
+			UserAgent:  userAgent,
+			AccessType: accessType,
+			Country:    country,
+			City:       city,
+			CreatedAt:  time.Now(),
+		})
+	}
+
 	// Detect device type from user agent
 	deviceType := detectDeviceType(userAgent)
 
@@ -384,6 +412,15 @@ func (s *Service) RecordProxySessions(ctx context.Context, sessions []ProxySessi
 		}
 
 		for _, session := range userSessions {
+			deviceInfo := strings.TrimSpace(session.DeviceInfo)
+			if deviceInfo == "" {
+				if session.ProxyID > 0 {
+					deviceInfo = fmt.Sprintf("Proxy #%d connection", session.ProxyID)
+				} else {
+					deviceInfo = "Proxy connection"
+				}
+			}
+
 			country, city := "", ""
 			if s.geoService != nil {
 				geoInfo, err := s.geoService.LookupLocal(ctx, session.IP)
@@ -401,19 +438,10 @@ func (s *Service) RecordProxySessions(ctx context.Context, sessions []ProxySessi
 				return err
 			}
 			if isActive {
-				if err := s.tracker.UpdateLastActive(ctx, userID, session.IP); err != nil {
+				if err := s.tracker.AddActiveIP(ctx, userID, session.IP, deviceInfo, "proxy", country, city); err != nil {
 					return err
 				}
 				continue
-			}
-
-			deviceInfo := strings.TrimSpace(session.DeviceInfo)
-			if deviceInfo == "" {
-				if session.ProxyID > 0 {
-					deviceInfo = fmt.Sprintf("Proxy #%d connection", session.ProxyID)
-				} else {
-					deviceInfo = "Proxy connection"
-				}
 			}
 
 			if err := s.tracker.AddActiveIP(ctx, userID, session.IP, deviceInfo, "proxy", country, city); err != nil {

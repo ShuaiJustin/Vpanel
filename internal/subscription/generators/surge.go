@@ -30,7 +30,7 @@ func (g *SurgeGenerator) Generate(proxies []*repository.Proxy, options *Generato
 		var line string
 		var err error
 
-		switch strings.ToLower(info.Protocol) {
+		switch normalizeProtocolName(info.Protocol) {
 		case ProtocolVMess:
 			line, err = g.generateVMessLine(info)
 		case ProtocolTrojan:
@@ -63,7 +63,7 @@ func (g *SurgeGenerator) FileExtension() string {
 
 // SupportsProtocol checks if Surge format supports a specific protocol.
 func (g *SurgeGenerator) SupportsProtocol(protocol string) bool {
-	switch strings.ToLower(protocol) {
+	switch normalizeProtocolName(protocol) {
 	case ProtocolVMess, ProtocolTrojan, ProtocolShadowsocks, ProtocolSS:
 		return true
 	default:

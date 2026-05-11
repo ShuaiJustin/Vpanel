@@ -30,7 +30,6 @@ type ClashMetaConfig struct {
 	UnifiedDelay       bool                     `yaml:"unified-delay,omitempty"`
 	TCPConcurrent      bool                     `yaml:"tcp-concurrent,omitempty"`
 	FindProcessMode    string                   `yaml:"find-process-mode,omitempty"`
-	GlobalClientFP     string                   `yaml:"global-client-fingerprint,omitempty"`
 	Proxies            []map[string]interface{} `yaml:"proxies"`
 	ProxyGroups        []ClashProxyGroup        `yaml:"proxy-groups,omitempty"`
 	Rules              []string                 `yaml:"rules,omitempty"`
@@ -51,7 +50,6 @@ func (g *ClashMetaGenerator) Generate(proxies []*repository.Proxy, options *Gene
 		UnifiedDelay:    true,
 		TCPConcurrent:   true,
 		FindProcessMode: "strict",
-		GlobalClientFP:  "chrome",
 		Proxies:         make([]map[string]interface{}, 0),
 	}
 
@@ -61,7 +59,7 @@ func (g *ClashMetaGenerator) Generate(proxies []*repository.Proxy, options *Gene
 		var clashProxy map[string]interface{}
 		var err error
 
-		switch strings.ToLower(info.Protocol) {
+		switch normalizeProtocolName(info.Protocol) {
 		case ProtocolVMess:
 			clashProxy, err = g.generateVMessProxy(info)
 		case ProtocolVLESS:
@@ -84,8 +82,8 @@ func (g *ClashMetaGenerator) Generate(proxies []*repository.Proxy, options *Gene
 
 	// Add proxy groups if enabled
 	if options.IncludeProxyGroups && len(proxyNames) > 0 {
-		config.ProxyGroups = g.generateProxyGroups(proxyNames)
-		config.Rules = g.generateRules()
+		config.ProxyGroups = g.generateProxyGroups(proxyNames, options)
+		config.Rules = g.generateRules(options)
 	}
 
 	return yaml.Marshal(config)
@@ -103,7 +101,7 @@ func (g *ClashMetaGenerator) FileExtension() string {
 
 // SupportsProtocol checks if Clash Meta format supports a specific protocol.
 func (g *ClashMetaGenerator) SupportsProtocol(protocol string) bool {
-	switch strings.ToLower(protocol) {
+	switch normalizeProtocolName(protocol) {
 	case ProtocolVMess, ProtocolVLESS, ProtocolTrojan, ProtocolShadowsocks, ProtocolSS:
 		return true
 	default:
@@ -176,6 +174,9 @@ func (g *ClashMetaGenerator) generateVLESSProxy(info *ProxyInfo) (map[string]int
 		"server": info.Server,
 		"port":   info.Port,
 		"uuid":   GetSettingString(info.Settings, "uuid", ""),
+	}
+	if udp := GetSettingBool(info.Settings, "udp", true); udp {
+		proxy["udp"] = true
 	}
 
 	network := GetSettingString(info.Settings, "network", "tcp")
@@ -330,36 +331,37 @@ func (g *ClashMetaGenerator) generateShadowsocksProxy(info *ProxyInfo) (map[stri
 }
 
 // generateProxyGroups generates default proxy groups for Clash Meta.
-func (g *ClashMetaGenerator) generateProxyGroups(proxyNames []string) []ClashProxyGroup {
-	selectProxies := append([]string{"DIRECT", "REJECT"}, proxyNames...)
+func (g *ClashMetaGenerator) generateProxyGroups(proxyNames []string, options *GeneratorOptions) []ClashProxyGroup {
+	selectProxies := append([]string{}, proxyNames...)
+	selectProxies = append(selectProxies, clashAutoGroupName(options), clashFallbackGroupName(options), "DIRECT", "REJECT")
 	autoProxies := proxyNames
 
 	return []ClashProxyGroup{
 		{
-			Name:    "Proxy",
+			Name:    clashSelectGroupName(options),
 			Type:    "select",
 			Proxies: selectProxies,
 		},
 		{
-			Name:     "Auto",
+			Name:     clashAutoGroupName(options),
 			Type:     "url-test",
 			Proxies:  autoProxies,
-			URL:      "http://www.gstatic.com/generate_204",
+			URL:      "https://www.gstatic.com/generate_204",
 			Interval: 300,
 		},
 		{
-			Name:     "Fallback",
+			Name:     clashFallbackGroupName(options),
 			Type:     "fallback",
 			Proxies:  autoProxies,
-			URL:      "http://www.gstatic.com/generate_204",
+			URL:      "https://www.gstatic.com/generate_204",
 			Interval: 300,
 		},
 	}
 }
 
 // generateRules generates default rules for Clash Meta.
-func (g *ClashMetaGenerator) generateRules() []string {
+func (g *ClashMetaGenerator) generateRules(options *GeneratorOptions) []string {
 	return []string{
-		"MATCH,Proxy",
+		"MATCH," + clashSelectGroupName(options),
 	}
 }

@@ -46,6 +46,14 @@ func (t *Tracker) RemoveActiveIP(ctx context.Context, userID uint, ip string) er
 		Delete(&ActiveIP{}).Error
 }
 
+// RemoveActiveIPUnlessDeviceType removes a stale active IP unless it represents
+// a preserved device type such as a proxy session.
+func (t *Tracker) RemoveActiveIPUnlessDeviceType(ctx context.Context, userID uint, ip, preservedDeviceType string) error {
+	return t.db.WithContext(ctx).
+		Where("user_id = ? AND ip = ? AND (device_type IS NULL OR device_type <> ?)", userID, ip, preservedDeviceType).
+		Delete(&ActiveIP{}).Error
+}
+
 // GetActiveIPCount returns the count of active IPs for a user.
 func (t *Tracker) GetActiveIPCount(ctx context.Context, userID uint) (int, error) {
 	var count int64

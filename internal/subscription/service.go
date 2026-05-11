@@ -41,10 +41,11 @@ const maxSubscriptionTokenAttempts = 5
 
 // ContentOptions represents options for content generation.
 type ContentOptions struct {
-	Protocols      []string // Filter by protocols
-	Include        []int64  // Include specific proxy IDs
-	Exclude        []int64  // Exclude specific proxy IDs
-	RenameTemplate string   // Custom naming template
+	Protocols        []string // Filter by protocols
+	Include          []int64  // Include specific proxy IDs
+	Exclude          []int64  // Exclude specific proxy IDs
+	RenameTemplate   string   // Custom naming template
+	SubscriptionName string   // Client-facing profile/group name
 }
 
 // SubscriptionInfo represents subscription information for display.
@@ -381,6 +382,7 @@ func isLocalBaseURL(rawURL string) bool {
 // buildFormatLinks builds format-specific subscription links.
 func (s *Service) buildFormatLinks(baseLink string) []FormatInfo {
 	return []FormatInfo{
+		{Name: string(FormatAuto), DisplayName: "通用订阅（自动识别）", Link: baseLink},
 		{Name: string(FormatClashMeta), DisplayName: "Clash Meta/Mihomo", Link: baseLink + "?format=clashmeta"},
 		{Name: string(FormatSingbox), DisplayName: "Sing-box", Link: baseLink + "?format=singbox"},
 		{Name: string(FormatV2rayN), DisplayName: "V2rayN/V2rayNG", Link: baseLink + "?format=v2rayn"},
@@ -469,6 +471,11 @@ func (s *Service) CheckUserAccess(ctx context.Context, userID int64) error {
 
 // DetectClientFormat detects the client format from User-Agent string.
 func (s *Service) DetectClientFormat(userAgent string) ClientFormat {
+	return DetectClientFormat(userAgent)
+}
+
+// DetectClientFormat detects the client format from a User-Agent string.
+func DetectClientFormat(userAgent string) ClientFormat {
 	ua := strings.ToLower(userAgent)
 
 	switch {
@@ -487,8 +494,9 @@ func (s *Service) DetectClientFormat(userAgent string) ClientFormat {
 	case strings.Contains(ua, "v2rayn") || strings.Contains(ua, "v2rayng"):
 		return FormatV2rayN
 	default:
-		// Default to V2rayN format for unknown clients
-		return FormatV2rayN
+		// Prefer the modern Clash/Mihomo schema for unknown clients because it
+		// supports VLESS and avoids silently producing empty legacy Clash configs.
+		return FormatClashMeta
 	}
 }
 
@@ -677,11 +685,23 @@ func (s *Service) GenerateContent(ctx context.Context, userID int64, format Clie
 
 	// Apply filters
 	proxies = s.FilterProxies(proxies, options)
+	if len(proxies) == 0 {
+		return nil, "", "", errors.NewValidationError(
+			"当前订阅没有可用节点，请确认套餐有效、节点在线，且订阅筛选条件没有排除全部节点",
+			map[string]any{
+				"user_id": userID,
+				"format":  string(format),
+			},
+		)
+	}
 
 	// Import generators
 	generator, contentType, fileExt := s.getGenerator(format)
 	if generator == nil {
 		return nil, "", "", fmt.Errorf("unsupported format: %s", format)
+	}
+	if err := ensureFormatCanEmitProxy(format, proxies, generator); err != nil {
+		return nil, "", "", err
 	}
 
 	// Generate content
@@ -691,6 +711,90 @@ func (s *Service) GenerateContent(ctx context.Context, userID int64, format Clie
 	}
 
 	return content, contentType, fileExt, nil
+}
+
+func ensureFormatCanEmitProxy(format ClientFormat, proxies []*repository.Proxy, generator FormatGenerator) error {
+	if len(proxies) == 0 || generator == nil {
+		return nil
+	}
+
+	for _, proxy := range proxies {
+		if proxy == nil {
+			continue
+		}
+		if generator.SupportsProtocol(proxy.Protocol) {
+			return nil
+		}
+	}
+
+	protocols := subscriptionProxyProtocolList(proxies)
+	formatName := subscriptionFormatName(format)
+	return errors.NewValidationError(
+		fmt.Sprintf("当前订阅格式 %s 不支持现有节点协议（%s），请切换到 Clash Meta/Mihomo、Sing-box、V2RayN 或 Shadowrocket", formatName, protocols),
+		map[string]any{
+			"format":    string(format),
+			"protocols": protocols,
+		},
+	)
+}
+
+func subscriptionProxyProtocolList(proxies []*repository.Proxy) string {
+	seen := make(map[string]bool)
+	protocols := make([]string, 0)
+	for _, proxy := range proxies {
+		if proxy == nil {
+			continue
+		}
+		protocol := strings.ToUpper(strings.TrimSpace(proxy.Protocol))
+		if protocol == "" || seen[protocol] {
+			continue
+		}
+		seen[protocol] = true
+		protocols = append(protocols, protocol)
+	}
+	if len(protocols) == 0 {
+		return "未知协议"
+	}
+	return strings.Join(protocols, "、")
+}
+
+func subscriptionFormatName(format ClientFormat) string {
+	switch format {
+	case FormatClash:
+		return "Clash Legacy/Clash for Windows"
+	case FormatClashMeta:
+		return "Clash Meta/Mihomo"
+	case FormatSingbox:
+		return "Sing-box"
+	case FormatV2rayN:
+		return "V2RayN/V2RayNG"
+	case FormatShadowrocket:
+		return "Shadowrocket"
+	case FormatSurge:
+		return "Surge"
+	case FormatQuantumultX:
+		return "Quantumult X"
+	default:
+		return string(format)
+	}
+}
+
+func legacyClashSupportsProtocol(protocol string) bool {
+	switch protocol {
+	case "vmess", "trojan", "shadowsocks", "ss":
+		return true
+	default:
+		return false
+	}
+}
+
+func clashMetaSupportsProtocol(protocol string) bool {
+	switch protocol {
+	case "vmess", "vless", "trojan", "shadowsocks", "ss":
+		return true
+	default:
+		return false
+	}
 }
 
 // FormatGenerator defines the interface for subscription format generators.
@@ -751,8 +855,13 @@ func (s *Service) buildGeneratorOptions(options *ContentOptions) *GeneratorOptio
 		UpdateInterval:     24,
 	}
 
-	if options != nil && options.RenameTemplate != "" {
-		genOpts.RenameTemplate = options.RenameTemplate
+	if options != nil {
+		if options.SubscriptionName != "" {
+			genOpts.SubscriptionName = options.SubscriptionName
+		}
+		if options.RenameTemplate != "" {
+			genOpts.RenameTemplate = options.RenameTemplate
+		}
 	}
 
 	return genOpts
@@ -766,60 +875,74 @@ type v2rayNGenerator struct{}
 func (g *v2rayNGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
 	return generateV2rayN(proxies, options)
 }
-func (g *v2rayNGenerator) ContentType() string            { return "text/plain; charset=utf-8" }
-func (g *v2rayNGenerator) FileExtension() string          { return "txt" }
-func (g *v2rayNGenerator) SupportsProtocol(p string) bool { return true }
+func (g *v2rayNGenerator) ContentType() string   { return "text/plain; charset=utf-8" }
+func (g *v2rayNGenerator) FileExtension() string { return "txt" }
+func (g *v2rayNGenerator) SupportsProtocol(p string) bool {
+	return clashMetaSupportsProtocol(strings.ToLower(strings.TrimSpace(p)))
+}
 
 type clashGenerator struct{}
 
 func (g *clashGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
 	return generateClash(proxies, options)
 }
-func (g *clashGenerator) ContentType() string            { return "text/yaml; charset=utf-8" }
-func (g *clashGenerator) FileExtension() string          { return "yaml" }
-func (g *clashGenerator) SupportsProtocol(p string) bool { return true }
+func (g *clashGenerator) ContentType() string   { return "text/yaml; charset=utf-8" }
+func (g *clashGenerator) FileExtension() string { return "yaml" }
+func (g *clashGenerator) SupportsProtocol(p string) bool {
+	return legacyClashSupportsProtocol(strings.ToLower(strings.TrimSpace(p)))
+}
 
 type clashMetaGenerator struct{}
 
 func (g *clashMetaGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
 	return generateClashMeta(proxies, options)
 }
-func (g *clashMetaGenerator) ContentType() string            { return "text/yaml; charset=utf-8" }
-func (g *clashMetaGenerator) FileExtension() string          { return "yaml" }
-func (g *clashMetaGenerator) SupportsProtocol(p string) bool { return true }
+func (g *clashMetaGenerator) ContentType() string   { return "text/yaml; charset=utf-8" }
+func (g *clashMetaGenerator) FileExtension() string { return "yaml" }
+func (g *clashMetaGenerator) SupportsProtocol(p string) bool {
+	return clashMetaSupportsProtocol(strings.ToLower(strings.TrimSpace(p)))
+}
 
 type shadowrocketGenerator struct{}
 
 func (g *shadowrocketGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
 	return generateShadowrocket(proxies, options)
 }
-func (g *shadowrocketGenerator) ContentType() string            { return "text/plain; charset=utf-8" }
-func (g *shadowrocketGenerator) FileExtension() string          { return "txt" }
-func (g *shadowrocketGenerator) SupportsProtocol(p string) bool { return true }
+func (g *shadowrocketGenerator) ContentType() string   { return "text/plain; charset=utf-8" }
+func (g *shadowrocketGenerator) FileExtension() string { return "txt" }
+func (g *shadowrocketGenerator) SupportsProtocol(p string) bool {
+	return clashMetaSupportsProtocol(strings.ToLower(strings.TrimSpace(p)))
+}
 
 type surgeGenerator struct{}
 
 func (g *surgeGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
 	return generateSurge(proxies, options)
 }
-func (g *surgeGenerator) ContentType() string            { return "text/plain; charset=utf-8" }
-func (g *surgeGenerator) FileExtension() string          { return "conf" }
-func (g *surgeGenerator) SupportsProtocol(p string) bool { return true }
+func (g *surgeGenerator) ContentType() string   { return "text/plain; charset=utf-8" }
+func (g *surgeGenerator) FileExtension() string { return "conf" }
+func (g *surgeGenerator) SupportsProtocol(p string) bool {
+	return legacyClashSupportsProtocol(strings.ToLower(strings.TrimSpace(p)))
+}
 
 type quantumultXGenerator struct{}
 
 func (g *quantumultXGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
 	return generateQuantumultX(proxies, options)
 }
-func (g *quantumultXGenerator) ContentType() string            { return "text/plain; charset=utf-8" }
-func (g *quantumultXGenerator) FileExtension() string          { return "conf" }
-func (g *quantumultXGenerator) SupportsProtocol(p string) bool { return true }
+func (g *quantumultXGenerator) ContentType() string   { return "text/plain; charset=utf-8" }
+func (g *quantumultXGenerator) FileExtension() string { return "conf" }
+func (g *quantumultXGenerator) SupportsProtocol(p string) bool {
+	return legacyClashSupportsProtocol(strings.ToLower(strings.TrimSpace(p)))
+}
 
 type singboxGenerator struct{}
 
 func (g *singboxGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
 	return generateSingbox(proxies, options)
 }
-func (g *singboxGenerator) ContentType() string            { return "application/json; charset=utf-8" }
-func (g *singboxGenerator) FileExtension() string          { return "json" }
-func (g *singboxGenerator) SupportsProtocol(p string) bool { return true }
+func (g *singboxGenerator) ContentType() string   { return "application/json; charset=utf-8" }
+func (g *singboxGenerator) FileExtension() string { return "json" }
+func (g *singboxGenerator) SupportsProtocol(p string) bool {
+	return clashMetaSupportsProtocol(strings.ToLower(strings.TrimSpace(p)))
+}

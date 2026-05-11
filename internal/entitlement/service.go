@@ -23,6 +23,8 @@ const (
 	autoProvisionPortMax = 60000
 )
 
+var autoProvisionProtocolPreference = []string{"trojan", "vmess", "vless", "shadowsocks"}
+
 // AccessState describes the effective access state for a portal user.
 type AccessState struct {
 	User                  *repository.User
@@ -42,6 +44,18 @@ type NodeProvisionResult struct {
 	Created       int
 	Existing      int
 	Skipped       int
+}
+
+// AutoProvisionRebuildResult summarizes a user auto-proxy rebuild.
+type AutoProvisionRebuildResult struct {
+	UserID          int64   `json:"user_id"`
+	NodeID          *int64  `json:"node_id,omitempty"`
+	TargetNodeIDs   []int64 `json:"target_node_ids"`
+	Deleted         int     `json:"deleted"`
+	Created         int     `json:"created"`
+	Skipped         int     `json:"skipped"`
+	DeletedProxyIDs []int64 `json:"deleted_proxy_ids"`
+	CreatedProxyIDs []int64 `json:"created_proxy_ids"`
 }
 
 // Service provides user entitlement and node assignment logic.
@@ -517,6 +531,157 @@ func (s *Service) ProvisionNodeProxies(ctx context.Context, nodeID int64) (*Node
 	return result, nil
 }
 
+// RebuildAutoProvisionedProxies recreates a user's auto provisioned proxies using
+// the current protocol selection policy. Manually created proxies are untouched.
+func (s *Service) RebuildAutoProvisionedProxies(ctx context.Context, userID int64, nodeID *int64) (*AutoProvisionRebuildResult, error) {
+	result := &AutoProvisionRebuildResult{UserID: userID, NodeID: nodeID}
+	if s == nil || !s.canAutoProvisionDefaultProxy() {
+		return result, errors.NewValidationError("automatic proxy provisioning is not available", nil)
+	}
+	if userID <= 0 {
+		return result, errors.NewValidationError("invalid user id", fmt.Sprintf("%d", userID))
+	}
+	if nodeID != nil && *nodeID <= 0 {
+		return result, errors.NewValidationError("invalid node id", fmt.Sprintf("%d", *nodeID))
+	}
+
+	if err := s.ensureAutoProvisionRebuildAccess(ctx, userID); err != nil {
+		return result, err
+	}
+
+	existing, err := s.proxyRepo.GetByUserID(ctx, userID, 10000, 0)
+	if err != nil {
+		return result, err
+	}
+
+	oldAutoProxyIDsByNode := make(map[int64][]int64)
+	targetNodeIDs := make([]int64, 0)
+	targetSeen := make(map[int64]struct{})
+	addTargetNode := func(id int64) {
+		if id <= 0 {
+			return
+		}
+		if _, exists := targetSeen[id]; exists {
+			return
+		}
+		targetSeen[id] = struct{}{}
+		targetNodeIDs = append(targetNodeIDs, id)
+	}
+
+	if nodeID != nil {
+		addTargetNode(*nodeID)
+	}
+
+	for _, proxyModel := range existing {
+		if proxyModel == nil || !isAutoProvisionedProxy(proxyModel) || proxyModel.NodeID == nil {
+			continue
+		}
+		if nodeID != nil && *proxyModel.NodeID != *nodeID {
+			continue
+		}
+		oldAutoProxyIDsByNode[*proxyModel.NodeID] = append(oldAutoProxyIDsByNode[*proxyModel.NodeID], proxyModel.ID)
+		addTargetNode(*proxyModel.NodeID)
+	}
+
+	result.TargetNodeIDs = append(result.TargetNodeIDs, targetNodeIDs...)
+	if len(targetNodeIDs) == 0 {
+		return result, nil
+	}
+
+	deletableOldProxyIDs := make([]int64, 0)
+	affectedNodeIDs := make(map[int64]struct{})
+	for _, targetNodeID := range targetNodeIDs {
+		createdProxy, provisionErr := s.createAutoProvisionedProxy(ctx, userID, targetNodeID)
+		if provisionErr != nil {
+			s.logger.Warn("failed to rebuild auto provisioned proxy",
+				logger.Err(provisionErr),
+				logger.UserID(userID),
+				logger.F("node_id", targetNodeID),
+			)
+			result.Skipped++
+			continue
+		}
+		if createdProxy == nil {
+			result.Skipped++
+			continue
+		}
+
+		result.Created++
+		result.CreatedProxyIDs = append(result.CreatedProxyIDs, createdProxy.ID)
+		affectedNodeIDs[targetNodeID] = struct{}{}
+		deletableOldProxyIDs = append(deletableOldProxyIDs, oldAutoProxyIDsByNode[targetNodeID]...)
+	}
+
+	if len(deletableOldProxyIDs) > 0 {
+		if err := s.proxyRepo.DeleteByIDs(ctx, deletableOldProxyIDs); err != nil {
+			return result, err
+		}
+		result.Deleted = len(deletableOldProxyIDs)
+		result.DeletedProxyIDs = append(result.DeletedProxyIDs, deletableOldProxyIDs...)
+	}
+
+	if s.configSyncHook != nil {
+		for affectedNodeID := range affectedNodeIDs {
+			s.configSyncHook(affectedNodeID, "entitlement_auto_provision_rebuild", "rebuilt auto provisioned proxies")
+		}
+	}
+
+	if result.Created > 0 || result.Deleted > 0 {
+		s.logger.Info("rebuilt auto provisioned proxies",
+			logger.UserID(userID),
+			logger.F("target_node_count", len(targetNodeIDs)),
+			logger.F("created_proxy_count", result.Created),
+			logger.F("deleted_proxy_count", result.Deleted),
+		)
+	}
+
+	return result, nil
+}
+
+func (s *Service) ensureAutoProvisionRebuildAccess(ctx context.Context, userID int64) error {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if !user.Enabled {
+		return errors.NewForbiddenError("user account is disabled")
+	}
+
+	now := time.Now()
+	hasActiveSubscription := false
+	effectiveTrafficLimit := user.TrafficLimit
+	effectiveTrafficUsed := user.TrafficUsed
+
+	if user.ExpiresAt != nil && !now.After(*user.ExpiresAt) {
+		hasActiveSubscription = true
+	}
+	if user.ExpiresAt == nil && user.TrafficLimit > 0 {
+		hasActiveSubscription = true
+	}
+
+	hasActiveTrial := false
+	if trialModel, trialErr := s.getTrial(ctx, userID); trialErr != nil {
+		return trialErr
+	} else if trialModel != nil && trialModel.Status == "active" && !now.After(trialModel.ExpireAt) {
+		hasActiveTrial = true
+		if !hasActiveSubscription {
+			if cfg := s.trialConfig(); cfg != nil && cfg.TrafficLimit > 0 {
+				effectiveTrafficLimit = cfg.TrafficLimit
+				effectiveTrafficUsed = trialModel.TrafficUsed
+			}
+		}
+	}
+
+	if !hasActiveSubscription && !hasActiveTrial {
+		return errors.NewForbiddenError("当前无有效订阅或试用")
+	}
+	if effectiveTrafficLimit > 0 && effectiveTrafficUsed >= effectiveTrafficLimit {
+		return errors.NewForbiddenError("traffic limit exceeded")
+	}
+
+	return nil
+}
+
 // GetAccessibleProxy returns a specific accessible proxy for a user.
 func (s *Service) GetAccessibleProxy(ctx context.Context, userID, proxyID int64) (*repository.Proxy, *AccessState, error) {
 	proxies, state, err := s.GetAccessibleProxies(ctx, userID)
@@ -849,7 +1014,7 @@ func (s *Service) reconcileUserAutoProvisionedProxy(ctx context.Context, proxyMo
 	if proxyModel == nil || proxyModel.NodeID == nil || proxyModel.UserID <= 0 {
 		return proxyModel, nil
 	}
-	if strings.ToLower(strings.TrimSpace(proxyModel.Remark)) != "auto provisioned" {
+	if !isAutoProvisionedProxy(proxyModel) {
 		return proxyModel, nil
 	}
 	if !s.canAutoProvisionDefaultProxy() || !protocolSupportsAutoProvisionTLS(proxyModel.Protocol) {
@@ -922,6 +1087,18 @@ func (s *Service) reconcileUserAutoProvisionedProxy(ctx context.Context, proxyMo
 	return &updatedProxy, nil
 }
 
+func isAutoProvisionedProxy(proxyModel *repository.Proxy) bool {
+	if proxyModel == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(proxyModel.Remark)) {
+	case "auto provisioned", "auto-provisioned":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Service) canAutoProvisionDefaultProxy() bool {
 	return s.proxyManager != nil && s.nodeRepo != nil
 }
@@ -969,9 +1146,9 @@ func (s *Service) allocateAutoProvisionPort(ctx context.Context, userID int64) (
 }
 
 func preferredAutoProvisionProtocols(raw string) []string {
-	ordered := []string{}
+	configured := []string{}
 	seen := map[string]struct{}{}
-	appendProtocol := func(name string) {
+	appendConfigured := func(name string) {
 		normalized := strings.ToLower(strings.TrimSpace(name))
 		if normalized == "" {
 			return
@@ -980,20 +1157,53 @@ func preferredAutoProvisionProtocols(raw string) []string {
 			return
 		}
 		seen[normalized] = struct{}{}
-		ordered = append(ordered, normalized)
+		configured = append(configured, normalized)
 	}
 
 	if strings.TrimSpace(raw) != "" {
-		var configured []string
-		if err := json.Unmarshal([]byte(raw), &configured); err == nil {
-			for _, protocolName := range configured {
-				appendProtocol(protocolName)
+		var configuredProtocols []string
+		if err := json.Unmarshal([]byte(raw), &configuredProtocols); err == nil {
+			for _, protocolName := range configuredProtocols {
+				appendConfigured(protocolName)
 			}
 		}
 	}
 
-	for _, protocolName := range []string{"vless", "vmess", "trojan", "shadowsocks"} {
-		appendProtocol(protocolName)
+	if len(configured) == 1 {
+		return configured
+	}
+
+	allowed := map[string]bool{}
+	for _, protocolName := range configured {
+		allowed[protocolName] = true
+	}
+	hasConfiguredPreference := len(allowed) > 0
+
+	ordered := make([]string, 0, len(autoProvisionProtocolPreference)+len(configured))
+	orderedSeen := map[string]struct{}{}
+	appendPreferred := func(protocolName string) {
+		normalized := strings.ToLower(strings.TrimSpace(protocolName))
+		if normalized == "" {
+			return
+		}
+		if hasConfiguredPreference && !allowed[normalized] {
+			return
+		}
+		if _, exists := orderedSeen[normalized]; exists {
+			return
+		}
+		orderedSeen[normalized] = struct{}{}
+		ordered = append(ordered, normalized)
+	}
+
+	for _, protocolName := range autoProvisionProtocolPreference {
+		appendPreferred(protocolName)
+	}
+
+	if hasConfiguredPreference {
+		for _, protocolName := range configured {
+			appendPreferred(protocolName)
+		}
 	}
 
 	return ordered

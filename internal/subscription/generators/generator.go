@@ -87,7 +87,7 @@ func looksAutoProvisionName(value string) bool {
 }
 
 func humanReadableProtocolName(protocol string) string {
-	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	switch normalizeProtocolName(protocol) {
 	case ProtocolVMess:
 		return "VMess"
 	case ProtocolVLESS:
@@ -99,6 +99,33 @@ func humanReadableProtocolName(protocol string) string {
 	default:
 		return strings.ToUpper(strings.TrimSpace(protocol))
 	}
+}
+
+func normalizeProtocolName(protocol string) string {
+	return strings.ToLower(strings.TrimSpace(protocol))
+}
+
+func clashGroupBaseName(options *GeneratorOptions) string {
+	if options == nil {
+		return "Proxy"
+	}
+	name := strings.TrimSpace(options.SubscriptionName)
+	if name == "" || strings.EqualFold(name, "V Panel Subscription") {
+		return "Proxy"
+	}
+	return name
+}
+
+func clashSelectGroupName(options *GeneratorOptions) string {
+	return clashGroupBaseName(options)
+}
+
+func clashAutoGroupName(options *GeneratorOptions) string {
+	return clashGroupBaseName(options) + " Auto"
+}
+
+func clashFallbackGroupName(options *GeneratorOptions) string {
+	return clashGroupBaseName(options) + " Fallback"
 }
 
 func buildSubscriptionProxyName(proxy *repository.Proxy, server string) string {
@@ -140,7 +167,7 @@ func ExtractProxyInfo(proxy *repository.Proxy) *ProxyInfo {
 	settingsCopy["server"] = server
 	return &ProxyInfo{
 		Name:     buildSubscriptionProxyName(proxy, server),
-		Protocol: proxy.Protocol,
+		Protocol: normalizeProtocolName(proxy.Protocol),
 		Server:   server,
 		Port:     proxylib.ResolveServerPort(proxy.Port, proxy.Settings),
 		Settings: settingsCopy,

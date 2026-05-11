@@ -548,6 +548,7 @@ func (r *Router) Setup() {
 				users.DELETE("/:id", authMiddleware.RequirePermission("user:write"), authHandler.DeleteUser)
 				users.POST("/:id/enable", authMiddleware.RequirePermission("user:write"), authHandler.EnableUser)
 				users.POST("/:id/disable", authMiddleware.RequirePermission("user:write"), authHandler.DisableUser)
+				users.POST("/:id/rebuild-auto-proxies", authMiddleware.RequirePermission("user:write"), authHandler.RebuildAutoProxies)
 				users.POST("/:id/reset-password", authMiddleware.RequirePermission("user:write"), authHandler.ResetPassword)
 				users.GET("/:id/login-history", authMiddleware.RequirePermission("user:read"), authHandler.GetLoginHistory)
 				users.DELETE("/:id/login-history", authMiddleware.RequirePermission("user:write"), authHandler.ClearLoginHistory)

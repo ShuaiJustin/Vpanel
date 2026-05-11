@@ -557,6 +557,12 @@ func (h *ProxyHandler) Delete(c *gin.Context) {
 
 // GetShareLink generates a share link for a proxy.
 func (h *ProxyHandler) GetShareLink(c *gin.Context) {
+	_, _, isAdmin := getUserFromContext(c)
+	if !isAdmin {
+		c.JSON(http.StatusForbidden, gin.H{"error": "请通过订阅链接导入节点，单节点分享链接仅管理员可用"})
+		return
+	}
+
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid proxy ID"})

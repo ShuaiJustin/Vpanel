@@ -182,6 +182,9 @@ func TestNodeAgentHeartbeat_AllowsSharedProxyTrafficRecords(t *testing.T) {
 func TestNodeAgentHeartbeat_RecordsProxySessionsIntoActiveIPs(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
 	require.NoError(t, db.AutoMigrate(&repository.Node{}, &ip.ActiveIP{}, &ip.IPHistory{}, &ip.GeoCache{}))
 	require.NoError(t, db.Create(&repository.Node{
 		ID:      1,

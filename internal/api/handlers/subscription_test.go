@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -417,6 +418,11 @@ func TestSubscriptionHandlerDetectFormatAliases(t *testing.T) {
 		{name: "base64 alias", format: "base64", userAgent: "sing-box/1.0", expected: subscription.FormatV2rayN},
 		{name: "raw alias", format: "raw", userAgent: "Surge/5.0", expected: subscription.FormatV2rayN},
 		{name: "existing sing-box alias", format: "sing-box", userAgent: "Mozilla/5.0", expected: subscription.FormatSingbox},
+		{name: "clash meta hyphen alias", format: "clash-meta", userAgent: "Mozilla/5.0", expected: subscription.FormatClashMeta},
+		{name: "clash meta underscore alias", format: "clash_meta", userAgent: "Mozilla/5.0", expected: subscription.FormatClashMeta},
+		{name: "auto delegates to user agent", format: "auto", userAgent: "clash-verge/v2.4.7", expected: subscription.FormatClashMeta},
+		{name: "universal delegates to user agent", format: "universal", userAgent: "Shadowrocket/3082", expected: subscription.FormatShadowrocket},
+		{name: "clash meta compatibility query", format: "", userAgent: "Mozilla/5.0", expected: subscription.FormatClashMeta},
 	}
 
 	for _, tt := range tests {
@@ -425,7 +431,12 @@ func TestSubscriptionHandlerDetectFormatAliases(t *testing.T) {
 			c, _ := gin.CreateTestContext(w)
 			req := httptest.NewRequest(http.MethodGet, "/api/subscription/test-token", nil)
 			query := req.URL.Query()
-			query.Set("format", tt.format)
+			if tt.format != "" {
+				query.Set("format", tt.format)
+			}
+			if tt.name == "clash meta compatibility query" {
+				query.Set("clash", "3")
+			}
 			req.URL.RawQuery = query.Encode()
 			if tt.userAgent != "" {
 				req.Header.Set("User-Agent", tt.userAgent)
@@ -677,6 +688,21 @@ func TestProperty16_ResponseHeadersPresence(t *testing.T) {
 	}
 	subRepo.subscriptions[sub.Token] = sub
 	subRepo.byUserID[1] = sub
+	if err := proxyRepo.Create(context.Background(), &repository.Proxy{
+		UserID:   1,
+		Name:     "Header VMess",
+		Protocol: "vmess",
+		Host:     "vmess.example.com",
+		Port:     443,
+		Settings: map[string]interface{}{
+			"uuid":     "12345678-1234-1234-1234-123456789012",
+			"alterId":  0,
+			"security": "none",
+		},
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
 
 	service := subscription.NewService(subRepo, userRepo, proxyRepo, log, "http://localhost:8080")
 	handler := NewSubscriptionHandler(service, log)
@@ -715,7 +741,7 @@ func TestProperty16_ResponseHeadersPresence(t *testing.T) {
 		t.Errorf("unexpected Content-Disposition header: got %q want %q", got, expectedDisposition)
 	}
 
-	expectedTitle := "panel.example.com - Clash"
+	expectedTitle := "panel.example.com - Clash Legacy"
 	if got := w.Header().Get("Profile-Title"); got != expectedTitle {
 		t.Errorf("unexpected Profile-Title header: got %q want %q", got, expectedTitle)
 	}
@@ -758,6 +784,21 @@ func TestSubscriptionHandler_ConfiguredProfileUpdateInterval(t *testing.T) {
 	}
 	subRepo.subscriptions[sub.Token] = sub
 	subRepo.byUserID[1] = sub
+	if err := proxyRepo.Create(context.Background(), &repository.Proxy{
+		UserID:   1,
+		Name:     "Interval VMess",
+		Protocol: "vmess",
+		Host:     "vmess.example.com",
+		Port:     443,
+		Settings: map[string]interface{}{
+			"uuid":     "12345678-1234-1234-1234-123456789012",
+			"alterId":  0,
+			"security": "none",
+		},
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
 
 	service := subscription.NewService(subRepo, userRepo, proxyRepo, log, "http://localhost:8080")
 	handler := NewSubscriptionHandler(service, log, 12)
@@ -865,6 +906,64 @@ func TestGetContent_InvalidExplicitFormatReturnsBadRequest(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestGetContent_ClashForWindowsRejectsVLESSSubscription(t *testing.T) {
+	subRepo := newMockSubscriptionRepo()
+	userRepo := newMockUserRepo()
+	proxyRepo := newMockProxyRepo()
+	log := logger.NewNopLogger()
+
+	expiresAt := time.Now().Add(30 * 24 * time.Hour).UTC()
+	userRepo.users[1] = &repository.User{
+		ID:           1,
+		Username:     "cfw-vless-user",
+		Enabled:      true,
+		TrafficLimit: 100 * 1024 * 1024 * 1024,
+		TrafficUsed:  0,
+		ExpiresAt:    &expiresAt,
+	}
+
+	sub := &repository.Subscription{ID: 1, UserID: 1, Token: "token-cfw-vless-1234567890123456", ShortCode: "cfwvless"}
+	subRepo.subscriptions[sub.Token] = sub
+	subRepo.byUserID[1] = sub
+
+	if err := proxyRepo.Create(context.Background(), &repository.Proxy{
+		UserID:   1,
+		Name:     "VLESS Only",
+		Protocol: "vless",
+		Host:     "vless.example.com",
+		Port:     443,
+		Settings: map[string]interface{}{
+			"uuid":     "12345678-1234-1234-1234-123456789012",
+			"security": "tls",
+			"sni":      "vless.example.com",
+		},
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
+
+	service := subscription.NewService(subRepo, userRepo, proxyRepo, log, "http://localhost:8080")
+	handler := NewSubscriptionHandler(service, log)
+
+	router := gin.New()
+	router.GET("/api/subscription/:token", handler.GetContent)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/subscription/"+sub.Token, nil)
+	req.Header.Set("User-Agent", "Clash for Windows/0.20.39")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "Clash Legacy/Clash for Windows") || !strings.Contains(w.Body.String(), "VLESS") {
+		t.Fatalf("expected clear Clash/VLESS compatibility error, got %s", w.Body.String())
+	}
+	if sub.AccessCount != 0 {
+		t.Fatalf("failed subscription generation should not update access stats, got %d", sub.AccessCount)
 	}
 }
 
@@ -990,6 +1089,21 @@ func TestGetContent_RecordsUsageForDeviceTracking(t *testing.T) {
 	}
 	if err := subscriptionRepo.Create(context.Background(), sub); err != nil {
 		t.Fatalf("create subscription: %v", err)
+	}
+	if err := proxyRepo.Create(context.Background(), &repository.Proxy{
+		UserID:   user.ID,
+		Name:     "Tracked VMess",
+		Protocol: "vmess",
+		Host:     "vmess.example.com",
+		Port:     443,
+		Settings: map[string]interface{}{
+			"uuid":     "12345678-1234-1234-1234-123456789012",
+			"alterId":  0,
+			"security": "none",
+		},
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("create proxy: %v", err)
 	}
 
 	subscriptionService := subscription.NewService(subscriptionRepo, userRepo, proxyRepo, logger.NewNopLogger(), "http://panel.example.com")

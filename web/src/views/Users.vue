@@ -201,6 +201,12 @@
                 <template #dropdown>
                   <el-dropdown-menu>
                     <el-dropdown-item
+                      command="rebuildAutoProxies"
+                      :disabled="!canManageUsers || row.role === 'admin'"
+                    >
+                      重建自动代理
+                    </el-dropdown-item>
+                    <el-dropdown-item
                       command="resetPassword"
                       :disabled="!canManageUsers || row.id === currentUserId"
                     >
@@ -663,6 +669,42 @@ const handleResetPassword = async (row) => {
   }
 }
 
+const handleRebuildAutoProxies = async (row) => {
+  if (!canManageUsers.value) {
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要重建用户 ${row.username} 的自动代理吗？系统只会替换自动生成的代理，手动创建的代理不会被删除。`,
+      '重建自动代理',
+      {
+        confirmButtonText: '重建',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    const result = await usersApi.rebuildAutoProxies(row.id)
+    const created = Number(result?.created || 0)
+    const deleted = Number(result?.deleted || 0)
+    const skipped = Number(result?.skipped || 0)
+    if (created === 0 && deleted === 0) {
+      ElMessage.info(skipped > 0 ? '没有代理被重建，请检查节点状态' : '当前没有可重建的自动代理')
+    } else {
+      ElMessage.success(`重建完成：新建 ${created} 个，删除旧代理 ${deleted} 个${skipped ? `，跳过 ${skipped} 个` : ''}`)
+    }
+    await fetchUsers()
+  } catch (error) {
+    if (error === 'cancel') {
+      return
+    }
+
+    console.error('Failed to rebuild auto proxies:', error)
+    ElMessage.error(extractErrorMessage(error) || '重建自动代理失败')
+  }
+}
+
 const handleDelete = async (row) => {
   if (!canManageUsers.value) {
     return
@@ -692,6 +734,11 @@ const handleDelete = async (row) => {
 }
 
 const handleRowCommand = (command, row) => {
+  if (command === 'rebuildAutoProxies') {
+    handleRebuildAutoProxies(row)
+    return
+  }
+
   if (command === 'resetPassword') {
     handleResetPassword(row)
     return

@@ -13,6 +13,7 @@ import (
 	"github.com/leanovate/gopter/prop"
 	"gorm.io/gorm"
 
+	"v/internal/cache"
 	"v/internal/database"
 	"v/internal/database/repository"
 )
@@ -46,7 +47,7 @@ type queryCounter struct {
 
 func newQueryCounter(db *gorm.DB) *queryCounter {
 	counter := &queryCounter{db: db, count: 0}
-	
+
 	// Register callback to count queries
 	db.Callback().Query().Before("gorm:query").Register("count_query", func(db *gorm.DB) {
 		counter.count++
@@ -66,7 +67,7 @@ func newQueryCounter(db *gorm.DB) *queryCounter {
 	db.Callback().Raw().Before("gorm:raw").Register("count_raw", func(db *gorm.DB) {
 		counter.count++
 	})
-	
+
 	return counter
 }
 
@@ -128,37 +129,38 @@ func TestBugCondition_N1QueryInUserSummary(t *testing.T) {
 		}
 	}
 
+	if err := db.DB().Model(&repository.User{}).
+		Where("username IN ?", []string{"user1", "user3", "user5", "user7", "user9"}).
+		Update("enabled", false).Error; err != nil {
+		t.Fatalf("Failed to disable users: %v", err)
+	}
+
+	summaryRepo, ok := repository.NewUserRepository(db.DB()).(interface {
+		GetFilteredSummary(context.Context, repository.UserListFilter) (repository.UserListSummary, error)
+	})
+	if !ok {
+		t.Fatal("user repository does not expose GetFilteredSummary")
+	}
+
 	// Reset counter after setup
 	counter.reset()
 
-	// Execute Count queries similar to GetFilteredSummary pattern
-	// This simulates the 4 separate COUNT queries in the current implementation
-	var total, admin, enabled, disabled int64
-	
-	if err := db.DB().Model(&repository.User{}).Count(&total).Error; err != nil {
-		t.Fatalf("Count failed: %v", err)
+	summary, err := summaryRepo.GetFilteredSummary(context.Background(), repository.UserListFilter{})
+	if err != nil {
+		t.Fatalf("GetFilteredSummary failed: %v", err)
 	}
-	
-	if err := db.DB().Model(&repository.User{}).Where("role = ?", "admin").Count(&admin).Error; err != nil {
-		t.Fatalf("Count admin failed: %v", err)
-	}
-	
-	if err := db.DB().Model(&repository.User{}).Where("enabled = ?", true).Count(&enabled).Error; err != nil {
-		t.Fatalf("Count enabled failed: %v", err)
-	}
-	
-	if err := db.DB().Model(&repository.User{}).Where("enabled = ?", false).Count(&disabled).Error; err != nil {
-		t.Fatalf("Count disabled failed: %v", err)
+	queryCount := counter.getCount()
+
+	if summary.Total != 10 || summary.Admin != 1 || summary.Enabled != 5 || summary.Disabled != 5 {
+		t.Fatalf("unexpected summary: %+v", summary)
 	}
 
-	queryCount := counter.getCount()
-	
 	// EXPECTED BEHAVIOR: Should execute ≤ 3 queries (ideally 1 aggregated query)
 	// CURRENT BEHAVIOR: Executes 4 separate COUNT queries
 	if queryCount > 3 {
 		t.Logf("PERFORMANCE BUG DETECTED: User summary executed %d queries (expected ≤ 3)", queryCount)
 		t.Logf("Counterexample: Actual query count = %d, Expected ≤ 3", queryCount)
-		t.Logf("Results: Total=%d, Admin=%d, Enabled=%d, Disabled=%d", total, admin, enabled, disabled)
+		t.Logf("Results: Total=%d, Admin=%d, Enabled=%d, Disabled=%d", summary.Total, summary.Admin, summary.Enabled, summary.Disabled)
 		t.Errorf("Bug condition confirmed: Multiple COUNT queries instead of single aggregated query")
 	} else {
 		t.Logf("Performance target met: User summary executed %d queries", queryCount)
@@ -269,16 +271,16 @@ func TestBugCondition_SerialQueryTiming(t *testing.T) {
 
 	// Simulate dashboard queries (user info, traffic stats, announcement count)
 	// These are typically executed serially in the current implementation
-	
+
 	start := time.Now()
-	
+
 	// Query 1: Get user info
 	var fetchedUser repository.User
 	if err := db.DB().First(&fetchedUser, user.ID).Error; err != nil {
 		t.Fatalf("Failed to get user: %v", err)
 	}
 	query1Duration := time.Since(start)
-	
+
 	// Query 2: Count users (simulating traffic stats)
 	start2 := time.Now()
 	var count int64
@@ -286,7 +288,7 @@ func TestBugCondition_SerialQueryTiming(t *testing.T) {
 		t.Fatalf("Failed to count users: %v", err)
 	}
 	query2Duration := time.Since(start2)
-	
+
 	// Query 3: Count enabled users (simulating announcement count)
 	start3 := time.Now()
 	var activeCount int64
@@ -294,23 +296,23 @@ func TestBugCondition_SerialQueryTiming(t *testing.T) {
 		t.Fatalf("Failed to count active users: %v", err)
 	}
 	query3Duration := time.Since(start3)
-	
+
 	totalDuration := time.Since(start)
 	sumOfDurations := query1Duration + query2Duration + query3Duration
-	
+
 	// EXPECTED BEHAVIOR: Total time should be ≤ 100ms with parallel execution
 	// CURRENT BEHAVIOR: Total time ≈ sum of individual query times (serial execution)
-	
+
 	// Check if execution appears to be serial (total ≈ sum)
 	// Allow 20% tolerance for measurement overhead
 	isSerial := float64(totalDuration) > float64(sumOfDurations)*0.8
-	
+
 	if isSerial {
 		t.Logf("PERFORMANCE BUG DETECTED: Queries appear to execute serially")
 		t.Logf("Counterexample: Total time = %v, Sum of individual times = %v", totalDuration, sumOfDurations)
 		t.Logf("Query 1: %v, Query 2: %v, Query 3: %v", query1Duration, query2Duration, query3Duration)
 	}
-	
+
 	// Check if total time exceeds target
 	if totalDuration > 100*time.Millisecond {
 		t.Logf("PERFORMANCE BUG DETECTED: Dashboard queries took %v (expected ≤ 100ms)", totalDuration)
@@ -334,14 +336,23 @@ func TestBugCondition_CacheMissRate(t *testing.T) {
 			db, counter := setupTestDB(t)
 			defer db.Close()
 
-			// Create test user
+			baseRepo := repository.NewUserRepository(db.DB())
+			userCache := cache.NewMemoryCache(cache.Config{
+				DefaultTTL:     time.Minute,
+				MaxMemoryItems: 100,
+			})
+			defer userCache.Close()
+			cachedRepo := repository.NewCachedUserRepository(baseRepo, userCache, time.Minute)
+
+			// Create test user through the base repository so the first cached
+			// lookup is a real cache miss and subsequent lookups should hit.
 			user := &repository.User{
 				Username:     "cachetest",
 				PasswordHash: "password",
 				Role:         "user",
 				Enabled:      true,
 			}
-			if err := db.DB().Create(user).Error; err != nil {
+			if err := baseRepo.Create(context.Background(), user); err != nil {
 				t.Logf("Failed to create user: %v", err)
 				return false
 			}
@@ -351,8 +362,7 @@ func TestBugCondition_CacheMissRate(t *testing.T) {
 
 			// Execute the same query multiple times
 			for i := 0; i < repeats; i++ {
-				var fetchedUser repository.User
-				if err := db.DB().First(&fetchedUser, user.ID).Error; err != nil {
+				if _, err := cachedRepo.GetByID(context.Background(), user.ID); err != nil {
 					t.Logf("Failed to get user: %v", err)
 					return false
 				}
@@ -362,11 +372,11 @@ func TestBugCondition_CacheMissRate(t *testing.T) {
 
 			// EXPECTED BEHAVIOR: With caching, should execute 1 query + (repeats * 0.2) cache misses
 			// CURRENT BEHAVIOR: Executes 'repeats' queries (no caching, 0% hit rate)
-			
+
 			// Calculate expected max queries with 80% cache hit rate
 			// First query is always a miss, then 80% should be hits
 			expectedMaxQueries := 1 + int(float64(repeats-1)*0.2)
-			
+
 			if queryCount > expectedMaxQueries {
 				cacheHitRate := float64(repeats-queryCount) / float64(repeats) * 100
 				t.Logf("PERFORMANCE BUG DETECTED: Cache hit rate = %.1f%% (expected ≥ 80%%)", cacheHitRate)
@@ -406,7 +416,7 @@ func TestBugCondition_FunctionBasedSearch(t *testing.T) {
 	var users []repository.User
 	search := "searchuser5"
 	likePattern := "%" + search + "%"
-	
+
 	start := time.Now()
 	// This simulates the current implementation which uses LOWER(TRIM(username)) LIKE
 	if err := db.DB().Where("LOWER(TRIM(username)) LIKE ?", likePattern).Limit(10).Find(&users).Error; err != nil {
@@ -420,13 +430,13 @@ func TestBugCondition_FunctionBasedSearch(t *testing.T) {
 
 	// EXPECTED BEHAVIOR: Search should be fast with indexed lookup
 	// CURRENT BEHAVIOR: Search uses LOWER(TRIM(username)) which cannot use index
-	
+
 	// Note: In SQLite with small datasets, this might still be fast
 	// The real issue shows up with larger datasets and under load
 	t.Logf("Search query took %v for %d users", duration, len(users))
 	t.Logf("Note: Current implementation uses LOWER(TRIM(username)) LIKE which prevents index usage")
 	t.Logf("This becomes a performance bottleneck with larger datasets")
-	
+
 	// We can't easily detect function-based queries without query plan analysis
 	// But we document the issue for awareness
 	if duration > 50*time.Millisecond {

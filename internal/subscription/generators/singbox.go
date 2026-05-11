@@ -36,7 +36,7 @@ func (g *SingboxGenerator) Generate(proxies []*repository.Proxy, options *Genera
 		var outbound map[string]interface{}
 		var err error
 
-		switch strings.ToLower(info.Protocol) {
+		switch normalizeProtocolName(info.Protocol) {
 		case ProtocolVMess:
 			outbound, err = g.generateVMessOutbound(info)
 		case ProtocolVLESS:
@@ -71,7 +71,7 @@ func (g *SingboxGenerator) FileExtension() string {
 
 // SupportsProtocol checks if Sing-box format supports a specific protocol.
 func (g *SingboxGenerator) SupportsProtocol(protocol string) bool {
-	switch strings.ToLower(protocol) {
+	switch normalizeProtocolName(protocol) {
 	case ProtocolVMess, ProtocolVLESS, ProtocolTrojan, ProtocolShadowsocks, ProtocolSS:
 		return true
 	default:

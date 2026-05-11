@@ -468,6 +468,14 @@ func (h *SubscriptionHandler) serveSubscriptionContent(c *gin.Context, sub *repo
 	// Generate content
 	content, contentType, fileExt, err := h.service.GenerateContent(ctx, sub.UserID, format, options)
 	if err != nil {
+		if errors.IsValidation(err) {
+			message := err.Error()
+			if appErr, ok := errors.AsAppError(err); ok {
+				message = appErr.Message
+			}
+			c.JSON(http.StatusBadRequest, gin.H{"error": message})
+			return
+		}
 		h.logger.Error("failed to generate content", logger.F("error", err), logger.UserID(sub.UserID))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate subscription content"})
 		return
@@ -554,11 +562,13 @@ func (h *SubscriptionHandler) detectFormat(c *gin.Context) (subscription.ClientF
 	// Check explicit format parameter first
 	if formatParam := c.Query("format"); formatParam != "" {
 		switch strings.ToLower(formatParam) {
+		case "auto", "universal", "adaptive", "default":
+			return subscription.DetectClientFormat(c.Request.UserAgent()), nil
 		case "v2ray", "v2rayn", "v2rayng", "base64", "raw":
 			return subscription.FormatV2rayN, nil
 		case "clash":
 			return subscription.FormatClash, nil
-		case "clashmeta", "clash.meta", "mihomo":
+		case "clashmeta", "clash.meta", "clash-meta", "clash_meta", "mihomo":
 			return subscription.FormatClashMeta, nil
 		case "shadowrocket":
 			return subscription.FormatShadowrocket, nil
@@ -572,6 +582,12 @@ func (h *SubscriptionHandler) detectFormat(c *gin.Context) (subscription.ClientF
 			return subscription.FormatAuto, invalidSubscriptionFormatError{value: formatParam}
 		}
 	}
+	if clashParam := strings.ToLower(strings.TrimSpace(c.Query("clash"))); clashParam != "" {
+		switch clashParam {
+		case "3", "meta", "mihomo":
+			return subscription.FormatClashMeta, nil
+		}
+	}
 
 	// Fall back to User-Agent detection
 	return h.service.DetectClientFormat(c.Request.UserAgent()), nil
@@ -579,7 +595,9 @@ func (h *SubscriptionHandler) detectFormat(c *gin.Context) (subscription.ClientF
 
 // parseContentOptions parses content options from query parameters.
 func (h *SubscriptionHandler) parseContentOptions(c *gin.Context) *subscription.ContentOptions {
-	options := &subscription.ContentOptions{}
+	options := &subscription.ContentOptions{
+		SubscriptionName: subscriptionRequestHostname(c),
+	}
 
 	// Parse protocols filter
 	if protocols := c.Query("protocols"); protocols != "" {

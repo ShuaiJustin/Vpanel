@@ -29,7 +29,7 @@ func (g *QuantumultXGenerator) Generate(proxies []*repository.Proxy, options *Ge
 		var line string
 		var err error
 
-		switch strings.ToLower(info.Protocol) {
+		switch normalizeProtocolName(info.Protocol) {
 		case ProtocolVMess:
 			line, err = g.generateVMessLine(info)
 		case ProtocolTrojan:
@@ -62,7 +62,7 @@ func (g *QuantumultXGenerator) FileExtension() string {
 
 // SupportsProtocol checks if Quantumult X format supports a specific protocol.
 func (g *QuantumultXGenerator) SupportsProtocol(protocol string) bool {
-	switch strings.ToLower(protocol) {
+	switch normalizeProtocolName(protocol) {
 	case ProtocolVMess, ProtocolTrojan, ProtocolShadowsocks, ProtocolSS:
 		return true
 	default:

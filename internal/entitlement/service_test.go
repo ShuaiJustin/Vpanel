@@ -628,10 +628,10 @@ func TestGetAccessibleProxies_DoesNotShareAutoProvisionedUserProxy(t *testing.T)
 	}
 }
 
-func TestGetAccessibleProxies_AutoProvisionedTLSDefaultsToVLESSWhenNodeProtocolsEmpty(t *testing.T) {
+func TestGetAccessibleProxies_AutoProvisionedTLSDefaultsToTrojanWhenNodeProtocolsEmpty(t *testing.T) {
 	service, db := setupTestService(t)
-	user := createTestUser(t, db, "tls-default-vless-user")
-	node := createTestNode(t, db, "tls-default-vless-node")
+	user := createTestUser(t, db, "tls-default-trojan-user")
+	node := createTestNode(t, db, "tls-default-trojan-node")
 	node.Protocols = "[]"
 	node.TLSEnabled = true
 	node.TLSDomain = "panel.example.com"
@@ -646,8 +646,8 @@ func TestGetAccessibleProxies_AutoProvisionedTLSDefaultsToVLESSWhenNodeProtocols
 	if len(proxies) != 1 {
 		t.Fatalf("expected one tls auto provisioned proxy, got %d", len(proxies))
 	}
-	if proxies[0].Protocol != "vless" {
-		t.Fatalf("expected vless proxy for tls-enabled node without explicit protocol preference, got %s", proxies[0].Protocol)
+	if proxies[0].Protocol != "trojan" {
+		t.Fatalf("expected trojan proxy for tls-enabled node without explicit protocol preference, got %s", proxies[0].Protocol)
 	}
 	if got := proxies[0].Settings["security"]; got != "tls" {
 		t.Fatalf("expected tls security, got %#v", got)
@@ -686,6 +686,75 @@ func TestGetAccessibleProxies_AutoProvisionedProxyInheritsNodeTLS(t *testing.T) 
 	}
 	if got := proxies[0].Settings["server_name"]; got != "panel.example.com" {
 		t.Fatalf("expected server_name to inherit tls domain, got %#v", got)
+	}
+}
+
+func TestGetAccessibleProxies_AutoProvisionedTLSChoosesBestConfiguredProtocol(t *testing.T) {
+	service, db := setupTestService(t)
+	user := createTestUser(t, db, "tls-best-protocol-user")
+	node := createTestNode(t, db, "tls-best-protocol-node")
+	node.Protocols = `["vless","trojan","vmess"]`
+	node.TLSEnabled = true
+	node.TLSDomain = "panel.example.com"
+	if err := db.Save(node).Error; err != nil {
+		t.Fatalf("failed to update node tls settings: %v", err)
+	}
+
+	proxies, _, err := service.GetAccessibleProxies(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("expected tls auto provisioned proxy, got error: %v", err)
+	}
+	if len(proxies) != 1 {
+		t.Fatalf("expected one tls auto provisioned proxy, got %d", len(proxies))
+	}
+	if proxies[0].Protocol != "trojan" {
+		t.Fatalf("expected best configured protocol trojan, got %s", proxies[0].Protocol)
+	}
+	if got := proxies[0].Settings["security"]; got != "tls" {
+		t.Fatalf("expected tls security, got %#v", got)
+	}
+}
+
+func TestPreferredAutoProvisionProtocols_SortsConfiguredProtocolsByBestDefault(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want []string
+	}{
+		{
+			name: "empty uses global best default",
+			raw:  "[]",
+			want: []string{"trojan", "vmess", "vless", "shadowsocks"},
+		},
+		{
+			name: "multiple configured are ranked by best default",
+			raw:  `["vless","trojan","vmess"]`,
+			want: []string{"trojan", "vmess", "vless"},
+		},
+		{
+			name: "single configured protocol is respected",
+			raw:  `["vmess"]`,
+			want: []string{"vmess"},
+		},
+		{
+			name: "less compatible protocols fall behind vmess on tls nodes",
+			raw:  `["shadowsocks","vmess"]`,
+			want: []string{"vmess", "shadowsocks"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := preferredAutoProvisionProtocols(tt.raw)
+			if len(got) != len(tt.want) {
+				t.Fatalf("preferredAutoProvisionProtocols() = %#v, want %#v", got, tt.want)
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Fatalf("preferredAutoProvisionProtocols() = %#v, want %#v", got, tt.want)
+				}
+			}
+		})
 	}
 }
 
@@ -748,6 +817,169 @@ func TestGetAccessibleProxies_ReconcilesExistingAutoProvisionedProxyToTLS(t *tes
 	}
 	if got := persisted.Settings["security"]; got != "tls" {
 		t.Fatalf("expected persisted proxy security to be tls, got %#v", got)
+	}
+}
+
+func TestRebuildAutoProvisionedProxies_ReplacesOnlyAutoProxiesWithCurrentDefault(t *testing.T) {
+	service, db := setupTestService(t)
+	user := createTestUser(t, db, "rebuild-auto-proxy-user")
+	user.TrafficLimit = 1024 * 1024 * 1024
+	if err := db.Save(user).Error; err != nil {
+		t.Fatalf("failed to update user entitlement: %v", err)
+	}
+
+	node := createTestNode(t, db, "rebuild-auto-proxy-node")
+	node.Protocols = "[]"
+	node.TLSEnabled = true
+	node.TLSDomain = "panel.example.com"
+	if err := db.Save(node).Error; err != nil {
+		t.Fatalf("failed to update node tls settings: %v", err)
+	}
+
+	nodeRef := node.ID
+	oldAutoProxy := &repository.Proxy{
+		UserID:   user.ID,
+		NodeID:   &nodeRef,
+		Name:     "old-auto-vless",
+		Protocol: "vless",
+		Port:     24001,
+		Host:     node.Address,
+		Settings: map[string]any{
+			"uuid":     "3f9b4ca6-7df4-4dd9-a61e-bba0e4d2c2d3",
+			"network":  "tcp",
+			"security": "tls",
+		},
+		Enabled: true,
+		Remark:  "auto provisioned",
+	}
+	if err := db.Create(oldAutoProxy).Error; err != nil {
+		t.Fatalf("failed to create old auto proxy: %v", err)
+	}
+
+	manualProxy := &repository.Proxy{
+		UserID:   user.ID,
+		NodeID:   &nodeRef,
+		Name:     "manual-vmess",
+		Protocol: "vmess",
+		Port:     24002,
+		Host:     node.Address,
+		Settings: map[string]any{
+			"uuid":    "12345678-1234-1234-1234-123456789012",
+			"alterId": 0,
+		},
+		Enabled: true,
+		Remark:  "manual proxy",
+	}
+	if err := db.Create(manualProxy).Error; err != nil {
+		t.Fatalf("failed to create manual proxy: %v", err)
+	}
+
+	var syncedNodeID int64
+	service.WithConfigSyncHook(func(nodeID int64, source, reason string) {
+		syncedNodeID = nodeID
+	})
+
+	result, err := service.RebuildAutoProvisionedProxies(context.Background(), user.ID, nil)
+	if err != nil {
+		t.Fatalf("expected auto proxy rebuild, got error: %v", err)
+	}
+	if result.Created != 1 || result.Deleted != 1 || result.Skipped != 0 {
+		t.Fatalf("unexpected rebuild result: %+v", result)
+	}
+	if len(result.CreatedProxyIDs) != 1 || len(result.DeletedProxyIDs) != 1 || result.DeletedProxyIDs[0] != oldAutoProxy.ID {
+		t.Fatalf("unexpected rebuild proxy ids: %+v", result)
+	}
+
+	var oldCount int64
+	if err := db.Model(&repository.Proxy{}).Where("id = ?", oldAutoProxy.ID).Count(&oldCount).Error; err != nil {
+		t.Fatalf("failed to count old auto proxy: %v", err)
+	}
+	if oldCount != 0 {
+		t.Fatalf("expected old auto proxy to be deleted, got count %d", oldCount)
+	}
+
+	var manualCount int64
+	if err := db.Model(&repository.Proxy{}).Where("id = ?", manualProxy.ID).Count(&manualCount).Error; err != nil {
+		t.Fatalf("failed to count manual proxy: %v", err)
+	}
+	if manualCount != 1 {
+		t.Fatalf("expected manual proxy to remain, got count %d", manualCount)
+	}
+
+	var rebuilt repository.Proxy
+	if err := db.First(&rebuilt, result.CreatedProxyIDs[0]).Error; err != nil {
+		t.Fatalf("failed to load rebuilt proxy: %v", err)
+	}
+	if rebuilt.Protocol != "trojan" {
+		t.Fatalf("expected rebuilt proxy to use trojan, got %s", rebuilt.Protocol)
+	}
+	if got := rebuilt.Settings["security"]; got != "tls" {
+		t.Fatalf("expected rebuilt proxy security tls, got %#v", got)
+	}
+	if got := rebuilt.Settings["sni"]; got != "panel.example.com" {
+		t.Fatalf("expected rebuilt proxy sni panel.example.com, got %#v", got)
+	}
+	if syncedNodeID != node.ID {
+		t.Fatalf("expected config sync for node %d, got %d", node.ID, syncedNodeID)
+	}
+}
+
+func TestRebuildAutoProvisionedProxies_DisabledUserDoesNotCleanupProxies(t *testing.T) {
+	service, db := setupTestService(t)
+	user := createTestUser(t, db, "rebuild-disabled-user")
+	user.Enabled = false
+	user.TrafficLimit = 1024 * 1024 * 1024
+	if err := db.Save(user).Error; err != nil {
+		t.Fatalf("failed to disable user: %v", err)
+	}
+
+	node := createTestNode(t, db, "rebuild-disabled-node")
+	nodeRef := node.ID
+	autoProxy := &repository.Proxy{
+		UserID:   user.ID,
+		NodeID:   &nodeRef,
+		Name:     "disabled-auto-proxy",
+		Protocol: "vless",
+		Port:     25001,
+		Host:     node.Address,
+		Settings: map[string]any{
+			"uuid": "3f9b4ca6-7df4-4dd9-a61e-bba0e4d2c2d3",
+		},
+		Enabled: true,
+		Remark:  "auto provisioned",
+	}
+	if err := db.Create(autoProxy).Error; err != nil {
+		t.Fatalf("failed to create auto proxy: %v", err)
+	}
+
+	manualProxy := &repository.Proxy{
+		UserID:   user.ID,
+		NodeID:   &nodeRef,
+		Name:     "disabled-manual-proxy",
+		Protocol: "vmess",
+		Port:     25002,
+		Host:     node.Address,
+		Settings: map[string]any{
+			"uuid":    "12345678-1234-1234-1234-123456789012",
+			"alterId": 0,
+		},
+		Enabled: true,
+		Remark:  "manual proxy",
+	}
+	if err := db.Create(manualProxy).Error; err != nil {
+		t.Fatalf("failed to create manual proxy: %v", err)
+	}
+
+	if _, err := service.RebuildAutoProvisionedProxies(context.Background(), user.ID, nil); err == nil {
+		t.Fatalf("expected disabled user rebuild to be rejected")
+	}
+
+	var count int64
+	if err := db.Model(&repository.Proxy{}).Where("user_id = ?", user.ID).Count(&count).Error; err != nil {
+		t.Fatalf("failed to count user proxies: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("expected rebuild rejection to preserve proxies, got %d", count)
 	}
 }
 

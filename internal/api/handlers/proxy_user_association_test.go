@@ -277,6 +277,62 @@ func setUserContext(c *gin.Context, userID int64, role string) {
 	c.Set("role", role)
 }
 
+func TestProxyGetShareLink_ForbidsNonAdminUsers(t *testing.T) {
+	repo := newMockProxyRepository()
+	if err := repo.Create(context.Background(), &repository.Proxy{
+		UserID:   42,
+		Name:     "user-node",
+		Protocol: "vmess",
+		Port:     10001,
+		Host:     "node.example.com",
+		Settings: map[string]any{},
+		Enabled:  true,
+	}); err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
+
+	router, handler := setupTestRouter(repo)
+	router.GET("/proxies/:id/link", func(c *gin.Context) {
+		setUserContext(c, 42, "user")
+		handler.GetShareLink(c)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/proxies/1/link", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.NotContains(t, w.Body.String(), "mock://link")
+}
+
+func TestProxyGetShareLink_AllowsAdmins(t *testing.T) {
+	repo := newMockProxyRepository()
+	if err := repo.Create(context.Background(), &repository.Proxy{
+		UserID:   42,
+		Name:     "user-node",
+		Protocol: "vmess",
+		Port:     10001,
+		Host:     "node.example.com",
+		Settings: map[string]any{},
+		Enabled:  true,
+	}); err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
+	}
+
+	router, handler := setupTestRouter(repo)
+	router.GET("/proxies/:id/link", func(c *gin.Context) {
+		setUserContext(c, 1, "admin")
+		handler.GetShareLink(c)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/proxies/1/link", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "mock://link")
+}
+
 // TestProxyUserAssociation_CreateSetsUserID tests that when a proxy is created,
 // the user_id is set to the authenticated user's ID.
 func TestProxyUserAssociation_CreateSetsUserID(t *testing.T) {
