@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 ARG ALPINE_MIRROR=mirrors.aliyun.com
-ARG GO_PROXY=https://goproxy.cn|direct
+ARG GO_PROXY=https://goproxy.cn|https://mirrors.aliyun.com/goproxy/|https://goproxy.io|direct
 ARG NPM_REGISTRY=https://registry.npmmirror.com/
 
 FROM node:20-alpine AS frontend-base
@@ -18,7 +18,13 @@ ARG NPM_REGISTRY
 
 COPY web/package*.json ./
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --legacy-peer-deps --registry="${NPM_REGISTRY}"
+    npm config set fetch-retries 5 && \
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    npm config set fetch-timeout 600000 && \
+    npm config set maxsockets 8 && \
+    (npm ci --legacy-peer-deps --registry="${NPM_REGISTRY}" --prefer-offline --no-audit --no-fund || \
+     npm ci --legacy-peer-deps --registry="${NPM_REGISTRY}" --prefer-offline --no-audit --no-fund)
 
 FROM frontend-deps AS frontend-builder
 
@@ -53,8 +59,11 @@ FROM backend-base AS backend-deps
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go mod download || \
-    (sleep 3 && go mod download)
+    for i in 1 2 3 4 5; do \
+      go mod download && break; \
+      echo "go mod download failed, attempt $i/5, retrying in $((i*3))s..."; \
+      sleep $((i*3)); \
+    done
 
 FROM backend-deps AS backend-builder
 ARG VERSION=dev

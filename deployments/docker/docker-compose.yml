@@ -6,7 +6,7 @@ x-vpanel-build-args: &vpanel-build-args
   GIT_COMMIT: ${GIT_COMMIT:-unknown}
   ALPINE_MIRROR: ${ALPINE_MIRROR:-mirrors.aliyun.com}
   NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com/}
-  GO_PROXY: ${GO_PROXY:-https://goproxy.cn|direct}
+  GO_PROXY: ${GO_PROXY:-https://goproxy.cn|https://mirrors.aliyun.com/goproxy/|https://goproxy.io|direct}
 
 x-vpanel-environment: &vpanel-environment
   V_SERVER_HOST: 0.0.0.0

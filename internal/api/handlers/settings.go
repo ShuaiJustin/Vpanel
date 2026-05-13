@@ -929,3 +929,47 @@ func (h *SettingsHandler) UpdateProtocolSettings(c *gin.Context) {
 		"transports": settings.Transports,
 	})
 }
+
+// GetAutoProxySettings returns automatic proxy provisioning settings.
+func (h *SettingsHandler) GetAutoProxySettings(c *gin.Context) {
+	settings, err := h.settingsService.GetAutoProxySettings(c.Request.Context())
+	if err != nil {
+		h.logger.Error("Failed to load auto proxy settings", logger.F("error", err))
+		middleware.RespondWithError(c, errors.NewDatabaseError("get auto proxy settings", err))
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"protocol_priority": settings.ProtocolPriority,
+	})
+}
+
+// UpdateAutoProxySettings updates automatic proxy provisioning settings.
+func (h *SettingsHandler) UpdateAutoProxySettings(c *gin.Context) {
+	var req settings.AutoProxySettings
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "Invalid request body",
+		})
+		return
+	}
+
+	next, err := h.settingsService.UpdateAutoProxySettings(c.Request.Context(), &req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	h.logger.Info("Auto proxy settings updated",
+		logger.F("protocol_priority", strings.Join(next.ProtocolPriority, ",")))
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":           true,
+		"message":           "Auto proxy settings updated",
+		"protocol_priority": next.ProtocolPriority,
+	})
+}

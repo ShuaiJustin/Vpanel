@@ -4,10 +4,21 @@ package settings
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"sync"
 
 	"v/internal/database/repository"
 )
+
+const AutoProxySettingsKey = "auto_proxy_settings"
+
+var defaultAutoProxyProtocolPriority = []string{"trojan", "vmess", "vless", "shadowsocks"}
+
+// AutoProxySettings controls automatic proxy provisioning behavior.
+type AutoProxySettings struct {
+	ProtocolPriority []string `json:"protocol_priority"`
+}
 
 // SystemSettings represents all system settings.
 type SystemSettings struct {
@@ -125,6 +136,53 @@ func DefaultSettings() *SystemSettings {
 	}
 }
 
+// DefaultAutoProxySettings returns default automatic proxy provisioning settings.
+func DefaultAutoProxySettings() *AutoProxySettings {
+	return &AutoProxySettings{
+		ProtocolPriority: append([]string{}, defaultAutoProxyProtocolPriority...),
+	}
+}
+
+// NormalizeAutoProxyProtocolPriority validates and normalizes protocol priority.
+func NormalizeAutoProxyProtocolPriority(priority []string) ([]string, error) {
+	if len(priority) == 0 {
+		return append([]string{}, defaultAutoProxyProtocolPriority...), nil
+	}
+
+	allowed := map[string]struct{}{
+		"trojan":      {},
+		"vmess":       {},
+		"vless":       {},
+		"shadowsocks": {},
+	}
+	seen := map[string]struct{}{}
+	normalized := make([]string, 0, len(priority))
+	for _, protocolName := range priority {
+		protocolName = strings.ToLower(strings.TrimSpace(protocolName))
+		if protocolName == "" {
+			continue
+		}
+		if _, ok := allowed[protocolName]; !ok {
+			return nil, fmt.Errorf("unsupported auto proxy protocol: %s", protocolName)
+		}
+		if _, ok := seen[protocolName]; ok {
+			continue
+		}
+		seen[protocolName] = struct{}{}
+		normalized = append(normalized, protocolName)
+	}
+
+	for _, protocolName := range defaultAutoProxyProtocolPriority {
+		if _, ok := seen[protocolName]; ok {
+			continue
+		}
+		seen[protocolName] = struct{}{}
+		normalized = append(normalized, protocolName)
+	}
+
+	return normalized, nil
+}
+
 // Service provides settings management functionality.
 type Service struct {
 	repo    repository.SettingsRepository
@@ -191,6 +249,46 @@ func (s *Service) SetMultiple(ctx context.Context, settings map[string]string) e
 	s.cache = nil
 	s.cacheMu.Unlock()
 	return nil
+}
+
+// GetAutoProxySettings retrieves automatic proxy provisioning settings.
+func (s *Service) GetAutoProxySettings(ctx context.Context) (*AutoProxySettings, error) {
+	settings := DefaultAutoProxySettings()
+	var stored AutoProxySettings
+	if err := s.GetTyped(ctx, AutoProxySettingsKey, &stored); err != nil {
+		return nil, err
+	}
+	if len(stored.ProtocolPriority) == 0 {
+		return settings, nil
+	}
+
+	normalized, err := NormalizeAutoProxyProtocolPriority(stored.ProtocolPriority)
+	if err != nil {
+		return nil, err
+	}
+	settings.ProtocolPriority = normalized
+	return settings, nil
+}
+
+// UpdateAutoProxySettings validates and persists automatic proxy provisioning settings.
+func (s *Service) UpdateAutoProxySettings(ctx context.Context, next *AutoProxySettings) (*AutoProxySettings, error) {
+	if next == nil {
+		next = DefaultAutoProxySettings()
+	}
+	normalized, err := NormalizeAutoProxyProtocolPriority(next.ProtocolPriority)
+	if err != nil {
+		return nil, err
+	}
+
+	settings := &AutoProxySettings{ProtocolPriority: normalized}
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.Set(ctx, AutoProxySettingsKey, string(data)); err != nil {
+		return nil, err
+	}
+	return settings, nil
 }
 
 // GetSystemSettings retrieves all system settings as a structured object.

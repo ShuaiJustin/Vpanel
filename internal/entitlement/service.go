@@ -15,6 +15,7 @@ import (
 	"v/internal/database/repository"
 	"v/internal/logger"
 	proxylib "v/internal/proxy"
+	settingssvc "v/internal/settings"
 	"v/pkg/errors"
 )
 
@@ -23,7 +24,7 @@ const (
 	autoProvisionPortMax = 60000
 )
 
-var autoProvisionProtocolPreference = []string{"trojan", "vmess", "vless", "shadowsocks"}
+var defaultAutoProvisionProtocolPreference = []string{"trojan", "vmess", "vless", "shadowsocks"}
 
 // AccessState describes the effective access state for a portal user.
 type AccessState struct {
@@ -60,16 +61,17 @@ type AutoProvisionRebuildResult struct {
 
 // Service provides user entitlement and node assignment logic.
 type Service struct {
-	userRepo       repository.UserRepository
-	trialRepo      repository.TrialRepository
-	proxyRepo      repository.ProxyRepository
-	nodeRepo       repository.NodeRepository
-	assignmentRepo repository.UserNodeAssignmentRepository
-	pauseRepo      repository.PauseRepository
-	trialService   *trial.Service
-	proxyManager   proxylib.Manager
-	configSyncHook func(nodeID int64, source, reason string)
-	logger         logger.Logger
+	userRepo        repository.UserRepository
+	trialRepo       repository.TrialRepository
+	proxyRepo       repository.ProxyRepository
+	nodeRepo        repository.NodeRepository
+	assignmentRepo  repository.UserNodeAssignmentRepository
+	pauseRepo       repository.PauseRepository
+	trialService    *trial.Service
+	proxyManager    proxylib.Manager
+	settingsService *settingssvc.Service
+	configSyncHook  func(nodeID int64, source, reason string)
+	logger          logger.Logger
 }
 
 // NewService creates a new entitlement service.
@@ -96,6 +98,12 @@ func NewService(
 // WithProxyManager enables automatic default proxy provisioning.
 func (s *Service) WithProxyManager(proxyManager proxylib.Manager) *Service {
 	s.proxyManager = proxyManager
+	return s
+}
+
+// WithSettingsService enables configurable automatic proxy provisioning settings.
+func (s *Service) WithSettingsService(settingsService *settingssvc.Service) *Service {
+	s.settingsService = settingsService
 	return s
 }
 
@@ -932,7 +940,7 @@ func (s *Service) createAutoProvisionedProxy(ctx context.Context, userID, nodeID
 		return nil, err
 	}
 
-	protocolName, protocol, err := s.selectAutoProvisionProtocol(node)
+	protocolName, protocol, err := s.selectAutoProvisionProtocol(ctx, node)
 	if err != nil {
 		return nil, err
 	}
@@ -1103,8 +1111,8 @@ func (s *Service) canAutoProvisionDefaultProxy() bool {
 	return s.proxyManager != nil && s.nodeRepo != nil
 }
 
-func (s *Service) selectAutoProvisionProtocol(node *repository.Node) (string, proxylib.Protocol, error) {
-	preferredProtocols := preferredAutoProvisionProtocols(node.Protocols)
+func (s *Service) selectAutoProvisionProtocol(ctx context.Context, node *repository.Node) (string, proxylib.Protocol, error) {
+	preferredProtocols := preferredAutoProvisionProtocols(node.Protocols, s.autoProvisionProtocolPreference(ctx))
 	if nodeSupportsAutoProvisionTLS(node) {
 		for _, protocolName := range preferredProtocols {
 			if !protocolSupportsAutoProvisionTLS(protocolName) {
@@ -1127,6 +1135,24 @@ func (s *Service) selectAutoProvisionProtocol(node *repository.Node) (string, pr
 	return "", nil, errors.NewForbiddenError("当前暂无可用节点")
 }
 
+func (s *Service) autoProvisionProtocolPreference(ctx context.Context) []string {
+	fallback := append([]string{}, defaultAutoProvisionProtocolPreference...)
+	if s == nil || s.settingsService == nil {
+		return fallback
+	}
+
+	settings, err := s.settingsService.GetAutoProxySettings(ctx)
+	if err != nil {
+		s.logger.Warn("failed to load auto proxy protocol preference; using default",
+			logger.F("error", err))
+		return fallback
+	}
+	if settings == nil || len(settings.ProtocolPriority) == 0 {
+		return fallback
+	}
+	return append([]string{}, settings.ProtocolPriority...)
+}
+
 func (s *Service) allocateAutoProvisionPort(ctx context.Context, userID int64) (int, error) {
 	totalPorts := autoProvisionPortMax - autoProvisionPortMin + 1
 	start := autoProvisionPortMin + int(userID%int64(totalPorts))
@@ -1145,7 +1171,11 @@ func (s *Service) allocateAutoProvisionPort(ctx context.Context, userID int64) (
 	return 0, errors.NewInternalError("failed to allocate auto provisioned proxy port", fmt.Errorf("no available ports in range %d-%d", autoProvisionPortMin, autoProvisionPortMax))
 }
 
-func preferredAutoProvisionProtocols(raw string) []string {
+func preferredAutoProvisionProtocols(raw string, preference []string) []string {
+	if len(preference) == 0 {
+		preference = defaultAutoProvisionProtocolPreference
+	}
+
 	configured := []string{}
 	seen := map[string]struct{}{}
 	appendConfigured := func(name string) {
@@ -1179,7 +1209,7 @@ func preferredAutoProvisionProtocols(raw string) []string {
 	}
 	hasConfiguredPreference := len(allowed) > 0
 
-	ordered := make([]string, 0, len(autoProvisionProtocolPreference)+len(configured))
+	ordered := make([]string, 0, len(preference)+len(configured))
 	orderedSeen := map[string]struct{}{}
 	appendPreferred := func(protocolName string) {
 		normalized := strings.ToLower(strings.TrimSpace(protocolName))
@@ -1196,7 +1226,7 @@ func preferredAutoProvisionProtocols(raw string) []string {
 		ordered = append(ordered, normalized)
 	}
 
-	for _, protocolName := range autoProvisionProtocolPreference {
+	for _, protocolName := range preference {
 		appendPreferred(protocolName)
 	}
 

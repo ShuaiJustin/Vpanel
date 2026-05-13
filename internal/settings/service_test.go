@@ -228,6 +228,37 @@ func TestSettingsService_DefaultSettings(t *testing.T) {
 	assert.Equal(t, true, settings.RateLimitEnabled)
 }
 
+func TestSettingsService_AutoProxySettingsPersistence(t *testing.T) {
+	repo := newMockSettingsRepository()
+	service := NewService(repo)
+	ctx := context.Background()
+
+	defaults, err := service.GetAutoProxySettings(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"trojan", "vmess", "vless", "shadowsocks"}, defaults.ProtocolPriority)
+
+	updated, err := service.UpdateAutoProxySettings(ctx, &AutoProxySettings{
+		ProtocolPriority: []string{" VMess ", "trojan", "vmess"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"vmess", "trojan", "vless", "shadowsocks"}, updated.ProtocolPriority)
+
+	readSettings, err := service.GetAutoProxySettings(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"vmess", "trojan", "vless", "shadowsocks"}, readSettings.ProtocolPriority)
+}
+
+func TestSettingsService_AutoProxySettingsRejectsUnsupportedProtocol(t *testing.T) {
+	repo := newMockSettingsRepository()
+	service := NewService(repo)
+	ctx := context.Background()
+
+	_, err := service.UpdateAutoProxySettings(ctx, &AutoProxySettings{
+		ProtocolPriority: []string{"hysteria2"},
+	})
+	require.Error(t, err)
+}
+
 func TestSettingsService_UpdateSystemSettings(t *testing.T) {
 	repo := newMockSettingsRepository()
 	service := NewService(repo)

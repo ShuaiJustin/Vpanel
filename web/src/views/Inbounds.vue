@@ -9,15 +9,23 @@
           更清晰地查看协议、节点、有效期和分享信息
         </div>
       </div>
-      <el-button
-        type="primary"
-        class="add-btn"
-        @click="openAddInboundDialog"
-      >
-        <el-icon class="el-icon--left">
-          <Plus />
-        </el-icon> 添加代理
-      </el-button>
+      <div class="header-actions">
+        <el-button @click="openAutoProxyDialog">
+          <el-icon class="el-icon--left">
+            <Setting />
+          </el-icon>
+          自动生成协议
+        </el-button>
+        <el-button
+          type="primary"
+          class="add-btn"
+          @click="openAddInboundDialog"
+        >
+          <el-icon class="el-icon--left">
+            <Plus />
+          </el-icon> 添加代理
+        </el-button>
+      </div>
     </div>
 
     <div class="overview-strip">
@@ -110,6 +118,63 @@
         </el-button>
       </div>
     </div>
+
+    <el-dialog
+      v-model="autoProxyDialogVisible"
+      title="默认自动生成协议"
+      width="520px"
+      :close-on-click-modal="false"
+    >
+      <el-form
+        label-width="92px"
+        class="auto-proxy-form"
+      >
+        <el-form-item label="优先级">
+          <div
+            v-loading="autoProxySettingsLoading"
+            class="auto-proxy-priority"
+          >
+            <div
+              v-for="(protocol, index) in autoProxySettings.protocolPriority"
+              :key="index"
+              class="priority-row"
+            >
+              <span class="priority-index">第 {{ index + 1 }} 优先</span>
+              <el-select
+                v-model="autoProxySettings.protocolPriority[index]"
+                class="priority-select"
+                :disabled="autoProxySettingsLoading || autoProxySettingsSaving"
+                @change="ensureAutoProxyPriority"
+              >
+                <el-option
+                  v-for="option in autoProxyProtocolOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+            </div>
+          </div>
+          <div class="form-tips">
+            新用户或重建自动代理时按这个顺序选择协议；节点只配置单一协议时仍使用该协议。
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="autoProxyDialogVisible = false">
+            取消
+          </el-button>
+          <el-button
+            type="primary"
+            :loading="autoProxySettingsSaving"
+            @click="saveAutoProxySettings"
+          >
+            保存
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
 
     <el-table
       ref="inboundsTableRef"
@@ -1171,7 +1236,7 @@
 import { ref, reactive, onMounted, computed, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Delete, MoreFilled } from '@element-plus/icons-vue'
+import { Plus, Delete, MoreFilled, Setting } from '@element-plus/icons-vue'
 import api from '@/api/index'
 import QRCode from 'qrcode'
 import { extractErrorMessage } from '@/utils/entitlement'
@@ -1192,6 +1257,20 @@ const filters = reactive({
   keyword: '',
   protocol: '',
   status: ''
+})
+
+const defaultAutoProxyPriority = ['trojan', 'vmess', 'vless', 'shadowsocks']
+const autoProxyProtocolOptions = [
+  { label: 'Trojan', value: 'trojan' },
+  { label: 'VMess', value: 'vmess' },
+  { label: 'VLESS', value: 'vless' },
+  { label: 'Shadowsocks', value: 'shadowsocks' }
+]
+const autoProxyDialogVisible = ref(false)
+const autoProxySettingsLoading = ref(false)
+const autoProxySettingsSaving = ref(false)
+const autoProxySettings = reactive({
+  protocolPriority: [...defaultAutoProxyPriority]
 })
 
 // 表单对话框
@@ -1309,6 +1388,69 @@ const protocolOptions = [
   { label: 'Shadowsocks', value: 'shadowsocks' },
   { label: 'Dokodemo', value: 'dokodemo-door' }
 ]
+const normalizeAutoProxyPriority = (priority = []) => {
+  const allowed = new Set(defaultAutoProxyPriority)
+  const seen = new Set()
+  const normalized = []
+  for (const protocol of priority) {
+    const value = String(protocol || '').trim().toLowerCase()
+    if (!allowed.has(value) || seen.has(value)) continue
+    seen.add(value)
+    normalized.push(value)
+  }
+  for (const protocol of defaultAutoProxyPriority) {
+    if (seen.has(protocol)) continue
+    normalized.push(protocol)
+  }
+  return normalized.slice(0, defaultAutoProxyPriority.length)
+}
+const applyAutoProxySettings = (settings = {}) => {
+  autoProxySettings.protocolPriority.splice(
+    0,
+    autoProxySettings.protocolPriority.length,
+    ...normalizeAutoProxyPriority(settings?.protocol_priority || settings?.protocolPriority)
+  )
+}
+const ensureAutoProxyPriority = () => {
+  autoProxySettings.protocolPriority.splice(
+    0,
+    autoProxySettings.protocolPriority.length,
+    ...normalizeAutoProxyPriority(autoProxySettings.protocolPriority)
+  )
+}
+const loadAutoProxySettings = async () => {
+  autoProxySettingsLoading.value = true
+  try {
+    const response = await api.get('/settings/auto-proxy')
+    applyAutoProxySettings(response || {})
+  } catch (error) {
+    console.error('加载自动生成协议配置失败:', error)
+    ElMessage.error(`加载自动生成协议配置失败: ${extractErrorMessage(error) || '未知错误'}`)
+  } finally {
+    autoProxySettingsLoading.value = false
+  }
+}
+const openAutoProxyDialog = async () => {
+  autoProxyDialogVisible.value = true
+  await loadAutoProxySettings()
+}
+const saveAutoProxySettings = async () => {
+  autoProxySettingsSaving.value = true
+  try {
+    ensureAutoProxyPriority()
+    const response = await api.post('/settings/auto-proxy', {
+      protocol_priority: autoProxySettings.protocolPriority
+    })
+    applyAutoProxySettings(response || {})
+    ElMessage.success('默认自动生成协议已保存')
+    autoProxyDialogVisible.value = false
+  } catch (error) {
+    console.error('保存自动生成协议配置失败:', error)
+    ElMessage.error(`保存自动生成协议配置失败: ${extractErrorMessage(error) || '未知错误'}`)
+  } finally {
+    autoProxySettingsSaving.value = false
+  }
+}
 const firstStringValue = (value) => Array.isArray(value) ? normalizeStringValue(value[0]) : normalizeStringValue(value)
 const splitCommaValues = (value) => normalizeStringValue(value)
   .split(',')
@@ -2798,9 +2940,61 @@ const downloadQrCode = async () => {
   color: var(--el-text-color-secondary, #6b7280);
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.header-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
 .add-btn {
   font-size: 13px;
   padding: 10px 18px;
+}
+
+.auto-proxy-form :deep(.el-form-item__content) {
+  align-items: flex-start;
+}
+
+.auto-proxy-priority {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 12px;
+  width: 100%;
+  min-height: 94px;
+}
+
+.priority-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.priority-index {
+  width: 76px;
+  flex: 0 0 auto;
+  color: #606266;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.priority-select {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.form-tips {
+  width: 100%;
+  margin-top: 8px;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .overview-strip {
@@ -3271,6 +3465,16 @@ const downloadQrCode = async () => {
   .page-header {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .header-actions,
+  .header-actions :deep(.el-button) {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .auto-proxy-priority {
+    grid-template-columns: 1fr;
   }
 
   .overview-strip {

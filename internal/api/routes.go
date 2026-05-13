@@ -235,7 +235,7 @@ func (r *Router) Setup() {
 		r.repos.UserNodeAssignment,
 		trialService,
 		r.logger,
-	).WithProxyManager(r.proxyManager).WithPauseRepository(r.repos.Pause)
+	).WithProxyManager(r.proxyManager).WithSettingsService(r.settingsService).WithPauseRepository(r.repos.Pause)
 	authHandler.WithEntitlementService(r.entitlementService)
 	orderService.WithAfterPlanAppliedHook(func(ctx context.Context, userID int64) error {
 		_, _, err := r.entitlementService.GetAccessibleProxies(ctx, userID)
@@ -568,6 +568,8 @@ func (r *Router) Setup() {
 				settingsRoutes.POST("/xray", authMiddleware.RequirePermission("system:write"), settingsHandler.UpdateXraySettings)
 				settingsRoutes.GET("/protocols", authMiddleware.RequirePermission("system:read"), settingsHandler.GetProtocolSettings)
 				settingsRoutes.POST("/protocols", authMiddleware.RequirePermission("system:write"), settingsHandler.UpdateProtocolSettings)
+				settingsRoutes.GET("/auto-proxy", authMiddleware.RequirePermission("system:read"), settingsHandler.GetAutoProxySettings)
+				settingsRoutes.POST("/auto-proxy", authMiddleware.RequirePermission("system:write"), settingsHandler.UpdateAutoProxySettings)
 			}
 
 			// Certificates routes (admin only)

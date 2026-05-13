@@ -744,6 +744,41 @@
           </el-form-item>
           
           <el-divider content-position="left">
+            自动生成节点
+          </el-divider>
+
+          <el-form-item
+            label="协议优先级"
+            :label-width="settingsLabelWidth"
+          >
+            <div class="auto-proxy-priority">
+              <div
+                v-for="(protocol, index) in autoProxySettings.protocolPriority"
+                :key="index"
+                class="priority-row"
+              >
+                <span class="priority-index">第 {{ index + 1 }} 优先</span>
+                <el-select
+                  v-model="autoProxySettings.protocolPriority[index]"
+                  class="priority-select"
+                  :disabled="protocolsLoading"
+                  @change="ensureAutoProxyPriority"
+                >
+                  <el-option
+                    v-for="option in autoProxyProtocolOptions"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value"
+                  />
+                </el-select>
+              </div>
+            </div>
+            <div class="form-tips">
+              新用户或重建自动代理时按这个顺序选择协议；节点只配置单一协议时仍使用该协议。
+            </div>
+          </el-form-item>
+
+          <el-divider content-position="left">
             传输层设置
           </el-divider>
           
@@ -1053,6 +1088,17 @@ const protocolSettings = reactive({
   enableHTTP: false
 })
 
+const defaultAutoProxyPriority = ['trojan', 'vmess', 'vless', 'shadowsocks']
+const autoProxyProtocolOptions = [
+  { label: 'Trojan', value: 'trojan' },
+  { label: 'VMess', value: 'vmess' },
+  { label: 'VLESS', value: 'vless' },
+  { label: 'Shadowsocks', value: 'shadowsocks' }
+]
+const autoProxySettings = reactive({
+  protocolPriority: [...defaultAutoProxyPriority]
+})
+
 // 传输层设置
 const transportSettings = reactive({
   enableTCP: true,
@@ -1067,6 +1113,73 @@ const protocolsLoading = ref(false)
 const disableProtocolSwitch = computed(() => protocolsLoading.value)
 const disableTransportSwitch = computed(() => protocolsLoading.value)
 
+const normalizeAutoProxyPriority = (priority = []) => {
+  const allowed = new Set(defaultAutoProxyPriority)
+  const seen = new Set()
+  const normalized = []
+  for (const protocol of priority) {
+    const value = String(protocol || '').trim().toLowerCase()
+    if (!allowed.has(value) || seen.has(value)) continue
+    seen.add(value)
+    normalized.push(value)
+  }
+  for (const protocol of defaultAutoProxyPriority) {
+    if (seen.has(protocol)) continue
+    normalized.push(protocol)
+  }
+  return normalized.slice(0, defaultAutoProxyPriority.length)
+}
+
+const ensureAutoProxyPriority = () => {
+  autoProxySettings.protocolPriority.splice(
+    0,
+    autoProxySettings.protocolPriority.length,
+    ...normalizeAutoProxyPriority(autoProxySettings.protocolPriority)
+  )
+}
+
+const applyProtocolSettings = (settings = {}) => {
+  const protocols = settings?.protocols || {}
+  protocolSettings.enableTrojan = protocols.trojan ?? true
+  protocolSettings.enableVMess = protocols.vmess ?? true
+  protocolSettings.enableVLESS = protocols.vless ?? true
+  protocolSettings.enableShadowsocks = protocols.shadowsocks ?? true
+  protocolSettings.enableSocks = protocols.socks ?? false
+  protocolSettings.enableHTTP = protocols.http ?? false
+
+  const transports = settings?.transports || {}
+  transportSettings.enableTCP = transports.tcp ?? true
+  transportSettings.enableWebSocket = transports.ws ?? true
+  transportSettings.enableHTTP2 = transports.http2 ?? true
+  transportSettings.enableGRPC = transports.grpc ?? true
+  transportSettings.enableQUIC = transports.quic ?? false
+}
+
+const applyAutoProxySettings = (settings = {}) => {
+  autoProxySettings.protocolPriority.splice(
+    0,
+    autoProxySettings.protocolPriority.length,
+    ...normalizeAutoProxyPriority(settings?.protocol_priority || settings?.protocolPriority)
+  )
+}
+
+const loadProtocolSettings = async () => {
+  protocolsLoading.value = true
+  try {
+    const [protocolResponse, autoProxyResponse] = await Promise.all([
+      api.get('/settings/protocols'),
+      api.get('/settings/auto-proxy')
+    ])
+    applyProtocolSettings(protocolResponse || {})
+    applyAutoProxySettings(autoProxyResponse || {})
+  } catch (error) {
+    console.error('Failed to load protocol settings:', error)
+    ElMessage.error('加载协议配置失败')
+  } finally {
+    protocolsLoading.value = false
+  }
+}
+
 // 初始化
 onMounted(async () => {
   try {
@@ -1074,7 +1187,8 @@ onMounted(async () => {
       loadGeneralSettings(),
       loadSecuritySettings(),
       loadEmailSettings(),
-      loadPaymentSettings()
+      loadPaymentSettings(),
+      loadProtocolSettings()
     ]);
   } catch (error) {
     console.error('Failed to load initial settings:', error);
@@ -1430,23 +1544,29 @@ const saveSecuritySettings = async () => {
 const saveProtocolSettings = async () => {
   protocolsLoading.value = true
   try {
-    await api.post('/settings/protocols', {
-      protocols: {
-        trojan: protocolSettings.enableTrojan,
-        vmess: protocolSettings.enableVMess,
-        vless: protocolSettings.enableVLESS,
-        shadowsocks: protocolSettings.enableShadowsocks,
-        socks: protocolSettings.enableSocks,
-        http: protocolSettings.enableHTTP
-      },
-      transports: {
-        tcp: transportSettings.enableTCP,
-        ws: transportSettings.enableWebSocket,
-        http2: transportSettings.enableHTTP2,
-        grpc: transportSettings.enableGRPC,
-        quic: transportSettings.enableQUIC
-      }
-    })
+    ensureAutoProxyPriority()
+    await Promise.all([
+      api.post('/settings/protocols', {
+        protocols: {
+          trojan: protocolSettings.enableTrojan,
+          vmess: protocolSettings.enableVMess,
+          vless: protocolSettings.enableVLESS,
+          shadowsocks: protocolSettings.enableShadowsocks,
+          socks: protocolSettings.enableSocks,
+          http: protocolSettings.enableHTTP
+        },
+        transports: {
+          tcp: transportSettings.enableTCP,
+          ws: transportSettings.enableWebSocket,
+          http2: transportSettings.enableHTTP2,
+          grpc: transportSettings.enableGRPC,
+          quic: transportSettings.enableQUIC
+        }
+      }),
+      api.post('/settings/auto-proxy', {
+        protocol_priority: autoProxySettings.protocolPriority
+      })
+    ])
     ElMessage.success('协议配置保存成功')
   } catch (error) {
     console.error('Failed to save protocol settings:', error)
@@ -1592,6 +1712,33 @@ const saveProtocolSettings = async () => {
 
 .protocol-description p {
   margin: 0;
+}
+
+.auto-proxy-priority {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+
+.priority-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.priority-index {
+  width: 76px;
+  flex: 0 0 auto;
+  color: #606266;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.priority-select {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .el-descriptions-item {
@@ -1911,6 +2058,7 @@ const saveProtocolSettings = async () => {
   }
 
   .protocol-description,
+  .auto-proxy-priority,
   .version-info,
   .version-info__actions,
   .status-control,
@@ -1922,6 +2070,11 @@ const saveProtocolSettings = async () => {
     flex-direction: column;
     align-items: flex-start;
     gap: 10px;
+  }
+
+  .auto-proxy-priority {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .version-info__actions,

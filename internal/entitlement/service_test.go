@@ -17,6 +17,7 @@ import (
 	"v/internal/proxy/protocols/trojan"
 	"v/internal/proxy/protocols/vless"
 	"v/internal/proxy/protocols/vmess"
+	settingssvc "v/internal/settings"
 	pkgerrors "v/pkg/errors"
 )
 
@@ -37,6 +38,7 @@ func setupTestService(t *testing.T) (*Service, *gorm.DB) {
 		&repository.Trial{},
 		&repository.SubscriptionPause{},
 		&repository.UserNodeAssignment{},
+		&repository.Setting{},
 	); err != nil {
 		t.Fatalf("failed to migrate test schema: %v", err)
 	}
@@ -715,6 +717,37 @@ func TestGetAccessibleProxies_AutoProvisionedTLSChoosesBestConfiguredProtocol(t 
 	}
 }
 
+func TestGetAccessibleProxies_AutoProvisionedUsesConfiguredProtocolPriority(t *testing.T) {
+	service, db := setupTestService(t)
+	settingsService := settingssvc.NewService(repository.NewSettingsRepository(db))
+	if _, err := settingsService.UpdateAutoProxySettings(context.Background(), &settingssvc.AutoProxySettings{
+		ProtocolPriority: []string{"vmess", "trojan", "vless", "shadowsocks"},
+	}); err != nil {
+		t.Fatalf("failed to save auto proxy settings: %v", err)
+	}
+	service.WithSettingsService(settingsService)
+
+	user := createTestUser(t, db, "tls-configured-priority-user")
+	node := createTestNode(t, db, "tls-configured-priority-node")
+	node.Protocols = `["vless","trojan","vmess"]`
+	node.TLSEnabled = true
+	node.TLSDomain = "panel.example.com"
+	if err := db.Save(node).Error; err != nil {
+		t.Fatalf("failed to update node tls settings: %v", err)
+	}
+
+	proxies, _, err := service.GetAccessibleProxies(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("expected tls auto provisioned proxy, got error: %v", err)
+	}
+	if len(proxies) != 1 {
+		t.Fatalf("expected one tls auto provisioned proxy, got %d", len(proxies))
+	}
+	if proxies[0].Protocol != "vmess" {
+		t.Fatalf("expected configured priority to choose vmess, got %s", proxies[0].Protocol)
+	}
+}
+
 func TestPreferredAutoProvisionProtocols_SortsConfiguredProtocolsByBestDefault(t *testing.T) {
 	tests := []struct {
 		name string
@@ -745,7 +778,7 @@ func TestPreferredAutoProvisionProtocols_SortsConfiguredProtocolsByBestDefault(t
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := preferredAutoProvisionProtocols(tt.raw)
+			got := preferredAutoProvisionProtocols(tt.raw, nil)
 			if len(got) != len(tt.want) {
 				t.Fatalf("preferredAutoProvisionProtocols() = %#v, want %#v", got, tt.want)
 			}
