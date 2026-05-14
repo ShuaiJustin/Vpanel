@@ -621,6 +621,9 @@ func (h *PortalAuthHandler) GetProfile(c *gin.Context) {
 		"avatar_url":              user.AvatarURL,
 		"notify_email":            user.NotifyEmail,
 		"notify_telegram":         user.NotifyTelegram,
+		"notify_traffic_warning":  user.NotifyTrafficWarning,
+		"notify_expiry_reminder":  user.NotifyExpiryReminder,
+		"notify_announcements":    user.NotifyAnnouncements,
 		"theme":                   user.Theme,
 		"language":                user.Language,
 		"telegram_id":             user.TelegramID,
@@ -645,6 +648,9 @@ type PortalUpdateProfileRequest struct {
 	AvatarURL      *string `json:"avatar_url,omitempty"`
 	NotifyEmail    *bool   `json:"notify_email,omitempty"`
 	NotifyTelegram *bool   `json:"notify_telegram,omitempty"`
+	NotifyTrafficWarning *bool `json:"notify_traffic_warning,omitempty"`
+	NotifyExpiryReminder *bool `json:"notify_expiry_reminder,omitempty"`
+	NotifyAnnouncements  *bool `json:"notify_announcements,omitempty"`
 	Theme          *string `json:"theme,omitempty"`
 	Language       *string `json:"language,omitempty"`
 }
@@ -742,6 +748,21 @@ func (h *PortalAuthHandler) UpdateProfile(c *gin.Context) {
 		profileChanged = true
 	}
 
+	if req.NotifyTrafficWarning != nil && user.NotifyTrafficWarning != *req.NotifyTrafficWarning {
+		user.NotifyTrafficWarning = *req.NotifyTrafficWarning
+		profileChanged = true
+	}
+
+	if req.NotifyExpiryReminder != nil && user.NotifyExpiryReminder != *req.NotifyExpiryReminder {
+		user.NotifyExpiryReminder = *req.NotifyExpiryReminder
+		profileChanged = true
+	}
+
+	if req.NotifyAnnouncements != nil && user.NotifyAnnouncements != *req.NotifyAnnouncements {
+		user.NotifyAnnouncements = *req.NotifyAnnouncements
+		profileChanged = true
+	}
+
 	if req.Theme != nil {
 		theme := strings.TrimSpace(*req.Theme)
 		switch theme {
@@ -787,6 +808,9 @@ func (h *PortalAuthHandler) UpdateProfile(c *gin.Context) {
 				"avatar_url":        user.AvatarURL,
 				"notify_email":      user.NotifyEmail,
 				"notify_telegram":   user.NotifyTelegram,
+				"notify_traffic_warning": user.NotifyTrafficWarning,
+				"notify_expiry_reminder": user.NotifyExpiryReminder,
+				"notify_announcements":   user.NotifyAnnouncements,
 				"theme":             user.Theme,
 				"language":          user.Language,
 				"telegram_id":       user.TelegramID,
@@ -834,6 +858,9 @@ func (h *PortalAuthHandler) UpdateProfile(c *gin.Context) {
 			"avatar_url":        user.AvatarURL,
 			"notify_email":      user.NotifyEmail,
 			"notify_telegram":   user.NotifyTelegram,
+			"notify_traffic_warning": user.NotifyTrafficWarning,
+			"notify_expiry_reminder": user.NotifyExpiryReminder,
+			"notify_announcements":   user.NotifyAnnouncements,
 			"theme":             user.Theme,
 			"language":          user.Language,
 			"telegram_id":       user.TelegramID,

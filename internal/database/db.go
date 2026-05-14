@@ -225,6 +225,55 @@ func (d *Database) AutoMigrate() error {
 		return err
 	}
 
+	if err := d.ensurePerformanceIndexes(context.Background()); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ensurePerformanceIndexes creates composite indexes that GORM AutoMigrate
+// cannot derive from struct tags. These accelerate the hot user-portal queries
+// (traffic stats, node lists, pause history). Safe to re-run.
+func (d *Database) ensurePerformanceIndexes(ctx context.Context) error {
+	var statements []string
+	switch d.db.Dialector.Name() {
+	case "sqlite", "sqlite3", "postgres", "postgresql":
+		statements = []string{
+			`CREATE INDEX IF NOT EXISTS idx_traffic_user_recorded ON traffic(user_id, recorded_at)`,
+			`CREATE INDEX IF NOT EXISTS idx_node_traffic_user_recorded ON node_traffic(user_id, recorded_at)`,
+			`CREATE INDEX IF NOT EXISTS idx_node_traffic_node_recorded ON node_traffic(node_id, recorded_at)`,
+			`CREATE INDEX IF NOT EXISTS idx_proxies_user_enabled ON proxies(user_id, enabled)`,
+			`CREATE INDEX IF NOT EXISTS idx_subscription_pauses_user_paused ON subscription_pauses(user_id, paused_at)`,
+		}
+	case "mysql":
+		migrator := d.db.Migrator()
+		type idx struct {
+			table string
+			name  string
+			sql   string
+		}
+		toCreate := []idx{
+			{"traffic", "idx_traffic_user_recorded", "CREATE INDEX idx_traffic_user_recorded ON traffic(user_id, recorded_at)"},
+			{"node_traffic", "idx_node_traffic_user_recorded", "CREATE INDEX idx_node_traffic_user_recorded ON node_traffic(user_id, recorded_at)"},
+			{"node_traffic", "idx_node_traffic_node_recorded", "CREATE INDEX idx_node_traffic_node_recorded ON node_traffic(node_id, recorded_at)"},
+			{"proxies", "idx_proxies_user_enabled", "CREATE INDEX idx_proxies_user_enabled ON proxies(user_id, enabled)"},
+			{"subscription_pauses", "idx_subscription_pauses_user_paused", "CREATE INDEX idx_subscription_pauses_user_paused ON subscription_pauses(user_id, paused_at)"},
+		}
+		for _, i := range toCreate {
+			if migrator.HasTable(i.table) && !migrator.HasIndex(i.table, i.name) {
+				statements = append(statements, i.sql)
+			}
+		}
+	default:
+		return nil
+	}
+
+	for _, stmt := range statements {
+		if err := d.db.WithContext(ctx).Exec(stmt).Error; err != nil {
+			return fmt.Errorf("create performance index (%s): %w", stmt, err)
+		}
+	}
 	return nil
 }
 

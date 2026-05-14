@@ -73,6 +73,7 @@ func (h *PortalNodeHandler) ListNodes(c *gin.Context) {
 	regions := node.GetAvailableRegions(nodes)
 	protocols := node.GetAvailableProtocols(nodes)
 
+	c.Header("Cache-Control", "private, max-age=30")
 	c.JSON(http.StatusOK, gin.H{
 		"nodes":     nodes,
 		"total":     len(nodes),

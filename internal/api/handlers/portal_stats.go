@@ -55,6 +55,7 @@ func (h *PortalStatsHandler) GetTrafficStats(c *gin.Context) {
 		return
 	}
 
+	c.Header("Cache-Control", "private, max-age=30")
 	c.JSON(http.StatusOK, gin.H{
 		"total_upload":   trafficStats.Summary.Upload,
 		"total_download": trafficStats.Summary.Download,
@@ -88,6 +89,7 @@ func (h *PortalStatsHandler) GetUsageStats(c *gin.Context) {
 		return
 	}
 
+	c.Header("Cache-Control", "private, max-age=30")
 	c.JSON(http.StatusOK, gin.H{
 		"summary":     summary,
 		"by_node":     byNode,

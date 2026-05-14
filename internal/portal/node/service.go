@@ -92,13 +92,15 @@ func (s *Service) ListNodes(ctx context.Context, userID int64, filter *NodeFilte
 		}
 	}
 
+	nodeMap := s.loadNodeMap(ctx, proxies)
+
 	nodes := make([]*Node, 0, len(proxies))
 	for _, p := range proxies {
 		if !p.Enabled {
 			continue
 		}
 
-		node := s.proxyToNode(ctx, p)
+		node := s.proxyToNode(p, nodeMap)
 
 		// Apply filters
 		if filter != nil {
@@ -123,9 +125,11 @@ func (s *Service) ListAllNodes(ctx context.Context, filter *NodeFilter) ([]*Node
 		return nil, err
 	}
 
+	nodeMap := s.loadNodeMap(ctx, proxies)
+
 	nodes := make([]*Node, 0, len(proxies))
 	for _, p := range proxies {
-		node := s.proxyToNode(ctx, p)
+		node := s.proxyToNode(p, nodeMap)
 
 		// Apply filters
 		if filter != nil {
@@ -150,14 +154,53 @@ func (s *Service) GetNode(ctx context.Context, userID, id int64) (*Node, error) 
 		if err != nil {
 			return nil, err
 		}
-		return s.proxyToNode(ctx, proxy), nil
+		return s.proxyToNode(proxy, s.loadNodeMap(ctx, []*repository.Proxy{proxy})), nil
 	}
 
 	proxy, err := s.proxyRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	return s.proxyToNode(ctx, proxy), nil
+	return s.proxyToNode(proxy, s.loadNodeMap(ctx, []*repository.Proxy{proxy})), nil
+}
+
+// loadNodeMap batch-loads node records referenced by the given proxies in a
+// single query, returning a map keyed by node ID. This replaces the previous
+// per-proxy GetByID lookup (an N+1 query) inside proxyToNode.
+func (s *Service) loadNodeMap(ctx context.Context, proxies []*repository.Proxy) map[int64]*repository.Node {
+	if s.nodeRepo == nil || len(proxies) == 0 {
+		return nil
+	}
+
+	seen := make(map[int64]struct{}, len(proxies))
+	ids := make([]int64, 0, len(proxies))
+	for _, p := range proxies {
+		if p == nil || p.NodeID == nil {
+			continue
+		}
+		id := *p.NodeID
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+
+	nodes, err := s.nodeRepo.GetByIDs(ctx, ids)
+	if err != nil || len(nodes) == 0 {
+		return nil
+	}
+
+	out := make(map[int64]*repository.Node, len(nodes))
+	for _, n := range nodes {
+		if n != nil {
+			out[n.ID] = n
+		}
+	}
+	return out
 }
 
 // SortNodes sorts nodes by the specified criteria.
@@ -382,7 +425,9 @@ func resolvePortalNodeLoad(nodeModel *repository.Node) int {
 }
 
 // proxyToNode converts a Proxy to a Node and resolves a client-connectable host.
-func (s *Service) proxyToNode(ctx context.Context, p *repository.Proxy) *Node {
+// nodeMap is a preloaded map of NodeID → Node (built by loadNodeMap) so this
+// function does not hit the database per proxy.
+func (s *Service) proxyToNode(p *repository.Proxy, nodeMap map[int64]*repository.Node) *Node {
 	resolvedHost := ""
 	if p.Settings != nil {
 		if explicitServer, ok := p.Settings["server"].(string); ok {
@@ -391,8 +436,8 @@ func (s *Service) proxyToNode(ctx context.Context, p *repository.Proxy) *Node {
 	}
 
 	var nodeModel *repository.Node
-	if p.NodeID != nil && s.nodeRepo != nil {
-		if n, err := s.nodeRepo.GetByID(ctx, *p.NodeID); err == nil {
+	if p.NodeID != nil && nodeMap != nil {
+		if n, ok := nodeMap[*p.NodeID]; ok && n != nil {
 			nodeModel = n
 			if resolvedHost == "" {
 				resolvedHost = proxylib.NormalizeShareHost(n.Address)

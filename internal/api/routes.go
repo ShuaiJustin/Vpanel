@@ -40,6 +40,7 @@ import (
 	"v/internal/logger"
 	"v/internal/node"
 	"v/internal/notification"
+	"v/internal/notification/dispatcher"
 	"v/internal/portal/announcement"
 	portalauth "v/internal/portal/auth"
 	"v/internal/portal/help"
@@ -71,6 +72,7 @@ type Router struct {
 	runtimeReconciler         *entitlement.RuntimeReconciler
 	nodeRecoveryTracker       *handlers.NodeRecoveryTracker
 	cache                     cache.Cache
+	notificationDispatcher    *dispatcher.Dispatcher
 }
 
 // CertificateService defines the interface for certificate operations.
@@ -202,6 +204,11 @@ func (r *Router) Setup() {
 	r.registerConfiguredPaymentGateways(paymentService)
 	r.loadStoredPaymentSettings(context.Background(), paymentService)
 	r.loadStoredNotificationSettings(context.Background())
+
+	// Start the notification dispatcher after SMTP/Telegram config is loaded,
+	// so the first sweep can actually deliver if needed.
+	r.notificationDispatcher = dispatcher.New(r.notificationService, r.repos.User, r.logger)
+	r.notificationDispatcher.Start(context.Background())
 	settingsHandler.
 		WithValidateHook(func(ctx context.Context, systemSettings *settings.SystemSettings) error {
 			return r.validateSystemSettings(systemSettings)

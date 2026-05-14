@@ -31,6 +31,15 @@ type User struct {
 	DisplayName      string `gorm:"size:64"`
 	NotifyEmail      bool   `gorm:"default:true"`
 	NotifyTelegram   bool   `gorm:"default:false"`
+	// Notification category preferences (independent of channel).
+	NotifyTrafficWarning bool `gorm:"default:true"`
+	NotifyExpiryReminder bool `gorm:"default:true"`
+	NotifyAnnouncements  bool `gorm:"default:true"`
+	// Last-sent timestamps used by the notification dispatcher to avoid
+	// spamming users when periodic conditions (traffic >= 80%, expiry < 7d)
+	// remain true across multiple ticks.
+	LastTrafficWarningAt *time.Time `gorm:"index"`
+	LastExpiryReminderAt *time.Time `gorm:"index"`
 	Theme            string `gorm:"size:16;default:auto"`
 	Language         string `gorm:"size:8;default:zh-CN"`
 	TelegramID       string `gorm:"size:50;index"`

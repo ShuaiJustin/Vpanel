@@ -412,18 +412,23 @@ async function loadSubscription(options = {}) {
 
   try {
     subscriptionRefreshInFlight.value = true
-    await userStore.fetchProfile({ silent })
+    // Kick off QR rendering as soon as the subscription link arrives —
+    // don't wait for profile/pause to come back.
+    const linkAndQr = subscriptionStore.fetchLink().then(() => generateQRCode())
+    const tasks = [
+      userStore.fetchProfile({ silent }),
+      linkAndQr,
+    ]
     if (includePauseStatus) {
-      try {
-        await pauseStore.fetchPauseStatus()
-      } catch (pauseError) {
-        console.warn('加载暂停状态失败:', pauseError)
-      }
+      tasks.push(
+        pauseStore.fetchPauseStatus().catch((pauseError) => {
+          console.warn('加载暂停状态失败:', pauseError)
+        })
+      )
     }
-    await subscriptionStore.fetchLink()
+    await Promise.all(tasks)
     noEntitlement.value = false
     subscriptionUpdatedAt.value = new Date()
-    await generateQRCode()
   } catch (error) {
     console.error('加载订阅失败:', error)
     if (isNoEntitlementError(error)) {

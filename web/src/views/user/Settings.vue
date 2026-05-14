@@ -953,7 +953,10 @@ async function saveNotifications() {
   try {
     await userStore.updateProfile({
       notify_email: notificationSettings.email,
-      notify_telegram: notificationSettings.telegram
+      notify_telegram: notificationSettings.telegram,
+      notify_traffic_warning: notificationSettings.trafficWarning,
+      notify_expiry_reminder: notificationSettings.expiryReminder,
+      notify_announcements: notificationSettings.announcements
     })
     ElMessage.success('通知设置已保存')
   } catch (error) {
@@ -1001,6 +1004,9 @@ watch(
     profileForm.avatarUrl = user?.avatar_url || ''
     notificationSettings.email = user?.notify_email ?? true
     notificationSettings.telegram = user?.notify_telegram ?? false
+    notificationSettings.trafficWarning = user?.notify_traffic_warning ?? true
+    notificationSettings.expiryReminder = user?.notify_expiry_reminder ?? true
+    notificationSettings.announcements = user?.notify_announcements ?? true
     preferences.theme = user?.theme || preferences.theme
     preferences.language = user?.language || preferences.language
     telegramForm.chatId = user?.telegram_id || ''
