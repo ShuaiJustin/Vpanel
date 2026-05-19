@@ -23,6 +23,7 @@ import (
 	"v/internal/cache"
 	"v/internal/entitlement"
 	"v/internal/logger"
+	"v/internal/monitor"
 	"v/internal/node"
 	"v/pkg/errors"
 )
@@ -36,6 +37,7 @@ type NodeHandler struct {
 	recoveryTracker *NodeRecoveryTracker
 	httpClient      *http.Client
 	cache           cache.Cache
+	auditService    monitor.AuditService
 	logger          logger.Logger
 
 	// In-progress tracking for async diagnosis
@@ -67,6 +69,12 @@ func (h *NodeHandler) WithCache(c cache.Cache) *NodeHandler {
 // WithEntitlementService enables proactive proxy provisioning after successful node deployment.
 func (h *NodeHandler) WithEntitlementService(svc *entitlement.Service) *NodeHandler {
 	h.entitlementSvc = svc
+	return h
+}
+
+// WithAuditService wires the audit emitter for state-changing node ops.
+func (h *NodeHandler) WithAuditService(audit monitor.AuditService) *NodeHandler {
+	h.auditService = audit
 	return h
 }
 
@@ -1039,6 +1047,13 @@ func (h *NodeHandler) Create(c *gin.Context) {
 		return
 	}
 
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionNodeCreate,
+		ResourceType: monitor.ResourceNode,
+		ResourceID:   strconv.FormatInt(n.ID, 10),
+		Details:      map[string]any{"name": n.Name, "address": n.Address, "region": n.Region},
+	})
+
 	if len(groupIDs) > 0 && h.groupService != nil {
 		if err := h.groupService.SyncNodeGroups(c.Request.Context(), n.ID, groupIDs); err != nil {
 			h.logger.Error("Failed to sync node groups after create", logger.Err(err), logger.F("node_id", n.ID))
@@ -1282,6 +1297,13 @@ func (h *NodeHandler) Update(c *gin.Context) {
 
 	h.logger.Info("Node updated", logger.F("node_id", id))
 
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionNodeUpdate,
+		ResourceType: monitor.ResourceNode,
+		ResourceID:   strconv.FormatInt(id, 10),
+		Details:      map[string]any{"name": n.Name, "address": n.Address, "region": n.Region},
+	})
+
 	c.JSON(http.StatusOK, h.buildNodeResponse(c.Request.Context(), n))
 }
 
@@ -1318,6 +1340,12 @@ func (h *NodeHandler) Delete(c *gin.Context) {
 	}
 
 	h.logger.Info("Node deleted", logger.F("node_id", id))
+
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionNodeDelete,
+		ResourceType: monitor.ResourceNode,
+		ResourceID:   strconv.FormatInt(id, 10),
+	})
 
 	if cleanupConfig != nil && h.deployService != nil {
 		go func(nodeID int64, nodeName string, cfg *node.DeployConfig) {

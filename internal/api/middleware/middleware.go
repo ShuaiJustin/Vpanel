@@ -138,8 +138,9 @@ func LoggerWithService(log logger.Logger, logService *logservice.Service) gin.Ha
 			log.Info("request completed", fields...)
 		}
 
-		// Log to database if service is available
-		if logService != nil && shouldPersistHTTPRequestLog(c.Request.Method, path, status) {
+		// Log to database if service is available AND access log persistence
+		// is enabled in settings (admin can disable it to reduce DB write load).
+		if logService != nil && logService.AccessLogEnabled() && shouldPersistHTTPRequestLog(c.Request.Method, path, status) {
 			// Get user ID from context if available
 			var userID *int64
 			if uid, exists := c.Get("user_id"); exists {

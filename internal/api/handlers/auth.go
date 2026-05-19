@@ -18,6 +18,7 @@ import (
 	"v/internal/database/repository"
 	"v/internal/entitlement"
 	"v/internal/logger"
+	"v/internal/monitor"
 	"v/internal/settings"
 	"v/pkg/errors"
 )
@@ -39,6 +40,7 @@ type AuthHandler struct {
 	entitlementService       *entitlement.Service
 	logger                   logger.Logger
 	settingsService          *settings.Service
+	auditService             monitor.AuditService
 	loginRateLimiter         *auth.RateLimiter
 	loginRateLimiterConfig   auth.RateLimiterConfig
 	loginRateLimiterConfigMu sync.Mutex
@@ -127,6 +129,33 @@ func buildUserResponse(user *repository.User) UserResponse {
 func (h *AuthHandler) WithRoleRepository(roleRepo repository.RoleRepository) *AuthHandler {
 	h.roleRepo = roleRepo
 	return h
+}
+
+// WithAuditService wires the operation audit log emitter. Optional; without
+// it, auditable operations (login, user CRUD, password change, etc.) simply
+// don't emit audit entries — they continue to run normally.
+func (h *AuthHandler) WithAuditService(audit monitor.AuditService) *AuthHandler {
+	h.auditService = audit
+	return h
+}
+
+// audit logs an entry without surfacing the error to the caller. Audit
+// failure should never fail the user-facing operation. ctx, ip, ua and
+// requestID come from the gin context.
+func (h *AuthHandler) audit(c *gin.Context, entry monitor.AuditEntry) {
+	if h.auditService == nil || !h.auditService.Enabled() {
+		return
+	}
+	if entry.IPAddress == "" {
+		entry.IPAddress = c.ClientIP()
+	}
+	if entry.UserAgent == "" {
+		entry.UserAgent = c.Request.UserAgent()
+	}
+	if entry.RequestID == "" {
+		entry.RequestID = c.GetString("request_id")
+	}
+	_ = h.auditService.Log(c.Request.Context(), &entry)
 }
 
 func (h *AuthHandler) getRolePermissions(ctx context.Context, roleName string) []string {
@@ -488,6 +517,16 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	h.logger.Info("user logged in", logger.F("username", req.Username), logger.F("user_id", user.ID))
 
+	uid := user.ID
+	h.audit(c, monitor.AuditEntry{
+		UserID:       &uid,
+		Username:     user.Username,
+		Action:       monitor.ActionLogin,
+		ResourceType: monitor.ResourceUser,
+		ResourceID:   strconv.FormatInt(uid, 10),
+		Status:       monitor.StatusSuccess,
+	})
+
 	c.JSON(http.StatusOK, LoginResponse{
 		Token:        token,
 		RefreshToken: refreshToken,
@@ -569,6 +608,18 @@ func maxDuration(values ...time.Duration) time.Duration {
 func (h *AuthHandler) Logout(c *gin.Context) {
 	// In a stateless JWT system, logout is handled client-side
 	// For stateful sessions, we would invalidate the token here
+	if uid, ok := currentUserIDFromContext(c); ok {
+		userID := uid
+		username := c.GetString("username")
+		h.audit(c, monitor.AuditEntry{
+			UserID:       &userID,
+			Username:     username,
+			Action:       monitor.ActionLogout,
+			ResourceType: monitor.ResourceUser,
+			ResourceID:   strconv.FormatInt(userID, 10),
+			Status:       monitor.StatusSuccess,
+		})
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
 }
 
@@ -695,6 +746,14 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	}
 
 	h.logger.Info("password changed", logger.F("user_id", userID))
+	h.audit(c, monitor.AuditEntry{
+		UserID:       &userID,
+		Username:     user.Username,
+		Action:       monitor.ActionPasswordChange,
+		ResourceType: monitor.ResourceUser,
+		ResourceID:   strconv.FormatInt(userID, 10),
+		Status:       monitor.StatusSuccess,
+	})
 	c.JSON(http.StatusOK, gin.H{"message": "密码修改成功"})
 }
 
@@ -973,6 +1032,17 @@ func (h *AuthHandler) CreateUser(c *gin.Context) {
 
 	h.logger.Info("user created", logger.F("username", req.Username), logger.F("user_id", user.ID))
 
+	actorID, _ := currentUserIDFromContext(c)
+	h.audit(c, monitor.AuditEntry{
+		UserID:       &actorID,
+		Username:     c.GetString("username"),
+		Action:       monitor.ActionUserCreate,
+		ResourceType: monitor.ResourceUser,
+		ResourceID:   strconv.FormatInt(user.ID, 10),
+		Details:      map[string]any{"username": user.Username, "role": user.Role},
+		Status:       monitor.StatusSuccess,
+	})
+
 	c.JSON(http.StatusCreated, h.userResponse(c.Request.Context(), user))
 }
 
@@ -1122,6 +1192,16 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 	}
 
 	h.logger.Info("user updated", logger.F("user_id", id))
+	actorID, _ := currentUserIDFromContext(c)
+	h.audit(c, monitor.AuditEntry{
+		UserID:       &actorID,
+		Username:     c.GetString("username"),
+		Action:       monitor.ActionUserUpdate,
+		ResourceType: monitor.ResourceUser,
+		ResourceID:   strconv.FormatInt(id, 10),
+		Details:      map[string]any{"username": user.Username, "role": user.Role},
+		Status:       monitor.StatusSuccess,
+	})
 
 	c.JSON(http.StatusOK, h.userResponse(c.Request.Context(), user))
 }
@@ -1165,6 +1245,16 @@ func (h *AuthHandler) DeleteUser(c *gin.Context) {
 	}
 
 	h.logger.Info("user deleted", logger.F("user_id", id))
+	actorID, _ := currentUserIDFromContext(c)
+	h.audit(c, monitor.AuditEntry{
+		UserID:       &actorID,
+		Username:     c.GetString("username"),
+		Action:       monitor.ActionUserDelete,
+		ResourceType: monitor.ResourceUser,
+		ResourceID:   strconv.FormatInt(id, 10),
+		Details:      map[string]any{"username": user.Username},
+		Status:       monitor.StatusSuccess,
+	})
 	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
 }
 
@@ -1199,6 +1289,16 @@ func (h *AuthHandler) EnableUser(c *gin.Context) {
 	h.reconcileRestoredUserRuntime(c.Request.Context(), id)
 
 	h.logger.Info("user enabled", logger.F("user_id", id))
+	actorID, _ := currentUserIDFromContext(c)
+	h.audit(c, monitor.AuditEntry{
+		UserID:       &actorID,
+		Username:     c.GetString("username"),
+		Action:       monitor.ActionUserEnable,
+		ResourceType: monitor.ResourceUser,
+		ResourceID:   strconv.FormatInt(id, 10),
+		Details:      map[string]any{"username": user.Username},
+		Status:       monitor.StatusSuccess,
+	})
 	c.JSON(http.StatusOK, gin.H{"message": "User enabled successfully"})
 }
 
@@ -1244,6 +1344,16 @@ func (h *AuthHandler) DisableUser(c *gin.Context) {
 	h.reconcileRevokedUserRuntime(c.Request.Context(), id)
 
 	h.logger.Info("user disabled", logger.F("user_id", id))
+	actorID, _ := currentUserIDFromContext(c)
+	h.audit(c, monitor.AuditEntry{
+		UserID:       &actorID,
+		Username:     c.GetString("username"),
+		Action:       monitor.ActionUserDisable,
+		ResourceType: monitor.ResourceUser,
+		ResourceID:   strconv.FormatInt(id, 10),
+		Details:      map[string]any{"username": user.Username},
+		Status:       monitor.StatusSuccess,
+	})
 	c.JSON(http.StatusOK, gin.H{"message": "User disabled successfully"})
 }
 
@@ -1345,6 +1455,16 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	}
 
 	h.logger.Info("password reset", logger.F("user_id", id))
+	actorID, _ := currentUserIDFromContext(c)
+	h.audit(c, monitor.AuditEntry{
+		UserID:       &actorID,
+		Username:     c.GetString("username"),
+		Action:       monitor.ActionPasswordReset,
+		ResourceType: monitor.ResourceUser,
+		ResourceID:   strconv.FormatInt(id, 10),
+		Details:      map[string]any{"target_username": user.Username},
+		Status:       monitor.StatusSuccess,
+	})
 	c.JSON(http.StatusOK, ResetPasswordResponse{
 		TemporaryPassword: tempPassword,
 		Message:           "Password reset successfully. User must change password on next login.",

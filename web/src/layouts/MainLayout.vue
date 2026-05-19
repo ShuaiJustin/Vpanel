@@ -217,6 +217,12 @@
           </el-menu-item>
           <el-menu-item
             v-if="canAccess('system:read')"
+            index="/admin/audit-logs"
+          >
+            操作日志
+          </el-menu-item>
+          <el-menu-item
+            v-if="canAccess('system:read')"
             index="/admin/ip-restriction"
           >
             IP 限制

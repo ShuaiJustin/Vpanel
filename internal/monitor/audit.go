@@ -4,6 +4,7 @@ package monitor
 import (
 	"context"
 	"encoding/json"
+	"sync/atomic"
 
 	"v/internal/database/repository"
 	"v/internal/logger"
@@ -31,6 +32,9 @@ const (
 	ActionRoleCreate     AuditAction = "role_create"
 	ActionRoleUpdate     AuditAction = "role_update"
 	ActionRoleDelete     AuditAction = "role_delete"
+	ActionNodeCreate     AuditAction = "node_create"
+	ActionNodeUpdate     AuditAction = "node_update"
+	ActionNodeDelete     AuditAction = "node_delete"
 	ActionSettingsUpdate AuditAction = "settings_update"
 	ActionXrayRestart    AuditAction = "xray_restart"
 	ActionXrayConfig     AuditAction = "xray_config_update"
@@ -44,6 +48,7 @@ const (
 	ResourceUser     AuditResourceType = "user"
 	ResourceProxy    AuditResourceType = "proxy"
 	ResourceRole     AuditResourceType = "role"
+	ResourceNode     AuditResourceType = "node"
 	ResourceSettings AuditResourceType = "settings"
 	ResourceXray     AuditResourceType = "xray"
 	ResourceSystem   AuditResourceType = "system"
@@ -77,25 +82,46 @@ type AuditService interface {
 	Log(ctx context.Context, entry *AuditEntry) error
 	LogSuccess(ctx context.Context, entry *AuditEntry) error
 	LogFailure(ctx context.Context, entry *AuditEntry) error
+	// SetEnabled toggles persistence of audit entries. Callers (the admin
+	// UI "启用操作日志" switch) push the configured value here. When
+	// disabled, Log/LogSuccess/LogFailure return nil immediately without
+	// hitting the database; the structured logger is also skipped so the
+	// audit stream is fully muted.
+	SetEnabled(enabled bool)
+	// Enabled reports whether audit persistence is currently active.
+	Enabled() bool
 }
 
 // auditService implements AuditService.
 type auditService struct {
-	repo   repository.AuditLogRepository
-	logger logger.Logger
+	repo    repository.AuditLogRepository
+	logger  logger.Logger
+	enabled atomic.Bool
 }
 
-// NewAuditService creates a new audit service.
+// NewAuditService creates a new audit service. Audit logging is enabled by
+// default; call SetEnabled(false) to mute it.
 func NewAuditService(repo repository.AuditLogRepository, log logger.Logger) AuditService {
-	return &auditService{
+	s := &auditService{
 		repo:   repo,
 		logger: log,
 	}
+	s.enabled.Store(true)
+	return s
 }
+
+// SetEnabled toggles audit persistence.
+func (s *auditService) SetEnabled(enabled bool) { s.enabled.Store(enabled) }
+
+// Enabled reports whether audit persistence is on.
+func (s *auditService) Enabled() bool { return s.enabled.Load() }
 
 // Log logs an audit entry.
 func (s *auditService) Log(ctx context.Context, entry *AuditEntry) error {
 	if entry == nil {
+		return nil
+	}
+	if !s.enabled.Load() {
 		return nil
 	}
 
@@ -178,3 +204,5 @@ func NewNopAuditService() AuditService {
 func (s *NopAuditService) Log(ctx context.Context, entry *AuditEntry) error        { return nil }
 func (s *NopAuditService) LogSuccess(ctx context.Context, entry *AuditEntry) error { return nil }
 func (s *NopAuditService) LogFailure(ctx context.Context, entry *AuditEntry) error { return nil }
+func (s *NopAuditService) SetEnabled(enabled bool)                                 {}
+func (s *NopAuditService) Enabled() bool                                           { return false }

@@ -15,6 +15,7 @@ import (
 	"v/internal/database/repository"
 	"v/internal/ip"
 	"v/internal/logger"
+	"v/internal/monitor"
 	"v/internal/proxy"
 	"v/pkg/errors"
 )
@@ -30,6 +31,7 @@ type ProxyHandler struct {
 	ipTracker       *ip.Tracker
 	recoveryTracker *NodeRecoveryTracker
 	cache           cache.Cache
+	auditService    monitor.AuditService
 	logger          logger.Logger
 }
 
@@ -85,6 +87,12 @@ func (h *ProxyHandler) WithRecoveryTracker(recoveryTracker *NodeRecoveryTracker)
 // WithCache injects cache for proxy statistics caching.
 func (h *ProxyHandler) WithCache(cache cache.Cache) *ProxyHandler {
 	h.cache = cache
+	return h
+}
+
+// WithAuditService wires the audit emitter for state-changing proxy ops.
+func (h *ProxyHandler) WithAuditService(audit monitor.AuditService) *ProxyHandler {
+	h.auditService = audit
 	return h
 }
 
@@ -277,6 +285,13 @@ func (h *ProxyHandler) Create(c *gin.Context) {
 	h.logger.Info("proxy created", logger.F("proxy_id", proxyModel.ID), logger.F("user_id", userID))
 	h.queueNodeConfigSync(proxyModel.NodeID, "proxy_create", "proxy created")
 
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionProxyCreate,
+		ResourceType: monitor.ResourceProxy,
+		ResourceID:   strconv.FormatInt(proxyModel.ID, 10),
+		Details:      map[string]any{"name": proxyModel.Name, "protocol": proxyModel.Protocol, "user_id": userID},
+	})
+
 	c.JSON(http.StatusCreated, h.buildProxyResponse(c.Request.Context(), proxyModel))
 }
 
@@ -402,6 +417,13 @@ func (h *ProxyHandler) Update(c *gin.Context) {
 		return
 	}
 	h.queueNodeConfigSync(p.NodeID, "proxy_update", "proxy updated")
+
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionProxyUpdate,
+		ResourceType: monitor.ResourceProxy,
+		ResourceID:   strconv.FormatInt(p.ID, 10),
+		Details:      map[string]any{"name": p.Name, "protocol": p.Protocol},
+	})
 
 	c.JSON(http.StatusOK, h.buildProxyResponse(c.Request.Context(), p))
 }
@@ -551,6 +573,13 @@ func (h *ProxyHandler) Delete(c *gin.Context) {
 
 	userID, _, _ := getUserFromContext(c)
 	h.logger.Info("proxy deleted", logger.F("proxy_id", id), logger.F("user_id", userID))
+
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionProxyDelete,
+		ResourceType: monitor.ResourceProxy,
+		ResourceID:   strconv.FormatInt(id, 10),
+		Details:      map[string]any{"name": p.Name, "protocol": p.Protocol, "owner_user_id": p.UserID},
+	})
 
 	c.JSON(http.StatusOK, gin.H{"message": "Proxy deleted successfully"})
 }

@@ -13,10 +13,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"v/internal/api/middleware"
 	"v/internal/database"
+	"v/internal/database/migrator"
 	"v/internal/logger"
+	"v/internal/monitor"
 	"v/internal/settings"
 	"v/pkg/errors"
 )
@@ -25,6 +28,8 @@ import (
 type SettingsHandler struct {
 	logger          logger.Logger
 	settingsService *settings.Service
+	sourceDB        *gorm.DB // current running DB; used as the source for migrations
+	auditService    monitor.AuditService
 	validateHook    func(context.Context, *settings.SystemSettings) error
 	afterSaveHook   func(context.Context, *settings.SystemSettings) error
 	testEmailHook   func(context.Context, *settings.SystemSettings, string) error
@@ -36,6 +41,21 @@ func NewSettingsHandler(log logger.Logger, settingsService *settings.Service) *S
 		logger:          log,
 		settingsService: settingsService,
 	}
+}
+
+// WithSourceDB injects the currently-active database. Required for the
+// MigrateDatabase endpoint to read rows out of the running DB.
+func (h *SettingsHandler) WithSourceDB(db *gorm.DB) *SettingsHandler {
+	h.sourceDB = db
+	return h
+}
+
+// WithAuditService wires the audit log emitter for operations like
+// "settings updated". Optional: without it, those operations don't emit
+// audit entries.
+func (h *SettingsHandler) WithAuditService(audit monitor.AuditService) *SettingsHandler {
+	h.auditService = audit
+	return h
 }
 
 // WithValidateHook registers an optional settings validation hook.
@@ -464,6 +484,20 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 
 	h.logger.Info("Settings updated")
 
+	if h.auditService != nil && h.auditService.Enabled() {
+		actorID, _ := currentUserIDFromContext(c)
+		_ = h.auditService.Log(ctx, &monitor.AuditEntry{
+			UserID:       &actorID,
+			Username:     c.GetString("username"),
+			Action:       monitor.ActionSettingsUpdate,
+			ResourceType: monitor.ResourceSettings,
+			IPAddress:    c.ClientIP(),
+			UserAgent:    c.Request.UserAgent(),
+			RequestID:    c.GetString("request_id"),
+			Status:       monitor.StatusSuccess,
+		})
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "settings updated",
@@ -647,6 +681,119 @@ func (h *SettingsHandler) BackupDatabase(c *gin.Context) {
 		"backup_path": backupPath,
 	})
 }
+
+// MigrateDatabaseRequest carries the target connection plus an explicit
+// confirmation flag so a misclick can't trigger a one-way migration.
+type MigrateDatabaseRequest struct {
+	TestDatabaseRequest
+	// Confirm must be true for the migration to run. The UI surfaces this as
+	// a checkbox in the confirmation dialog.
+	Confirm bool `json:"confirm"`
+}
+
+// MigrateDatabase copies every table from the currently-running database to
+// the target database described in the request. It does NOT switch the
+// running process to the new DB — the operator must update their config
+// (V_DATABASE_DRIVER / V_DATABASE_DSN) and restart manually.
+//
+// The endpoint is intentionally synchronous: GORM's INSERTs over the wire
+// are slow but the data volume in a typical V Panel install (users + traffic
+// rows for a small fleet) is small enough that this completes in seconds.
+// For larger installs the request will block until done; the front-end shows
+// a "正在迁移..." spinner.
+func (h *SettingsHandler) MigrateDatabase(c *gin.Context) {
+	if h.sourceDB == nil {
+		middleware.RespondWithError(c, errors.NewInternalError("source database not wired into settings handler", nil))
+		return
+	}
+
+	var req MigrateDatabaseRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.RespondWithError(c, errors.NewValidationError("invalid request", map[string]interface{}{
+			"error": err.Error(),
+		}))
+		return
+	}
+	if !req.Confirm {
+		middleware.RespondWithError(c, errors.NewValidationError("confirmation required", map[string]interface{}{
+			"confirm": "must be true to run a database migration",
+		}))
+		return
+	}
+
+	cfg, err := buildDatabaseTestConfig(req.TestDatabaseRequest)
+	if err != nil {
+		middleware.RespondWithError(c, errors.NewValidationError("invalid target database config", map[string]interface{}{
+			"error": err.Error(),
+		}))
+		return
+	}
+
+	tgt, err := database.New(cfg)
+	if err != nil {
+		middleware.RespondWithError(c, errors.NewDatabaseError("open target database", err))
+		return
+	}
+	defer tgt.Close()
+
+	report, err := migrator.Migrate(c.Request.Context(), h.sourceDB, tgt.DB(), database.AllModels(), 500)
+	if err != nil {
+		h.logger.Error("database migration failed", logger.F("error", err))
+		middleware.RespondWithError(c, errors.NewDatabaseError("migrate database", err))
+		return
+	}
+
+	// Build a human-readable instruction so the operator knows how to actually
+	// cut over (we never auto-switch the running process).
+	envInstruction := buildCutoverInstruction(cfg)
+
+	h.logger.Info("database migration completed",
+		logger.F("driver", cfg.Driver),
+		logger.F("total_rows", report.TotalRows),
+		logger.F("tables", report.TableCount),
+	)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":              200,
+		"message":           "Data migrated to target database. Restart the panel with the new connection to start using it.",
+		"report":            report,
+		"cutover_env":       envInstruction,
+		"target_driver":     cfg.Driver,
+		"target_dsn_masked": maskDSN(cfg.DSN),
+	})
+}
+
+// buildCutoverInstruction returns the env vars the operator should set on the
+// next restart to actually use the target database. Returning structured data
+// lets the UI render copy buttons.
+func buildCutoverInstruction(cfg *database.Config) map[string]string {
+	return map[string]string{
+		"V_DATABASE_DRIVER": cfg.Driver,
+		"V_DATABASE_DSN":    cfg.DSN,
+	}
+}
+
+// maskDSN hides credentials in a connection string when echoing back to the
+// caller. We accept some noise (the URL/keyword forms differ between drivers)
+// in exchange for being defensive in all of them.
+func maskDSN(dsn string) string {
+	// Mask password in MySQL's user:password@tcp(...) form.
+	if i := strings.Index(dsn, "@tcp("); i > 0 {
+		if j := strings.Index(dsn[:i], ":"); j > 0 {
+			return dsn[:j+1] + "***" + dsn[i:]
+		}
+	}
+	// Mask password= in PostgreSQL keyword form.
+	if i := strings.Index(dsn, "password="); i >= 0 {
+		end := strings.Index(dsn[i:], " ")
+		if end < 0 {
+			return dsn[:i+len("password=")] + "***"
+		}
+		return dsn[:i+len("password=")] + "***" + dsn[i+end:]
+	}
+	return dsn
+}
+
 
 // TestEmailRequest represents a test email request.
 type TestEmailRequest struct {

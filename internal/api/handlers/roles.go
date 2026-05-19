@@ -11,6 +11,7 @@ import (
 	"v/internal/api/middleware"
 	"v/internal/database/repository"
 	"v/internal/logger"
+	"v/internal/monitor"
 	"v/pkg/errors"
 )
 
@@ -26,8 +27,9 @@ type RoleResponse struct {
 
 // RoleHandler handles role-related requests.
 type RoleHandler struct {
-	logger   logger.Logger
-	roleRepo repository.RoleRepository
+	logger       logger.Logger
+	roleRepo     repository.RoleRepository
+	auditService monitor.AuditService
 }
 
 // NewRoleHandler creates a new RoleHandler.
@@ -36,6 +38,12 @@ func NewRoleHandler(log logger.Logger, roleRepo repository.RoleRepository) *Role
 		logger:   log,
 		roleRepo: roleRepo,
 	}
+}
+
+// WithAuditService wires the audit emitter for state-changing role ops.
+func (h *RoleHandler) WithAuditService(audit monitor.AuditService) *RoleHandler {
+	h.auditService = audit
+	return h
 }
 
 // InitSystemRoles initializes system roles in the database.
@@ -220,6 +228,13 @@ func (h *RoleHandler) CreateRole(c *gin.Context) {
 		return
 	}
 
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionRoleCreate,
+		ResourceType: monitor.ResourceRole,
+		ResourceID:   strconv.FormatInt(role.ID, 10),
+		Details:      map[string]any{"name": role.Name},
+	})
+
 	c.JSON(http.StatusCreated, gin.H{
 		"code":    201,
 		"message": "role created",
@@ -321,6 +336,13 @@ func (h *RoleHandler) UpdateRole(c *gin.Context) {
 		return
 	}
 
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionRoleUpdate,
+		ResourceType: monitor.ResourceRole,
+		ResourceID:   strconv.FormatInt(role.ID, 10),
+		Details:      map[string]any{"name": role.Name},
+	})
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "role updated",
@@ -379,6 +401,13 @@ func (h *RoleHandler) DeleteRole(c *gin.Context) {
 		middleware.RespondWithError(c, errors.NewDatabaseError("delete role", err))
 		return
 	}
+
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionRoleDelete,
+		ResourceType: monitor.ResourceRole,
+		ResourceID:   strconv.FormatInt(id, 10),
+		Details:      map[string]any{"name": role.Name, "reassigned_users": userCount},
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,

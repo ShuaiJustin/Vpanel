@@ -14,11 +14,12 @@ import (
 
 // Service provides logging operations with database persistence.
 type Service struct {
-	repo          repository.LogRepository
-	logger        logger.Logger
-	writer        *AsyncWriter
-	retentionDays int
-	mu            sync.RWMutex
+	repo             repository.LogRepository
+	logger           logger.Logger
+	writer           *AsyncWriter
+	retentionDays    int
+	accessLogEnabled bool
+	mu               sync.RWMutex
 }
 
 const defaultRetentionDays = 30
@@ -49,9 +50,10 @@ func NewService(repo repository.LogRepository, log logger.Logger, cfg Config) *S
 	}
 
 	s := &Service{
-		repo:          repo,
-		logger:        log,
-		retentionDays: cfg.RetentionDays,
+		repo:             repo,
+		logger:           log,
+		retentionDays:    cfg.RetentionDays,
+		accessLogEnabled: true, // default on; can be disabled via SetAccessLogEnabled
 	}
 
 	s.writer = NewAsyncWriter(repo, log, cfg.BufferSize, cfg.BatchSize, cfg.FlushInterval)
@@ -137,6 +139,41 @@ func (s *Service) Close() error {
 	return s.writer.Close()
 }
 
+// SetRetentionDays updates the retention window used by the cleanup
+// scheduler. Safe to call at runtime; the next scheduled tick will use
+// the new value. Values <= 0 are ignored.
+func (s *Service) SetRetentionDays(days int) {
+	if days <= 0 {
+		return
+	}
+	s.mu.Lock()
+	s.retentionDays = days
+	s.mu.Unlock()
+}
+
+// RetentionDays returns the current retention window in days.
+func (s *Service) RetentionDays() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.retentionDays
+}
+
+// SetAccessLogEnabled toggles whether HTTP access logs are persisted to the
+// database. The console logger always emits access logs; this flag only
+// gates database persistence (which is the expensive part).
+func (s *Service) SetAccessLogEnabled(enabled bool) {
+	s.mu.Lock()
+	s.accessLogEnabled = enabled
+	s.mu.Unlock()
+}
+
+// AccessLogEnabled reports whether HTTP access logs should be persisted.
+func (s *Service) AccessLogEnabled() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.accessLogEnabled
+}
+
 // StartCleanupScheduler starts a background scheduler for log cleanup.
 func (s *Service) StartCleanupScheduler(ctx context.Context) {
 	go func() {
@@ -146,7 +183,7 @@ func (s *Service) StartCleanupScheduler(ctx context.Context) {
 		for {
 			select {
 			case <-ticker.C:
-				if _, err := s.Cleanup(ctx, s.retentionDays); err != nil {
+				if _, err := s.Cleanup(ctx, s.RetentionDays()); err != nil {
 					s.logger.Error("scheduled cleanup failed", logger.F("error", err))
 				}
 			case <-ctx.Done():

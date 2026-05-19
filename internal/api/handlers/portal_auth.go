@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"v/internal/database/repository"
 	"v/internal/entitlement"
 	"v/internal/logger"
+	"v/internal/monitor"
 	portalauth "v/internal/portal/auth"
 	pkgerrors "v/pkg/errors"
 )
@@ -36,6 +38,7 @@ type PortalAuthHandler struct {
 	avatarStoragePath string
 	rateLimiter       *portalauth.RateLimiter
 	rateLimitConfig   portalauth.RateLimitConfig
+	auditService      monitor.AuditService
 	logger            logger.Logger
 }
 
@@ -118,6 +121,12 @@ func (h *PortalAuthHandler) WithAvatarStoragePath(path string) *PortalAuthHandle
 // WithRoleRepository enables role-based permission enrichment in login responses.
 func (h *PortalAuthHandler) WithRoleRepository(roleRepo repository.RoleRepository) *PortalAuthHandler {
 	h.roleRepo = roleRepo
+	return h
+}
+
+// WithAuditService wires the audit emitter for portal user operations.
+func (h *PortalAuthHandler) WithAuditService(audit monitor.AuditService) *PortalAuthHandler {
+	h.auditService = audit
 	return h
 }
 
@@ -1143,6 +1152,15 @@ func (h *PortalAuthHandler) ChangePassword(c *gin.Context) {
 		h.handleError(c, err)
 		return
 	}
+
+	uid := userID.(int64)
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		UserID:       &uid,
+		Action:       monitor.ActionPasswordChange,
+		ResourceType: monitor.ResourceUser,
+		ResourceID:   strconv.FormatInt(uid, 10),
+		Details:      map[string]any{"source": "portal"},
+	})
 
 	c.JSON(http.StatusOK, gin.H{"message": "密码修改成功"})
 }

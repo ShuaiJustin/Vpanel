@@ -148,15 +148,11 @@ func (d *Database) Close() error {
 	return sqlDB.Close()
 }
 
-// AutoMigrate runs database migrations.
-func (d *Database) AutoMigrate() error {
-	if err := d.ensureTrafficTablesSupportSharedUsers(context.Background()); err != nil {
-		return err
-	}
-
-	// Only run GORM auto migrations
-	// SQL migrations are disabled for PostgreSQL compatibility
-	if err := d.db.AutoMigrate(
+// AllModels returns every GORM model that participates in AutoMigrate. The
+// list is shared with the database migrator so a new model only needs to be
+// added in one place.
+func AllModels() []any {
+	return []any{
 		// Core models
 		&repository.User{},
 		&repository.Proxy{},
@@ -213,7 +209,18 @@ func (d *Database) AutoMigrate() error {
 		&ip.SubscriptionIPAccess{},
 		&ip.GeoCache{},
 		&ip.FailedAttempt{},
-	); err != nil {
+	}
+}
+
+// AutoMigrate runs database migrations.
+func (d *Database) AutoMigrate() error {
+	if err := d.ensureTrafficTablesSupportSharedUsers(context.Background()); err != nil {
+		return err
+	}
+
+	// Only run GORM auto migrations
+	// SQL migrations are disabled for PostgreSQL compatibility
+	if err := d.db.AutoMigrate(AllModels()...); err != nil {
 		return err
 	}
 

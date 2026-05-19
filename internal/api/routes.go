@@ -41,6 +41,7 @@ import (
 	"v/internal/node"
 	"v/internal/notification"
 	"v/internal/notification/dispatcher"
+	"v/internal/monitor"
 	"v/internal/portal/announcement"
 	portalauth "v/internal/portal/auth"
 	"v/internal/portal/help"
@@ -73,6 +74,7 @@ type Router struct {
 	nodeRecoveryTracker       *handlers.NodeRecoveryTracker
 	cache                     cache.Cache
 	notificationDispatcher    *dispatcher.Dispatcher
+	auditService              monitor.AuditService
 }
 
 // CertificateService defines the interface for certificate operations.
@@ -149,20 +151,33 @@ func (r *Router) Setup() {
 	// Store cache in router for use by handlers
 	r.cache = statsCache
 
+	// Audit service. Records operations the admin UI's "启用操作日志" switch
+	// gates; we push that flag into the service in applyDynamicSystemSettings.
+	auditSvc := monitor.NewAuditService(r.repos.AuditLog, r.logger)
+	r.auditService = auditSvc
+
 	// Create handlers
 	authHandler := handlers.NewAuthHandler(r.authService, r.repos.User, r.repos.LoginHistory, r.logger).
 		WithSecuritySettings(r.settingsService).
-		WithRoleRepository(r.repos.Role)
+		WithRoleRepository(r.repos.Role).
+		WithAuditService(auditSvc)
 	proxyHandler := handlers.NewProxyHandlerWithTraffic(r.proxyManager, r.repos.Proxy, r.repos.Traffic, r.logger).
 		WithNodeRepository(r.repos.Node).
 		WithUserRepositories(r.repos.User, r.repos.Trial).
 		WithIPTracker(ip.NewTracker(r.repos.DB())).
-		WithCache(statsCache)
+		WithCache(statsCache).
+		WithAuditService(auditSvc)
 	systemHandler := handlers.NewSystemHandler(r.config, r.logger)
 	healthHandler := handlers.NewHealthHandler(r.repos, r.logger, nil)
-	roleHandler := handlers.NewRoleHandler(r.logger, r.repos.Role)
+	roleHandler := handlers.NewRoleHandler(r.logger, r.repos.Role).WithAuditService(auditSvc)
 	statsHandler := handlers.NewStatsHandler(r.logger, r.repos, statsCache)
 	settingsHandler := handlers.NewSettingsHandler(r.logger, r.settingsService)
+	// Source DB injection so the migration endpoint can read from the
+	// currently-active database.
+	if dbPtr := r.repos.DB(); dbPtr != nil {
+		settingsHandler.WithSourceDB(dbPtr)
+	}
+	settingsHandler.WithAuditService(auditSvc)
 	xrayReleasesHandler := handlers.NewXrayReleasesHandler(r.logger)
 	certificateHandler := handlers.NewCertificateHandler(r.repos.Certificate, r.repos.Node, r.certificateService, r.logger)
 	logHandler := handlers.NewLogHandler(r.logService, r.logger)
@@ -217,7 +232,10 @@ func (r *Router) Setup() {
 			if err := r.applyPaymentSettings(paymentService, systemSettings); err != nil {
 				return err
 			}
-			return r.applyNotificationSettings(systemSettings)
+			if err := r.applyNotificationSettings(systemSettings); err != nil {
+				return err
+			}
+			return r.applyDynamicSystemSettings(systemSettings)
 		}).
 		WithTestEmailHook(func(ctx context.Context, systemSettings *settings.SystemSettings, to string) error {
 			return r.sendTestEmail(systemSettings, to)
@@ -349,7 +367,8 @@ func (r *Router) Setup() {
 		geoService = ipService.GeoService()
 	}
 	nodeHandler := handlers.NewNodeHandler(nodeService, nodeGroupService, nodeDeployService, r.nodeRecoveryTracker, r.logger).
-		WithEntitlementService(r.entitlementService)
+		WithEntitlementService(r.entitlementService).
+		WithAuditService(auditSvc)
 
 	// Add cache support for async diagnosis if available
 	if r.cache != nil {
@@ -569,6 +588,7 @@ func (r *Router) Setup() {
 				settingsRoutes.POST("/test-email", authMiddleware.RequirePermission("system:write"), settingsHandler.TestEmail)
 				settingsRoutes.POST("/test-db", authMiddleware.RequirePermission("system:write"), settingsHandler.TestDatabase)
 				settingsRoutes.POST("/backup-db", authMiddleware.RequirePermission("system:write"), settingsHandler.BackupDatabase)
+				settingsRoutes.POST("/migrate-db", authMiddleware.RequirePermission("system:write"), settingsHandler.MigrateDatabase)
 				settingsRoutes.POST("/backup", authMiddleware.RequirePermission("system:write"), settingsHandler.BackupSettings)
 				settingsRoutes.POST("/restore", authMiddleware.RequirePermission("system:write"), settingsHandler.RestoreSettings)
 				settingsRoutes.GET("/xray", authMiddleware.RequirePermission("system:read"), settingsHandler.GetXraySettings)
@@ -578,6 +598,14 @@ func (r *Router) Setup() {
 				settingsRoutes.GET("/auto-proxy", authMiddleware.RequirePermission("system:read"), settingsHandler.GetAutoProxySettings)
 				settingsRoutes.POST("/auto-proxy", authMiddleware.RequirePermission("system:write"), settingsHandler.UpdateAutoProxySettings)
 			}
+
+			// Audit logs (admin only) — read-only listing of operations
+			// recorded by AuditService.
+			auditLogHandler := handlers.NewAuditLogHandler(r.repos.AuditLog, r.logger)
+			protected.GET("/audit-logs",
+				authMiddleware.RequirePermission("system:read"),
+				auditLogHandler.List,
+			)
 
 			// Certificates routes (admin only)
 			certificatesRoutes := protected.Group("/certificates")
@@ -1093,6 +1121,9 @@ func (r *Router) loadStoredNotificationSettings(ctx context.Context) {
 	if err := r.applyNotificationSettings(systemSettings); err != nil {
 		r.logger.Warn("Failed to apply persisted notification settings", logger.Err(err))
 	}
+	if err := r.applyDynamicSystemSettings(systemSettings); err != nil {
+		r.logger.Warn("Failed to apply persisted dynamic system settings", logger.Err(err))
+	}
 }
 
 func (r *Router) validateEmailSettings(systemSettings *settings.SystemSettings) error {
@@ -1145,6 +1176,46 @@ func (r *Router) applyNotificationSettings(systemSettings *settings.SystemSettin
 	r.notificationService.UpdateConfig(r.buildNotificationConfig(systemSettings))
 	if r.nodeHealthChecker != nil {
 		r.nodeHealthChecker.SetNotificationService(r.notificationService)
+	}
+
+	return nil
+}
+
+// applyDynamicSystemSettings applies settings that can take effect without
+// restarting the process: log level, log retention window, and process
+// timezone. Other settings (panel port, DB type, etc.) still require restart
+// because they're consumed at process startup.
+func (r *Router) applyDynamicSystemSettings(systemSettings *settings.SystemSettings) error {
+	if systemSettings == nil {
+		return nil
+	}
+
+	if level := strings.TrimSpace(systemSettings.LogLevel); level != "" && r.logger != nil {
+		r.logger.SetLevel(logger.ParseLevel(level))
+	}
+
+	if r.logService != nil && systemSettings.LogRetentionDays > 0 {
+		r.logService.SetRetentionDays(systemSettings.LogRetentionDays)
+	}
+
+	if r.logService != nil {
+		r.logService.SetAccessLogEnabled(systemSettings.EnableAccessLog)
+	}
+
+	if r.auditService != nil {
+		r.auditService.SetEnabled(systemSettings.EnableOperationLog)
+	}
+
+	if tz := strings.TrimSpace(systemSettings.Timezone); tz != "" {
+		if loc, err := time.LoadLocation(tz); err == nil {
+			time.Local = loc
+			_ = os.Setenv("TZ", tz)
+		} else {
+			r.logger.Warn("invalid timezone in settings, keeping previous",
+				logger.F("timezone", tz),
+				logger.F("error", err),
+			)
+		}
 	}
 
 	return nil
@@ -1430,7 +1501,8 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 		WithTelegramSender(r.notificationService).
 		WithAvatarStoragePath(filepath.Join("data", "avatars")).
 		WithRoleRepository(r.repos.Role).
-		WithEntitlementService(r.entitlementService)
+		WithEntitlementService(r.entitlementService).
+		WithAuditService(r.auditService)
 	portalDashboardHandler := handlers.NewPortalDashboardHandler(r.repos.User, statsService, announcementService, r.logger).
 		WithEntitlementService(r.entitlementService)
 	portalNodeHandler := handlers.NewPortalNodeHandler(portalNodeService, r.nodeRecoveryTracker, r.logger)

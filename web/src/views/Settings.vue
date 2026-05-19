@@ -209,7 +209,25 @@
             >
               备份数据库
             </el-button>
+            <el-button
+              type="danger"
+              :loading="dbMigrating"
+              @click="migrateDb"
+            >
+              迁移数据到目标数据库
+            </el-button>
           </el-form-item>
+          <el-alert
+            type="warning"
+            :closable="false"
+            show-icon
+            class="db-migrate-tip"
+          >
+            <template #title>
+              数据库切换说明
+            </template>
+            "迁移数据到目标数据库" 会把当前 DB 的所有表 + 数据复制到上方填写的目标 DB。<strong>迁移完成后，本服务仍连接旧 DB</strong>——请手动在 docker-compose.yml 或环境变量中设置 <code>V_DATABASE_DRIVER</code> / <code>V_DATABASE_DSN</code>，然后重启容器才会真正切换。建议先点 备份数据库 留好快照。
+          </el-alert>
         </el-form>
       </el-tab-pane>
       
@@ -947,6 +965,7 @@
 
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import api from '@/api/index'
@@ -955,6 +974,7 @@ import { extractErrorMessage } from '@/utils/entitlement'
 
 // store
 const userStore = useUserStore()
+const router = useRouter()
 const { isMobile } = useViewport()
 
 // 当前活动标签页
@@ -1281,6 +1301,66 @@ const backupDb = async () => {
   }
 }
 
+const dbMigrating = ref(false)
+const migrateDb = async () => {
+  if (dbForm.dbType === 'sqlite') {
+    if (!dbForm.sqlitePath.trim()) {
+      return ElMessage.warning('请填写目标 SQLite 路径')
+    }
+  } else if (!dbForm.dbHost.trim() || !dbForm.dbName.trim() || !dbForm.dbUser.trim()) {
+    return ElMessage.warning('请填写目标数据库主机 / 库名 / 用户名')
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `即将把当前数据库的所有数据复制到目标 ${dbForm.dbType}。这是单向操作，目标库现有数据会被覆盖。建议先点"备份数据库"。`,
+      '确认迁移',
+      {
+        confirmButtonText: '开始迁移',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+  } catch {
+    return
+  }
+
+  dbMigrating.value = true
+  try {
+    const response = await api.post('/settings/migrate-db', {
+      db_type: dbForm.dbType,
+      db_host: dbForm.dbHost.trim(),
+      db_port: dbForm.dbPort,
+      db_name: dbForm.dbName.trim(),
+      db_user: dbForm.dbUser.trim(),
+      db_password: dbForm.dbPassword,
+      sqlite_path: dbForm.sqlitePath.trim(),
+      confirm: true,
+    })
+
+    const data = response?.data || response || {}
+    const cutover = data.cutover_env || {}
+    const envBlock = Object.entries(cutover)
+      .map(([k, v]) => `${k}=${v}`)
+      .join('\n')
+
+    ElMessageBox.alert(
+      `<div>
+        <p><strong>迁移完成</strong>，共复制 ${data?.report?.total_rows ?? '?'} 行，跨 ${data?.report?.table_count ?? '?'} 张表。</p>
+        <p style="margin-top:12px">本服务仍在使用旧数据库。请在容器环境变量或 docker-compose.yml 中设置：</p>
+        <pre style="margin:8px 0;padding:10px;background:#f4f4f5;border-radius:6px;white-space:pre-wrap;word-break:break-all">${envBlock}</pre>
+        <p>然后重启容器，新连接才会生效。</p>
+      </div>`,
+      '迁移成功',
+      { dangerouslyUseHTMLString: true, confirmButtonText: '我已记下' }
+    )
+  } catch (error) {
+    ElMessage.error('迁移失败：' + (extractErrorMessage(error) || '未知错误'))
+  } finally {
+    dbMigrating.value = false
+  }
+}
+
 const saveLogSettings = async () => {
   try {
     const response = await api.put('/settings', {
@@ -1474,24 +1554,18 @@ const changeAdminPassword = async () => {
 
 const resetAdminPassword = () => {
   ElMessageBox.confirm(
-    '确定要将管理员密码重置为默认密码吗？',
-    '警告',
+    '系统密码重置请在 用户管理 中找到管理员账户并执行重置。是否跳转到用户管理页？',
+    '提示',
     {
-      confirmButtonText: '确定',
+      confirmButtonText: '跳转',
       cancelButtonText: '取消',
-      type: 'warning'
+      type: 'info'
     }
   )
-  .then(async () => {
-    try {
-      ElMessage.warning('固定默认密码重置未开放，请在用户管理中执行密码重置。')
-    } catch (error) {
-      ElMessage.error('重置失败：' + (extractErrorMessage(error) || '未知错误'))
-    }
+  .then(() => {
+    router.push('/admin/users?role=admin')
   })
-  .catch(() => {
-    ElMessage.info('已取消重置')
-  })
+  .catch(() => {})
 }
 
 const applySecuritySettings = (settings) => {

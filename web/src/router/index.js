@@ -31,6 +31,7 @@ const Stats = () => import(/* webpackChunkName: "monitor" */ '../views/Stats.vue
 const Settings = () => import(/* webpackChunkName: "system" */ '../views/Settings.vue')
 const Certificates = () => import(/* webpackChunkName: "system" */ '../views/Certificates.vue')
 const Logs = () => import(/* webpackChunkName: "system" */ '../views/Logs.vue')
+const AdminAuditLogs = () => import(/* webpackChunkName: "system" */ '../views/AdminAuditLogs.vue')
 const IPRestriction = () => import(/* webpackChunkName: "system" */ '../views/IPRestriction.vue')
 
 // 订阅管理 - 按需加载
@@ -126,6 +127,7 @@ const adminRoutePermissionMeta = Object.freeze({
   AdminSettings: { permissionsAll: ['system:write'] },
   AdminCertificates: { permissionsAll: ['system:write'] },
   AdminLogs: { permissionsAll: ['system:read'] },
+  AdminAuditLogs: { permissionsAll: ['system:read'] },
   AdminIPRestriction: { permissionsAll: ['system:read'] },
   AdminPlans: { permissionsAll: ['system:write'] },
   AdminOrders: { permissionsAll: ['system:write'] },
@@ -323,6 +325,16 @@ const routes = [
         meta: {
           requiresAuth: true,
           title: '日志管理',
+          roles: ['admin']
+        }
+      },
+      {
+        path: 'audit-logs',
+        name: 'AdminAuditLogs',
+        component: AdminAuditLogs,
+        meta: {
+          requiresAuth: true,
+          title: '操作日志',
           roles: ['admin']
         }
       },

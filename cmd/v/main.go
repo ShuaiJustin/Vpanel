@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"v/internal/proxy/protocols/vless"
 	"v/internal/proxy/protocols/vmess"
 	"v/internal/server"
+	"v/internal/settings"
 )
 
 var (
@@ -83,6 +85,12 @@ func main() {
 
 	// Initialize repositories
 	repos := repository.NewRepositories(db.DB())
+
+	// Apply startup-time overrides from the settings DB. Admin UI writes
+	// fields like panel_port / log_level / timezone into the settings table;
+	// without this step those fields are ignored. config.yaml still acts as
+	// the fallback (only set fields override).
+	applyStartupOverridesFromSettings(cfg, settings.NewService(repos.Settings), log)
 
 	// Initialize log service
 	logService := logservice.NewService(repos.Log, log, logservice.Config{
@@ -171,6 +179,59 @@ func main() {
 	log.Info("server stopped gracefully")
 }
 
+
+// applyStartupOverridesFromSettings reads system settings persisted in the
+// database (managed via the admin UI) and overrides matching fields on cfg.
+// This is what makes admin UI changes to "panel port", "log retention", etc.
+// actually take effect on the next restart. Only values the admin has
+// explicitly written are applied — defaults still defer to config.yaml. We
+// detect "explicitly set" by reading the raw key/value map and checking
+// presence, which is how GetAll() differs from GetSystemSettings() (the
+// latter overlays defaults and would clobber config.yaml on a fresh install).
+func applyStartupOverridesFromSettings(cfg *config.Config, svc *settings.Service, log logger.Logger) {
+	if cfg == nil || svc == nil {
+		return
+	}
+
+	raw, err := svc.GetAll(context.Background())
+	if err != nil {
+		log.Warn("startup: failed to load settings overrides, using config.yaml only",
+			logger.F("error", err),
+		)
+		return
+	}
+
+	// Intentionally NOT overriding Server.Host / Server.Port from settings DB.
+	// Those are baked into container port mappings + reverse proxies and
+	// must stay aligned with config.yaml / env vars. Admin UI displays them
+	// for visibility but changing them requires editing config.yaml manually.
+	// See the audit notes for context.
+
+	if v, ok := raw["log_level"]; ok && strings.TrimSpace(v) != "" {
+		cfg.Log.Level = strings.TrimSpace(v)
+	}
+	if v, ok := raw["log_retention_days"]; ok && strings.TrimSpace(v) != "" {
+		var days int
+		if _, perr := fmt.Sscanf(v, "%d", &days); perr == nil && days > 0 {
+			cfg.Log.RetentionDays = days
+		}
+	}
+
+	if v, ok := raw["timezone"]; ok {
+		tz := strings.TrimSpace(v)
+		if tz != "" {
+			if loc, locErr := time.LoadLocation(tz); locErr == nil {
+				time.Local = loc
+				_ = os.Setenv("TZ", tz)
+			} else {
+				log.Warn("startup: invalid timezone in settings, keeping previous",
+					logger.F("timezone", tz),
+					logger.F("error", locErr),
+				)
+			}
+		}
+	}
+}
 
 // ensureAdminUser creates the default admin user if it doesn't exist.
 // If the user exists, it updates the password to match the configuration.
