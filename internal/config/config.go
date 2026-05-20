@@ -580,6 +580,20 @@ func setFieldValue(field reflect.Value, value string) error {
 			return err
 		}
 		field.SetBool(b)
+	case reflect.Slice:
+		// Only []string is supported for env-driven slices (e.g. CORS origins).
+		// Values are comma-separated; whitespace is trimmed; empties dropped.
+		if field.Type().Elem().Kind() != reflect.String {
+			return fmt.Errorf("unsupported slice element type: %s", field.Type().Elem().Kind())
+		}
+		raw := strings.Split(value, ",")
+		out := make([]string, 0, len(raw))
+		for _, item := range raw {
+			if v := strings.TrimSpace(item); v != "" {
+				out = append(out, v)
+			}
+		}
+		field.Set(reflect.ValueOf(out))
 	default:
 		return fmt.Errorf("unsupported field type: %s", field.Kind())
 	}

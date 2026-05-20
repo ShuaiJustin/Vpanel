@@ -240,6 +240,23 @@ func CORS(allowedOrigins []string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
 
+		// Same-origin requests don't send an Origin header (browsers omit it
+		// for navigation/server-side fetches). They are always allowed —
+		// only cross-origin requests with an Origin header are subject to
+		// the allowlist.
+		if origin == "" {
+			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
+			c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization, X-Request-ID")
+			c.Header("Access-Control-Allow-Credentials", "true")
+			c.Header("Access-Control-Max-Age", "86400")
+			if c.Request.Method == "OPTIONS" {
+				c.AbortWithStatus(http.StatusNoContent)
+				return
+			}
+			c.Next()
+			return
+		}
+
 		// Check if origin is allowed
 		allowed := false
 		for _, o := range allowedOrigins {
@@ -255,7 +272,14 @@ func CORS(allowedOrigins []string) gin.HandlerFunc {
 			}
 		}
 
-		if !allowed && len(allowedOrigins) > 0 && allowedOrigins[0] != "*" {
+		// Empty allowlist = allow all (legacy/dev behavior). Set explicitly
+		// in production via V_SERVER_CORS_ORIGINS.
+		if !allowed && len(allowedOrigins) == 0 {
+			allowed = true
+			c.Header("Access-Control-Allow-Origin", origin)
+		}
+
+		if !allowed {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"code":    "FORBIDDEN",
 				"message": "Origin not allowed",

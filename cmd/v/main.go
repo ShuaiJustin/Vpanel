@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"v/internal/auth"
+	"v/internal/backup"
 	"v/internal/config"
 	"v/internal/database"
 	"v/internal/database/repository"
@@ -105,6 +107,24 @@ func main() {
 	// Start cleanup scheduler
 	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
 	logService.StartCleanupScheduler(cleanupCtx)
+
+	// Daily DB snapshot scheduler. Gated by VPANEL_BACKUP_ENABLED so ops
+	// can opt out if they're running their own backup tooling (Litestream,
+	// volume snapshots, etc.).
+	if os.Getenv("VPANEL_BACKUP_ENABLED") != "0" {
+		retention := 14
+		if v := strings.TrimSpace(os.Getenv("VPANEL_BACKUP_RETENTION_DAYS")); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				retention = n
+			}
+		}
+		dbPath := os.Getenv("V_DB_PATH")
+		if dbPath == "" {
+			dbPath = cfg.Database.DSN
+		}
+		backupSvc := backup.New(dbPath, retention, 3, log)
+		backupSvc.Start(cleanupCtx)
+	}
 
 	log.Info("log service initialized",
 		logger.F("database_enabled", cfg.Log.DatabaseEnabled),

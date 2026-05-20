@@ -141,6 +141,10 @@ if [ ! -f "$DOCKER_DIR/.env" ]; then
     echo ""
 fi
 
+# Lock .env so secrets (JWT, admin password, payment keys) aren't world-readable.
+# Re-applied on every start so a stray chmod doesn't leave it loose.
+chmod 600 "$DOCKER_DIR/.env" 2>/dev/null || true
+
 # 初始化 .env 文件（自动生成密码）
 echo -e "${CYAN}检查配置文件...${NC}"
 init_env_file "$DOCKER_DIR/.env"

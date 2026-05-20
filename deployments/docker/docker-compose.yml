@@ -14,6 +14,7 @@ x-vpanel-environment: &vpanel-environment
   V_SERVER_MODE: ${V_SERVER_MODE:-release}
   V_SERVER_PUBLIC_URL: ${V_SERVER_PUBLIC_URL:-}
   V_SERVER_BASE_URL: ${V_SERVER_BASE_URL:-}
+  V_SERVER_CORS_ORIGINS: ${V_SERVER_CORS_ORIGINS:-}
   V_SERVER_SUBSCRIPTION_UPDATE_INTERVAL: ${V_SERVER_SUBSCRIPTION_UPDATE_INTERVAL:-}
   V_SERVER_TLS_CERT: ${V_SERVER_TLS_CERT:-}
   V_SERVER_TLS_KEY: ${V_SERVER_TLS_KEY:-}
@@ -22,6 +23,8 @@ x-vpanel-environment: &vpanel-environment
   VPANEL_DATA_DIR: ${VPANEL_DATA_DIR:-/app/data}
   VPANEL_LOG_DIR: ${VPANEL_LOG_DIR:-/app/logs}
   VPANEL_XRAY_DIR: ${VPANEL_XRAY_DIR:-/app/xray}
+  VPANEL_BACKUP_ENABLED: ${VPANEL_BACKUP_ENABLED:-1}
+  VPANEL_BACKUP_RETENTION_DAYS: ${VPANEL_BACKUP_RETENTION_DAYS:-14}
   V_DB_PATH: ${V_DB_PATH:-/app/data/v.db}
   V_JWT_SECRET: ${V_JWT_SECRET:-change-me-in-production}
   V_ADMIN_USER: ${V_ADMIN_USER:-admin}
@@ -74,6 +77,25 @@ services:
     init: true
     restart: unless-stopped
     stop_grace_period: 30s
+    # Resource limits: prevent a runaway request handler / SQL export from
+    # OOM'ing the host. Tune up if the panel handles >>500 concurrent users
+    # or you have a lot of nodes pushing traffic stats.
+    mem_limit: ${VPANEL_MEM_LIMIT:-1g}
+    mem_reservation: ${VPANEL_MEM_RESERVATION:-256m}
+    cpus: ${VPANEL_CPUS:-2.0}
+    pids_limit: ${VPANEL_PIDS_LIMIT:-256}
+    # Linux security: drop kernel caps we don't need. Panel does plain HTTP
+    # serving + sqlite + outbound SSH/SCP for remote node deploy; none of
+    # those need NET_ADMIN/SYS_ADMIN/etc.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+    security_opt:
+      - no-new-privileges:true
     env_file:
       - .env
     ports:
