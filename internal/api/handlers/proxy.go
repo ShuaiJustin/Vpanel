@@ -17,6 +17,7 @@ import (
 	"v/internal/logger"
 	"v/internal/monitor"
 	"v/internal/proxy"
+	"v/internal/settings"
 	"v/pkg/errors"
 )
 
@@ -32,6 +33,7 @@ type ProxyHandler struct {
 	recoveryTracker *NodeRecoveryTracker
 	cache           cache.Cache
 	auditService    monitor.AuditService
+	settingsService *settings.Service
 	logger          logger.Logger
 }
 
@@ -93,6 +95,14 @@ func (h *ProxyHandler) WithCache(cache cache.Cache) *ProxyHandler {
 // WithAuditService wires the audit emitter for state-changing proxy ops.
 func (h *ProxyHandler) WithAuditService(audit monitor.AuditService) *ProxyHandler {
 	h.auditService = audit
+	return h
+}
+
+// WithSettingsService wires the settings service so Create/Update can refuse
+// to provision a proxy whose protocol has been disabled in the admin
+// "协议管理" Tab.
+func (h *ProxyHandler) WithSettingsService(svc *settings.Service) *ProxyHandler {
+	h.settingsService = svc
 	return h
 }
 
@@ -216,6 +226,15 @@ func (h *ProxyHandler) Create(c *gin.Context) {
 	protocol, ok := h.proxyManager.GetProtocol(req.Protocol)
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Unsupported protocol"})
+		return
+	}
+
+	// Admin "协议管理" Tab can disable specific protocols system-wide.
+	// Respect it here so the toggle is more than cosmetic.
+	if h.settingsService != nil && !h.settingsService.IsProtocolEnabled(c.Request.Context(), req.Protocol) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": fmt.Sprintf("协议 %s 已在 系统设置 → 协议管理 中禁用", req.Protocol),
+		})
 		return
 	}
 

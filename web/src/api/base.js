@@ -119,8 +119,11 @@ export function formatApiError(error) {
 }
 
 // 创建 axios 实例
+// baseURL honors panel_base_path when the panel is mounted under a prefix.
+// The backend injects window.__VPANEL_BASE__ into index.html at boot.
+const __panelBase = (typeof window !== 'undefined' && window.__VPANEL_BASE__) || ''
 const api = axios.create({
-  baseURL: import.meta.env.VITE_APP_API_URL || '/api',
+  baseURL: import.meta.env.VITE_APP_API_URL || (__panelBase + '/api'),
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json'

@@ -20,15 +20,17 @@ import (
 	"v/internal/certificate"
 	"v/internal/database/repository"
 	"v/internal/logger"
+	"v/internal/monitor"
 	"v/pkg/errors"
 )
 
 // CertificateHandler handles certificate management requests.
 type CertificateHandler struct {
-	certRepo repository.CertificateRepository
-	nodeRepo repository.NodeRepository
-	certSvc  CertificateService
-	logger   logger.Logger
+	certRepo     repository.CertificateRepository
+	nodeRepo     repository.NodeRepository
+	certSvc      CertificateService
+	auditService monitor.AuditService
+	logger       logger.Logger
 }
 
 // CertificateService defines the interface for certificate operations.
@@ -47,6 +49,12 @@ func NewCertificateHandler(certRepo repository.CertificateRepository, nodeRepo r
 		certSvc:  certSvc,
 		logger:   log,
 	}
+}
+
+// WithAuditService wires the audit emitter for state-changing certificate ops.
+func (h *CertificateHandler) WithAuditService(audit monitor.AuditService) *CertificateHandler {
+	h.auditService = audit
+	return h
 }
 
 // CertificateResponse represents a certificate in API responses.
@@ -330,6 +338,13 @@ func (h *CertificateHandler) Create(c *gin.Context) {
 
 	h.logger.Info("Certificate created", logger.F("cert_id", cert.ID), logger.F("domain", cert.Domain))
 
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionCertCreate,
+		ResourceType: monitor.ResourceCert,
+		ResourceID:   strconv.FormatInt(cert.ID, 10),
+		Details:      map[string]any{"domain": cert.Domain},
+	})
+
 	response := gin.H{
 		"certificate": toCertificateResponse(cert),
 	}
@@ -403,6 +418,13 @@ func (h *CertificateHandler) Update(c *gin.Context) {
 
 	h.logger.Info("Certificate updated", logger.F("cert_id", id))
 
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionCertUpdate,
+		ResourceType: monitor.ResourceCert,
+		ResourceID:   strconv.FormatInt(id, 10),
+		Details:      map[string]any{"domain": cert.Domain},
+	})
+
 	c.JSON(http.StatusOK, toCertificateResponse(cert))
 }
 
@@ -426,6 +448,12 @@ func (h *CertificateHandler) Delete(c *gin.Context) {
 	}
 
 	h.logger.Info("Certificate deleted", logger.F("cert_id", id))
+
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionCertDelete,
+		ResourceType: monitor.ResourceCert,
+		ResourceID:   strconv.FormatInt(id, 10),
+	})
 
 	c.JSON(http.StatusOK, gin.H{"message": "证书删除成功"})
 }
@@ -520,6 +548,13 @@ func (h *CertificateHandler) Apply(c *gin.Context) {
 		logger.F("domain", req.Domain),
 		logger.F("cert_id", cert.ID))
 
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionCertApply,
+		ResourceType: monitor.ResourceCert,
+		ResourceID:   strconv.FormatInt(cert.ID, 10),
+		Details:      map[string]any{"domain": req.Domain},
+	})
+
 	c.JSON(http.StatusAccepted, gin.H{
 		"message": "证书申请已提交，正在后台处理",
 		"domain":  req.Domain,
@@ -568,6 +603,13 @@ func (h *CertificateHandler) Renew(c *gin.Context) {
 	h.logger.Info("Certificate renewal requested",
 		logger.F("cert_id", id),
 		logger.F("domain", cert.Domain))
+
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionCertRenew,
+		ResourceType: monitor.ResourceCert,
+		ResourceID:   strconv.FormatInt(cert.ID, 10),
+		Details:      map[string]any{"domain": cert.Domain},
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":     "证书续期成功",
@@ -925,6 +967,12 @@ func (h *CertificateHandler) AssignToNodes(c *gin.Context) {
 	successCount, failedNodes := h.assignCertificateToNodes(ctx, cert, req.NodeIDs)
 	if successCount > 0 {
 		h.deployAssignedNodesAsync(cert)
+		emitAudit(c, h.auditService, monitor.AuditEntry{
+			Action:       monitor.ActionCertAssign,
+			ResourceType: monitor.ResourceCert,
+			ResourceID:   strconv.FormatInt(cert.ID, 10),
+			Details:      map[string]any{"domain": cert.Domain, "node_ids": req.NodeIDs, "success_count": successCount},
+		})
 	}
 
 	// 返回结果
@@ -1094,6 +1142,13 @@ func (h *CertificateHandler) UnassignFromNode(c *gin.Context) {
 		logger.F("cert_id", certID),
 		logger.F("node_id", nodeID),
 		logger.F("node_name", node.Name))
+
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionCertUnassign,
+		ResourceType: monitor.ResourceCert,
+		ResourceID:   strconv.FormatInt(certID, 10),
+		Details:      map[string]any{"node_id": nodeID, "node_name": node.Name},
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,

@@ -582,8 +582,11 @@ if (adminRootRoute?.children) {
 }
 
 // 创建路由实例
+// Honor panel_base_path: backend injects window.__VPANEL_BASE__ into the
+// served index.html so router and axios share the same prefix at runtime.
+const __panelBase = (typeof window !== 'undefined' && window.__VPANEL_BASE__) || ''
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(__panelBase + '/'),
   routes,
   scrollBehavior(to, from, savedPosition) {
     if (savedPosition) {

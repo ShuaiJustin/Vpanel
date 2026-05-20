@@ -251,6 +251,35 @@ func (s *Service) SetMultiple(ctx context.Context, settings map[string]string) e
 	return nil
 }
 
+// IsProtocolEnabled reports whether a given proxy protocol is enabled in
+// system settings (admin "协议管理" Tab). Returns true when the protocol is
+// absent from the stored map so newly-introduced protocols default to ON
+// rather than silently breaking. Unknown errors fall back to true so a
+// transient DB hiccup never locks the admin out of creating proxies.
+//
+// `protocol` is normalized to lowercase. Pass exactly what proxy.Protocol
+// stores, e.g. "vmess" / "vless" / "trojan" / "shadowsocks" / "socks" / "http".
+func (s *Service) IsProtocolEnabled(ctx context.Context, protocol string) bool {
+	if s == nil || strings.TrimSpace(protocol) == "" {
+		return true
+	}
+	key := strings.ToLower(strings.TrimSpace(protocol))
+
+	var stored struct {
+		Protocols map[string]bool `json:"protocols"`
+	}
+	if err := s.GetTyped(ctx, "xray_protocol_settings", &stored); err != nil {
+		return true
+	}
+	if stored.Protocols == nil {
+		return true
+	}
+	if enabled, ok := stored.Protocols[key]; ok {
+		return enabled
+	}
+	return true
+}
+
 // GetAutoProxySettings retrieves automatic proxy provisioning settings.
 func (s *Service) GetAutoProxySettings(ctx context.Context) (*AutoProxySettings, error) {
 	settings := DefaultAutoProxySettings()

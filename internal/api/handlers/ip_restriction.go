@@ -13,14 +13,16 @@ import (
 	"v/internal/api/middleware"
 	"v/internal/ip"
 	"v/internal/logger"
+	"v/internal/monitor"
 	"v/pkg/errors"
 )
 
 // IPRestrictionHandler handles IP restriction related requests.
 type IPRestrictionHandler struct {
-	logger    logger.Logger
-	ipService *ip.Service
-	schema    concurrentIPSchema
+	logger       logger.Logger
+	ipService    *ip.Service
+	schema       concurrentIPSchema
+	auditService monitor.AuditService
 }
 
 type ipCountryStat struct {
@@ -54,6 +56,12 @@ func NewIPRestrictionHandler(log logger.Logger, ipService *ip.Service) *IPRestri
 		ipService: ipService,
 		schema:    schema,
 	}
+}
+
+// WithAuditService wires the audit emitter for state-changing IP ops.
+func (h *IPRestrictionHandler) WithAuditService(audit monitor.AuditService) *IPRestrictionHandler {
+	h.auditService = audit
+	return h
 }
 
 // ResolveUserMaxConcurrentIPs resolves effective device limit for a user.
@@ -421,6 +429,13 @@ func (h *IPRestrictionHandler) KickUserIP(c *gin.Context) {
 
 	h.logger.Info("IP kicked", logger.F("user_id", userID), logger.F("ip", req.IP))
 
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionIPKick,
+		ResourceType: monitor.ResourceIP,
+		ResourceID:   req.IP,
+		Details:      map[string]any{"target_user_id": userID, "ip": req.IP},
+	})
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "IP kicked successfully",
@@ -528,6 +543,13 @@ func (h *IPRestrictionHandler) AddWhitelist(c *gin.Context) {
 
 	h.logger.Info("IP added to whitelist", logger.F("ip", req.IP), logger.F("cidr", req.CIDR))
 
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionIPWhitelistAdd,
+		ResourceType: monitor.ResourceIP,
+		ResourceID:   strconv.FormatUint(uint64(entry.ID), 10),
+		Details:      map[string]any{"ip": req.IP, "cidr": req.CIDR},
+	})
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "added to whitelist",
@@ -563,6 +585,12 @@ func (h *IPRestrictionHandler) DeleteWhitelist(c *gin.Context) {
 	}
 
 	h.logger.Info("IP removed from whitelist", logger.F("id", id))
+
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionIPWhitelistDel,
+		ResourceType: monitor.ResourceIP,
+		ResourceID:   strconv.FormatUint(uint64(id), 10),
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
@@ -609,6 +637,12 @@ func (h *IPRestrictionHandler) ImportWhitelist(c *gin.Context) {
 	}
 
 	h.logger.Info("Whitelist imported", logger.F("count", len(req.IPs)))
+
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionIPWhitelistImp,
+		ResourceType: monitor.ResourceIP,
+		Details:      map[string]any{"count": len(req.IPs), "target_user_id": req.UserID},
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
@@ -721,6 +755,13 @@ func (h *IPRestrictionHandler) AddBlacklist(c *gin.Context) {
 
 	h.logger.Info("IP added to blacklist", logger.F("ip", req.IP), logger.F("cidr", req.CIDR))
 
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionIPBlacklistAdd,
+		ResourceType: monitor.ResourceIP,
+		ResourceID:   strconv.FormatUint(uint64(entry.ID), 10),
+		Details:      map[string]any{"ip": req.IP, "cidr": req.CIDR},
+	})
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "added to blacklist",
@@ -756,6 +797,12 @@ func (h *IPRestrictionHandler) DeleteBlacklist(c *gin.Context) {
 	}
 
 	h.logger.Info("IP removed from blacklist", logger.F("id", id))
+
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionIPBlacklistDel,
+		ResourceType: monitor.ResourceIP,
+		ResourceID:   strconv.FormatUint(uint64(id), 10),
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,

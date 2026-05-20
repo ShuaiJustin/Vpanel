@@ -216,6 +216,11 @@ func applyStartupOverridesFromSettings(cfg *config.Config, svc *settings.Service
 			cfg.Log.RetentionDays = days
 		}
 	}
+	if v, ok := raw["log_path"]; ok {
+		if p := strings.TrimSpace(v); p != "" {
+			cfg.Log.Output = p
+		}
+	}
 
 	if v, ok := raw["timezone"]; ok {
 		tz := strings.TrimSpace(v)
@@ -229,6 +234,21 @@ func applyStartupOverridesFromSettings(cfg *config.Config, svc *settings.Service
 					logger.F("error", locErr),
 				)
 			}
+		}
+	}
+
+	// Panel base path (e.g. "/vpanel") — mounts the entire UI + API under
+	// this prefix. Useful for reverse-proxy scenarios where the proxy does
+	// NOT strip the prefix. Normalize so downstream consumers see either
+	// "" or a leading-slash, no-trailing-slash form.
+	if v, ok := raw["panel_base_path"]; ok {
+		bp := strings.TrimSpace(v)
+		bp = strings.TrimRight(bp, "/")
+		if bp != "" && bp != "/" {
+			if !strings.HasPrefix(bp, "/") {
+				bp = "/" + bp
+			}
+			cfg.Server.BasePath = bp
 		}
 	}
 }

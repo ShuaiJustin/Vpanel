@@ -1443,6 +1443,12 @@ func (h *NodeHandler) GenerateToken(c *gin.Context) {
 
 	h.logger.Info("Token generated for node", logger.F("node_id", id))
 
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionNodeTokenGen,
+		ResourceType: monitor.ResourceNode,
+		ResourceID:   strconv.FormatInt(id, 10),
+	})
+
 	c.JSON(http.StatusOK, gin.H{"token": token})
 }
 
@@ -1468,6 +1474,12 @@ func (h *NodeHandler) RotateToken(c *gin.Context) {
 
 	h.logger.Info("Token rotated for node", logger.F("node_id", id))
 
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionNodeTokenRot,
+		ResourceType: monitor.ResourceNode,
+		ResourceID:   strconv.FormatInt(id, 10),
+	})
+
 	c.JSON(http.StatusOK, gin.H{"token": token})
 }
 
@@ -1491,6 +1503,12 @@ func (h *NodeHandler) RevokeToken(c *gin.Context) {
 	}
 
 	h.logger.Info("Token revoked for node", logger.F("node_id", id))
+
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionNodeTokenRev,
+		ResourceType: monitor.ResourceNode,
+		ResourceID:   strconv.FormatInt(id, 10),
+	})
 
 	c.JSON(http.StatusOK, gin.H{"message": "Token revoked successfully"})
 }

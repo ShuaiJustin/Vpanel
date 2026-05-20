@@ -3,6 +3,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/mail"
@@ -166,7 +167,8 @@ func (r *Router) Setup() {
 		WithUserRepositories(r.repos.User, r.repos.Trial).
 		WithIPTracker(ip.NewTracker(r.repos.DB())).
 		WithCache(statsCache).
-		WithAuditService(auditSvc)
+		WithAuditService(auditSvc).
+		WithSettingsService(r.settingsService)
 	systemHandler := handlers.NewSystemHandler(r.config, r.logger)
 	healthHandler := handlers.NewHealthHandler(r.repos, r.logger, nil)
 	roleHandler := handlers.NewRoleHandler(r.logger, r.repos.Role).WithAuditService(auditSvc)
@@ -179,7 +181,7 @@ func (r *Router) Setup() {
 	}
 	settingsHandler.WithAuditService(auditSvc)
 	xrayReleasesHandler := handlers.NewXrayReleasesHandler(r.logger)
-	certificateHandler := handlers.NewCertificateHandler(r.repos.Certificate, r.repos.Node, r.certificateService, r.logger)
+	certificateHandler := handlers.NewCertificateHandler(r.repos.Certificate, r.repos.Node, r.certificateService, r.logger).WithAuditService(auditSvc)
 	logHandler := handlers.NewLogHandler(r.logService, r.logger)
 
 	// Create IP restriction service and handler
@@ -191,7 +193,7 @@ func (r *Router) Setup() {
 	}
 
 	// Always create handler - it will handle nil service gracefully
-	ipRestrictionHandler := handlers.NewIPRestrictionHandler(r.logger, ipService)
+	ipRestrictionHandler := handlers.NewIPRestrictionHandler(r.logger, ipService).WithAuditService(auditSvc)
 	ipRestrictionMiddleware := middleware.NewIPRestrictionMiddleware(ipService, r.logger)
 	if ipService == nil {
 		r.logger.Warn("IP restriction service is disabled due to initialization failure")
@@ -375,7 +377,7 @@ func (r *Router) Setup() {
 		nodeHandler = nodeHandler.WithCache(r.cache)
 	}
 	nodeNameSuggestionHandler := handlers.NewNodeNameSuggestionHandler(r.logger, geoService)
-	nodeGroupHandler := handlers.NewNodeGroupHandler(nodeGroupService, r.logger)
+	nodeGroupHandler := handlers.NewNodeGroupHandler(nodeGroupService, r.logger).WithAuditService(auditSvc)
 	nodeHealthHandler := handlers.NewNodeHealthHandler(r.nodeHealthChecker, r.repos.HealthCheck, r.repos.Node, r.logger)
 	nodeStatsHandler := handlers.NewNodeStatsHandler(nodeTrafficService, nodeService, nodeGroupService, r.logger)
 	nodeDeployHandler := handlers.NewNodeDeployHandler(nodeDeployService, nodeService, r.config, r.logger).
@@ -407,7 +409,7 @@ func (r *Router) Setup() {
 	}
 
 	// Create commercial handlers
-	planHandler := handlers.NewPlanHandler(planService, r.logger)
+	planHandler := handlers.NewPlanHandler(planService, r.logger).WithAuditService(auditSvc)
 	orderHandler := handlers.NewOrderHandler(orderService, r.logger).WithRefundService(refundService)
 	paymentHandler := handlers.NewPaymentHandlerWithRetry(paymentService, retryService, r.logger)
 	balanceHandler := handlers.NewBalanceHandler(balanceService, r.logger).WithPaymentService(paymentService)
@@ -438,13 +440,23 @@ func (r *Router) Setup() {
 	// Subscription rate limiter (60 requests per hour per token/IP)
 	subscriptionRateLimiter := middleware.NewSubscriptionRateLimiter(60)
 
-	// Public routes
+	// Resolve the panel base path. When set (e.g. "/vpanel"), all UI/API
+	// routes mount under this prefix so the panel can sit behind a reverse
+	// proxy that does NOT strip the prefix. Health/ready stay at root for
+	// container probes.
+	basePath := strings.TrimRight(strings.TrimSpace(r.config.Server.BasePath), "/")
+	if basePath != "" && !strings.HasPrefix(basePath, "/") {
+		basePath = "/" + basePath
+	}
+	mountRoot := r.engine.Group(basePath)
+
+	// Public routes (root-level for k8s/docker probes, not under base path)
 	r.engine.GET("/health", healthHandler.Health)
 	r.engine.GET("/ready", healthHandler.Ready)
 
 	// Public subscription routes (token-based access, no auth required)
 	// Apply rate limiting: 60 requests per hour per token/IP
-	subscriptionPublic := r.engine.Group("")
+	subscriptionPublic := mountRoot.Group("")
 	subscriptionPublic.Use(subscriptionRateLimiter.RateLimit())
 	{
 		subscriptionPublic.GET("/api/subscription/:token", subscriptionHandler.GetContent)
@@ -454,7 +466,7 @@ func (r *Router) Setup() {
 	}
 
 	// API routes
-	api := r.engine.Group("/api")
+	api := mountRoot.Group("/api")
 	{
 		// Error reporting endpoint (public)
 		errorReportHandler := handlers.NewErrorReportHandler(r.logger)
@@ -1028,21 +1040,24 @@ func (r *Router) Setup() {
 	// Static files for frontend (if enabled)
 	if r.config.Server.StaticPath != "" {
 		staticPath := r.config.Server.StaticPath
-		r.logger.Info("serving frontend static files", logger.F("static_path", staticPath))
+		r.logger.Info("serving frontend static files",
+			logger.F("static_path", staticPath),
+			logger.F("base_path", basePath),
+		)
 
 		r.engine.Use(func(c *gin.Context) {
-			if strings.HasPrefix(c.Request.URL.Path, "/assets/") {
+			if strings.HasPrefix(c.Request.URL.Path, basePath+"/assets/") {
 				c.Header("Cache-Control", "public, max-age=31536000, immutable")
 			}
-			if strings.HasPrefix(c.Request.URL.Path, "/downloads/") {
+			if strings.HasPrefix(c.Request.URL.Path, basePath+"/downloads/") {
 				c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
 			}
 			c.Next()
 		})
 
 		// Serve static assets (js, css, images, etc.)
-		r.engine.Static("/assets", staticPath+"/assets")
-		r.engine.Static("/downloads", staticPath+"/downloads")
+		mountRoot.Static("/assets", staticPath+"/assets")
+		mountRoot.Static("/downloads", staticPath+"/downloads")
 
 		serveFaviconSVG := func(c *gin.Context) {
 			c.Header("Cache-Control", "public, max-age=86400")
@@ -1068,22 +1083,34 @@ func (r *Router) Setup() {
 		}
 
 		// Serve favicon files before SPA fallback so browsers do not receive index.html.
-		r.engine.GET("/favicon.svg", serveFaviconSVG)
-		r.engine.HEAD("/favicon.svg", serveFaviconSVG)
-		r.engine.GET("/favicon.ico", serveFaviconICO)
-		r.engine.HEAD("/favicon.ico", serveFaviconICO)
-		r.engine.GET("/favicon-32.png", serveStaticIcon("favicon-32.png", "image/png"))
-		r.engine.HEAD("/favicon-32.png", serveStaticIcon("favicon-32.png", "image/png"))
-		r.engine.GET("/apple-touch-icon.png", serveStaticIcon("apple-touch-icon.png", "image/png"))
-		r.engine.HEAD("/apple-touch-icon.png", serveStaticIcon("apple-touch-icon.png", "image/png"))
+		mountRoot.GET("/favicon.svg", serveFaviconSVG)
+		mountRoot.HEAD("/favicon.svg", serveFaviconSVG)
+		mountRoot.GET("/favicon.ico", serveFaviconICO)
+		mountRoot.HEAD("/favicon.ico", serveFaviconICO)
+		mountRoot.GET("/favicon-32.png", serveStaticIcon("favicon-32.png", "image/png"))
+		mountRoot.HEAD("/favicon-32.png", serveStaticIcon("favicon-32.png", "image/png"))
+		mountRoot.GET("/apple-touch-icon.png", serveStaticIcon("apple-touch-icon.png", "image/png"))
+		mountRoot.HEAD("/apple-touch-icon.png", serveStaticIcon("apple-touch-icon.png", "image/png"))
 
 		// Serve documentation files
-		r.engine.Static("/docs", "Docs")
+		mountRoot.Static("/docs", "Docs")
+
+		// Cache the index.html bytes once at boot, with absolute paths
+		// rewritten to honor basePath. This means changing basePath requires
+		// a restart, which matches the rest of the panel/db config story.
+		indexHTML, indexErr := loadAndRewriteIndexHTML(staticPath+"/index.html", basePath)
+		if indexErr != nil {
+			r.logger.Warn("failed to preload index.html (SPA fallback will use raw file)",
+				logger.Err(indexErr))
+		}
 
 		// SPA fallback - serve index.html for all other routes (except API routes)
 		r.engine.NoRoute(func(c *gin.Context) {
+			p := c.Request.URL.Path
+			apiPrefix := basePath + "/api/"
+			subPrefix := basePath + "/api/subscription/"
 			// Don't serve index.html for API routes
-			if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			if strings.HasPrefix(p, apiPrefix) && !strings.HasPrefix(p, subPrefix) {
 				c.JSON(http.StatusNotFound, gin.H{
 					"code":    404,
 					"message": "API endpoint not found",
@@ -1092,12 +1119,64 @@ func (r *Router) Setup() {
 				return
 			}
 
+			// When base_path is set, redirect anything outside the prefix to
+			// the panel root so users don't get a broken-looking page at `/`.
+			if basePath != "" && p != basePath && !strings.HasPrefix(p, basePath+"/") {
+				c.Redirect(http.StatusFound, basePath+"/")
+				return
+			}
+
 			c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
 			c.Header("Pragma", "no-cache")
 			c.Header("Expires", "0")
+			if indexHTML != nil {
+				c.Data(http.StatusOK, "text/html; charset=utf-8", indexHTML)
+				return
+			}
 			c.File(staticPath + "/index.html")
 		})
 	}
+}
+
+// loadAndRewriteIndexHTML reads dist/index.html and rewrites references to
+// absolute root paths (href="/...", src="/...") so they land under basePath.
+// Also injects <base href="basePath/"/> and a window.__VPANEL_BASE__ script
+// so the SPA's axios + Vue Router can find the right prefix at runtime.
+// Pass "" to skip rewriting.
+func loadAndRewriteIndexHTML(path, basePath string) ([]byte, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	html := string(data)
+	// Always inject the prefix marker so the frontend has a single source of
+	// truth (axios/router read it). Empty string when no prefix.
+	prefixScript := `<script>window.__VPANEL_BASE__=` + jsonString(basePath) + `;</script>`
+	if basePath == "" {
+		if idx := strings.Index(html, "<head>"); idx >= 0 {
+			html = html[:idx+len("<head>")] + "\n  " + prefixScript + html[idx+len("<head>"):]
+		}
+		return []byte(html), nil
+	}
+	// Rewrite absolute-root URLs in href/src attributes.
+	html = strings.ReplaceAll(html, `href="/`, `href="`+basePath+`/`)
+	html = strings.ReplaceAll(html, `src="/`, `src="`+basePath+`/`)
+	// Inject <base> so any client-side relative URL resolves against basePath,
+	// plus the prefix marker script.
+	baseTag := `<base href="` + basePath + `/">`
+	if idx := strings.Index(html, "<head>"); idx >= 0 {
+		html = html[:idx+len("<head>")] + "\n  " + baseTag + "\n  " + prefixScript + html[idx+len("<head>"):]
+	}
+	return []byte(html), nil
+}
+
+// jsonString returns a JSON-encoded string literal safe to embed inline in HTML.
+func jsonString(s string) string {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return `""`
+	}
+	return string(b)
 }
 
 func (r *Router) validateSystemSettings(systemSettings *settings.SystemSettings) error {

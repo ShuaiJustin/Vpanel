@@ -23,13 +23,24 @@
           :label-width="settingsLabelWidth"
           class="settings-form"
         >
+          <el-alert
+            type="info"
+            :closable="false"
+            show-icon
+            class="settings-note"
+          >
+            <template #title>
+              监听地址和端口由容器/反向代理决定，需要修改 <code>config.yaml</code> / 环境变量并同步更新 docker 端口映射后重启服务才会生效。此处仅展示当前运行值。
+            </template>
+          </el-alert>
           <el-form-item label="面板监听地址">
             <el-input
               v-model="serverForm.panelListenIP"
               placeholder="0.0.0.0"
+              readonly
             />
             <div class="form-tips">
-              默认为 0.0.0.0，代表监听所有 IP
+              当前运行监听地址（修改需重启 + 改 config.yaml）
             </div>
           </el-form-item>
           <el-form-item label="面板端口">
@@ -37,9 +48,10 @@
               v-model="serverForm.panelPort"
               :min="1"
               :max="65535"
+              :disabled="true"
             />
             <div class="form-tips">
-              默认为 9000，修改后需要重启服务
+              当前运行端口（修改需重启 + 改 docker 端口映射）
             </div>
           </el-form-item>
           <el-form-item label="面板URL基础路径">
@@ -48,29 +60,7 @@
               placeholder="/"
             />
             <div class="form-tips">
-              默认为 /，修改后需要重启服务
-            </div>
-          </el-form-item>
-          <el-form-item label="代理服务模式">
-            <el-select
-              v-model="serverForm.proxyMode"
-              style="width: 100%"
-            >
-              <el-option
-                label="兼容模式"
-                value="compatible"
-              />
-              <el-option
-                label="Xray 内核"
-                value="xray"
-              />
-              <el-option
-                label="V2Ray 内核"
-                value="v2ray"
-              />
-            </el-select>
-            <div class="form-tips">
-              默认为兼容模式，可同时使用 Xray 和 V2Ray 协议
+              默认 /，设置为如 /vpanel 时，面板会挂载到 https://yourdomain/vpanel/ 下（保存后需要重启面板生效）
             </div>
           </el-form-item>
           <el-form-item label="服务时区">
@@ -95,6 +85,9 @@
                 value="Europe/London"
               />
             </el-select>
+            <div class="form-tips">
+              保存后立即生效；同时影响日志、调度等所有时间戳
+            </div>
           </el-form-item>
           <el-divider />
           <el-form-item class="form-actions-row">
@@ -123,6 +116,16 @@
           :label-width="settingsLabelWidth"
           class="settings-form"
         >
+          <el-alert
+            type="warning"
+            :closable="false"
+            show-icon
+            class="settings-note"
+          >
+            <template #title>
+              当前运行数据库由 <code>V_DATABASE_DRIVER</code> / <code>V_DATABASE_DSN</code> 决定（启动时读取），<strong>无法通过 UI 直接保存切换</strong>。下方表单仅作为"测试连接"和"迁移数据"的目标 DB 输入。要真正切换：先备份，再迁移，最后修改环境变量并重启容器。
+            </template>
+          </el-alert>
           <el-form-item label="数据库类型">
             <el-select
               v-model="dbForm.dbType"
@@ -194,12 +197,6 @@
           
           <el-divider />
           <el-form-item class="form-actions-row">
-            <el-button
-              type="primary"
-              @click="saveDbSettings"
-            >
-              保存数据库配置
-            </el-button>
             <el-button @click="testDbConnection">
               测试连接
             </el-button>
@@ -218,7 +215,7 @@
             </el-button>
           </el-form-item>
           <el-alert
-            type="warning"
+            type="info"
             :closable="false"
             show-icon
             class="db-migrate-tip"
@@ -1219,11 +1216,11 @@ onMounted(async () => {
 // 方法
 const saveServerSettings = async () => {
   try {
+    // Port and listen IP are intentionally NOT sent: they are read-only
+    // in the UI (container port mapping + reverse proxy lock them in).
+    // proxy_mode is removed entirely (no backend semantics behind it).
     const response = await api.put('/settings', {
-      panel_access_ip: serverForm.panelListenIP.trim(),
-      panel_port: serverForm.panelPort,
       panel_base_path: serverForm.panelBasePath.trim() || '/',
-      proxy_mode: serverForm.proxyMode,
       timezone: serverForm.timezone
     })
     applyServerSettings(response?.data || {})
@@ -1257,21 +1254,9 @@ const restartPanel = () => {
 }
 
 const saveDbSettings = async () => {
-  try {
-    const response = await api.put('/settings', {
-      db_type: dbForm.dbType,
-      db_host: dbForm.dbHost.trim(),
-      db_port: dbForm.dbPort,
-      db_name: dbForm.dbName.trim(),
-      db_user: dbForm.dbUser.trim(),
-      db_password: dbForm.dbPassword,
-      sqlite_path: dbForm.sqlitePath.trim()
-    })
-    applyDbSettings(response?.data || {})
-    ElMessage.success('数据库配置保存成功')
-  } catch (error) {
-    ElMessage.error('保存失败：' + (extractErrorMessage(error) || '未知错误'))
-  }
+  // The DB config tab no longer offers a "save" button: the running DB is
+  // determined by V_DATABASE_DRIVER / V_DATABASE_DSN at startup (see warning
+  // banner in the UI). Kept as a stub so any leftover references don't break.
 }
 
 const testDbConnection = async () => {

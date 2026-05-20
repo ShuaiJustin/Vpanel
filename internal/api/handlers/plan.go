@@ -11,12 +11,14 @@ import (
 
 	"v/internal/commercial/plan"
 	"v/internal/logger"
+	"v/internal/monitor"
 )
 
 // PlanHandler handles plan-related requests.
 type PlanHandler struct {
-	planService *plan.Service
-	logger      logger.Logger
+	planService  *plan.Service
+	auditService monitor.AuditService
+	logger       logger.Logger
 }
 
 // NewPlanHandler creates a new PlanHandler.
@@ -25,6 +27,12 @@ func NewPlanHandler(planService *plan.Service, log logger.Logger) *PlanHandler {
 		planService: planService,
 		logger:      log,
 	}
+}
+
+// WithAuditService wires the audit emitter for state-changing plan ops.
+func (h *PlanHandler) WithAuditService(audit monitor.AuditService) *PlanHandler {
+	h.auditService = audit
+	return h
 }
 
 // PlanResponse represents a plan in API responses.
@@ -153,6 +161,13 @@ func (h *PlanHandler) CreatePlan(c *gin.Context) {
 		return
 	}
 
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionPlanCreate,
+		ResourceType: monitor.ResourcePlan,
+		ResourceID:   strconv.FormatInt(p.ID, 10),
+		Details:      map[string]any{"name": p.Name},
+	})
+
 	c.JSON(http.StatusCreated, gin.H{"plan": h.toPlanResponse(p)})
 }
 
@@ -191,6 +206,13 @@ func (h *PlanHandler) UpdatePlan(c *gin.Context) {
 		return
 	}
 
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionPlanUpdate,
+		ResourceType: monitor.ResourcePlan,
+		ResourceID:   strconv.FormatInt(id, 10),
+		Details:      map[string]any{"name": p.Name},
+	})
+
 	c.JSON(http.StatusOK, gin.H{"plan": h.toPlanResponse(p)})
 }
 
@@ -206,6 +228,12 @@ func (h *PlanHandler) DeletePlan(c *gin.Context) {
 		h.respondPlanError(c, err, "Failed to delete plan")
 		return
 	}
+
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionPlanDelete,
+		ResourceType: monitor.ResourcePlan,
+		ResourceID:   strconv.FormatInt(id, 10),
+	})
 
 	c.JSON(http.StatusOK, gin.H{"message": "Plan deleted"})
 }
@@ -230,6 +258,13 @@ func (h *PlanHandler) TogglePlanStatus(c *gin.Context) {
 		h.respondPlanError(c, err, "Failed to update plan status")
 		return
 	}
+
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionPlanToggle,
+		ResourceType: monitor.ResourcePlan,
+		ResourceID:   strconv.FormatInt(id, 10),
+		Details:      map[string]any{"is_active": req.IsActive},
+	})
 
 	c.JSON(http.StatusOK, gin.H{"message": "Plan status updated"})
 }

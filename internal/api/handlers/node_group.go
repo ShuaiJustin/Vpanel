@@ -8,12 +8,14 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"v/internal/logger"
+	"v/internal/monitor"
 	"v/internal/node"
 )
 
 // NodeGroupHandler handles node group management API requests.
 type NodeGroupHandler struct {
 	groupService *node.GroupService
+	auditService monitor.AuditService
 	logger       logger.Logger
 }
 
@@ -23,6 +25,12 @@ func NewNodeGroupHandler(groupService *node.GroupService, log logger.Logger) *No
 		groupService: groupService,
 		logger:       log,
 	}
+}
+
+// WithAuditService wires the audit emitter for state-changing node group ops.
+func (h *NodeGroupHandler) WithAuditService(audit monitor.AuditService) *NodeGroupHandler {
+	h.auditService = audit
+	return h
 }
 
 // NodeGroupResponse represents a node group in API responses.
@@ -224,6 +232,13 @@ func (h *NodeGroupHandler) Create(c *gin.Context) {
 
 	h.logger.Info("Node group created", logger.F("group_id", g.ID), logger.F("name", g.Name))
 
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionNodeGroupCreate,
+		ResourceType: monitor.ResourceNodeGroup,
+		ResourceID:   strconv.FormatInt(g.ID, 10),
+		Details:      map[string]any{"name": g.Name, "region": g.Region},
+	})
+
 	c.JSON(http.StatusCreated, toNodeGroupResponse(g))
 }
 
@@ -266,6 +281,13 @@ func (h *NodeGroupHandler) Update(c *gin.Context) {
 
 	h.logger.Info("Node group updated", logger.F("group_id", id))
 
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionNodeGroupUpdate,
+		ResourceType: monitor.ResourceNodeGroup,
+		ResourceID:   strconv.FormatInt(id, 10),
+		Details:      map[string]any{"name": g.Name},
+	})
+
 	c.JSON(http.StatusOK, toNodeGroupResponse(g))
 }
 
@@ -289,6 +311,12 @@ func (h *NodeGroupHandler) Delete(c *gin.Context) {
 	}
 
 	h.logger.Info("Node group deleted", logger.F("group_id", id))
+
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionNodeGroupDelete,
+		ResourceType: monitor.ResourceNodeGroup,
+		ResourceID:   strconv.FormatInt(id, 10),
+	})
 
 	c.JSON(http.StatusOK, gin.H{"message": "Node group deleted successfully"})
 }
@@ -357,6 +385,13 @@ func (h *NodeGroupHandler) AddNode(c *gin.Context) {
 
 	h.logger.Info("Node added to group", logger.F("group_id", groupID), logger.F("node_id", nodeID))
 
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionNodeGroupAddNode,
+		ResourceType: monitor.ResourceNodeGroup,
+		ResourceID:   strconv.FormatInt(groupID, 10),
+		Details:      map[string]any{"node_id": nodeID},
+	})
+
 	c.JSON(http.StatusOK, gin.H{"message": "Node added to group successfully"})
 }
 
@@ -391,6 +426,13 @@ func (h *NodeGroupHandler) RemoveNode(c *gin.Context) {
 	}
 
 	h.logger.Info("Node removed from group", logger.F("group_id", groupID), logger.F("node_id", nodeID))
+
+	emitAudit(c, h.auditService, monitor.AuditEntry{
+		Action:       monitor.ActionNodeGroupRemoveNode,
+		ResourceType: monitor.ResourceNodeGroup,
+		ResourceID:   strconv.FormatInt(groupID, 10),
+		Details:      map[string]any{"node_id": nodeID},
+	})
 
 	c.JSON(http.StatusOK, gin.H{"message": "Node removed from group successfully"})
 }
