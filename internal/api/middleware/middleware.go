@@ -4,6 +4,7 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"path"
 	"runtime/debug"
 	"strings"
@@ -244,7 +245,13 @@ func CORS(allowedOrigins []string) gin.HandlerFunc {
 		// for navigation/server-side fetches). They are always allowed —
 		// only cross-origin requests with an Origin header are subject to
 		// the allowlist.
-		if origin == "" {
+		//
+		// Browsers DO send Origin for module scripts, fetch(), preload, etc.
+		// even on same-origin requests. Treat those as same-origin too by
+		// comparing the Origin host(:port) with the request Host header;
+		// otherwise the panel would 403 its own JS/CSS whenever the host
+		// (LAN IP, public IP, alt domain) isn't in V_SERVER_CORS_ORIGINS.
+		if origin == "" || isSameOrigin(origin, c.Request.Host) {
 			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
 			c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization, X-Request-ID")
 			c.Header("Access-Control-Allow-Credentials", "true")
@@ -299,6 +306,21 @@ func CORS(allowedOrigins []string) gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+// isSameOrigin reports whether the Origin header value targets the same
+// host:port as the request itself. Browsers attach Origin to same-origin
+// module-script / fetch / preload requests, and rejecting those with 403
+// would 白屏 the panel whenever the host isn't explicitly whitelisted.
+func isSameOrigin(origin, requestHost string) bool {
+	if origin == "" || requestHost == "" {
+		return false
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	return strings.EqualFold(u.Host, requestHost)
 }
 
 // RequestID returns a middleware that adds a request ID to the context.

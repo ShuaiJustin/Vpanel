@@ -24,23 +24,24 @@
           class="settings-form"
         >
           <el-alert
-            type="info"
+            type="warning"
             :closable="false"
             show-icon
             class="settings-note"
           >
             <template #title>
-              监听地址和端口由容器/反向代理决定，需要修改 <code>config.yaml</code> / 环境变量并同步更新 docker 端口映射后重启服务才会生效。此处仅展示当前运行值。
+              修改下方字段后需点击 <strong>重启面板</strong> 才会生效。<br>
+              ⚠️ Docker 部署：如果修改了"面板端口"，请同步修改 <code>docker-compose.yml</code> 的端口映射（如 <code>13212:8080</code> 中的容器端口），否则重启后面板将无法访问。<br>
+              ⚠️ 启用 HTTPS：填写证书 + 私钥路径后，还需把 <code>.env</code> 的 <code>V_SERVER_PUBLIC_URL</code> 和 <code>V_SERVER_CORS_ORIGINS</code> 协议改为 <code>https://</code>。如果不确定，仅修改 <strong>面板URL基础路径</strong> 和 <strong>服务时区</strong> 是安全的。
             </template>
           </el-alert>
           <el-form-item label="面板监听地址">
             <el-input
               v-model="serverForm.panelListenIP"
               placeholder="0.0.0.0"
-              readonly
             />
             <div class="form-tips">
-              当前运行监听地址（修改需重启 + 改 config.yaml）
+              默认 0.0.0.0（监听所有接口）。一般不需要改，除非你想只监听某个网卡 IP
             </div>
           </el-form-item>
           <el-form-item label="面板端口">
@@ -48,10 +49,9 @@
               v-model="serverForm.panelPort"
               :min="1"
               :max="65535"
-              :disabled="true"
             />
             <div class="form-tips">
-              当前运行端口（修改需重启 + 改 docker 端口映射）
+              容器内监听端口。改这个的时候 docker-compose 端口映射要同步改
             </div>
           </el-form-item>
           <el-form-item label="面板URL基础路径">
@@ -61,6 +61,27 @@
             />
             <div class="form-tips">
               默认 /，设置为如 /vpanel 时，面板会挂载到 https://yourdomain/vpanel/ 下（保存后需要重启面板生效）
+            </div>
+          </el-form-item>
+          <el-divider content-position="left">
+            HTTPS / TLS（可选）
+          </el-divider>
+          <el-form-item label="TLS 证书路径">
+            <el-input
+              v-model="serverForm.panelCertPath"
+              placeholder="/app/certs/fullchain.pem"
+            />
+            <div class="form-tips">
+              容器内的证书文件路径。把证书放到宿主机的 <code>deployments/docker/certs/</code> 后，对应容器内 <code>/app/certs/</code>
+            </div>
+          </el-form-item>
+          <el-form-item label="TLS 私钥路径">
+            <el-input
+              v-model="serverForm.panelKeyPath"
+              placeholder="/app/certs/privkey.pem"
+            />
+            <div class="form-tips">
+              同上。两个路径都填且文件存在时，重启后面板自动切到 HTTPS；只填一个会忽略
             </div>
           </el-form-item>
           <el-form-item label="服务时区">
@@ -981,8 +1002,10 @@ const settingsLabelWidth = computed(() => (isMobile.value ? '100%' : '168px'))
 // 表单数据
 const serverForm = reactive({
   panelListenIP: '0.0.0.0',
-  panelPort: 9000,
+  panelPort: 8080,
   panelBasePath: '/',
+  panelCertPath: '',
+  panelKeyPath: '',
   proxyMode: 'compatible',
   timezone: 'Asia/Shanghai'
 })
@@ -1062,8 +1085,10 @@ const securityState = reactive({
 
 const applyServerSettings = (settings) => {
   serverForm.panelListenIP = settings?.panel_access_ip || '0.0.0.0'
-  serverForm.panelPort = settings?.panel_port || 9000
+  serverForm.panelPort = settings?.panel_port || 8080
   serverForm.panelBasePath = settings?.panel_base_path || '/'
+  serverForm.panelCertPath = settings?.panel_cert_path || ''
+  serverForm.panelKeyPath = settings?.panel_key_path || ''
   serverForm.proxyMode = settings?.proxy_mode || 'compatible'
   serverForm.timezone = settings?.timezone || 'Asia/Shanghai'
 }
@@ -1216,15 +1241,19 @@ onMounted(async () => {
 // 方法
 const saveServerSettings = async () => {
   try {
-    // Port and listen IP are intentionally NOT sent: they are read-only
-    // in the UI (container port mapping + reverse proxy lock them in).
-    // proxy_mode is removed entirely (no backend semantics behind it).
+    // All fields persist to settings DB and take effect on next restart.
+    // The warning banner makes the Docker port-mapping caveat explicit so
+    // admin owns the consequences.
     const response = await api.put('/settings', {
+      panel_access_ip: serverForm.panelListenIP.trim(),
+      panel_port: serverForm.panelPort,
       panel_base_path: serverForm.panelBasePath.trim() || '/',
+      panel_cert_path: serverForm.panelCertPath.trim(),
+      panel_key_path: serverForm.panelKeyPath.trim(),
       timezone: serverForm.timezone
     })
     applyServerSettings(response?.data || {})
-    ElMessage.success('服务器配置保存成功')
+    ElMessage.success('服务器配置保存成功（重启面板后生效）')
   } catch (error) {
     ElMessage.error('保存失败：' + (extractErrorMessage(error) || '未知错误'))
   }

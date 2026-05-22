@@ -406,6 +406,26 @@ Restart=on-failure
 RestartSec=5s
 LimitNOFILE=1048576
 
+# Sandboxing — minimise blast radius. Xray doesn't need a TUN device so we
+# drop more caps than mihomo. CAP_NET_BIND_SERVICE is kept so admins can use
+# privileged ports if they want; remove if you only use ports >=1024.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadWritePaths=$CONFIG_DIR
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+
 [Install]
 WantedBy=multi-user.target
 EOF

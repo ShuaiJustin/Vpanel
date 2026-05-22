@@ -27,6 +27,9 @@ DASHBOARD_URL="${DASHBOARD_URL:-https://github.com/MetaCubeX/metacubexd/archive/
 SUBSCRIPTION_FILE="$CONFIG_DIR/subscription.url"
 BACKUP_DIR="$CONFIG_DIR/backups"
 DASHBOARD_DIR="$CONFIG_DIR/ui"
+DASHBOARD_SECRET_FILE="$CONFIG_DIR/dashboard.secret"
+DASHBOARD_BIND="${DASHBOARD_BIND:-127.0.0.1}"
+DASHBOARD_PORT="${DASHBOARD_PORT:-9090}"
 SYSTEM_PROXY_FILE="/etc/profile.d/mihomo.sh"
 
 CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-8}"
@@ -288,25 +291,37 @@ check_binary_runtime() {
 
 create_sample_config() {
     mkdir -p "$CONFIG_DIR"
-    cat > "$CONFIG_DIR/config.yaml" <<'EOF'
+    local secret
+    secret=$(ensure_dashboard_secret)
+    cat > "$CONFIG_DIR/config.yaml" <<EOF
 mixed-port: 7890
 port: 7891
 socks-port: 7892
-allow-lan: true
-bind-address: '*'
+# HTTP/SOCKS proxies and DNS resolver bind to localhost only by default
+# so this machine doesn't become an open proxy / DNS amplifier for the LAN.
+# Set allow-lan: true and bind-address: '*' if you want LAN devices to use
+# this box as their proxy.
+allow-lan: false
+bind-address: '127.0.0.1'
 mode: rule
 log-level: info
 ipv6: true
-external-controller: 0.0.0.0:9090
+# Dashboard binds to ${DASHBOARD_BIND} only for safety. To reach it from
+# outside the box, use an SSH tunnel:
+#   ssh -L 9090:127.0.0.1:${DASHBOARD_PORT} user@server
+# Then open http://127.0.0.1:${DASHBOARD_PORT}/ui locally.
+external-controller: ${DASHBOARD_BIND}:${DASHBOARD_PORT}
 external-ui: ui
 external-ui-url: https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip
-secret: ""
+secret: "${secret}"
 unified-delay: true
 tcp-concurrent: true
 
 dns:
   enable: true
-  listen: 0.0.0.0:1053
+  # Localhost only by default; expose to LAN by changing this to 0.0.0.0:1053
+  # ONLY if other devices on a trusted network need this box as their resolver.
+  listen: 127.0.0.1:1053
   ipv6: true
   enhanced-mode: fake-ip
   fake-ip-range: 198.18.0.1/16
@@ -338,6 +353,36 @@ rules:
 EOF
     chmod 0644 "$CONFIG_DIR/config.yaml"
     print_success "示例配置已创建: $CONFIG_DIR/config.yaml"
+    print_info "Dashboard 监听 ${DASHBOARD_BIND}:${DASHBOARD_PORT}（默认仅本机访问），secret 写入 $DASHBOARD_SECRET_FILE"
+    print_info "HTTP/SOCKS/DNS 入口默认仅 127.0.0.1。如需让局域网设备使用，请改 allow-lan/bind-address/dns.listen"
+}
+
+# ensure_dashboard_secret returns (and persists on first call) a random
+# secret used by Mihomo's external-controller. Stored at $DASHBOARD_SECRET_FILE
+# with 600 perms so only root reads it. Idempotent: subsequent calls return
+# the same value so the dashboard's saved password stays valid across
+# subscription updates.
+ensure_dashboard_secret() {
+    if [ -s "$DASHBOARD_SECRET_FILE" ]; then
+        cat "$DASHBOARD_SECRET_FILE"
+        return
+    fi
+    mkdir -p "$CONFIG_DIR"
+    local s
+    if command -v openssl >/dev/null 2>&1; then
+        s=$(openssl rand -hex 16)
+    elif [ -r /dev/urandom ]; then
+        s=$(head -c 32 /dev/urandom | base64 | tr -d '/+=\n' | head -c 24)
+    else
+        s="vpanel-$(date +%s)"
+    fi
+    local old_umask
+    old_umask=$(umask)
+    umask 077
+    printf '%s\n' "$s" > "$DASHBOARD_SECRET_FILE"
+    umask "$old_umask"
+    chmod 600 "$DASHBOARD_SECRET_FILE" 2>/dev/null || true
+    printf '%s' "$s"
 }
 
 ensure_dashboard_config() {
@@ -346,7 +391,11 @@ ensure_dashboard_config() {
     [ -f "$config_file" ] || return 0
 
     if ! grep -q '^external-controller:' "$config_file"; then
-        printf '\nexternal-controller: 0.0.0.0:9090\n' >> "$config_file"
+        # Bind to localhost only by default. Subscriptions that ship their
+        # own external-controller (e.g. with 0.0.0.0) are left alone, on the
+        # assumption that the subscription author meant it. Set
+        # DASHBOARD_BIND=0.0.0.0 in env to opt back into LAN exposure.
+        printf '\nexternal-controller: %s:%s\n' "$DASHBOARD_BIND" "$DASHBOARD_PORT" >> "$config_file"
     fi
 
     if ! grep -q '^external-ui:' "$config_file"; then
@@ -355,6 +404,13 @@ ensure_dashboard_config() {
 
     if ! grep -q '^external-ui-url:' "$config_file"; then
         printf 'external-ui-url: %s\n' "$DASHBOARD_URL" >> "$config_file"
+    fi
+
+    if ! grep -q '^secret:' "$config_file"; then
+        local secret
+        secret=$(ensure_dashboard_secret)
+        printf 'secret: "%s"\n' "$secret" >> "$config_file"
+        print_info "Dashboard secret 已写入 $config_file（值见 $DASHBOARD_SECRET_FILE）"
     fi
 }
 
@@ -376,6 +432,26 @@ Restart=on-failure
 RestartSec=5s
 TimeoutStartSec=45s
 LimitNOFILE=1048576
+
+# Sandboxing — keep mihomo's blast radius small if a vulnerability lets an
+# attacker execute code inside the daemon. Capabilities cover the TUN
+# device + binding to <1024 ports; everything else is restricted.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadWritePaths=$CONFIG_DIR
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
 
 [Install]
 WantedBy=multi-user.target
@@ -742,6 +818,13 @@ show_status() {
     fi
     print_info "版本: $("$INSTALL_DIR/$BINARY_NAME" -v 2>&1 | head -1)"
     print_info "配置文件: $CONFIG_DIR/config.yaml"
+    if [ -s "$DASHBOARD_SECRET_FILE" ]; then
+        print_info "Dashboard URL: http://${DASHBOARD_BIND}:${DASHBOARD_PORT}/ui"
+        print_info "Dashboard secret 文件: $DASHBOARD_SECRET_FILE （仅 root 可读）"
+        if [ "$DASHBOARD_BIND" = "127.0.0.1" ]; then
+            print_info "Dashboard 仅本机访问，远程访问请用 SSH 隧道: ssh -L ${DASHBOARD_PORT}:127.0.0.1:${DASHBOARD_PORT} user@host"
+        fi
+    fi
     show_config_summary "$CONFIG_DIR/config.yaml"
     systemctl status "$SERVICE_NAME" --no-pager || true
 }

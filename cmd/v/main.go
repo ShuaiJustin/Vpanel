@@ -221,11 +221,38 @@ func applyStartupOverridesFromSettings(cfg *config.Config, svc *settings.Service
 		return
 	}
 
-	// Intentionally NOT overriding Server.Host / Server.Port from settings DB.
-	// Those are baked into container port mappings + reverse proxies and
-	// must stay aligned with config.yaml / env vars. Admin UI displays them
-	// for visibility but changing them requires editing config.yaml manually.
-	// See the audit notes for context.
+	// Override runtime config from settings DB. Admin can change panel_port,
+	// panel_access_ip, log_*, timezone, panel_base_path from the UI; we read
+	// them here at startup so the next "重启面板" picks up the new values.
+	// config.yaml / env vars remain the fallback (only set fields override).
+	//
+	// Caveat for port/host changes under Docker: the container port mapping
+	// in docker-compose.yml is external to the panel. Admin who changes
+	// panel_port via UI is expected to also update the compose port mapping;
+	// the UI warns about this explicitly.
+	if v, ok := raw["panel_access_ip"]; ok {
+		if ip := strings.TrimSpace(v); ip != "" {
+			cfg.Server.Host = ip
+		}
+	}
+	if v, ok := raw["panel_port"]; ok {
+		if p := strings.TrimSpace(v); p != "" {
+			var port int
+			if _, perr := fmt.Sscanf(p, "%d", &port); perr == nil && port > 0 && port < 65536 {
+				cfg.Server.Port = port
+			}
+		}
+	}
+
+	// TLS overrides — admin can paste paths via UI. Both must be set for
+	// the server to switch to HTTPS at next restart; setting one of them
+	// (mismatched) leaves the server on HTTP to avoid a half-broken state.
+	certPath := strings.TrimSpace(raw["panel_cert_path"])
+	keyPath := strings.TrimSpace(raw["panel_key_path"])
+	if certPath != "" && keyPath != "" {
+		cfg.Server.TLSCert = certPath
+		cfg.Server.TLSKey = keyPath
+	}
 
 	if v, ok := raw["log_level"]; ok && strings.TrimSpace(v) != "" {
 		cfg.Log.Level = strings.TrimSpace(v)

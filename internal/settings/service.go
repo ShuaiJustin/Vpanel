@@ -115,7 +115,10 @@ func DefaultSettings() *SystemSettings {
 		EnableLoginLock:     false,
 		MaxLoginAttempts:    5,
 		LockDuration:        10,
-		PanelPort:           10086, // 默认面板端口
+		// 默认与 config.yaml.example / Dockerfile EXPOSE 对齐 (8080)。
+		// 若 admin 在 UI 改了端口，会持久化到 settings 表并在重启时覆盖
+		// cfg.Server.Port；保持默认就不会触发覆盖。
+		PanelPort:           8080,
 		PanelBasePath:       "/",
 		ProxyMode:           "compatible",
 		Timezone:            "Asia/Shanghai",

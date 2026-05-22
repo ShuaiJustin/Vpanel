@@ -88,15 +88,39 @@
         v-model="selectedPlatform"
         size="large"
       >
-        <el-radio-button 
-          v-for="platform in platforms" 
-          :key="platform.value" 
+        <el-radio-button
+          v-for="platform in platforms"
+          :key="platform.value"
           :value="platform.value"
         >
           <el-icon><component :is="platform.icon" /></el-icon>
           {{ platform.label }}
         </el-radio-button>
       </el-radio-group>
+    </div>
+
+    <!-- 镜像加速 -->
+    <div class="mirror-toggle">
+      <el-checkbox
+        v-model="useChinaMirror"
+        @change="onMirrorToggle"
+      >
+        通过国内镜像加速下载（适合大陆用户访问 GitHub 慢的场景）
+      </el-checkbox>
+      <el-select
+        v-if="useChinaMirror"
+        v-model="selectedMirror"
+        size="small"
+        class="mirror-select"
+        @change="onMirrorChange"
+      >
+        <el-option
+          v-for="m in availableMirrors"
+          :key="m.value"
+          :label="m.label"
+          :value="m.value"
+        />
+      </el-select>
     </div>
 
     <!-- 客户端列表 -->
@@ -393,6 +417,52 @@ const tutorialVisible = ref(false)
 const tutorialStep = ref(0)
 const currentClient = ref(null)
 const subscriptionUnavailableMessage = ref('')
+
+// GitHub mirror accelerator. Default ON so 大陆 users get a fast download
+// out of the box; toggle off if you have direct access. Persisted in
+// localStorage so the choice survives across visits.
+const VPANEL_MIRROR_KEY = 'vpanel_download_mirror'
+const availableMirrors = [
+  // Prefix form: replace `https://github.com` with `{prefix}/https://github.com`.
+  // These services act as github → CN CDN proxies. Order = preference.
+  { label: 'gh-proxy.com', value: 'https://gh-proxy.com/' },
+  { label: 'ghproxy.net', value: 'https://ghproxy.net/' },
+  { label: 'mirror.ghproxy.com', value: 'https://mirror.ghproxy.com/' },
+]
+const useChinaMirror = ref(false)
+const selectedMirror = ref(availableMirrors[0].value)
+try {
+  const saved = JSON.parse(localStorage.getItem(VPANEL_MIRROR_KEY) || 'null')
+  if (saved && typeof saved.enabled === 'boolean') {
+    useChinaMirror.value = saved.enabled
+    if (saved.url && availableMirrors.some(m => m.value === saved.url)) {
+      selectedMirror.value = saved.url
+    }
+  }
+} catch {
+  /* ignore corrupt localStorage */
+}
+function persistMirrorChoice() {
+  try {
+    localStorage.setItem(VPANEL_MIRROR_KEY, JSON.stringify({
+      enabled: useChinaMirror.value,
+      url: selectedMirror.value,
+    }))
+  } catch { /* quota / private mode */ }
+}
+function onMirrorToggle() { persistMirrorChoice() }
+function onMirrorChange() { persistMirrorChoice() }
+
+// rewriteIfGithub prepends the chosen mirror to github.com URLs when the
+// toggle is on. Non-github URLs (Apple Store, official sites, local) pass
+// through untouched.
+function rewriteIfGithub(url) {
+  if (!useChinaMirror.value || !url || !url.includes('github.com')) {
+    return url
+  }
+  const prefix = selectedMirror.value.replace(/\/+$/, '')
+  return `${prefix}/${url}`
+}
 
 // 平台列表
 const platforms = [
@@ -1864,26 +1934,20 @@ function openExternal(url, downloadFileName = '') {
     return
   }
 
-  if (url.startsWith('/') && downloadFileName) {
-    const link = document.createElement('a')
-    link.href = url
-    link.download = downloadFileName
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    return
-  }
-
-  const openedWindow = window.open(url, '_blank', 'noopener,noreferrer')
-  if (openedWindow) {
-    openedWindow.opener = null
-    return
-  }
-
+  // Unified <a>-click approach. The previous code tried window.open() first
+  // and used <a> as a "popup blocked" fallback, but window.open() with the
+  // 'noopener' window-feature **always** returns null per spec, so the
+  // fallback fired on every click — opening two tabs. One link, one click,
+  // one new tab. Local download paths use the same element with `download`
+  // attribute to trigger save-as instead of navigation.
   const link = document.createElement('a')
   link.href = url
-  link.target = '_blank'
-  link.rel = 'noopener noreferrer'
+  if (url.startsWith('/') && downloadFileName) {
+    link.download = downloadFileName
+  } else {
+    link.target = '_blank'
+    link.rel = 'noopener noreferrer'
+  }
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
@@ -1932,9 +1996,12 @@ function downloadClient(client) {
     return
   }
 
-  openExternal(client.downloadUrl, client.downloadFileName)
+  const targetUrl = rewriteIfGithub(client.downloadUrl)
+  openExternal(targetUrl, client.downloadFileName)
   if (client.downloadUrl.startsWith('/')) {
     ElMessage.success(`已开始下载 ${client.name}`)
+  } else if (targetUrl !== client.downloadUrl) {
+    ElMessage.success(`已通过国内镜像打开 ${client.name} 下载页`)
   } else {
     ElMessage.success(`已为您打开 ${client.name} 下载页`)
   }
@@ -2125,6 +2192,22 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.mirror-toggle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-bg-card));
+  border: 1px solid color-mix(in srgb, var(--color-primary) 18%, var(--color-border));
+}
+
+.mirror-select {
+  width: 220px;
 }
 
 /* 客户端网格 */
