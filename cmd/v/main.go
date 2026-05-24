@@ -252,6 +252,25 @@ func applyStartupOverridesFromSettings(cfg *config.Config, svc *settings.Service
 	if certPath != "" && keyPath != "" {
 		cfg.Server.TLSCert = certPath
 		cfg.Server.TLSKey = keyPath
+
+		// When TLS is enabled by the admin via UI ("应用并保存"), automatically
+		// upgrade PublicURL and CORS allowlist entries from http:// to https://
+		// so that generated links (subscription URLs, password reset emails,
+		// invite links) and CORS checks match the actual served scheme. This
+		// removes the foot-gun of admin enabling HTTPS in UI but still serving
+		// http:// links because .env was never touched.
+		//
+		// Reverse-proxy deployments (proxy terminates TLS, panel speaks HTTP
+		// internally) are not affected: in those, panel_cert_path stays empty.
+		if upgraded := upgradeURLToHTTPS(cfg.Server.PublicURL); upgraded != cfg.Server.PublicURL {
+			log.Info("startup: PublicURL upgraded to https due to TLS being enabled",
+				logger.F("before", cfg.Server.PublicURL),
+				logger.F("after", upgraded))
+			cfg.Server.PublicURL = upgraded
+		}
+		for i, o := range cfg.Server.CORSOrigins {
+			cfg.Server.CORSOrigins[i] = upgradeURLToHTTPS(o)
+		}
 	}
 
 	if v, ok := raw["log_level"]; ok && strings.TrimSpace(v) != "" {
@@ -356,4 +375,19 @@ func ensureAdminUser(userRepo repository.UserRepository, authService *auth.Servi
 
 	log.Info("admin user created", logger.F("username", cfg.Auth.AdminUsername))
 	return nil
+}
+
+// upgradeURLToHTTPS rewrites a URL's scheme from http:// to https:// while
+// keeping the rest of the URL intact. Empty / non-http inputs are returned
+// unchanged. Used by applyStartupOverridesFromSettings so admin doesn't
+// have to keep .env in sync with the UI "应用证书" action.
+func upgradeURLToHTTPS(u string) string {
+	u = strings.TrimSpace(u)
+	if u == "" {
+		return u
+	}
+	if strings.HasPrefix(u, "http://") {
+		return "https://" + strings.TrimPrefix(u, "http://")
+	}
+	return u
 }

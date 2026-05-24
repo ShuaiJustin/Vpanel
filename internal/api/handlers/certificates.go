@@ -203,7 +203,16 @@ func toCertificateResponse(cert *repository.Certificate) *CertificateResponse {
 
 	status := cert.Status
 	if status == "" || status == "active" {
-		if expiresAt.IsZero() {
+		// Pending = no usable material AT ALL. A cert is "usable" when either
+		// PEM bytes are stored in the DB (uploaded cert) OR a file path is
+		// recorded (acme.sh-issued cert lives at cert.CertPath on disk). The
+		// older check only looked at PEM bytes and wrongly marked acme.sh
+		// certs as pending, hiding them from the HTTPS dropdown.
+		hasPEM := strings.TrimSpace(cert.Certificate) != "" && strings.TrimSpace(cert.PrivateKey) != ""
+		hasFiles := strings.TrimSpace(cert.CertPath) != "" && strings.TrimSpace(cert.KeyPath) != ""
+		if !hasPEM && !hasFiles {
+			status = "pending"
+		} else if expiresAt.IsZero() {
 			status = "pending"
 		} else if daysLeft < 0 {
 			status = "expired"

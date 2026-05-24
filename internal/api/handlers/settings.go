@@ -19,6 +19,7 @@ import (
 	"v/internal/database"
 	"v/internal/database/migrator"
 	"v/internal/logger"
+	"v/internal/database/repository"
 	"v/internal/monitor"
 	"v/internal/settings"
 	"v/pkg/errors"
@@ -30,6 +31,8 @@ type SettingsHandler struct {
 	settingsService *settings.Service
 	sourceDB        *gorm.DB // current running DB; used as the source for migrations
 	auditService    monitor.AuditService
+	certRepo        repository.CertificateRepository // for ApplyCertificate
+	dataDir         string                           // base dir for writing applied panel certs
 	validateHook    func(context.Context, *settings.SystemSettings) error
 	afterSaveHook   func(context.Context, *settings.SystemSettings) error
 	testEmailHook   func(context.Context, *settings.SystemSettings, string) error
@@ -73,6 +76,20 @@ func (h *SettingsHandler) WithAfterSaveHook(hook func(context.Context, *settings
 // WithTestEmailHook registers an optional hook for sending a test email.
 func (h *SettingsHandler) WithTestEmailHook(hook func(context.Context, *settings.SystemSettings, string) error) *SettingsHandler {
 	h.testEmailHook = hook
+	return h
+}
+
+// WithCertificateRepo injects the certificate repository so ApplyCertificate
+// can materialize a DB-stored cert+key onto disk for the panel's TLS.
+func (h *SettingsHandler) WithCertificateRepo(repo repository.CertificateRepository) *SettingsHandler {
+	h.certRepo = repo
+	return h
+}
+
+// WithDataDir tells ApplyCertificate where to drop the materialized cert/key
+// files. Should be a writable volume; defaults to "/app/data" if unset.
+func (h *SettingsHandler) WithDataDir(dir string) *SettingsHandler {
+	h.dataDir = strings.TrimSpace(dir)
 	return h
 }
 
@@ -1119,4 +1136,147 @@ func (h *SettingsHandler) UpdateAutoProxySettings(c *gin.Context) {
 		"message":           "Auto proxy settings updated",
 		"protocol_priority": next.ProtocolPriority,
 	})
+}
+
+// ApplyPanelCertificateRequest is the body for POST /settings/apply-certificate.
+type ApplyPanelCertificateRequest struct {
+	CertificateID int64 `json:"certificate_id" binding:"required,min=1"`
+}
+
+// ApplyCertificate materializes a DB-stored certificate to disk and writes
+// its paths into the panel's settings (panel_cert_path / panel_key_path).
+// The change takes effect on the next panel restart — applyStartupOverrides
+// in cmd/v/main.go reads these two keys.
+//
+// Why we write to disk: cfg.Server.TLSCert/TLSKey expect filesystem paths.
+// The certificate manager stores PEM content in the DB (Certificate.Certificate
+// + Certificate.PrivateKey), so this endpoint bridges the two. /app/certs is
+// mounted read-only in docker-compose, so we drop files under the writable
+// data volume (/app/data/panel-certs/) instead.
+func (h *SettingsHandler) ApplyCertificate(c *gin.Context) {
+	if h.certRepo == nil {
+		middleware.RespondWithError(c, errors.NewInternalError("certificate repo not configured", nil))
+		return
+	}
+
+	var req ApplyPanelCertificateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.RespondWithError(c, errors.NewValidationError("invalid request", map[string]interface{}{
+			"detail": err.Error(),
+		}))
+		return
+	}
+
+	ctx := c.Request.Context()
+	cert, err := h.certRepo.GetByID(ctx, req.CertificateID)
+	if err != nil {
+		middleware.RespondWithError(c, errors.NewDatabaseError("get certificate", err))
+		return
+	}
+	if cert == nil {
+		middleware.RespondWithError(c, errors.NewNotFoundError("certificate", req.CertificateID))
+		return
+	}
+
+	dataDir := h.dataDir
+	if dataDir == "" {
+		dataDir = "/app/data"
+	}
+
+	// Resolve the actual cert/key file paths to write into settings DB.
+	// Two sources to support:
+	//   (a) acme.sh-issued cert — file is already on disk at cert.CertPath
+	//       (relative path stored by the cert service, resolved against the
+	//       container's WORKDIR /app). PEM bytes are NOT in the DB row.
+	//   (b) uploaded cert — PEM content is in cert.Certificate / cert.PrivateKey,
+	//       no file on disk yet, so we materialize it under /app/data/panel-certs.
+	var certPath, keyPath string
+
+	switch {
+	case strings.TrimSpace(cert.CertPath) != "" && strings.TrimSpace(cert.KeyPath) != "":
+		certPath = resolveCertPath(cert.CertPath)
+		keyPath = resolveCertPath(cert.KeyPath)
+		if _, statErr := os.Stat(certPath); statErr != nil {
+			middleware.RespondWithError(c, errors.NewValidationError("certificate file not readable on disk", map[string]interface{}{
+				"certificate_id": cert.ID,
+				"domain":         cert.Domain,
+				"cert_path":      certPath,
+				"detail":         statErr.Error(),
+			}))
+			return
+		}
+		if _, statErr := os.Stat(keyPath); statErr != nil {
+			middleware.RespondWithError(c, errors.NewValidationError("private key file not readable on disk", map[string]interface{}{
+				"certificate_id": cert.ID,
+				"domain":         cert.Domain,
+				"key_path":       keyPath,
+				"detail":         statErr.Error(),
+			}))
+			return
+		}
+
+	case strings.TrimSpace(cert.Certificate) != "" && strings.TrimSpace(cert.PrivateKey) != "":
+		panelCertsDir := filepath.Join(dataDir, "panel-certs")
+		if err := os.MkdirAll(panelCertsDir, 0o700); err != nil {
+			middleware.RespondWithError(c, errors.NewInternalError("create panel-certs dir", err))
+			return
+		}
+		certPath = filepath.Join(panelCertsDir, fmt.Sprintf("cert-%d.pem", cert.ID))
+		keyPath = filepath.Join(panelCertsDir, fmt.Sprintf("cert-%d.key", cert.ID))
+		if err := os.WriteFile(certPath, []byte(cert.Certificate), 0o600); err != nil {
+			middleware.RespondWithError(c, errors.NewInternalError("write certificate file", err))
+			return
+		}
+		if err := os.WriteFile(keyPath, []byte(cert.PrivateKey), 0o600); err != nil {
+			_ = os.Remove(certPath)
+			middleware.RespondWithError(c, errors.NewInternalError("write private key file", err))
+			return
+		}
+
+	default:
+		middleware.RespondWithError(c, errors.NewValidationError("certificate has neither files on disk nor PEM content (not yet issued?)", map[string]interface{}{
+			"certificate_id": cert.ID,
+			"domain":         cert.Domain,
+		}))
+		return
+	}
+
+	if err := h.settingsService.SetMultiple(ctx, map[string]string{
+		"panel_cert_path": certPath,
+		"panel_key_path":  keyPath,
+	}); err != nil {
+		middleware.RespondWithError(c, errors.NewDatabaseError("persist cert paths", err))
+		return
+	}
+
+	h.logger.Info("panel certificate applied from manager",
+		logger.F("certificate_id", cert.ID),
+		logger.F("domain", cert.Domain),
+		logger.F("cert_path", certPath))
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "证书已应用，重启面板后生效",
+		"data": gin.H{
+			"certificate_id": cert.ID,
+			"domain":         cert.Domain,
+			"cert_path":      certPath,
+			"key_path":       keyPath,
+			"expires_at":     cert.ExpiresAt,
+		},
+	})
+}
+
+// resolveCertPath turns the cert service's stored path into an absolute path
+// usable by the panel HTTP server at startup. The cert service stores paths
+// relative to the container WORKDIR (/app), e.g.
+// "data/certificates/example.com/fullchain.pem"; anchor those to /app so
+// startup (running with WORKDIR possibly elsewhere) can still find them.
+// Absolute paths are returned unchanged.
+func resolveCertPath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" || filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join("/app", p)
 }

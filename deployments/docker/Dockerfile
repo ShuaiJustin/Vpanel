@@ -114,6 +114,7 @@ RUN sed -i "s/dl-cdn.alpinelinux.org/${ALPINE_MIRROR}/g" /etc/apk/repositories &
     apk add --no-cache \
       bash \
       ca-certificates \
+      curl \
       openssl \
       socat \
       sqlite \
@@ -152,6 +153,13 @@ RUN install -d -o vpanel -g vpanel \
       ${APP_HOME}/web/dist \
       ${APP_HOME}/xray \
       ${APP_HOME}/tmp
+
+# Bundle acme.sh into the image so cert issuance never depends on github.com
+# being reachable at runtime. Source is vendored at deployments/docker/vendor/
+# (refresh with: `wget https://github.com/acmesh-official/acme.sh/archive/master.tar.gz`
+# extract, replace the dir). Without this, every "申请证书" would try to download
+# acme.sh and fail when the panel container can't reach github.
+COPY --chown=vpanel:vpanel deployments/docker/vendor/acme.sh /home/${APP_USER}/.acme.sh
 
 COPY --from=backend-builder --chown=vpanel:vpanel /out/v-panel ${APP_HOME}/v-panel
 COPY --from=backend-builder --chown=vpanel:vpanel /out/bin ${APP_HOME}/bin

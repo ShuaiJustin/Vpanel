@@ -38,8 +38,12 @@ var (
 	domainRegex = regexp.MustCompile(`^(\*\.)?([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$`)
 	// DNS provider validation (alphanumeric and underscore only)
 	dnsProviderRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
-	// Environment variable key validation (alphanumeric and underscore only)
-	envKeyRegex = regexp.MustCompile(`^[A-Z0-9_]+$`)
+	// Environment variable key validation. POSIX env names are uppercase,
+	// but acme.sh's DNS-API plugins use mixed case by convention
+	// (CF_Token, CF_Zone_ID, Ali_Key, DP_Id, etc.). Accept letters of either
+	// case plus digits and underscores; still rejects shell metacharacters
+	// since invalid characters cannot pass through here into the exec env.
+	envKeyRegex = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
 )
 
 // sanitizeDomainForPath sanitizes domain name for safe use in file paths
@@ -121,7 +125,7 @@ func validateDNSProvider(provider string) error {
 func validateEnvVars(envVars map[string]string) error {
 	for key, value := range envVars {
 		if !envKeyRegex.MatchString(key) {
-			return fmt.Errorf("invalid environment variable key: %s (must be uppercase alphanumeric with underscores)", key)
+			return fmt.Errorf("invalid environment variable key: %s (must start with a letter, followed by letters, digits, or underscores)", key)
 		}
 		if len(key) > 100 {
 			return fmt.Errorf("environment variable key too long: %s", key)
@@ -350,10 +354,11 @@ func (s *Service) Apply(ctx context.Context, req *ApplyRequest) (*repository.Cer
 		}
 	}
 
-	// 异步申请证书（使用传入的 context）
+	// 异步申请证书。**必须** detach 到 context.Background()：原 ctx 是 HTTP
+	// request 的 context，handler 返回 202 后立即被 cancel，acme.sh 还没来得
+	// 及跑就因 "context canceled" 失败（出现在每次 retry 的几毫秒内）。
 	go func() {
-		// 创建带超时的 context（10 分钟，从30分钟缩短）
-		applyCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+		applyCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
 
 		if err := s.ensureAcmeInstalled(applyCtx, req.Email); err != nil {

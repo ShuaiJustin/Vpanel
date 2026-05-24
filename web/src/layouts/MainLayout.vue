@@ -449,8 +449,7 @@ const confirmLogout = () => {
   ElMessageBox.confirm('确定要退出管理后台吗?', '提示', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
-    type: 'warning',
-    customStyle: { maxWidth: '420px' }
+    type: 'warning'
   }).then(async () => {
     await userStore.logout()
     closeMobileMenu()

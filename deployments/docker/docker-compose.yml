@@ -59,7 +59,7 @@ x-vpanel-healthcheck: &vpanel-healthcheck
   test:
     [
       "CMD-SHELL",
-      "scheme=http; extra=''; if [ -n \"$$V_SERVER_TLS_CERT\" ] && [ -n \"$$V_SERVER_TLS_KEY\" ]; then scheme=https; extra='--no-check-certificate'; fi; wget $$extra --no-verbose --tries=1 --spider \"$$scheme://127.0.0.1:8080/health\"",
+      "wget --no-check-certificate --no-verbose --tries=1 --spider https://127.0.0.1:8080/health 2>/dev/null || wget --no-verbose --tries=1 --spider http://127.0.0.1:8080/health 2>/dev/null",
     ]
   interval: 30s
   timeout: 10s

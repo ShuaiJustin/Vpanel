@@ -66,24 +66,66 @@
           <el-divider content-position="left">
             HTTPS / TLS（可选）
           </el-divider>
-          <el-form-item label="TLS 证书路径">
-            <el-input
-              v-model="serverForm.panelCertPath"
-              placeholder="/app/certs/fullchain.pem"
-            />
+          <el-form-item label="选择证书">
+            <div class="cert-picker">
+              <el-select
+                v-model="serverForm.selectedCertId"
+                placeholder="从证书管理中选择已申请的证书"
+                clearable
+                filterable
+                :loading="certListLoading"
+                style="flex: 1"
+              >
+                <el-option
+                  v-for="cert in availableCerts"
+                  :key="cert.id"
+                  :label="`${cert.domain}（${cert.expiresLabel}）`"
+                  :value="cert.id"
+                />
+                <template #empty>
+                  <div style="padding: 10px; color: var(--el-text-color-secondary); font-size: 13px;">
+                    {{ certListLoading ? '加载中...' : '暂无可用证书。请先到「证书管理」申请或上传' }}
+                  </div>
+                </template>
+              </el-select>
+              <el-button
+                type="primary"
+                :loading="applyingCert"
+                :disabled="!serverForm.selectedCertId"
+                @click="applyCertificate"
+              >
+                应用并保存
+              </el-button>
+            </div>
             <div class="form-tips">
-              容器内的证书文件路径。把证书放到宿主机的 <code>deployments/docker/certs/</code> 后，对应容器内 <code>/app/certs/</code>
+              选择一个已申请的证书后点"应用并保存"，系统会自动把证书写入文件并填到下方路径。重启面板后生效。
             </div>
           </el-form-item>
-          <el-form-item label="TLS 私钥路径">
-            <el-input
-              v-model="serverForm.panelKeyPath"
-              placeholder="/app/certs/privkey.pem"
-            />
-            <div class="form-tips">
-              同上。两个路径都填且文件存在时，重启后面板自动切到 HTTPS；只填一个会忽略
-            </div>
+          <el-form-item>
+            <el-button link type="primary" @click="showManualCertPaths = !showManualCertPaths">
+              {{ showManualCertPaths ? '收起' : '展开' }}手动填写路径（高级 / 外部证书）
+            </el-button>
           </el-form-item>
+          <template v-if="showManualCertPaths">
+            <el-form-item label="TLS 证书路径">
+              <el-input
+                v-model="serverForm.panelCertPath"
+                placeholder="/app/certs/fullchain.pem"
+              />
+              <div class="form-tips">
+                容器内的证书文件路径。把证书放到宿主机的 <code>deployments/docker/certs/</code> 后，对应容器内 <code>/app/certs/</code>
+              </div>
+            </el-form-item>
+            <el-form-item label="TLS 私钥路径">
+              <el-input
+                v-model="serverForm.panelKeyPath"
+                placeholder="/app/certs/privkey.pem"
+              />
+              <div class="form-tips">
+                同上。两个路径都填且文件存在时，重启后面板自动切到 HTTPS；只填一个会忽略
+              </div>
+            </el-form-item>
+          </template>
           <el-form-item label="服务时区">
             <el-select
               v-model="serverForm.timezone"
@@ -1006,9 +1048,16 @@ const serverForm = reactive({
   panelBasePath: '/',
   panelCertPath: '',
   panelKeyPath: '',
+  selectedCertId: null,
   proxyMode: 'compatible',
   timezone: 'Asia/Shanghai'
 })
+
+// HTTPS/TLS 证书选择相关
+const availableCerts = ref([])
+const certListLoading = ref(false)
+const applyingCert = ref(false)
+const showManualCertPaths = ref(false)
 
 const dbForm = reactive({
   dbType: 'sqlite',
@@ -1230,13 +1279,77 @@ onMounted(async () => {
       loadSecuritySettings(),
       loadEmailSettings(),
       loadPaymentSettings(),
-      loadProtocolSettings()
+      loadProtocolSettings(),
+      fetchCertList()
     ]);
   } catch (error) {
     console.error('Failed to load initial settings:', error);
     ElMessage.error('加载设置失败，请刷新页面重试');
   }
 });
+
+// 拉取证书管理里"已申请、未过期"的证书供下拉选择
+const fetchCertList = async () => {
+  certListLoading.value = true
+  try {
+    const response = await api.get('/certificates')
+    const raw = Array.isArray(response) ? response
+      : Array.isArray(response?.certificates) ? response.certificates
+      : Array.isArray(response?.data?.certificates) ? response.data.certificates
+      : Array.isArray(response?.data) ? response.data
+      : []
+
+    const now = Date.now()
+    availableCerts.value = raw
+      .filter((c) => {
+        const status = c.status || ''
+        const usable = !status || ['active', 'valid', 'expiring'].includes(status)
+        const expiresAt = c.expires_at || c.expiresAt
+        const notExpired = !expiresAt || new Date(expiresAt).getTime() > now
+        return usable && notExpired
+      })
+      .map((c) => ({
+        id: c.id,
+        domain: c.domain || '(未命名)',
+        expiresAt: c.expires_at || c.expiresAt || '',
+        expiresLabel: formatExpiresLabel(c.expires_at || c.expiresAt)
+      }))
+  } catch (error) {
+    console.warn('Failed to load certificate list:', error)
+    availableCerts.value = []
+  } finally {
+    certListLoading.value = false
+  }
+}
+
+const formatExpiresLabel = (expiresAt) => {
+  if (!expiresAt) return '无到期信息'
+  const d = new Date(expiresAt)
+  if (isNaN(d.getTime())) return '到期日未知'
+  const days = Math.ceil((d.getTime() - Date.now()) / 86400000)
+  const dateStr = d.toISOString().slice(0, 10)
+  if (days < 0) return `已过期 ${dateStr}`
+  if (days <= 30) return `${dateStr}，剩 ${days} 天`
+  return `${dateStr}`
+}
+
+const applyCertificate = async () => {
+  if (!serverForm.selectedCertId) return
+  applyingCert.value = true
+  try {
+    const response = await api.post('/settings/apply-certificate', {
+      certificate_id: Number(serverForm.selectedCertId)
+    })
+    const data = response?.data || response || {}
+    if (data.cert_path) serverForm.panelCertPath = data.cert_path
+    if (data.key_path) serverForm.panelKeyPath = data.key_path
+    ElMessage.success('证书已应用并保存。重启面板后生效')
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error) || '应用证书失败')
+  } finally {
+    applyingCert.value = false
+  }
+}
 
 // 方法
 const saveServerSettings = async () => {
@@ -1701,6 +1814,13 @@ const saveProtocolSettings = async () => {
 .settings-form {
   max-width: 800px;
   margin-top: 20px;
+}
+
+.cert-picker {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  align-items: center;
 }
 
 .form-tips {

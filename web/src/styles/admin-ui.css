@@ -1498,3 +1498,36 @@
     transform: translateY(0);
   }
 }
+
+/* ========== MessageBox 统一尺寸 ==========
+ * 项目里 50+ 处 ElMessageBox.confirm 调用，默认 420px 偏挤、字号 14px
+ * 在退出/删除等关键确认场景识别度低。这里统一放大，调用点不需改动。
+ */
+.el-message-box {
+  width: 480px;
+  max-width: 90vw;
+}
+
+.el-message-box__title {
+  font-size: 17px;
+}
+
+.el-message-box__message,
+.el-message-box__message p {
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.el-message-box__btns {
+  padding-top: 18px;
+}
+
+.el-message-box__btns .el-button {
+  padding: 10px 22px;
+  font-size: 15px;
+  min-width: 84px;
+}
+
+.el-message-box__status.el-icon {
+  font-size: 22px;
+}

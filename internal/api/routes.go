@@ -180,6 +180,12 @@ func (r *Router) Setup() {
 		settingsHandler.WithSourceDB(dbPtr)
 	}
 	settingsHandler.WithAuditService(auditSvc)
+	if r.repos.Certificate != nil {
+		settingsHandler.WithCertificateRepo(r.repos.Certificate)
+	}
+	if dataDir := strings.TrimSpace(os.Getenv("VPANEL_DATA_DIR")); dataDir != "" {
+		settingsHandler.WithDataDir(dataDir)
+	}
 	xrayReleasesHandler := handlers.NewXrayReleasesHandler(r.logger)
 	certificateHandler := handlers.NewCertificateHandler(r.repos.Certificate, r.repos.Node, r.certificateService, r.logger).WithAuditService(auditSvc)
 	logHandler := handlers.NewLogHandler(r.logService, r.logger)
@@ -601,6 +607,7 @@ func (r *Router) Setup() {
 				settingsRoutes.POST("/test-db", authMiddleware.RequirePermission("system:write"), settingsHandler.TestDatabase)
 				settingsRoutes.POST("/backup-db", authMiddleware.RequirePermission("system:write"), settingsHandler.BackupDatabase)
 				settingsRoutes.POST("/migrate-db", authMiddleware.RequirePermission("system:write"), settingsHandler.MigrateDatabase)
+				settingsRoutes.POST("/apply-certificate", authMiddleware.RequirePermission("system:write"), settingsHandler.ApplyCertificate)
 				settingsRoutes.POST("/backup", authMiddleware.RequirePermission("system:write"), settingsHandler.BackupSettings)
 				settingsRoutes.POST("/restore", authMiddleware.RequirePermission("system:write"), settingsHandler.RestoreSettings)
 				settingsRoutes.GET("/xray", authMiddleware.RequirePermission("system:read"), settingsHandler.GetXraySettings)

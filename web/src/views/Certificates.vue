@@ -318,16 +318,7 @@
           <el-input
             v-model="applyForm.domain"
             placeholder="example.com 或 *.example.com"
-          >
-            <template #append>
-              <el-tooltip
-                content="通配符证书只能使用 DNS 验证"
-                placement="top"
-              >
-                <el-icon><QuestionFilled /></el-icon>
-              </el-tooltip>
-            </template>
-          </el-input>
+          />
         </el-form-item>
 
         <el-form-item
@@ -491,14 +482,18 @@
               <div style="font-size: 13px; line-height: 1.6">
                 <p><strong>获取步骤：</strong></p>
                 <ol style="margin: 5px 0; padding-left: 20px">
-                  <li>登录 Cloudflare → My Profile → API Tokens</li>
-                  <li>Create Token → Edit zone DNS 模板</li>
-                  <li>Permissions: Zone → DNS → Edit，Zone → Zone → Read</li>
-                  <li>Zone Resources: 选择你的域名</li>
-                  <li>创建并复制 Token、Account ID（可选）和 Zone ID（推荐）</li>
+                  <li>登录 Cloudflare → 右上角头像 → My Profile → API Tokens</li>
+                  <li>点 Create Token → 选 "Edit zone DNS" 模板 → Use template</li>
+                  <li>Permissions 保留两条：Zone · DNS · Edit、Zone · Zone · Read</li>
+                  <li>Zone Resources：Include → Specific zone → 选择你的域名</li>
+                  <li>创建后复制 Token（<code>cfut_</code> 开头，仅显示一次）</li>
+                  <li>回到域名 Overview 页面，右下角 API 区域复制 Zone ID</li>
                 </ol>
                 <p style="margin-top: 8px">
-                  <strong>兼容模式：</strong>也可切换为 x-ui 同款的 “邮箱 + Global API Key” 认证。
+                  下方表单：<code>CF_Token</code> 填第 5 步 Token，<code>CF_Zone_ID</code> 填第 6 步 Zone ID。
+                </p>
+                <p style="margin-top: 8px; color: #909399">
+                  <strong>备用方式（不推荐）：</strong>切换到 "Global Key" 认证，填 Cloudflare 邮箱 + Global API Key。此方式权限是整个账号，泄漏后果严重。
                 </p>
               </div>
             </el-alert>
@@ -509,7 +504,7 @@
                   API Token（推荐）
                 </el-radio>
                 <el-radio value="global">
-                  Global API Key（x-ui）
+                  Global API Key（不推荐）
                 </el-radio>
               </el-radio-group>
             </el-form-item>
@@ -519,21 +514,11 @@
                 label="API Token"
                 prop="cfToken"
               >
-                <el-input 
-                  v-model="applyForm.cfToken" 
-                  type="password" 
+                <el-input
+                  v-model="applyForm.cfToken"
+                  type="password"
                   show-password
-                  placeholder="Cloudflare API Token"
-                />
-              </el-form-item>
-
-              <el-form-item
-                label="Account ID"
-                prop="cfAccountId"
-              >
-                <el-input 
-                  v-model="applyForm.cfAccountId" 
-                  placeholder="可选：Cloudflare 账户 ID（非区域 ID）"
+                  placeholder="cfut_ 开头的 Cloudflare API Token"
                 />
               </el-form-item>
 
@@ -541,9 +526,19 @@
                 label="Zone ID"
                 prop="cfZoneId"
               >
-                <el-input 
-                  v-model="applyForm.cfZoneId" 
-                  placeholder="推荐：Cloudflare 区域 ID（Overview 页面右侧）"
+                <el-input
+                  v-model="applyForm.cfZoneId"
+                  placeholder="推荐：Cloudflare 域名 Overview 页右下角 API 区域复制"
+                />
+              </el-form-item>
+
+              <el-form-item
+                label="Account ID"
+                prop="cfAccountId"
+              >
+                <el-input
+                  v-model="applyForm.cfAccountId"
+                  placeholder="可选：仅在一个 Token 跨多个域名时需要"
                 />
               </el-form-item>
             </template>
@@ -976,7 +971,7 @@ const applyForm = ref({
   validationMethod: 'dns',
   webroot: '',
   dnsProvider: 'dns_cf',
-  cfAuthMode: 'global',
+  cfAuthMode: 'token',
   cfToken: '',
   cfAccountId: '',
   cfZoneId: '',
@@ -1344,7 +1339,7 @@ const handleApply = () => {
     validationMethod: 'dns',
     webroot: '',
     dnsProvider: 'dns_cf',
-    cfAuthMode: 'global',
+    cfAuthMode: 'token',
     cfToken: '',
     cfAccountId: '',
     cfZoneId: '',
@@ -1403,7 +1398,7 @@ const handleDnsProviderChange = () => {
   applyForm.value.cfZoneId = ''
   applyForm.value.cfEmail = ''
   applyForm.value.cfGlobalKey = ''
-  applyForm.value.cfAuthMode = 'global'
+  applyForm.value.cfAuthMode = 'token'
   applyForm.value.aliKey = ''
   applyForm.value.aliSecret = ''
   applyForm.value.tencentSecretId = ''
@@ -1471,8 +1466,10 @@ const confirmApply = async () => {
               return
             }
             requestData.dns_env = {
-              CF_Token: applyForm.value.cfToken,
-              CF_Account_ID: applyForm.value.cfAccountId
+              CF_Token: applyForm.value.cfToken
+            }
+            if (applyForm.value.cfAccountId) {
+              requestData.dns_env.CF_Account_ID = applyForm.value.cfAccountId
             }
           }
           if (applyForm.value.cfZoneId) {
