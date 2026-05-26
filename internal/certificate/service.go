@@ -937,6 +937,14 @@ func (s *Service) issueWithAcme(ctx context.Context, req *ApplyRequest, cert *re
 		"--force", // 强制申请，覆盖已存在的证书
 	}
 
+	// 通配符证书 *.example.com 不匹配根域 example.com。如果是从根域+wildcard
+	// 申请的（req.Domain 形如 "*.foo"），同时加 -d foo，让证书的 SAN 列表既
+	// 包含 *.foo 又包含 foo —— 浏览器访问 https://foo 不会再提示"证书域名
+	// 不匹配 / 不安全"。
+	if strings.HasPrefix(req.Domain, "*.") {
+		args = append(args, "-d", strings.TrimPrefix(req.Domain, "*."))
+	}
+
 	// 添加邮箱（如果提供）
 	if req.Email != "" {
 		args = append(args, "--accountemail", req.Email)

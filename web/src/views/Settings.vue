@@ -101,10 +101,10 @@
               选择一个已申请的证书后点"应用并保存"，系统会自动把证书写入文件并填到下方路径。重启面板后生效。
             </div>
           </el-form-item>
-          <el-form-item>
-            <el-button link type="primary" @click="showManualCertPaths = !showManualCertPaths">
+          <el-form-item label=" ">
+            <a class="manual-cert-toggle-link" @click="showManualCertPaths = !showManualCertPaths">
               {{ showManualCertPaths ? '收起' : '展开' }}手动填写路径（高级 / 外部证书）
-            </el-button>
+            </a>
           </el-form-item>
           <template v-if="showManualCertPaths">
             <el-form-item label="TLS 证书路径">
@@ -1821,6 +1821,17 @@ const saveProtocolSettings = async () => {
   gap: 8px;
   width: 100%;
   align-items: center;
+}
+
+.manual-cert-toggle-link {
+  color: var(--el-color-primary);
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.manual-cert-toggle-link:hover {
+  text-decoration: underline;
 }
 
 .form-tips {

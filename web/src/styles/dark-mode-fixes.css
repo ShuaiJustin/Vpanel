@@ -970,6 +970,19 @@
   color: var(--color-text-primary) !important;
 }
 
+/* Logs.vue 内 :deep(.log-row-error) 用了 #fef0f0 浅粉红（light-mode 设计），
+ * 在 dark mode 下浅色背景把浅色文字吞掉。提到 html.dark 提高 specificity，
+ * 同时显式给 tr / td / 含 :hover 的所有路径都覆盖，确保不漏。
+ */
+html.dark .el-table tr.log-row-error,
+html.dark .el-table tr.log-row-error > td,
+html.dark .el-table tr.log-row-error:hover > td,
+html.dark .el-table tr.log-row-error.el-table__row > td {
+  background: rgba(239, 68, 68, 0.16) !important;
+  background-color: rgba(239, 68, 68, 0.16) !important;
+  color: #fecaca !important;
+}
+
 .dark .gc-icon {
   background: rgba(34, 197, 94, 0.16) !important;
   color: #86efac !important;
@@ -1087,3 +1100,56 @@
   color: #cbd5e1 !important;
 }
 /* 暗黑模式搜索/筛选控件统一背景结束 */
+
+/* ========== el-button link 在 dark mode 下渲染成蓝色椭圆块的修复 ==========
+ * element-plus 的 dark theme + 它给 .el-button--primary.is-link 注入的
+ * --el-button-bg-color (= --el-color-primary-light-9) 会让 link 按钮表现
+ * 出实心蓝色椭圆，文字反差小且看起来跟普通按钮没区别。这里把所有可能
+ * 残留的视觉效果一起 reset 掉，强制 link 按钮表现为"纯文字 + hover 下划线"。
+ *
+ * 用 html.dark 增加 specificity 防止被 element-plus 的某条 dark scope
+ * 规则覆盖；用 background 而不只是 background-color 兼容 shorthand。
+ */
+html.dark .el-button.is-link,
+html.dark .el-button.is-link:hover,
+html.dark .el-button.is-link:focus,
+html.dark .el-button.is-link:active {
+  --el-button-bg-color: transparent;
+  --el-button-hover-bg-color: transparent;
+  --el-button-active-bg-color: transparent;
+  --el-button-border-color: transparent;
+  --el-button-hover-border-color: transparent;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 4px !important;
+  height: auto !important;
+  min-height: 0 !important;
+  line-height: 1.4 !important;
+}
+
+html.dark .el-button.is-link:hover,
+html.dark .el-button.is-link:focus {
+  text-decoration: underline;
+}
+
+html.dark .el-button.is-link.el-button--primary {
+  color: var(--el-color-primary) !important;
+}
+
+/* ========== el-input-number 在 dark mode 下加减按钮看不清的修复 ==========
+ * 默认情况下加减按钮背景跟周围 input 背景几乎一样，按钮像素被吃掉。
+ * 给按钮一个轻微对比背景 + 主题色 hover，让用户能清楚看到这是控件。
+ */
+.dark .el-input-number .el-input-number__decrease,
+.dark .el-input-number .el-input-number__increase {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  color: #cbd5e1 !important;
+}
+
+.dark .el-input-number .el-input-number__decrease:hover,
+.dark .el-input-number .el-input-number__increase:hover {
+  background-color: rgba(64, 158, 255, 0.15) !important;
+  color: var(--el-color-primary) !important;
+}
