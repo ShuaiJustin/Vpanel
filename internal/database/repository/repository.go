@@ -40,9 +40,9 @@ type User struct {
 	// remain true across multiple ticks.
 	LastTrafficWarningAt *time.Time `gorm:"index"`
 	LastExpiryReminderAt *time.Time `gorm:"index"`
-	Theme            string `gorm:"size:16;default:auto"`
-	Language         string `gorm:"size:8;default:zh-CN"`
-	TelegramID       string `gorm:"size:50;index"`
+	Theme                string     `gorm:"size:16;default:auto"`
+	Language             string     `gorm:"size:8;default:zh-CN"`
+	TelegramID           string     `gorm:"size:50;index"`
 	// Commercial fields
 	Balance   int64     `gorm:"default:0"` // User balance in cents
 	CreatedAt time.Time `gorm:"autoCreateTime"`
@@ -109,19 +109,19 @@ func (u *User) BeforeDelete(tx *gorm.DB) error {
 
 	// 使用白名单验证表名，防止SQL注入
 	allowedTables := map[string]bool{
-		"proxies":                    true,
-		"subscriptions":              true,
-		"user_node_assignments":      true,
-		"login_history":              true,
-		"active_ips":                 true,
-		"ip_history":                 true,
-		"trials":                     true,
-		"subscription_pauses":        true,
-		"password_reset_tokens":      true,
-		"email_verification_tokens":  true,
-		"two_factor_secrets":         true,
-		"announcement_reads":         true,
-		"commercial_invite_codes":    true,
+		"proxies":                   true,
+		"subscriptions":             true,
+		"user_node_assignments":     true,
+		"login_history":             true,
+		"active_ips":                true,
+		"ip_history":                true,
+		"trials":                    true,
+		"subscription_pauses":       true,
+		"password_reset_tokens":     true,
+		"email_verification_tokens": true,
+		"two_factor_secrets":        true,
+		"announcement_reads":        true,
+		"commercial_invite_codes":   true,
 	}
 
 	for table := range allowedTables {
@@ -315,18 +315,18 @@ type LoginHistoryRepository interface {
 
 // AuditLog represents an audit log entry in the database.
 type AuditLog struct {
-	ID           int64     `gorm:"primaryKey;autoIncrement"`
-	UserID       *int64    `gorm:"index"`
-	Username     string    `gorm:"size:50"`
-	Action       string    `gorm:"size:50;not null;index"`
-	ResourceType string    `gorm:"size:50;not null;index"`
-	ResourceID   string    `gorm:"size:100"`
-	Details      string    `gorm:"type:text"`
-	IPAddress    string    `gorm:"size:50"`
-	UserAgent    string    `gorm:"size:255"`
-	RequestID    string    `gorm:"size:100;index"`
-	Status       string    `gorm:"size:20;default:success"`
-	CreatedAt    time.Time `gorm:"autoCreateTime;index"`
+	ID           int64     `json:"id" gorm:"primaryKey;autoIncrement"`
+	UserID       *int64    `json:"user_id" gorm:"index"`
+	Username     string    `json:"username" gorm:"size:50"`
+	Action       string    `json:"action" gorm:"size:50;not null;index"`
+	ResourceType string    `json:"resource_type" gorm:"size:50;not null;index"`
+	ResourceID   string    `json:"resource_id" gorm:"size:100"`
+	Details      string    `json:"details" gorm:"type:text"`
+	IPAddress    string    `json:"ip_address" gorm:"size:50"`
+	UserAgent    string    `json:"user_agent" gorm:"size:255"`
+	RequestID    string    `json:"request_id" gorm:"size:100;index"`
+	Status       string    `json:"status" gorm:"size:20;default:success"`
+	CreatedAt    time.Time `json:"created_at" gorm:"autoCreateTime;index"`
 }
 
 // TableName returns the table name for AuditLog.

@@ -109,6 +109,34 @@ func TestGenerateStreamSettings_AutoMatchesWildcardCertificate(t *testing.T) {
 	assert.Equal(t, "/etc/ssl/example/privkey.pem", stream.TLSSettings.Certificates[0].KeyFile)
 }
 
+func TestGenerateStreamSettings_SkipsExpiredActiveCertificate(t *testing.T) {
+	expiredAt := time.Now().Add(-time.Hour)
+	generator := &ConfigGenerator{
+		certRepo: &mockCertificateRepoForGenerator{certs: map[string]*repository.Certificate{
+			"*.example.com": {
+				ID:         5,
+				Domain:     "*.example.com",
+				Status:     "active",
+				CertPath:   "/etc/ssl/example/fullchain.pem",
+				KeyPath:    "/etc/ssl/example/privkey.pem",
+				ExpiresAt:  expiredAt,
+				ExpireDate: &expiredAt,
+			},
+		}},
+		logger: logger.NewNopLogger(),
+	}
+
+	stream := generator.generateStreamSettings(context.Background(), map[string]any{
+		"network":     "ws",
+		"security":    "tls",
+		"server_name": "api.example.com",
+	}, node.NetworkOptimizationSettings{})
+
+	require.NotNil(t, stream)
+	require.NotNil(t, stream.TLSSettings)
+	assert.Empty(t, stream.TLSSettings.Certificates)
+}
+
 func TestGenerateStreamSettings_AutoMatchesExactWildcardCertificateSelection(t *testing.T) {
 	generator := &ConfigGenerator{
 		certRepo: &mockCertificateRepoForGenerator{certs: map[string]*repository.Certificate{

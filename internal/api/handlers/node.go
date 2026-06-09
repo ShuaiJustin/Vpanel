@@ -21,6 +21,7 @@ import (
 	"v/internal/agent"
 	"v/internal/api/middleware"
 	"v/internal/cache"
+	"v/internal/database/repository"
 	"v/internal/entitlement"
 	"v/internal/logger"
 	"v/internal/monitor"
@@ -35,6 +36,8 @@ type NodeHandler struct {
 	deployService   *node.RemoteDeployService
 	entitlementSvc  *entitlement.Service
 	recoveryTracker *NodeRecoveryTracker
+	certRepo        repository.CertificateRepository
+	certSvc         CertificateService
 	httpClient      *http.Client
 	cache           cache.Cache
 	auditService    monitor.AuditService
@@ -75,6 +78,14 @@ func (h *NodeHandler) WithEntitlementService(svc *entitlement.Service) *NodeHand
 // WithAuditService wires the audit emitter for state-changing node ops.
 func (h *NodeHandler) WithAuditService(audit monitor.AuditService) *NodeHandler {
 	h.auditService = audit
+	return h
+}
+
+// WithCertificateAutomation enables TLS-domain based certificate matching and
+// deployment for node saves.
+func (h *NodeHandler) WithCertificateAutomation(repo repository.CertificateRepository, svc CertificateService) *NodeHandler {
+	h.certRepo = repo
+	h.certSvc = svc
 	return h
 }
 
@@ -448,6 +459,140 @@ func normalizeNodeGroupIDs(groupIDs []int64, fallback *int64) []int64 {
 	}
 
 	return normalized
+}
+
+func certificateDomainCandidates(domain string) []string {
+	rawDomain := strings.TrimSpace(strings.ToLower(domain))
+	if rawDomain == "" {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, 2)
+	candidates := make([]string, 0, 2)
+	add := func(candidate string) {
+		candidate = strings.TrimSpace(strings.ToLower(candidate))
+		if candidate == "" {
+			return
+		}
+		if _, ok := seen[candidate]; ok {
+			return
+		}
+		seen[candidate] = struct{}{}
+		candidates = append(candidates, candidate)
+	}
+
+	if strings.HasPrefix(rawDomain, "*.") {
+		add(rawDomain)
+		add(strings.TrimPrefix(rawDomain, "*."))
+		return candidates
+	}
+
+	add(strings.TrimPrefix(rawDomain, "*."))
+	parts := strings.Split(strings.TrimPrefix(rawDomain, "*."), ".")
+	if len(parts) >= 3 {
+		add("*." + strings.Join(parts[1:], "."))
+	}
+	return candidates
+}
+
+func certificateHasUsableMaterial(cert *repository.Certificate) bool {
+	if cert == nil {
+		return false
+	}
+	return (strings.TrimSpace(cert.CertPath) != "" && strings.TrimSpace(cert.KeyPath) != "") ||
+		(strings.TrimSpace(cert.Certificate) != "" && strings.TrimSpace(cert.PrivateKey) != "")
+}
+
+func certificateIsUsable(cert *repository.Certificate) bool {
+	if cert == nil || cert.Status != "active" || !certificateHasUsableMaterial(cert) {
+		return false
+	}
+	expiresAt := cert.ExpiresAt
+	if expiresAt.IsZero() && cert.ExpireDate != nil {
+		expiresAt = *cert.ExpireDate
+	}
+	return expiresAt.IsZero() || expiresAt.After(time.Now())
+}
+
+func (h *NodeHandler) matchCertificateForTLSDomain(ctx context.Context, tlsEnabled bool, tlsDomain string) *repository.Certificate {
+	if !tlsEnabled || h.certRepo == nil {
+		return nil
+	}
+
+	for _, candidate := range certificateDomainCandidates(tlsDomain) {
+		cert, err := h.certRepo.GetByDomain(ctx, candidate)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				continue
+			}
+			h.logger.Warn("failed to auto match node TLS certificate",
+				logger.Err(err),
+				logger.F("tls_domain", tlsDomain),
+				logger.F("candidate", candidate))
+			continue
+		}
+		if !certificateIsUsable(cert) {
+			h.logger.Warn("auto matched certificate is not usable",
+				logger.F("tls_domain", tlsDomain),
+				logger.F("candidate", candidate),
+				logger.F("status", cert.Status))
+			continue
+		}
+		return cert
+	}
+	return nil
+}
+
+func (h *NodeHandler) resolveNodeCertificateID(ctx context.Context, tlsEnabled bool, tlsDomain string, requestedID *int64, existingID *int64) (*int64, bool) {
+	if requestedID != nil && *requestedID > 0 {
+		return requestedID, false
+	}
+	if existingID != nil && *existingID > 0 {
+		return existingID, false
+	}
+
+	cert := h.matchCertificateForTLSDomain(ctx, tlsEnabled, tlsDomain)
+	if cert == nil {
+		return requestedID, false
+	}
+
+	certID := cert.ID
+	h.logger.Info("auto matched node TLS certificate",
+		logger.F("tls_domain", tlsDomain),
+		logger.F("cert_id", certID),
+		logger.F("cert_domain", cert.Domain))
+	return &certID, true
+}
+
+func nodeCertificateIDValue(certificateID *int64) int64 {
+	if certificateID == nil {
+		return 0
+	}
+	return *certificateID
+}
+
+func (h *NodeHandler) triggerCertificateDeployAsync(certID int64, nodeID int64, reason string) {
+	if certID <= 0 || h.certSvc == nil {
+		return
+	}
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		if err := h.certSvc.DeployToAssignedNodes(ctx, certID); err != nil {
+			h.logger.Warn("failed to deploy auto matched certificate",
+				logger.Err(err),
+				logger.F("cert_id", certID),
+				logger.F("node_id", nodeID),
+				logger.F("reason", reason))
+			return
+		}
+		h.logger.Info("auto matched certificate deployment triggered",
+			logger.F("cert_id", certID),
+			logger.F("node_id", nodeID),
+			logger.F("reason", reason))
+	}()
 }
 
 func nodeMutationErrorResponse(err error, fallbackMessage string) (int, gin.H) {
@@ -996,6 +1141,8 @@ func (h *NodeHandler) Create(c *gin.Context) {
 		primaryGroupID = &groupIDs[0]
 	}
 
+	certificateID, autoMatchedCertificate := h.resolveNodeCertificateID(c.Request.Context(), req.TLSEnabled, req.TLSDomain, req.CertificateID, nil)
+
 	createReq := &node.CreateNodeRequest{
 		Name:        req.Name,
 		Address:     req.Address,
@@ -1036,7 +1183,7 @@ func (h *NodeHandler) Create(c *gin.Context) {
 		Remarks:     req.Remarks,
 
 		// 证书关联
-		CertificateID: req.CertificateID,
+		CertificateID: certificateID,
 	}
 
 	n, err := h.nodeService.Create(c.Request.Context(), createReq)
@@ -1087,6 +1234,17 @@ func (h *NodeHandler) Create(c *gin.Context) {
 				h.logger.Warn("Failed to reload node after persisting SSH metadata", logger.Err(err), logger.F("node_id", n.ID))
 			}
 		}
+	}
+
+	deployCertificateID := nodeCertificateIDValue(certificateID)
+	if deployCertificateID > 0 && req.SSH != nil && h.deployService == nil {
+		h.triggerCertificateDeployAsync(deployCertificateID, n.ID, "node_create_with_ssh")
+	} else if deployCertificateID > 0 && req.SSH == nil {
+		reason := "node_create"
+		if autoMatchedCertificate {
+			reason = "node_create_auto_match"
+		}
+		h.triggerCertificateDeployAsync(deployCertificateID, n.ID, reason)
 	}
 
 	resp := &NodeWithTokenResponse{
@@ -1157,6 +1315,9 @@ func (h *NodeHandler) Create(c *gin.Context) {
 			h.logger.Info("Auto-install completed successfully",
 				logger.F("node_id", nodeID),
 				logger.F("host", host))
+			if deployCertificateID > 0 {
+				h.triggerCertificateDeployAsync(deployCertificateID, nodeID, "node_create_after_auto_install")
+			}
 			provisionNodeProxiesAfterDeploy(h.entitlementSvc, h.logger, nodeID)
 		}(n.ID, req.SSH.Host, deployConfig)
 
@@ -1219,6 +1380,35 @@ func (h *NodeHandler) Update(c *gin.Context) {
 		primaryGroupID = req.GroupID
 	}
 
+	existingNode, err := h.nodeService.GetByID(c.Request.Context(), id)
+	if err != nil {
+		if err == node.ErrNodeNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Node not found"})
+			return
+		}
+		h.logger.Error("Failed to load node before update", logger.Err(err), logger.F("id", id))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update node"})
+		return
+	}
+
+	tlsEnabled := existingNode.TLSEnabled
+	if req.TLSEnabled != nil {
+		tlsEnabled = *req.TLSEnabled
+	}
+	tlsDomain := existingNode.TLSDomain
+	if req.TLSDomain != nil {
+		tlsDomain = *req.TLSDomain
+	}
+	certificateID, autoMatchedCertificate := h.resolveNodeCertificateID(
+		c.Request.Context(),
+		tlsEnabled,
+		tlsDomain,
+		req.CertificateID,
+		existingNode.CertificateID,
+	)
+	previousCertificateID := nodeCertificateIDValue(existingNode.CertificateID)
+	nextCertificateID := nodeCertificateIDValue(certificateID)
+
 	updateReq := &node.UpdateNodeRequest{
 		Name:        req.Name,
 		Address:     req.Address,
@@ -1259,7 +1449,7 @@ func (h *NodeHandler) Update(c *gin.Context) {
 		Remarks:     req.Remarks,
 
 		// 证书关联
-		CertificateID: req.CertificateID,
+		CertificateID: certificateID,
 	}
 
 	n, err := h.nodeService.Update(c.Request.Context(), id, updateReq)
@@ -1293,6 +1483,14 @@ func (h *NodeHandler) Update(c *gin.Context) {
 				h.logger.Warn("Failed to reload node after persisting SSH metadata on update", logger.Err(err), logger.F("node_id", id))
 			}
 		}
+	}
+
+	if nextCertificateID > 0 && nextCertificateID != previousCertificateID {
+		reason := "node_update_certificate_change"
+		if autoMatchedCertificate {
+			reason = "node_update_auto_match"
+		}
+		h.triggerCertificateDeployAsync(nextCertificateID, id, reason)
 	}
 
 	h.logger.Info("Node updated", logger.F("node_id", id))

@@ -39,10 +39,10 @@ import (
 	"v/internal/ip"
 	logservice "v/internal/log"
 	"v/internal/logger"
+	"v/internal/monitor"
 	"v/internal/node"
 	"v/internal/notification"
 	"v/internal/notification/dispatcher"
-	"v/internal/monitor"
 	"v/internal/portal/announcement"
 	portalauth "v/internal/portal/auth"
 	"v/internal/portal/help"
@@ -82,7 +82,9 @@ type Router struct {
 type CertificateService interface {
 	Apply(ctx context.Context, req *certificate.ApplyRequest) (*repository.Certificate, error)
 	Upload(ctx context.Context, domain string, certData, keyData []byte) (*repository.Certificate, error)
+	UpdateMaterial(ctx context.Context, certID int64, certData, keyData []byte) (*repository.Certificate, error)
 	Renew(ctx context.Context, certID int64) error
+	Delete(ctx context.Context, certID int64) error
 	DeployToAssignedNodes(ctx context.Context, certID int64) error
 }
 
@@ -376,7 +378,8 @@ func (r *Router) Setup() {
 	}
 	nodeHandler := handlers.NewNodeHandler(nodeService, nodeGroupService, nodeDeployService, r.nodeRecoveryTracker, r.logger).
 		WithEntitlementService(r.entitlementService).
-		WithAuditService(auditSvc)
+		WithAuditService(auditSvc).
+		WithCertificateAutomation(r.repos.Certificate, r.certificateService)
 
 	// Add cache support for async diagnosis if available
 	if r.cache != nil {
@@ -631,16 +634,16 @@ func (r *Router) Setup() {
 			{
 				certificatesRoutes.GET("", authMiddleware.RequirePermission("system:read"), certificateHandler.List)
 				certificatesRoutes.GET("/all", authMiddleware.RequirePermission("system:read"), certificateHandler.ListAll) // 用于下拉选择
-				certificatesRoutes.GET("/:id", authMiddleware.RequirePermission("system:read"), certificateHandler.Get)
 				certificatesRoutes.GET("/domain/:domain", authMiddleware.RequirePermission("system:read"), certificateHandler.GetByDomain)
+				certificatesRoutes.GET("/expiring", authMiddleware.RequirePermission("system:read"), certificateHandler.GetExpiring)
 				certificatesRoutes.POST("", authMiddleware.RequirePermission("system:write"), certificateHandler.Create)
+				certificatesRoutes.POST("/apply", authMiddleware.RequirePermission("system:write"), certificateHandler.Apply)
+				certificatesRoutes.GET("/:id", authMiddleware.RequirePermission("system:read"), certificateHandler.Get)
 				certificatesRoutes.PUT("/:id", authMiddleware.RequirePermission("system:write"), certificateHandler.Update)
 				certificatesRoutes.DELETE("/:id", authMiddleware.RequirePermission("system:write"), certificateHandler.Delete)
-				certificatesRoutes.POST("/apply", authMiddleware.RequirePermission("system:write"), certificateHandler.Apply)
 				certificatesRoutes.POST("/:id/renew", authMiddleware.RequirePermission("system:write"), certificateHandler.Renew)
 				certificatesRoutes.GET("/:id/validate", authMiddleware.RequirePermission("system:read"), certificateHandler.Validate)
 				certificatesRoutes.GET("/:id/backup", authMiddleware.RequirePermission("system:read"), certificateHandler.Backup)
-				certificatesRoutes.GET("/expiring", authMiddleware.RequirePermission("system:read"), certificateHandler.GetExpiring)
 
 				// 证书分配到节点
 				certificatesRoutes.POST("/:id/assign", authMiddleware.RequirePermission("system:write"), certificateHandler.AssignToNodes)

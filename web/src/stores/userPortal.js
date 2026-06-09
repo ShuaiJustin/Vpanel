@@ -10,12 +10,31 @@ import { toNormalizedError } from '@/utils/entitlement'
 export const useUserPortalStore = defineStore('userPortal', () => {
   const ADMIN_USER_INFO_KEY = 'adminUserInfo'
   const ADMIN_ROLE_KEY = 'adminRole'
+  const adminRouteCandidates = [
+    { path: '/admin/dashboard', permissionsAll: ['stats:read', 'system:read'] },
+    { path: '/admin/inbounds', permissionsAll: ['proxy:read'] },
+    { path: '/admin/users', permissionsAll: ['user:read'] },
+    { path: '/admin/roles', permissionsAll: ['role:read'] },
+    { path: '/admin/system-monitor', permissionsAll: ['system:read'] },
+    { path: '/admin/stats', permissionsAll: ['stats:read'] },
+    { path: '/admin/profile', permissionsAll: [] }
+  ]
 
   function getStoredValue(key) {
     return sessionStorage.getItem(key) || localStorage.getItem(key)
   }
 
   function getCurrentAuthStorage() {
+    const currentToken = token?.value || ''
+    if (currentToken && sessionStorage.getItem('userToken') === currentToken) {
+      return sessionStorage
+    }
+    if (currentToken && localStorage.getItem('userToken') === currentToken) {
+      return localStorage
+    }
+    if (sessionStorage.getItem('userToken')) {
+      return sessionStorage
+    }
     if (localStorage.getItem('userToken')) {
       return localStorage
     }
@@ -38,6 +57,7 @@ export const useUserPortalStore = defineStore('userPortal', () => {
 
     storage.setItem('userInfo', JSON.stringify(value))
     otherStorage.removeItem('userInfo')
+    syncAdminBridge(storage, otherStorage, value, token.value || getStoredValue('userToken'), false)
   }
 
   function clearPersistedAuth() {
@@ -55,7 +75,17 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     }
   }
 
-  function syncAdminBridge(storage, otherStorage, userInfo, tokenValue) {
+  function clearAdminBridge(storage, tokenValue, clearExisting) {
+    const storedAdminToken = storage.getItem('token')
+    if (!clearExisting && (!tokenValue || storedAdminToken !== tokenValue)) {
+      return
+    }
+    storage.removeItem('token')
+    storage.removeItem(ADMIN_USER_INFO_KEY)
+    storage.removeItem(ADMIN_ROLE_KEY)
+  }
+
+  function syncAdminBridge(storage, otherStorage, userInfo, tokenValue, clearExisting = true) {
     if (userInfo?.role === 'admin' && tokenValue) {
       storage.setItem('token', tokenValue)
       storage.setItem(ADMIN_USER_INFO_KEY, JSON.stringify(userInfo))
@@ -66,12 +96,23 @@ export const useUserPortalStore = defineStore('userPortal', () => {
       return
     }
 
-    storage.removeItem('token')
-    storage.removeItem(ADMIN_USER_INFO_KEY)
-    storage.removeItem(ADMIN_ROLE_KEY)
-    otherStorage.removeItem('token')
-    otherStorage.removeItem(ADMIN_USER_INFO_KEY)
-    otherStorage.removeItem(ADMIN_ROLE_KEY)
+    clearAdminBridge(storage, tokenValue, clearExisting)
+    clearAdminBridge(otherStorage, tokenValue, clearExisting)
+  }
+
+  function hasPermission(userInfo, permission) {
+    if (!permission) return true
+    const permissions = Array.isArray(userInfo?.permissions) ? userInfo.permissions : []
+    return permissions.includes('*') || permissions.includes(permission)
+  }
+
+  function hasAllPermissions(userInfo, permissions = []) {
+    return permissions.every(permission => hasPermission(userInfo, permission))
+  }
+
+  function getAdminEntryPath(userInfo) {
+    const match = adminRouteCandidates.find(candidate => hasAllPermissions(userInfo, candidate.permissionsAll))
+    return match?.path || '/admin/profile'
   }
 
   // 状态
@@ -82,6 +123,8 @@ export const useUserPortalStore = defineStore('userPortal', () => {
 
   // 计算属性
   const isAuthenticated = computed(() => !!token.value)
+  const isAdmin = computed(() => user.value?.role === 'admin')
+  const adminEntryPath = computed(() => getAdminEntryPath(user.value))
   const username = computed(() => user.value?.username || '')
   const email = computed(() => user.value?.email || '')
   const status = computed(() => user.value?.status || 'unknown')
@@ -324,6 +367,18 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     }
   }
 
+  function ensureAdminSession() {
+    const tokenValue = token.value || getStoredValue('userToken')
+    if (!user.value || user.value.role !== 'admin' || !tokenValue) {
+      return false
+    }
+
+    const storage = getCurrentAuthStorage()
+    const otherStorage = storage === localStorage ? sessionStorage : localStorage
+    syncAdminBridge(storage, otherStorage, user.value, tokenValue)
+    return true
+  }
+
   async function forgotPassword(email) {
     loading.value = true
     error.value = null
@@ -358,6 +413,7 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     if (savedUser) {
       try {
         user.value = JSON.parse(savedUser)
+        ensureAdminSession()
       } catch (e) {
         console.error('Failed to parse saved user info:', e)
       }
@@ -374,6 +430,8 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     error,
     // 计算属性
     isAuthenticated,
+    isAdmin,
+    adminEntryPath,
     username,
     email,
     status,
@@ -402,6 +460,7 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     resendVerificationEmail,
     changePassword,
     forgotPassword,
-    resetPassword
+    resetPassword,
+    ensureAdminSession
   }
 })

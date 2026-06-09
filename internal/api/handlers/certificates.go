@@ -37,7 +37,9 @@ type CertificateHandler struct {
 type CertificateService interface {
 	Apply(ctx context.Context, req *certificate.ApplyRequest) (*repository.Certificate, error)
 	Upload(ctx context.Context, domain string, certData, keyData []byte) (*repository.Certificate, error)
+	UpdateMaterial(ctx context.Context, certID int64, certData, keyData []byte) (*repository.Certificate, error)
 	Renew(ctx context.Context, certID int64) error
+	Delete(ctx context.Context, certID int64) error
 	DeployToAssignedNodes(ctx context.Context, certID int64) error
 }
 
@@ -185,6 +187,18 @@ func (h *CertificateHandler) deployAssignedNodesAsync(cert *repository.Certifica
 				logger.Err(err))
 		}
 	}(cert.ID, cert.Domain)
+}
+
+func certificateClientErrorMessage(err error) string {
+	if appErr, ok := errors.AsAppError(err); ok {
+		return appErr.Message
+	}
+	return err.Error()
+}
+
+func isCertificateClientError(err error) bool {
+	errCode := errors.GetCode(err)
+	return errCode == errors.ErrCodeBadRequest || errCode == errors.ErrCodeValidation
 }
 
 // toCertificateResponse converts a certificate to API response format.
@@ -335,6 +349,10 @@ func (h *CertificateHandler) Create(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"error": "该域名的证书已存在"})
 			return
 		}
+		if isCertificateClientError(err) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": certificateClientErrorMessage(err)})
+			return
+		}
 		h.logger.Error("Failed to upload certificate", logger.Err(err), logger.F("domain", req.Domain))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "上传证书失败"})
 		return
@@ -393,27 +411,49 @@ func (h *CertificateHandler) Update(c *gin.Context) {
 		return
 	}
 
-	// Update fields
-	if req.Certificate != nil {
-		newCert := strings.TrimSpace(*req.Certificate)
-		if newCert == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "证书内容不能为空"})
+	materialChanged := req.Certificate != nil || req.PrivateKey != nil
+	if materialChanged {
+		if h.certSvc == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "证书服务不可用"})
 			return
 		}
-		expiresAt, parseErr := parseCertificateNotAfter([]byte(newCert))
-		if parseErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":   "证书内容无效",
-				"details": parseErr.Error(),
-			})
+
+		certPEM := []byte(nil)
+		keyPEM := []byte(nil)
+		if req.Certificate != nil {
+			certPEM = []byte(*req.Certificate)
+		}
+		if req.PrivateKey != nil {
+			keyPEM = []byte(*req.PrivateKey)
+		}
+		if req.Certificate == nil || req.PrivateKey == nil {
+			existingCertPEM, existingKeyPEM, readErr := h.readCertificateMaterial(cert)
+			if readErr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":   "更新证书内容或私钥时需要完整的证书和私钥",
+					"details": readErr.Error(),
+				})
+				return
+			}
+			if req.Certificate == nil {
+				certPEM = existingCertPEM
+			}
+			if req.PrivateKey == nil {
+				keyPEM = existingKeyPEM
+			}
+		}
+
+		updatedCert, updateErr := h.certSvc.UpdateMaterial(c.Request.Context(), id, certPEM, keyPEM)
+		if updateErr != nil {
+			if isCertificateClientError(updateErr) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": certificateClientErrorMessage(updateErr)})
+				return
+			}
+			h.logger.Error("Failed to update certificate material", logger.Err(updateErr), logger.F("id", id))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "更新证书内容失败"})
 			return
 		}
-		cert.Certificate = newCert
-		cert.ExpiresAt = expiresAt
-		cert.ExpireDate = &expiresAt
-	}
-	if req.PrivateKey != nil {
-		cert.PrivateKey = *req.PrivateKey
+		cert = updatedCert
 	}
 	if req.AutoRenew != nil {
 		cert.AutoRenew = *req.AutoRenew
@@ -434,6 +474,10 @@ func (h *CertificateHandler) Update(c *gin.Context) {
 		Details:      map[string]any{"domain": cert.Domain},
 	})
 
+	if materialChanged {
+		h.deployAssignedNodesAsync(cert)
+	}
+
 	c.JSON(http.StatusOK, toCertificateResponse(cert))
 }
 
@@ -446,13 +490,29 @@ func (h *CertificateHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.certRepo.Delete(c.Request.Context(), id); err != nil {
+	cert, err := h.certRepo.GetByID(c.Request.Context(), id)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "证书不存在"})
+			return
+		}
+		h.logger.Error("Failed to get certificate before delete", logger.Err(err), logger.F("id", id))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取证书失败"})
+		return
+	}
+
+	if h.certSvc != nil {
+		err = h.certSvc.Delete(c.Request.Context(), id)
+	} else {
+		err = h.certRepo.Delete(c.Request.Context(), id)
+	}
+	if err != nil {
 		if errors.IsNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "证书不存在"})
 			return
 		}
 		h.logger.Error("Failed to delete certificate", logger.Err(err), logger.F("id", id))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除证书失败"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -462,6 +522,7 @@ func (h *CertificateHandler) Delete(c *gin.Context) {
 		Action:       monitor.ActionCertDelete,
 		ResourceType: monitor.ResourceCert,
 		ResourceID:   strconv.FormatInt(id, 10),
+		Details:      map[string]any{"domain": cert.Domain},
 	})
 
 	c.JSON(http.StatusOK, gin.H{"message": "证书删除成功"})
@@ -619,6 +680,8 @@ func (h *CertificateHandler) Renew(c *gin.Context) {
 		ResourceID:   strconv.FormatInt(cert.ID, 10),
 		Details:      map[string]any{"domain": cert.Domain},
 	})
+
+	h.deployAssignedNodesAsync(cert)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":     "证书续期成功",

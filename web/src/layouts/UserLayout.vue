@@ -68,6 +68,13 @@
               </div>
               <template #dropdown>
                 <el-dropdown-menu>
+                  <el-dropdown-item
+                    v-if="userStore.isAdmin"
+                    command="admin"
+                  >
+                    <el-icon><Monitor /></el-icon>
+                    管理后台
+                  </el-dropdown-item>
                   <el-dropdown-item command="balance">
                     <el-icon><Coin /></el-icon>
                     我的余额
@@ -205,6 +212,15 @@
         <el-divider />
         
         <div class="mobile-nav">
+          <button
+            v-if="userStore.isAdmin"
+            type="button"
+            class="mobile-nav-item mobile-nav-button"
+            @click="goToAdminPanel"
+          >
+            <el-icon><Monitor /></el-icon>
+            <span>管理后台</span>
+          </button>
           <router-link
             to="/user/balance"
             class="mobile-nav-item"
@@ -338,8 +354,17 @@ const goToAnnouncements = () => {
   router.push('/user/announcements')
 }
 
+const goToAdminPanel = () => {
+  if (!userStore.ensureAdminSession()) return
+  showMobileMenu.value = false
+  router.push(userStore.adminEntryPath)
+}
+
 const handleCommand = (command) => {
   switch (command) {
+    case 'admin':
+      goToAdminPanel()
+      break
     case 'balance':
       router.push('/user/balance')
       break
@@ -638,6 +663,14 @@ onMounted(() => {
   color: var(--color-text-primary);
   font-size: 15px;
   transition: background-color 0.2s;
+}
+
+.mobile-nav-button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
 }
 
 .mobile-nav-item:hover {

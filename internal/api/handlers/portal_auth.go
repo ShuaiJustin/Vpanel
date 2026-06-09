@@ -624,6 +624,7 @@ func (h *PortalAuthHandler) GetProfile(c *gin.Context) {
 		"email_verified":          user.EmailVerified,
 		"email_verified_at":       user.EmailVerifiedAt,
 		"role":                    user.Role,
+		"permissions":             h.getRolePermissions(c, user.Role),
 		"enabled":                 user.Enabled,
 		"status":                  status,
 		"display_name":            user.DisplayName,

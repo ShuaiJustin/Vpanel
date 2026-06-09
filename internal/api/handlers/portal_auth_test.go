@@ -1109,7 +1109,7 @@ func TestPortalAuthHandler_GetProfileIncludesPortalFields(t *testing.T) {
 		Username:      "profile-user",
 		Email:         "profile@example.com",
 		PasswordHash:  "hashed",
-		Role:          "user",
+		Role:          "admin",
 		Enabled:       true,
 		EmailVerified: true,
 		DisplayName:   "Profile Name",
@@ -1146,6 +1146,10 @@ func TestPortalAuthHandler_GetProfileIncludesPortalFields(t *testing.T) {
 	}
 	if payload["email_verified"] != true {
 		t.Fatalf("expected email_verified=true, got %v", payload["email_verified"])
+	}
+	permissions, ok := payload["permissions"].([]any)
+	if !ok || len(permissions) != 1 || permissions[0] != "*" {
+		t.Fatalf("expected admin permissions to include wildcard, got %#v", payload["permissions"])
 	}
 }
 

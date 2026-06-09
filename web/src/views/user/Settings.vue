@@ -32,6 +32,27 @@
           shadow="never"
           class="settings-card"
         >
+          <div
+            v-if="userStore.isAdmin"
+            class="admin-panel-entry"
+          >
+            <div class="admin-panel-copy">
+              <h3 class="section-title">
+                管理权限
+              </h3>
+              <p class="section-desc">
+                当前账号具备管理员权限，可进入管理后台维护系统配置和用户数据。
+              </p>
+            </div>
+            <el-button
+              type="primary"
+              @click="goToAdminPanel"
+            >
+              <el-icon><Monitor /></el-icon>
+              管理后台
+            </el-button>
+          </div>
+
           <el-form
             ref="profileFormRef"
             :model="profileForm"
@@ -552,7 +573,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api/base'
-import { User } from '@element-plus/icons-vue'
+import { Monitor, User } from '@element-plus/icons-vue'
 import QRCode from 'qrcode'
 import { auth as portalAuthApi } from '@/api/modules/portal'
 import { useUserPortalStore } from '@/stores/userPortal'
@@ -748,6 +769,11 @@ async function resendVerification() {
   } catch (error) {
     ElMessage.error(extractErrorMessage(error) || '发送验证邮件失败')
   }
+}
+
+function goToAdminPanel() {
+  if (!userStore.ensureAdminSession()) return
+  router.push(userStore.adminEntryPath)
 }
 
 const formatSessionDateTime = (value) => {
@@ -1082,6 +1108,30 @@ onMounted(async () => {
   margin-top: 4px;
 }
 
+.admin-panel-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  margin-bottom: 20px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 8px;
+  background: var(--el-fill-color-lighter);
+}
+
+.admin-panel-copy {
+  min-width: 0;
+}
+
+.admin-panel-entry .section-title {
+  margin-bottom: 8px;
+}
+
+.admin-panel-entry .section-desc {
+  margin-bottom: 0;
+}
+
 /* 头像上传 */
 .avatar-upload {
   display: flex;
@@ -1260,6 +1310,15 @@ onMounted(async () => {
   .two-factor-section {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .admin-panel-entry {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-panel-entry .el-button {
+    width: 100%;
   }
 
   .backup-codes {

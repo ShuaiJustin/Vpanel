@@ -55,6 +55,13 @@
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
+              <el-dropdown-item
+                v-if="userStore.isAdmin"
+                command="admin"
+              >
+                <el-icon><Monitor /></el-icon>
+                管理后台
+              </el-dropdown-item>
               <el-dropdown-item command="balance">
                 <el-icon><Coin /></el-icon>
                 我的余额
@@ -202,6 +209,11 @@ function toggleTheme() {
   toggleDarkMode()
 }
 
+function goToAdminPanel() {
+  if (!userStore.ensureAdminSession()) return
+  router.push(userStore.adminEntryPath)
+}
+
 function goToBalance() {
   router.push('/user/balance')
 }
@@ -216,6 +228,9 @@ function goToHelp() {
 
 function handleAction(command) {
   switch (command) {
+    case 'admin':
+      goToAdminPanel()
+      break
     case 'balance':
       goToBalance()
       break

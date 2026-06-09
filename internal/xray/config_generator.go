@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"v/internal/database/repository"
 	"v/internal/logger"
@@ -820,6 +821,11 @@ func (g *ConfigGenerator) findCertificateForDomain(ctx context.Context, domain s
 				logger.F("status", cert.Status))
 			continue
 		}
+		if certificateIsExpired(cert) {
+			g.logger.Warn("certificate found but expired",
+				logger.F("domain", candidate))
+			continue
+		}
 		if !hasRepositoryCertificateMaterial(cert) {
 			g.logger.Warn("certificate found but material missing", logger.F("domain", candidate))
 			continue
@@ -827,6 +833,17 @@ func (g *ConfigGenerator) findCertificateForDomain(ctx context.Context, domain s
 		return cert, candidate, nil
 	}
 	return nil, "", nil
+}
+
+func certificateIsExpired(cert *repository.Certificate) bool {
+	if cert == nil {
+		return true
+	}
+	expiresAt := cert.ExpiresAt
+	if expiresAt.IsZero() && cert.ExpireDate != nil {
+		expiresAt = *cert.ExpireDate
+	}
+	return !expiresAt.IsZero() && !expiresAt.After(time.Now())
 }
 
 func hasRepositoryCertificateMaterial(cert *repository.Certificate) bool {

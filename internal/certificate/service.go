@@ -2,7 +2,9 @@
 package certificate
 
 import (
+	"bytes"
 	"context"
+	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -49,30 +51,282 @@ var (
 // sanitizeDomainForPath sanitizes domain name for safe use in file paths
 // Prevents path traversal attacks
 func sanitizeDomainForPath(domain string) (string, error) {
-	// Remove wildcard prefix if present
-	domain = strings.TrimPrefix(domain, "*.")
-	
+	domain = strings.TrimSpace(strings.ToLower(domain))
+	rawDomain := domain
+
 	// Validate domain format
 	if err := validateDomain(domain); err != nil {
 		return "", err
 	}
-	
+
+	// Use a literal-safe directory for wildcard certificates. The previous
+	// implementation stripped "*.", which made *.example.com share the same
+	// directory as example.com and could overwrite the wrong certificate.
+	if strings.HasPrefix(rawDomain, "*.") {
+		domain = "_wildcard_." + strings.TrimPrefix(rawDomain, "*.")
+	}
+
 	// Clean the path to remove any .. or . components
 	cleaned := filepath.Clean(domain)
-	
+
 	// Ensure the cleaned path doesn't contain path separators
 	// (which would indicate an attempt to escape the directory)
 	if strings.Contains(cleaned, string(filepath.Separator)) {
 		return "", fmt.Errorf("invalid domain: contains path separators")
 	}
-	
+
 	// Ensure the cleaned path is the same as the original
 	// (prevents attempts to use . or .. in domain names)
 	if cleaned != domain {
 		return "", fmt.Errorf("invalid domain: path traversal attempt detected")
 	}
-	
+
 	return cleaned, nil
+}
+
+func certificatePathWithinBase(path string, base string) bool {
+	cleanBase := filepath.Clean(base)
+	cleanPath := filepath.Clean(path)
+	rel, err := filepath.Rel(cleanBase, cleanPath)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+func normalizePEMData(data []byte) []byte {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 {
+		return nil
+	}
+	if data[len(data)-1] != '\n' {
+		data = append(data, '\n')
+	}
+	return data
+}
+
+func parseFirstCertificate(certData []byte) (*x509.Certificate, error) {
+	rest := certData
+	for {
+		block, remaining := pem.Decode(rest)
+		if block == nil {
+			return nil, fmt.Errorf("未找到 CERTIFICATE 块")
+		}
+		rest = remaining
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("证书解析失败: %w", err)
+		}
+		return cert, nil
+	}
+}
+
+func parsePrivateKeyPublic(keyData []byte) (crypto.PublicKey, error) {
+	rest := keyData
+	for {
+		block, remaining := pem.Decode(rest)
+		if block == nil {
+			return nil, fmt.Errorf("未找到私钥 PEM 块")
+		}
+		rest = remaining
+		if !strings.Contains(block.Type, "PRIVATE KEY") {
+			continue
+		}
+
+		switch block.Type {
+		case "RSA PRIVATE KEY":
+			key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+			if err != nil {
+				return nil, fmt.Errorf("RSA 私钥解析失败: %w", err)
+			}
+			return key.Public(), nil
+		case "EC PRIVATE KEY":
+			key, err := x509.ParseECPrivateKey(block.Bytes)
+			if err != nil {
+				return nil, fmt.Errorf("EC 私钥解析失败: %w", err)
+			}
+			return key.Public(), nil
+		default:
+			key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+			if err != nil {
+				return nil, fmt.Errorf("PKCS#8 私钥解析失败: %w", err)
+			}
+			signer, ok := key.(crypto.Signer)
+			if !ok {
+				return nil, fmt.Errorf("不支持的私钥类型 %T", key)
+			}
+			return signer.Public(), nil
+		}
+	}
+}
+
+func publicKeysMatch(certPublicKey crypto.PublicKey, keyPublicKey crypto.PublicKey) bool {
+	certDER, certErr := x509.MarshalPKIXPublicKey(certPublicKey)
+	keyDER, keyErr := x509.MarshalPKIXPublicKey(keyPublicKey)
+	return certErr == nil && keyErr == nil && bytes.Equal(certDER, keyDER)
+}
+
+func certificateCoversDomain(cert *x509.Certificate, domain string) error {
+	domain = strings.TrimSpace(strings.ToLower(domain))
+	if domain == "" {
+		return fmt.Errorf("域名不能为空")
+	}
+
+	if strings.HasPrefix(domain, "*.") {
+		baseDomain := strings.TrimPrefix(domain, "*.")
+		probeDomain := "vpanel-check." + baseDomain
+		if err := cert.VerifyHostname(probeDomain); err == nil {
+			return nil
+		}
+		for _, dnsName := range cert.DNSNames {
+			if strings.EqualFold(dnsName, domain) {
+				return nil
+			}
+		}
+		if strings.EqualFold(cert.Subject.CommonName, domain) {
+			return nil
+		}
+		return fmt.Errorf("证书不包含泛域名 %s", domain)
+	}
+
+	if err := cert.VerifyHostname(domain); err == nil {
+		return nil
+	}
+	if strings.EqualFold(cert.Subject.CommonName, domain) {
+		return nil
+	}
+	return fmt.Errorf("证书不包含域名 %s", domain)
+}
+
+func validateCertificateMaterial(domain string, certData []byte, keyData []byte) (*x509.Certificate, []byte, []byte, error) {
+	certData = normalizePEMData(certData)
+	keyData = normalizePEMData(keyData)
+	if len(certData) == 0 {
+		return nil, nil, nil, apperrors.NewBadRequestError("证书内容不能为空")
+	}
+	if len(keyData) == 0 {
+		return nil, nil, nil, apperrors.NewBadRequestError("私钥内容不能为空")
+	}
+
+	cert, err := parseFirstCertificate(certData)
+	if err != nil {
+		return nil, nil, nil, apperrors.NewBadRequestError(err.Error())
+	}
+
+	now := time.Now()
+	if !cert.NotAfter.After(now) {
+		return nil, nil, nil, apperrors.NewBadRequestError(fmt.Sprintf("证书已过期，过期时间: %s", cert.NotAfter.UTC().Format(time.RFC3339)))
+	}
+	if cert.NotBefore.After(now.Add(5 * time.Minute)) {
+		return nil, nil, nil, apperrors.NewBadRequestError(fmt.Sprintf("证书尚未生效，生效时间: %s", cert.NotBefore.UTC().Format(time.RFC3339)))
+	}
+	if err := certificateCoversDomain(cert, domain); err != nil {
+		return nil, nil, nil, apperrors.NewBadRequestError(err.Error())
+	}
+
+	keyPublicKey, err := parsePrivateKeyPublic(keyData)
+	if err != nil {
+		return nil, nil, nil, apperrors.NewBadRequestError(err.Error())
+	}
+	if !publicKeysMatch(cert.PublicKey, keyPublicKey) {
+		return nil, nil, nil, apperrors.NewBadRequestError("证书与私钥不匹配")
+	}
+
+	return cert, certData, keyData, nil
+}
+
+func (s *Service) certificateStoragePaths(domain string) (string, string, error) {
+	safeDomain, err := sanitizeDomainForPath(domain)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid domain for path: %w", err)
+	}
+
+	certDir := filepath.Join(s.certDir, safeDomain)
+	if !certificatePathWithinBase(certDir, s.certDir) {
+		return "", "", fmt.Errorf("path traversal attempt detected")
+	}
+	if err := os.MkdirAll(certDir, 0700); err != nil {
+		return "", "", fmt.Errorf("创建证书目录失败: %w", err)
+	}
+
+	return filepath.Join(certDir, "fullchain.pem"), filepath.Join(certDir, "privkey.pem"), nil
+}
+
+func (s *Service) writeCertificateFiles(domain string, certData, keyData []byte) (string, string, error) {
+	certFile, keyFile, err := s.certificateStoragePaths(domain)
+	if err != nil {
+		return "", "", err
+	}
+
+	if err := os.WriteFile(certFile, certData, 0644); err != nil {
+		return "", "", fmt.Errorf("保存证书文件失败: %w", err)
+	}
+	if err := os.Chmod(certFile, 0644); err != nil {
+		s.logger.Warn("设置证书文件权限失败", logger.Err(err))
+	}
+
+	if err := os.WriteFile(keyFile, keyData, 0600); err != nil {
+		return "", "", fmt.Errorf("保存私钥文件失败: %w", err)
+	}
+	if err := os.Chmod(keyFile, 0600); err != nil {
+		s.logger.Warn("设置私钥文件权限失败", logger.Err(err))
+	}
+
+	return certFile, keyFile, nil
+}
+
+func readStoredCertificateMaterial(cert *repository.Certificate) ([]byte, []byte, error) {
+	var certData []byte
+	if strings.TrimSpace(cert.Certificate) != "" {
+		certData = []byte(cert.Certificate)
+	} else if strings.TrimSpace(cert.CertPath) != "" {
+		data, err := os.ReadFile(cert.CertPath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("读取证书文件失败: %w", err)
+		}
+		certData = data
+	}
+
+	var keyData []byte
+	if strings.TrimSpace(cert.PrivateKey) != "" {
+		keyData = []byte(cert.PrivateKey)
+	} else if strings.TrimSpace(cert.KeyPath) != "" {
+		data, err := os.ReadFile(cert.KeyPath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("读取私钥文件失败: %w", err)
+		}
+		keyData = data
+	}
+
+	if len(bytes.TrimSpace(certData)) == 0 {
+		return nil, nil, fmt.Errorf("证书内容为空")
+	}
+	if len(bytes.TrimSpace(keyData)) == 0 {
+		return nil, nil, fmt.Errorf("私钥内容为空")
+	}
+	return certData, keyData, nil
+}
+
+func setCertificateMaterialFields(cert *repository.Certificate, parsed *x509.Certificate, certPath string, keyPath string) {
+	now := time.Now()
+	notAfter := parsed.NotAfter.UTC()
+
+	cert.CertPath = certPath
+	cert.KeyPath = keyPath
+	cert.Certificate = ""
+	cert.PrivateKey = ""
+	cert.IssueDate = &now
+	cert.ExpireDate = &notAfter
+	cert.ExpiresAt = notAfter
+	cert.Status = "active"
+	cert.ErrorMessage = ""
 }
 
 // validateEmail validates and sanitizes email addresses
@@ -997,26 +1251,10 @@ func (s *Service) issueWithAcme(ctx context.Context, req *ApplyRequest, cert *re
 
 	s.logger.Info("证书申请成功", logger.F("domain", req.Domain))
 
-	// SECURITY: Sanitize domain for safe path construction
-	safeDomain, err := sanitizeDomainForPath(req.Domain)
+	certFile, keyFile, err := s.certificateStoragePaths(req.Domain)
 	if err != nil {
-		return fmt.Errorf("invalid domain for path: %w", err)
+		return err
 	}
-
-	// 安装证书到指定目录
-	certPath := filepath.Join(s.certDir, safeDomain)
-	// Validate that certPath is within certDir (防止路径遍历)
-	if !strings.HasPrefix(filepath.Clean(certPath), filepath.Clean(s.certDir)) {
-		return fmt.Errorf("path traversal attempt detected")
-	}
-	
-	// 使用安全的目录权限 (0700)
-	if err := os.MkdirAll(certPath, 0700); err != nil {
-		return fmt.Errorf("创建证书目录失败: %w", err)
-	}
-
-	certFile := filepath.Join(certPath, "fullchain.pem")
-	keyFile := filepath.Join(certPath, "privkey.pem")
 
 	installArgs := []string{
 		"--installcert",
@@ -1034,7 +1272,6 @@ func (s *Service) issueWithAcme(ctx context.Context, req *ApplyRequest, cert *re
 		return fmt.Errorf("安装证书失败: %w", err)
 	}
 
-	// 设置证书文件权限为 0644，私钥文件权限为 0600
 	if err := os.Chmod(certFile, 0644); err != nil {
 		s.logger.Warn("设置证书文件权限失败", logger.Err(err))
 	}
@@ -1042,97 +1279,57 @@ func (s *Service) issueWithAcme(ctx context.Context, req *ApplyRequest, cert *re
 		s.logger.Warn("设置私钥文件权限失败", logger.Err(err))
 	}
 
-	// 读取证书信息
 	certData, err := os.ReadFile(certFile)
 	if err != nil {
 		return fmt.Errorf("读取证书文件失败: %w", err)
 	}
-
-	// 解析证书获取过期时间
-	block, _ := pem.Decode(certData)
-	if block == nil {
-		return fmt.Errorf("解析证书失败")
-	}
-
-	x509Cert, err := x509.ParseCertificate(block.Bytes)
+	keyData, err := os.ReadFile(keyFile)
 	if err != nil {
-		return fmt.Errorf("解析证书失败: %w", err)
+		return fmt.Errorf("读取私钥文件失败: %w", err)
 	}
 
-	// 更新证书记录
-	now := time.Now()
-	cert.CertPath = certFile
-	cert.KeyPath = keyFile
-	cert.IssueDate = &now
-	cert.ExpireDate = &x509Cert.NotAfter
-	cert.ExpiresAt = x509Cert.NotAfter
-	cert.Status = "active"
-	cert.ErrorMessage = ""
+	parsedCert, certData, keyData, err := validateCertificateMaterial(req.Domain, certData, keyData)
+	if err != nil {
+		return err
+	}
+	if certFile, keyFile, err = s.writeCertificateFiles(req.Domain, certData, keyData); err != nil {
+		return err
+	}
 
-	return s.certRepo.Update(context.Background(), cert)
+	setCertificateMaterialFields(cert, parsedCert, certFile, keyFile)
+
+	return s.certRepo.Update(ctx, cert)
 }
 
 // Upload uploads a certificate manually.
 func (s *Service) Upload(ctx context.Context, domain string, certData, keyData []byte) (*repository.Certificate, error) {
 	s.logger.Info("上传证书", logger.F("domain", domain))
 
-	// 验证证书格式
-	block, _ := pem.Decode(certData)
-	if block == nil {
-		return nil, fmt.Errorf("无效的证书格式")
-	}
-
-	x509Cert, err := x509.ParseCertificate(block.Bytes)
+	domain = strings.TrimSpace(strings.ToLower(domain))
+	parsedCert, certData, keyData, err := validateCertificateMaterial(domain, certData, keyData)
 	if err != nil {
-		return nil, fmt.Errorf("解析证书失败: %w", err)
+		return nil, err
 	}
-
-	// 验证私钥格式
-	keyBlock, _ := pem.Decode(keyData)
-	if keyBlock == nil {
-		return nil, fmt.Errorf("无效的私钥格式")
+	if existingCert, err := s.certRepo.GetByDomain(ctx, domain); err == nil && existingCert != nil {
+		return nil, apperrors.NewConflictError("certificate", "domain", domain)
+	} else if err != nil && !apperrors.IsNotFound(err) {
+		return nil, fmt.Errorf("查询证书记录失败: %w", err)
 	}
-
-	// SECURITY: Sanitize domain for safe path construction
-	safeDomain, err := sanitizeDomainForPath(domain)
+	certFile, keyFile, err := s.writeCertificateFiles(domain, certData, keyData)
 	if err != nil {
-		return nil, fmt.Errorf("invalid domain for path: %w", err)
+		return nil, err
 	}
 
-	// 保存证书文件
-	certPath := filepath.Join(s.certDir, safeDomain)
-	// Validate that certPath is within certDir (防止路径遍历)
-	if !strings.HasPrefix(filepath.Clean(certPath), filepath.Clean(s.certDir)) {
-		return nil, fmt.Errorf("path traversal attempt detected")
-	}
-	
-	// 使用安全的目录权限 (0700)
-	if err := os.MkdirAll(certPath, 0700); err != nil {
-		return nil, fmt.Errorf("创建证书目录失败: %w", err)
-	}
-
-	certFile := filepath.Join(certPath, "fullchain.pem")
-	keyFile := filepath.Join(certPath, "privkey.pem")
-
-	// 证书文件权限 0644，私钥文件权限 0600
-	if err := os.WriteFile(certFile, certData, 0644); err != nil {
-		return nil, fmt.Errorf("保存证书文件失败: %w", err)
-	}
-
-	if err := os.WriteFile(keyFile, keyData, 0600); err != nil {
-		return nil, fmt.Errorf("保存私钥文件失败: %w", err)
-	}
-
-	// 创建证书记录
 	now := time.Now()
+	notAfter := parsedCert.NotAfter.UTC()
 	cert := &repository.Certificate{
 		Domain:     domain,
 		Provider:   "manual",
 		CertPath:   certFile,
 		KeyPath:    keyFile,
 		IssueDate:  &now,
-		ExpireDate: &x509Cert.NotAfter,
-		ExpiresAt:  x509Cert.NotAfter,
+		ExpireDate: &notAfter,
+		ExpiresAt:  notAfter,
 		AutoRenew:  false,
 		Status:     "active",
 	}
@@ -1142,6 +1339,35 @@ func (s *Service) Upload(ctx context.Context, domain string, certData, keyData [
 	}
 
 	s.logger.Info("证书上传成功", logger.F("domain", domain))
+	return cert, nil
+}
+
+// UpdateMaterial replaces the stored PEM pair for an existing certificate.
+func (s *Service) UpdateMaterial(ctx context.Context, id int64, certData, keyData []byte) (*repository.Certificate, error) {
+	cert, err := s.certRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("获取证书失败: %w", err)
+	}
+
+	parsedCert, certData, keyData, err := validateCertificateMaterial(cert.Domain, certData, keyData)
+	if err != nil {
+		return nil, err
+	}
+	certFile, keyFile, err := s.writeCertificateFiles(cert.Domain, certData, keyData)
+	if err != nil {
+		return nil, err
+	}
+
+	cert.Provider = "manual"
+	cert.AutoRenew = false
+	setCertificateMaterialFields(cert, parsedCert, certFile, keyFile)
+	if err := s.certRepo.Update(ctx, cert); err != nil {
+		return nil, fmt.Errorf("更新证书记录失败: %w", err)
+	}
+
+	s.logger.Info("证书内容已更新",
+		logger.F("domain", cert.Domain),
+		logger.F("cert_id", cert.ID))
 	return cert, nil
 }
 
@@ -1175,15 +1401,16 @@ func (s *Service) Renew(ctx context.Context, id int64) error {
 		"--force",
 	}
 
-	cmd := exec.Command(acmePath, args...)
+	cmd := exec.CommandContext(ctx, acmePath, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("续期失败: %s, output: %s", err.Error(), string(output))
 	}
 
-	// 重新安装证书
-	certFile := cert.CertPath
-	keyFile := cert.KeyPath
+	certFile, keyFile, err := s.certificateStoragePaths(cert.Domain)
+	if err != nil {
+		return err
+	}
 
 	installArgs := []string{
 		"--installcert",
@@ -1193,32 +1420,29 @@ func (s *Service) Renew(ctx context.Context, id int64) error {
 		"--ecc",
 	}
 
-	cmd = exec.Command(acmePath, installArgs...)
+	cmd = exec.CommandContext(ctx, acmePath, installArgs...)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("安装证书失败: %s, output: %s", err.Error(), string(output))
 	}
 
-	// 读取新证书信息
 	certData, err := os.ReadFile(certFile)
 	if err != nil {
 		return fmt.Errorf("读取证书文件失败: %w", err)
 	}
-
-	block, _ := pem.Decode(certData)
-	if block == nil {
-		return fmt.Errorf("解析证书失败")
-	}
-
-	x509Cert, err := x509.ParseCertificate(block.Bytes)
+	keyData, err := os.ReadFile(keyFile)
 	if err != nil {
-		return fmt.Errorf("解析证书失败: %w", err)
+		return fmt.Errorf("读取私钥文件失败: %w", err)
 	}
 
-	// 更新证书记录
-	now := time.Now()
-	cert.IssueDate = &now
-	cert.ExpireDate = &x509Cert.NotAfter
-	cert.ExpiresAt = x509Cert.NotAfter
+	parsedCert, certData, keyData, err := validateCertificateMaterial(cert.Domain, certData, keyData)
+	if err != nil {
+		return err
+	}
+	if certFile, keyFile, err = s.writeCertificateFiles(cert.Domain, certData, keyData); err != nil {
+		return err
+	}
+
+	setCertificateMaterialFields(cert, parsedCert, certFile, keyFile)
 
 	if err := s.certRepo.Update(ctx, cert); err != nil {
 		return fmt.Errorf("更新证书记录失败: %w", err)
@@ -1235,15 +1459,51 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 		return fmt.Errorf("获取证书失败: %w", err)
 	}
 
-	// 删除证书文件
-	if cert.CertPath != "" {
-		certDir := filepath.Dir(cert.CertPath)
-		if err := os.RemoveAll(certDir); err != nil {
-			s.logger.Warn("删除证书文件失败", logger.F("error", err.Error()))
+	if s.nodeRepo != nil {
+		nodes, err := s.nodeRepo.List(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("获取节点列表失败: %w", err)
+		}
+		for _, node := range nodes {
+			if node.CertificateID == nil || *node.CertificateID != id {
+				continue
+			}
+			node.CertificateID = nil
+			if err := s.nodeRepo.Update(ctx, node); err != nil {
+				return fmt.Errorf("解除节点证书关联失败: %w", err)
+			}
 		}
 	}
 
-	// 删除数据库记录
+	seenDirs := make(map[string]struct{})
+	for _, materialPath := range []string{cert.CertPath, cert.KeyPath} {
+		if strings.TrimSpace(materialPath) == "" {
+			continue
+		}
+		certDir := filepath.Dir(materialPath)
+		if _, exists := seenDirs[certDir]; exists {
+			continue
+		}
+		seenDirs[certDir] = struct{}{}
+		if filepath.Clean(certDir) == filepath.Clean(s.certDir) {
+			s.logger.Warn("跳过删除证书目录：路径指向证书存储根目录",
+				logger.F("cert_id", id),
+				logger.F("path", certDir))
+			continue
+		}
+		if !certificatePathWithinBase(certDir, s.certDir) {
+			s.logger.Warn("跳过删除证书目录：路径不在证书存储目录内",
+				logger.F("cert_id", id),
+				logger.F("path", certDir))
+			continue
+		}
+		if err := os.RemoveAll(certDir); err != nil {
+			s.logger.Warn("删除证书文件失败",
+				logger.F("path", certDir),
+				logger.Err(err))
+		}
+	}
+
 	if err := s.certRepo.Delete(ctx, id); err != nil {
 		return fmt.Errorf("删除证书记录失败: %w", err)
 	}
@@ -1378,7 +1638,7 @@ func (s *Service) GenerateSelfSigned(ctx context.Context, domain string) (*repos
 	if !strings.HasPrefix(filepath.Clean(certPath), filepath.Clean(s.certDir)) {
 		return nil, fmt.Errorf("path traversal attempt detected")
 	}
-	
+
 	// 使用安全的目录权限 (0700)
 	if err := os.MkdirAll(certPath, 0700); err != nil {
 		return nil, fmt.Errorf("创建证书目录失败: %w", err)
@@ -1554,21 +1814,18 @@ func (s *Service) DeployToNode(ctx context.Context, certID int64, nodeID int64) 
 		logger.F("domain", cert.Domain),
 		logger.F("node", node.Name))
 
-	// 读取证书文件
-	certData, err := os.ReadFile(cert.CertPath)
+	certData, keyData, err := readStoredCertificateMaterial(cert)
 	if err != nil {
 		deployment.Status = "failed"
-		deployment.Message = fmt.Sprintf("读取证书文件失败: %v", err)
+		deployment.Message = fmt.Sprintf("读取证书材料失败: %v", err)
 		s.deploymentRepo.Update(ctx, deployment)
-		return fmt.Errorf("读取证书文件失败: %w", err)
+		return fmt.Errorf("读取证书材料失败: %w", err)
 	}
-
-	keyData, err := os.ReadFile(cert.KeyPath)
-	if err != nil {
+	if _, certData, keyData, err = validateCertificateMaterial(cert.Domain, certData, keyData); err != nil {
 		deployment.Status = "failed"
-		deployment.Message = fmt.Sprintf("读取私钥文件失败: %v", err)
+		deployment.Message = fmt.Sprintf("证书材料无效: %v", err)
 		s.deploymentRepo.Update(ctx, deployment)
-		return fmt.Errorf("读取私钥文件失败: %w", err)
+		return fmt.Errorf("证书材料无效: %w", err)
 	}
 
 	// 通过 SSH 部署到节点
@@ -1730,30 +1987,31 @@ func (s *Service) deployViaSSH(node *repository.Node, domain string, certData, k
 
 	s.logger.Info("SSH 连接成功")
 
-	// 创建证书目录
-	certDir := fmt.Sprintf("/etc/xray/certs/%s", domain)
-	if err := s.executeSSHCommand(client, fmt.Sprintf("mkdir -p %s", certDir)); err != nil {
+	safeDomain, err := sanitizeDomainForPath(domain)
+	if err != nil {
+		return fmt.Errorf("invalid domain for remote path: %w", err)
+	}
+
+	certDir := "/etc/xray/certs/" + safeDomain
+	if err := s.executeSSHCommand(client, fmt.Sprintf("mkdir -p %s", shellQuote(certDir))); err != nil {
 		return fmt.Errorf("创建证书目录失败: %w", err)
 	}
 
-	// 上传证书文件
 	certPath := fmt.Sprintf("%s/fullchain.pem", certDir)
 	if err := s.uploadFileSSH(client, certPath, certData); err != nil {
 		return fmt.Errorf("上传证书文件失败: %w", err)
 	}
 
-	// 上传私钥文件
 	keyPath := fmt.Sprintf("%s/privkey.pem", certDir)
 	if err := s.uploadFileSSH(client, keyPath, keyData); err != nil {
 		return fmt.Errorf("上传私钥文件失败: %w", err)
 	}
 
-	// 设置文件权限
-	if err := s.executeSSHCommand(client, fmt.Sprintf("chmod 644 %s", certPath)); err != nil {
+	if err := s.executeSSHCommand(client, fmt.Sprintf("chmod 644 %s", shellQuote(certPath))); err != nil {
 		return fmt.Errorf("设置证书权限失败: %w", err)
 	}
 
-	if err := s.executeSSHCommand(client, fmt.Sprintf("chmod 600 %s", keyPath)); err != nil {
+	if err := s.executeSSHCommand(client, fmt.Sprintf("chmod 600 %s", shellQuote(keyPath))); err != nil {
 		return fmt.Errorf("设置私钥权限失败: %w", err)
 	}
 

@@ -196,6 +196,23 @@ const twoFARules = {
   ]
 }
 
+function getSafeRedirectPath() {
+  const redirect = route.query.redirect
+  if (typeof redirect !== 'string' || !redirect.startsWith('/') || redirect.startsWith('//')) {
+    return ''
+  }
+  return redirect
+}
+
+function getPostLoginPath(user) {
+  const redirect = getSafeRedirectPath()
+  if (user?.role === 'admin') {
+    return redirect.startsWith('/admin') ? redirect : userStore.adminEntryPath
+  }
+
+  return redirect && !redirect.startsWith('/admin') ? redirect : '/user/dashboard'
+}
+
 // 处理登录
 async function handleLogin() {
   if (!loginFormRef.value) return
@@ -220,16 +237,7 @@ async function handleLogin() {
     }
     
     ElMessage.success('登录成功')
-    
-    // 根据用户角色跳转
-    if (response.user && response.user.role === 'admin') {
-      // 管理员用户跳转到管理后台
-      router.push('/admin/dashboard')
-    } else {
-      // 普通用户跳转到用户门户
-      const redirect = route.query.redirect || '/user/dashboard'
-      router.push(redirect)
-    }
+    router.push(getPostLoginPath(response.user))
   } catch (error) {
     let message = extractErrorMessage(error) || '登录失败'
     const status = getErrorStatus(error)
@@ -265,16 +273,7 @@ async function handle2FAVerify() {
     )
     
     ElMessage.success('登录成功')
-    
-    // 根据用户角色跳转
-    if (response.user && response.user.role === 'admin') {
-      // 管理员用户跳转到管理后台
-      router.push('/admin/dashboard')
-    } else {
-      // 普通用户跳转到用户门户
-      const redirect = route.query.redirect || '/user/dashboard'
-      router.push(redirect)
-    }
+    router.push(getPostLoginPath(response.user))
   } catch (error) {
     ElMessage.error(extractErrorMessage(error) || '验证失败')
   } finally {
