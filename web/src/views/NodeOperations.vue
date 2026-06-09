@@ -558,6 +558,20 @@
           </el-form-item>
         </el-form>
       </div>
+      <template #footer>
+        <div class="network-dialog-footer">
+          <el-button @click="networkOptimizationDialogVisible = false">
+            关闭
+          </el-button>
+          <el-button
+            type="primary"
+            :loading="savingSSHConfig"
+            @click="saveSSHConfig"
+          >
+            保存 SSH 配置
+          </el-button>
+        </div>
+      </template>
     </el-dialog>
   </div>
 </template>
@@ -606,6 +620,7 @@ const networkOptimizationAction = ref('')
 const networkLogPanels = ref([])
 const networkOptimizationLogs = ref('')
 const networkOptimizationState = ref(null)
+const savingSSHConfig = ref(false)
 const networkOptimizationMeta = ref({
   has_saved_settings: false,
   saved_settings: {},
@@ -963,6 +978,49 @@ const getNetworkOptimizationSSHPayload = () => ({
   password: sshForm.password,
   private_key: sshForm.private_key
 })
+
+const saveSSHConfig = async () => {
+  if (!node.value) return
+
+  if (!sshForm.host || !sshForm.username) {
+    ElMessage.warning('请先填写 SSH 主机和用户名')
+    return
+  }
+  if (!sshForm.port || sshForm.port < 1 || sshForm.port > 65535) {
+    ElMessage.warning('SSH 端口必须在 1-65535 之间')
+    return
+  }
+  if (!sshForm.password && !hasSavedSSHCredentials.value) {
+    ElMessage.warning('首次保存 SSH 配置时请输入密码')
+    return
+  }
+  if (sshForm.private_key && !sshForm.password) {
+    ElMessage.warning('私钥内容仅用于本次操作；当前保存按钮会保存主机、端口、用户名和密码')
+  }
+
+  savingSSHConfig.value = true
+  try {
+    const ssh = {
+      host: sshForm.host,
+      port: sshForm.port,
+      username: sshForm.username
+    }
+    if (sshForm.password) {
+      ssh.password = sshForm.password
+    }
+
+    await nodesApi.update(node.value.id, { ssh })
+    sshForm.password = ''
+    ElMessage.success('SSH 配置已保存')
+    networkOptimizationDialogVisible.value = false
+    await fetchNode()
+    await fetchNetworkOptimizationProfile(true)
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error) || '保存 SSH 配置失败')
+  } finally {
+    savingSSHConfig.value = false
+  }
+}
 
 const validateNetworkOptimizationSSH = () => {
   if (!sshForm.host || !sshForm.username) {
@@ -1482,6 +1540,12 @@ watch(
 
 .network-dialog-form {
   margin-top: 4px;
+}
+
+.network-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 @media (max-width: 1280px) {

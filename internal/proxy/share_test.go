@@ -27,6 +27,17 @@ func TestResolveServerAddress_FallsBackToSNIWhenAddressMissing(t *testing.T) {
 	}
 }
 
+func TestResolveSNI_NormalizesWildcardDomainForClientSNI(t *testing.T) {
+	sni := ResolveSNI(map[string]any{
+		"security":    "tls",
+		"server_name": "*.example.com",
+	})
+
+	if sni != "www.example.com" {
+		t.Fatalf("expected wildcard SNI to be normalized to www.example.com, got %q", sni)
+	}
+}
+
 func TestResolveServerAddress_PrefersExplicitHostOverLegacyServerSetting(t *testing.T) {
 	server := ResolveServerAddress("64.176.54.36", map[string]any{
 		"server": "old.example.com",

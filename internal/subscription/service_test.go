@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"net"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -840,6 +842,179 @@ func TestGetUserEnabledProxies_UsesTLSDomainAsServer(t *testing.T) {
 	}
 }
 
+func TestGenerateContent_NormalizesWildcardSNIForClashMeta(t *testing.T) {
+	db := setupTestDB(t)
+	service := createTestService(t, db)
+	ctx := context.Background()
+
+	userID := createTestUser(t, db, "wildcard-sni-user")
+
+	proxyModel := &repository.Proxy{
+		UserID:   userID,
+		Name:     "Wildcard Trojan",
+		Protocol: "trojan",
+		Host:     "64.176.54.36",
+		Port:     443,
+		Settings: map[string]interface{}{
+			"password":    "secret",
+			"security":    "tls",
+			"server_name": "*.example.com",
+			"sni":         "*.example.com",
+			"tls_domain":  "*.example.com",
+		},
+		Enabled: true,
+	}
+	if err := db.Create(proxyModel).Error; err != nil {
+		t.Fatalf("Failed to create proxy: %v", err)
+	}
+
+	content, _, _, err := service.GenerateContent(ctx, userID, FormatClashMeta, nil)
+	if err != nil {
+		t.Fatalf("GenerateContent returned error: %v", err)
+	}
+	body := string(content)
+	if strings.Contains(body, "*.example.com") {
+		t.Fatalf("expected wildcard SNI to be removed from generated content, got %s", body)
+	}
+	if !strings.Contains(body, "sni: www.example.com") {
+		t.Fatalf("expected generated content to include normalized SNI, got %s", body)
+	}
+}
+
+func TestGetUserEnabledProxies_FiltersUnreachableProxyOnUnhealthyNode(t *testing.T) {
+	db := setupTestDB(t)
+	if err := db.AutoMigrate(&repository.Node{}); err != nil {
+		t.Fatalf("Failed to migrate node model: %v", err)
+	}
+	service := createTestService(t, db).WithNodeRepository(repository.NewNodeRepository(db))
+	ctx := context.Background()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen on local tcp port: %v", err)
+	}
+	defer listener.Close()
+	_, portText, err := net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		t.Fatalf("failed to parse listener address: %v", err)
+	}
+	reachablePort, err := strconv.Atoi(portText)
+	if err != nil {
+		t.Fatalf("failed to parse listener port: %v", err)
+	}
+
+	userID := createTestUser(t, db, "unhealthy-filter-user")
+	node := &repository.Node{
+		Name:       "unhealthy-node",
+		Address:    "127.0.0.1",
+		Token:      "unhealthy-node-token",
+		Status:     repository.NodeStatusUnhealthy,
+		SyncStatus: repository.NodeSyncStatusPending,
+	}
+	if err := db.Create(node).Error; err != nil {
+		t.Fatalf("failed to create node: %v", err)
+	}
+
+	nodeID := node.ID
+	reachableProxy := &repository.Proxy{
+		UserID:   userID,
+		NodeID:   &nodeID,
+		Name:     "Reachable Trojan",
+		Protocol: "trojan",
+		Host:     "127.0.0.1",
+		Port:     reachablePort,
+		Settings: map[string]interface{}{
+			"password": "secret",
+		},
+		Enabled: true,
+	}
+	unreachableProxy := &repository.Proxy{
+		UserID:   userID,
+		NodeID:   &nodeID,
+		Name:     "Closed Trojan",
+		Protocol: "trojan",
+		Host:     "127.0.0.1",
+		Port:     1,
+		Settings: map[string]interface{}{
+			"password": "secret",
+		},
+		Enabled: true,
+	}
+	if err := db.Create(reachableProxy).Error; err != nil {
+		t.Fatalf("failed to create reachable proxy: %v", err)
+	}
+	if err := db.Create(unreachableProxy).Error; err != nil {
+		t.Fatalf("failed to create unreachable proxy: %v", err)
+	}
+
+	proxies, err := service.GetUserEnabledProxies(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserEnabledProxies returned error: %v", err)
+	}
+	if len(proxies) != 1 {
+		t.Fatalf("expected one reachable proxy, got %d", len(proxies))
+	}
+	if proxies[0].ID != reachableProxy.ID {
+		t.Fatalf("expected reachable proxy %d, got %d", reachableProxy.ID, proxies[0].ID)
+	}
+}
+
+func TestProxyReachableEnoughForSubscription_RetriesTimeout(t *testing.T) {
+	db := setupTestDB(t)
+	if err := db.AutoMigrate(&repository.Node{}); err != nil {
+		t.Fatalf("Failed to migrate node model: %v", err)
+	}
+	service := createTestService(t, db).WithNodeRepository(repository.NewNodeRepository(db))
+	ctx := context.Background()
+
+	node := &repository.Node{
+		Name:       "pending-node",
+		Address:    "127.0.0.1",
+		Token:      "pending-node-token",
+		Status:     repository.NodeStatusUnhealthy,
+		SyncStatus: repository.NodeSyncStatusPending,
+	}
+	if err := db.Create(node).Error; err != nil {
+		t.Fatalf("failed to create node: %v", err)
+	}
+
+	nodeID := node.ID
+	proxyModel := &repository.Proxy{
+		NodeID:   &nodeID,
+		Name:     "Retry Trojan",
+		Protocol: "trojan",
+		Host:     "127.0.0.1",
+		Port:     20039,
+		Settings: map[string]interface{}{
+			"password": "secret",
+		},
+		Enabled: true,
+	}
+
+	attempts := 0
+	timeouts := make([]time.Duration, 0, 2)
+	service.proxyDial = func(ctx context.Context, target string, timeout time.Duration) (net.Conn, error) {
+		attempts++
+		timeouts = append(timeouts, timeout)
+		if attempts == 1 {
+			return nil, &net.DNSError{IsTimeout: true, Err: "timeout"}
+		}
+		client, server := net.Pipe()
+		_ = server.Close()
+		return client, nil
+	}
+
+	if !service.proxyReachableEnoughForSubscription(ctx, proxyModel, "127.0.0.1") {
+		t.Fatalf("expected reachable proxy after timeout retry")
+	}
+	if attempts != 2 {
+		t.Fatalf("expected two dial attempts, got %d", attempts)
+	}
+	if len(timeouts) != 2 || timeouts[0] != subscriptionProxyDialTimeout || timeouts[1] != subscriptionProxyRetryDialTimeout {
+		t.Fatalf("unexpected dial timeouts: %#v", timeouts)
+	}
+}
+
 func TestGetUserEnabledProxies_PrefersCurrentNodeAddressOverLegacySettingServer(t *testing.T) {
 	db := setupTestDB(t)
 	if err := db.AutoMigrate(&repository.Node{}); err != nil {
@@ -849,7 +1024,7 @@ func TestGetUserEnabledProxies_PrefersCurrentNodeAddressOverLegacySettingServer(
 	ctx := context.Background()
 
 	userID := createTestUser(t, db, "node-address-user")
-	node := &repository.Node{Name: "sub-node", Address: "64.176.54.36", Token: "node-token", Status: repository.NodeStatusOnline}
+	node := &repository.Node{Name: "sub-node", Address: "64.176.54.36", Token: "node-token", Status: repository.NodeStatusOnline, SyncStatus: repository.NodeSyncStatusSynced}
 	if err := db.Create(node).Error; err != nil {
 		t.Fatalf("Failed to create node: %v", err)
 	}
@@ -897,7 +1072,7 @@ func TestGetUserEnabledProxies_PreservesExternalHostOverride(t *testing.T) {
 	ctx := context.Background()
 
 	userID := createTestUser(t, db, "external-host-user")
-	node := &repository.Node{Name: "sub-node", Address: "64.176.54.36", Token: "node-token", Status: repository.NodeStatusOnline}
+	node := &repository.Node{Name: "sub-node", Address: "64.176.54.36", Token: "node-token", Status: repository.NodeStatusOnline, SyncStatus: repository.NodeSyncStatusSynced}
 	if err := db.Create(node).Error; err != nil {
 		t.Fatalf("Failed to create node: %v", err)
 	}
@@ -942,7 +1117,7 @@ func TestGenerateContent_UsesResolvedNodeHostInsteadOfStaleProxyHost(t *testing.
 	ctx := context.Background()
 
 	userID := createTestUser(t, db, "content-node-address-user")
-	node := &repository.Node{Name: "sub-node", Address: "64.176.54.36", Token: "node-token", Status: repository.NodeStatusOnline}
+	node := &repository.Node{Name: "sub-node", Address: "64.176.54.36", Token: "node-token", Status: repository.NodeStatusOnline, SyncStatus: repository.NodeSyncStatusSynced}
 	if err := db.Create(node).Error; err != nil {
 		t.Fatalf("Failed to create node: %v", err)
 	}
@@ -1192,8 +1367,8 @@ func TestGetUserEnabledProxies_WithEntitlementIncludesMultipleNodes(t *testing.T
 	ctx := context.Background()
 	userID := createTestUser(t, db, "entitled-subscription-user")
 
-	nodeOne := &repository.Node{Name: "sub-node-1", Address: "sub-node-1.example.com", Token: "sub-node-1-token", Status: repository.NodeStatusOnline, Protocols: `["vmess"]`}
-	nodeTwo := &repository.Node{Name: "sub-node-2", Address: "sub-node-2.example.com", Token: "sub-node-2-token", Status: repository.NodeStatusOnline, Protocols: `["vmess"]`}
+	nodeOne := &repository.Node{Name: "sub-node-1", Address: "sub-node-1.example.com", Token: "sub-node-1-token", Status: repository.NodeStatusOnline, SyncStatus: repository.NodeSyncStatusSynced, Protocols: `["vmess"]`}
+	nodeTwo := &repository.Node{Name: "sub-node-2", Address: "sub-node-2.example.com", Token: "sub-node-2-token", Status: repository.NodeStatusOnline, SyncStatus: repository.NodeSyncStatusSynced, Protocols: `["vmess"]`}
 	if err := db.Create(nodeOne).Error; err != nil {
 		t.Fatalf("Failed to create node one: %v", err)
 	}

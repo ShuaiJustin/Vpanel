@@ -5,8 +5,11 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	stdErrors "errors"
 	"fmt"
+	"net"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -85,7 +88,10 @@ type Service struct {
 	entitlement      *entitlement.Service
 	logger           logger.Logger
 	baseURL          string
+	proxyDial        subscriptionProxyDialFunc
 }
+
+type subscriptionProxyDialFunc func(ctx context.Context, target string, timeout time.Duration) (net.Conn, error)
 
 // NewService creates a new subscription service.
 func NewService(
@@ -101,6 +107,7 @@ func NewService(
 		proxyRepo:        proxyRepo,
 		logger:           log,
 		baseURL:          baseURL,
+		proxyDial:        defaultSubscriptionProxyDial,
 	}
 }
 
@@ -554,18 +561,120 @@ func (s *Service) GetUserEnabledProxies(ctx context.Context, userID int64) ([]*r
 			)
 			continue
 		}
+		if !s.proxyReachableEnoughForSubscription(ctx, proxy, resolvedServer) {
+			s.logger.Warn("skip proxy in subscription because endpoint is unreachable",
+				logger.F("proxy_id", proxy.ID),
+				logger.F("protocol", proxy.Protocol),
+				logger.F("server", resolvedServer),
+				logger.F("port", proxy.Port),
+				logger.UserID(userID),
+			)
+			continue
+		}
 
 		proxyCopy := *proxy
 		if settingsCopy == nil {
 			settingsCopy = map[string]any{}
 		}
 		settingsCopy["server"] = resolvedServer
+		normalizeSubscriptionTLSNames(settingsCopy)
 		proxyCopy.Host = resolvedServer
 		proxyCopy.Settings = settingsCopy
 		enabledProxies = append(enabledProxies, &proxyCopy)
 	}
 
 	return enabledProxies, nil
+}
+
+const (
+	subscriptionProxyDialTimeout      = 800 * time.Millisecond
+	subscriptionProxyRetryDialTimeout = 2 * time.Second
+)
+
+func (s *Service) proxyReachableEnoughForSubscription(ctx context.Context, proxy *repository.Proxy, server string) bool {
+	if s == nil || s.nodeRepo == nil || proxy == nil || proxy.NodeID == nil || *proxy.NodeID <= 0 {
+		return true
+	}
+
+	nodeModel, err := s.nodeRepo.GetByID(ctx, *proxy.NodeID)
+	if err != nil {
+		return false
+	}
+	if nodeReadyForSubscriptionList(nodeModel) {
+		return true
+	}
+
+	port := proxylib.ResolveServerPort(proxy.Port, proxy.Settings)
+	if port <= 0 {
+		return false
+	}
+	target := net.JoinHostPort(server, strconv.Itoa(port))
+	dial := s.proxyDial
+	if dial == nil {
+		dial = defaultSubscriptionProxyDial
+	}
+	reachable, dialErr := subscriptionProxyDialAttempt(ctx, dial, target, subscriptionProxyDialTimeout)
+	if reachable {
+		return true
+	}
+	if !shouldRetrySubscriptionProxyDial(dialErr) {
+		return false
+	}
+
+	reachable, _ = subscriptionProxyDialAttempt(ctx, dial, target, subscriptionProxyRetryDialTimeout)
+	return reachable
+}
+
+func subscriptionProxyDialAttempt(ctx context.Context, dial subscriptionProxyDialFunc, target string, timeout time.Duration) (bool, error) {
+	conn, dialErr := dial(ctx, target, timeout)
+	if dialErr != nil {
+		return false, dialErr
+	}
+	_ = conn.Close()
+	return true, nil
+}
+
+func shouldRetrySubscriptionProxyDial(err error) bool {
+	if err == nil {
+		return false
+	}
+	if stdErrors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var netErr net.Error
+	return stdErrors.As(err, &netErr) && netErr.Timeout()
+}
+
+func defaultSubscriptionProxyDial(ctx context.Context, target string, timeout time.Duration) (net.Conn, error) {
+	dialer := net.Dialer{Timeout: timeout}
+	return dialer.DialContext(ctx, "tcp", target)
+}
+
+func nodeReadyForSubscriptionList(node *repository.Node) bool {
+	if node == nil || node.Status != repository.NodeStatusOnline {
+		return false
+	}
+
+	switch strings.TrimSpace(node.SyncStatus) {
+	case "", repository.NodeSyncStatusSynced:
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeSubscriptionTLSNames(settings map[string]any) {
+	if settings == nil {
+		return
+	}
+
+	serverName := proxylib.ResolveSNI(settings)
+	if serverName == "" {
+		return
+	}
+
+	settings["sni"] = serverName
+	settings["server_name"] = serverName
 }
 
 func cloneSubscriptionProxySettings(settings map[string]any) map[string]any {

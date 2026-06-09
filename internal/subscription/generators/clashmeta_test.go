@@ -85,6 +85,49 @@ func TestClashMetaGenerator_UsesSubscriptionNameForGroups(t *testing.T) {
 	}
 }
 
+func TestClashMetaGenerator_SingleProxyOmitsRedundantPolicyGroups(t *testing.T) {
+	generator := NewClashMetaGenerator()
+
+	result, err := generator.Generate([]*repository.Proxy{
+		{
+			ID:       1,
+			Name:     "Japan Trojan",
+			Protocol: "trojan",
+			Host:     "64.176.54.36",
+			Port:     20039,
+			Settings: map[string]any{
+				"password": "secret",
+				"sni":      "www.shcrystal.top",
+			},
+			Enabled: true,
+		},
+	}, &GeneratorOptions{
+		SubscriptionName:   "shcrystal.top",
+		IncludeProxyGroups: true,
+	})
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	var config ClashMetaConfig
+	if err := yaml.Unmarshal(result, &config); err != nil {
+		t.Fatalf("failed to parse generated YAML: %v", err)
+	}
+	if len(config.ProxyGroups) != 1 {
+		t.Fatalf("expected only select group for one proxy, got %#v", config.ProxyGroups)
+	}
+	got := config.ProxyGroups[0].Proxies
+	want := []string{"Japan Trojan", "DIRECT"}
+	if len(got) != len(want) {
+		t.Fatalf("expected select proxies %#v, got %#v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("expected select proxies %#v, got %#v", want, got)
+		}
+	}
+}
+
 func TestClashMetaGenerator_VLESSDefaultsUDPEnabled(t *testing.T) {
 	generator := NewClashMetaGenerator()
 

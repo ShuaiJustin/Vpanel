@@ -527,6 +527,23 @@ func (s *Service) GetByID(ctx context.Context, id int64) (*Node, error) {
 	return s.toNode(repoNode), nil
 }
 
+// MarkSyncPending marks a node as waiting for its generated Xray config to be applied.
+func (s *Service) MarkSyncPending(ctx context.Context, id int64) error {
+	if err := s.nodeRepo.UpdateSyncStatus(ctx, id, repository.NodeSyncStatusPending, nil); err != nil {
+		s.logger.Error("Failed to mark node sync pending", logger.Err(err), logger.F("id", id))
+		return err
+	}
+
+	if s.cache != nil {
+		cacheKey := "node:stats:all"
+		if err := s.cache.Delete(ctx, cacheKey); err != nil {
+			s.logger.Warn("Failed to invalidate node statistics cache", logger.Err(err))
+		}
+	}
+
+	return nil
+}
+
 // UpdateSSHConfig persists SSH metadata for later remote operations.
 func (s *Service) UpdateSSHConfig(ctx context.Context, id int64, host string, port int, username, password, keyPath string) error {
 	repoNode, err := s.nodeRepo.GetByID(ctx, id)
@@ -1004,7 +1021,7 @@ func (s *Service) UpdateStatus(ctx context.Context, id int64, status string) err
 		s.logger.Error("Failed to update node status", logger.Err(err), logger.F("id", id), logger.F("status", status))
 		return err
 	}
-	
+
 	// Invalidate node statistics cache since status affects statistics
 	if s.cache != nil {
 		cacheKey := "node:stats:all"
@@ -1013,7 +1030,7 @@ func (s *Service) UpdateStatus(ctx context.Context, id int64, status string) err
 			s.logger.Warn("Failed to invalidate node statistics cache", logger.Err(err))
 		}
 	}
-	
+
 	return nil
 }
 
@@ -1419,7 +1436,7 @@ func (s *Service) GetStatistics(ctx context.Context) (map[string]int64, error) {
 	// Try cache first if available
 	if s.cache != nil {
 		cacheKey := "node:stats:all"
-		
+
 		// Try to get from cache
 		data, err := s.cache.Get(ctx, cacheKey)
 		if err == nil {
@@ -1436,18 +1453,18 @@ func (s *Service) GetStatistics(ctx context.Context) (map[string]int64, error) {
 			s.logger.Warn("Failed to get node statistics from cache", logger.Err(err))
 		}
 	}
-	
+
 	// Cache miss or cache unavailable - query database
 	stats, err := s.nodeRepo.CountByStatus(ctx)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Store in cache if available
 	if s.cache != nil {
 		cacheKey := "node:stats:all"
 		ttl := cache.GetTTL("node:stats")
-		
+
 		data, marshalErr := json.Marshal(stats)
 		if marshalErr == nil {
 			if cacheErr := s.cache.Set(ctx, cacheKey, data, ttl); cacheErr != nil {
@@ -1458,7 +1475,7 @@ func (s *Service) GetStatistics(ctx context.Context) (map[string]int64, error) {
 			s.logger.Warn("Failed to marshal node statistics for caching", logger.Err(marshalErr))
 		}
 	}
-	
+
 	return stats, nil
 }
 

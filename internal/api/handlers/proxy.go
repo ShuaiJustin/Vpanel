@@ -124,8 +124,19 @@ func (h *ProxyHandler) invalidateStatsCache(ctx context.Context, proxyID int64) 
 	}
 }
 
-func (h *ProxyHandler) queueNodeConfigSync(nodeID *int64, source, reason string) {
-	if h == nil || h.recoveryTracker == nil || nodeID == nil || *nodeID <= 0 {
+func (h *ProxyHandler) queueNodeConfigSync(ctx context.Context, nodeID *int64, source, reason string) {
+	if h == nil || nodeID == nil || *nodeID <= 0 {
+		return
+	}
+	if h.nodeRepo != nil {
+		if err := h.nodeRepo.UpdateSyncStatus(ctx, *nodeID, repository.NodeSyncStatusPending, nil); err != nil {
+			h.logger.Warn("failed to mark node config sync pending",
+				logger.F("node_id", *nodeID),
+				logger.F("source", source),
+				logger.F("error", err))
+		}
+	}
+	if h.recoveryTracker == nil {
 		return
 	}
 	h.recoveryTracker.QueueConfigSyncCommand(*nodeID, source, reason)
@@ -302,7 +313,7 @@ func (h *ProxyHandler) Create(c *gin.Context) {
 	}
 
 	h.logger.Info("proxy created", logger.F("proxy_id", proxyModel.ID), logger.F("user_id", userID))
-	h.queueNodeConfigSync(proxyModel.NodeID, "proxy_create", "proxy created")
+	h.queueNodeConfigSync(c.Request.Context(), proxyModel.NodeID, "proxy_create", "proxy created")
 
 	emitAudit(c, h.auditService, monitor.AuditEntry{
 		Action:       monitor.ActionProxyCreate,
@@ -435,7 +446,7 @@ func (h *ProxyHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update proxy"})
 		return
 	}
-	h.queueNodeConfigSync(p.NodeID, "proxy_update", "proxy updated")
+	h.queueNodeConfigSync(c.Request.Context(), p.NodeID, "proxy_update", "proxy updated")
 
 	emitAudit(c, h.auditService, monitor.AuditEntry{
 		Action:       monitor.ActionProxyUpdate,
@@ -588,7 +599,7 @@ func (h *ProxyHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete proxy"})
 		return
 	}
-	h.queueNodeConfigSync(p.NodeID, "proxy_delete", "proxy deleted")
+	h.queueNodeConfigSync(c.Request.Context(), p.NodeID, "proxy_delete", "proxy deleted")
 
 	userID, _, _ := getUserFromContext(c)
 	h.logger.Info("proxy deleted", logger.F("proxy_id", id), logger.F("user_id", userID))
@@ -714,7 +725,7 @@ func (h *ProxyHandler) Toggle(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to toggle proxy"})
 		return
 	}
-	h.queueNodeConfigSync(p.NodeID, "proxy_toggle", "proxy toggled")
+	h.queueNodeConfigSync(c.Request.Context(), p.NodeID, "proxy_toggle", "proxy toggled")
 
 	c.JSON(http.StatusOK, gin.H{"enabled": p.Enabled})
 }
@@ -753,7 +764,7 @@ func (h *ProxyHandler) Start(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start proxy"})
 		return
 	}
-	h.queueNodeConfigSync(p.NodeID, "proxy_start", "proxy started")
+	h.queueNodeConfigSync(c.Request.Context(), p.NodeID, "proxy_start", "proxy started")
 
 	userID, _, _ := getUserFromContext(c)
 	h.logger.Info("proxy started", logger.F("proxy_id", id), logger.F("user_id", userID))
@@ -795,7 +806,7 @@ func (h *ProxyHandler) Stop(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to stop proxy"})
 		return
 	}
-	h.queueNodeConfigSync(p.NodeID, "proxy_stop", "proxy stopped")
+	h.queueNodeConfigSync(c.Request.Context(), p.NodeID, "proxy_stop", "proxy stopped")
 
 	userID, _, _ := getUserFromContext(c)
 	h.logger.Info("proxy stopped", logger.F("proxy_id", id), logger.F("user_id", userID))

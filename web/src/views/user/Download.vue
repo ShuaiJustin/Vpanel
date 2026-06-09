@@ -599,7 +599,8 @@ const clients = [
     features: ['命令行', '现代配置', '新协议'],
     format: 'singbox',
     recommended: false,
-    downloadUrl: 'https://github.com/SagerNet/sing-box/releases',
+    downloadUrl: '/downloads/sing-box-manager.sh',
+    downloadFileName: 'sing-box-manager.sh',
     tutorialUrl: '#'
   },
   {
@@ -914,39 +915,43 @@ export https_proxy=http://127.0.0.1:7890</code></pre>
   'sing-box CLI': {
     step1: `
       <ol>
-        <li>点击下载按钮，前往 sing-box Releases 页面</li>
-        <li>根据架构下载 Linux 压缩包：
-          <ul>
-            <li><code>sing-box-x.x.x-linux-amd64.tar.gz</code>：x86_64 服务器</li>
-            <li><code>sing-box-x.x.x-linux-arm64.tar.gz</code>：ARM64 服务器</li>
-          </ul>
+        <li>点击下载按钮，下载 <code>sing-box-manager.sh</code> 管理脚本</li>
+        <li>上传到 Linux 服务器后执行：
+          <pre><code>chmod +x sing-box-manager.sh
+sudo ./sing-box-manager.sh</code></pre>
         </li>
-        <li>解压并安装：
-          <pre><code>tar -xzf sing-box-*.tar.gz
-sudo install -m 755 sing-box-*/sing-box /usr/local/bin/sing-box</code></pre>
-        </li>
-        <li>检查版本：<code>sing-box version</code></li>
+        <li>进入菜单后选择 <strong>1) 安装 sing-box</strong>；也可以直接执行 <code>sudo ./sing-box-manager.sh install</code></li>
+        <li>脚本会自动识别架构、优先使用内置加速地址下载 sing-box，并创建 systemd 服务</li>
+        <li>默认本机 mixed HTTP/SOCKS 入口为 <code>127.0.0.1:2080</code></li>
       </ol>
     `,
     step2: `
       <ol>
-        <li>创建配置目录：<code>mkdir -p ~/.config/sing-box</code></li>
         <li>在订阅管理页选择 <strong>Sing-box</strong> 格式并复制链接</li>
-        <li>下载配置：
-          <pre><code>wget -O ~/.config/sing-box/config.json "您的 Sing-box 订阅链接"</code></pre>
+        <li>使用脚本更新订阅：
+          <pre><code>sudo ./sing-box-manager.sh update "您的 Sing-box 订阅链接"</code></pre>
         </li>
-        <li>检查配置：<code>sing-box check -c ~/.config/sing-box/config.json</code></li>
+        <li>脚本会保存订阅链接、校验配置、自动补齐本机 mixed 入站，并备份旧配置</li>
+        <li>以后更新可直接执行：<code>sudo ./sing-box-manager.sh update</code></li>
       </ol>
+      <div class="tip-box">
+        <strong>提示：</strong>订阅链接需要用引号包裹，避免特殊字符导致命令错误。
+      </div>
     `,
     step3: `
       <ol>
-        <li>启动：<code>sing-box run -c ~/.config/sing-box/config.json</code></li>
-        <li>如配置内启用了 TUN，需要 root 或 <code>CAP_NET_ADMIN</code> 权限</li>
-        <li>仅需要本机代理时，可使用配置中的 HTTP/SOCKS 监听端口</li>
-        <li>测试连接：<code>curl -I https://www.google.com</code></li>
+        <li>启动服务：<code>sudo ./sing-box-manager.sh start</code></li>
+        <li>启用开机自启：<code>sudo ./sing-box-manager.sh enable</code></li>
+        <li>一键验证是否可用：<code>sudo ./sing-box-manager.sh verify</code></li>
+        <li>查看状态：<code>sudo ./sing-box-manager.sh status</code></li>
+        <li>查看日志：<code>sudo ./sing-box-manager.sh logs</code></li>
+        <li>配置系统代理（可选）：
+          <pre><code>export http_proxy=http://127.0.0.1:2080
+export https_proxy=http://127.0.0.1:2080</code></pre>
+        </li>
       </ol>
       <div class="tip-box">
-        <strong>提示：</strong>生产环境建议写成 systemd 服务，方便开机自启和日志管理。
+        <strong>提示：</strong>默认不会写入全局系统代理，避免服务停止时影响系统下载；需要写入环境代理时执行 <code>sudo ./sing-box-manager.sh proxy on</code>。
       </div>
     `
   },

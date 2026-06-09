@@ -1802,7 +1802,7 @@ func (h *NodeHandler) queueNodeCommand(c *gin.Context, commandType, reason, succ
 	cmd, queued := queueFunc(id, "admin", reason)
 	if !queued {
 		c.JSON(http.StatusConflict, gin.H{
-			"error":        "A similar command is already pending or was queued recently",
+			"error":        "已有相同类型命令正在等待节点领取，或刚刚已加入队列；如果持续出现，请先确认节点 Agent 已注册并能连接面板",
 			"command_type": commandType,
 		})
 		return
@@ -1812,6 +1812,15 @@ func (h *NodeHandler) queueNodeCommand(c *gin.Context, commandType, reason, succ
 		logger.F("node_id", id),
 		logger.F("command_id", cmd.ID),
 		logger.F("command_type", cmd.Type))
+
+	if cmd.Type == commandTypeConfigSync {
+		if err := h.nodeService.MarkSyncPending(c.Request.Context(), id); err != nil {
+			h.logger.Warn("Failed to mark node sync pending after config command queued",
+				logger.Err(err),
+				logger.F("node_id", id),
+				logger.F("command_id", cmd.ID))
+		}
+	}
 
 	c.JSON(http.StatusAccepted, gin.H{
 		"success":      true,

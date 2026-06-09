@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"testing"
+	"time"
 
 	"v/internal/logger"
 )
@@ -42,6 +43,68 @@ func TestNodeRecoveryTracker_QueueXrayRestartCommand(t *testing.T) {
 
 	if _, queuedAgain := tracker.QueueXrayRestartCommand(3, "admin", "manual restart"); queuedAgain {
 		t.Fatal("expected duplicate restart command to be rejected while pending")
+	}
+}
+
+func TestNodeRecoveryTracker_ExpiresStalePendingCommand(t *testing.T) {
+	tracker := NewNodeRecoveryTracker(logger.NewNopLogger())
+
+	first, queued := tracker.QueueConfigSyncCommandDetailed(3, "admin", "manual sync")
+	if !queued {
+		t.Fatal("expected first config sync command to be queued")
+	}
+	if _, queuedAgain := tracker.QueueConfigSyncCommandDetailed(3, "admin", "manual sync"); queuedAgain {
+		t.Fatal("expected duplicate config sync command to be rejected while pending")
+	}
+
+	tracker.mu.Lock()
+	tracker.recentEvents[3][0].CreatedAt = time.Now().Add(-nodeCommandPendingTTL - time.Second).Format(time.RFC3339)
+	tracker.lastQueuedCommands[3][commandTypeConfigSync] = time.Now().Add(-nodeCommandPendingTTL - time.Second)
+	tracker.mu.Unlock()
+
+	second, queuedAfterExpiry := tracker.QueueConfigSyncCommandDetailed(3, "admin", "manual sync")
+	if !queuedAfterExpiry {
+		t.Fatal("expected stale pending config sync command to expire")
+	}
+	if second.ID == first.ID {
+		t.Fatal("expected replacement command to get a new id")
+	}
+
+	events := tracker.GetRecentRecoveryEvents(3)
+	foundExpired := false
+	for _, event := range events {
+		if event.CommandID == first.ID && event.Status == "expired" {
+			foundExpired = true
+			break
+		}
+	}
+	if !foundExpired {
+		t.Fatalf("expected first command to be marked expired, got %#v", events)
+	}
+}
+
+func TestNodeRecoveryTracker_ExpiresStaleInflightCommand(t *testing.T) {
+	tracker := NewNodeRecoveryTracker(logger.NewNopLogger())
+
+	first, queued := tracker.QueueXrayRestartCommand(3, "admin", "manual restart")
+	if !queued {
+		t.Fatal("expected first restart command to be queued")
+	}
+	pending := tracker.GetPendingCommands(3)
+	if len(pending) != 1 || pending[0].ID != first.ID {
+		t.Fatalf("expected first command to be dispatched, got %#v", pending)
+	}
+	if _, queuedAgain := tracker.QueueXrayRestartCommand(3, "admin", "manual restart"); queuedAgain {
+		t.Fatal("expected duplicate restart command to be rejected while inflight")
+	}
+
+	tracker.mu.Lock()
+	tracker.recentEvents[3][0].CreatedAt = time.Now().Add(-nodeCommandInflightTTL - time.Second).Format(time.RFC3339)
+	tracker.lastQueuedCommands[3][commandTypeXrayRestart] = time.Now().Add(-nodeCommandInflightTTL - time.Second)
+	tracker.mu.Unlock()
+
+	if _, queuedAfterExpiry := tracker.QueueXrayRestartCommand(3, "admin", "manual restart"); !queuedAfterExpiry {
+		t.Fatal("expected stale inflight restart command to expire")
 	}
 }
 

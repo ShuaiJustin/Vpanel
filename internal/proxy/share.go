@@ -39,9 +39,29 @@ func NormalizeShareHost(raw string) string {
 	return host
 }
 
+// NormalizeTLSServerName returns a concrete DNS name suitable for client SNI.
+// Certificates may be stored as wildcard domains (for example *.example.com),
+// but TLS clients should send a real host name, not the wildcard pattern.
+func NormalizeTLSServerName(raw string) string {
+	host := NormalizeShareHost(raw)
+	if host == "" {
+		return ""
+	}
+
+	if strings.HasPrefix(host, "*.") {
+		suffix := strings.TrimPrefix(host, "*.")
+		if suffix == "" {
+			return ""
+		}
+		return "www." + suffix
+	}
+
+	return host
+}
+
 func ResolveSNI(settings map[string]any) string {
 	for _, key := range []string{"sni", "server_name", "tls_domain"} {
-		if value := getSettingString(settings, key); value != "" {
+		if value := NormalizeTLSServerName(getSettingString(settings, key)); value != "" {
 			return value
 		}
 	}

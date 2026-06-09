@@ -308,7 +308,7 @@ func (hc *HealthChecker) performCheck(node *repository.Node) *HealthCheckResult 
 	// Check certificate expiration if node has a certificate
 	certWarning := hc.checkCertificateExpiration(node)
 	heartbeatHealthy := shouldTrustRecentHeartbeat(node, hc.config.Interval, time.Now())
-	proxyReachable, hasSampledProxy := hc.checkReachableProxyEndpoint(node)
+	proxyHealth := hc.checkReachableProxyEndpoint(node)
 
 	if nodeTrafficLimitExceeded(node) {
 		result.Status = repository.HealthCheckStatusFailed
@@ -317,22 +317,33 @@ func (hc *HealthChecker) performCheck(node *repository.Node) *HealthCheckResult 
 	}
 
 	// Determine overall status
-	if result.TCPOk && result.APIOk && result.XrayOk {
+	if result.TCPOk && result.APIOk && result.XrayOk && sampledProxyEndpointsHealthyForPrimary(proxyHealth) {
 		result.Status = repository.HealthCheckStatusSuccess
 		if certWarning != "" {
 			result.Message = fmt.Sprintf("All checks passed. %s", certWarning)
 		} else {
 			result.Message = "All checks passed"
 		}
-	} else if shouldAcceptHeartbeatFallback(heartbeatHealthy, hasSampledProxy, proxyReachable) {
+	} else if result.TCPOk && result.APIOk && result.XrayOk && proxyHealth.HasSampled && !proxyHealth.AllReachable {
+		if proxyHealth.AnyReachable {
+			result.Status = repository.HealthCheckStatusSuccess
+			result.Message = sampledProxyEndpointWarningMessage(proxyHealth)
+		} else {
+			result.Status = repository.HealthCheckStatusFailed
+			result.Message = sampledProxyEndpointFailureMessage(proxyHealth)
+		}
+		if certWarning != "" {
+			result.Message = fmt.Sprintf("%s. %s", result.Message, certWarning)
+		}
+	} else if shouldAcceptHeartbeatFallback(heartbeatHealthy, proxyHealth.HasSampled, proxyHealth.AnyReachable) {
 		result.Status = repository.HealthCheckStatusSuccess
-		result.Message = heartbeatFallbackMessage(hasSampledProxy)
+		result.Message = heartbeatFallbackMessage(proxyHealth.HasSampled)
 		if certWarning != "" {
 			result.Message = fmt.Sprintf("%s. %s", result.Message, certWarning)
 		}
 	} else {
 		result.Status = repository.HealthCheckStatusFailed
-		if heartbeatHealthy && hasSampledProxy && !proxyReachable {
+		if heartbeatHealthy && proxyHealth.HasSampled && !proxyHealth.AnyReachable {
 			result.Message = "Recent heartbeat confirms Xray is running, but sampled proxy endpoints are unreachable from the panel"
 		} else {
 			result.Message = hc.buildFailureMessage(result)
@@ -343,6 +354,32 @@ func (hc *HealthChecker) performCheck(node *repository.Node) *HealthCheckResult 
 	}
 
 	return result
+}
+
+type sampledProxyEndpointHealth struct {
+	HasSampled             bool
+	AnyReachable           bool
+	AllReachable           bool
+	CheckedCount           int
+	FirstUnreachableTarget string
+}
+
+func sampledProxyEndpointsHealthyForPrimary(proxyHealth sampledProxyEndpointHealth) bool {
+	return !proxyHealth.HasSampled || proxyHealth.AllReachable
+}
+
+func sampledProxyEndpointFailureMessage(proxyHealth sampledProxyEndpointHealth) string {
+	if proxyHealth.FirstUnreachableTarget != "" {
+		return fmt.Sprintf("Agent and Xray checks passed, but sampled proxy endpoint %s is unreachable from the panel", proxyHealth.FirstUnreachableTarget)
+	}
+	return "Agent and Xray checks passed, but sampled proxy endpoints are unreachable from the panel"
+}
+
+func sampledProxyEndpointWarningMessage(proxyHealth sampledProxyEndpointHealth) string {
+	if proxyHealth.FirstUnreachableTarget != "" {
+		return fmt.Sprintf("Agent and Xray checks passed, but sampled proxy endpoint %s is unreachable while at least one sampled proxy endpoint is reachable", proxyHealth.FirstUnreachableTarget)
+	}
+	return "Agent and Xray checks passed, but some sampled proxy endpoints are unreachable"
 }
 
 // checkTCP checks TCP connectivity to the node.
@@ -408,9 +445,9 @@ func heartbeatFallbackMessage(hasSampledProxy bool) string {
 	return "Recent heartbeat confirms Xray is running"
 }
 
-func (hc *HealthChecker) checkReachableProxyEndpoint(node *repository.Node) (bool, bool) {
+func (hc *HealthChecker) checkReachableProxyEndpoint(node *repository.Node) sampledProxyEndpointHealth {
 	if hc == nil || hc.proxyRepo == nil || node == nil || node.ID <= 0 {
-		return false, false
+		return sampledProxyEndpointHealth{}
 	}
 
 	ctx := hc.ctx
@@ -423,14 +460,14 @@ func (hc *HealthChecker) checkReachableProxyEndpoint(node *repository.Node) (boo
 		hc.logger.Warn("Failed to load node proxies during heartbeat fallback health check",
 			logger.Err(err),
 			logger.F("node_id", node.ID))
-		return false, false
+		return sampledProxyEndpointHealth{}
 	}
 	if len(proxies) == 0 {
-		return false, false
+		return sampledProxyEndpointHealth{}
 	}
 
 	checkedTargets := map[string]struct{}{}
-	checkedCount := 0
+	health := sampledProxyEndpointHealth{AllReachable: true}
 	const maxSampledProxyTargets = 3
 
 	for _, proxyModel := range proxies {
@@ -446,16 +483,25 @@ func (hc *HealthChecker) checkReachableProxyEndpoint(node *repository.Node) (boo
 			continue
 		}
 		checkedTargets[target] = struct{}{}
-		checkedCount++
+		health.CheckedCount++
 		if hc.checkTCP(host, proxyModel.Port) {
-			return true, true
+			health.AnyReachable = true
+		} else {
+			health.AllReachable = false
+			if health.FirstUnreachableTarget == "" {
+				health.FirstUnreachableTarget = target
+			}
 		}
-		if checkedCount >= maxSampledProxyTargets {
+		if health.CheckedCount >= maxSampledProxyTargets {
 			break
 		}
 	}
 
-	return false, checkedCount > 0
+	health.HasSampled = health.CheckedCount > 0
+	if !health.HasSampled {
+		health.AllReachable = false
+	}
+	return health
 }
 
 func resolveHealthCheckProxyHost(node *repository.Node, proxyModel *repository.Proxy) string {
@@ -524,13 +570,6 @@ func (hc *HealthChecker) handleCheckResult(node *repository.Node, result *Health
 			logger.F("node_id", node.ID),
 			logger.F("latency", result.Latency),
 			logger.F("current_users", node.CurrentUsers))
-	}
-
-	// 总是更新最后检查时间
-	if err := hc.nodeRepo.UpdateLastSeen(hc.ctx, node.ID, result.CheckedAt); err != nil {
-		hc.logger.Error("Failed to update node last seen",
-			logger.Err(err),
-			logger.F("node_id", node.ID))
 	}
 
 	if result.Status == repository.HealthCheckStatusSuccess {

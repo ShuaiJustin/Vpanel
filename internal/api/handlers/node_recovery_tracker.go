@@ -9,13 +9,15 @@ import (
 )
 
 const (
-	commandTypeXrayStart           = "xray_start"
-	commandTypeXrayRestart         = "xray_restart"
-	commandTypeXrayStatus          = "xray_status"
-	commandTypeConfigSync          = "config_sync"
-	commandTypeXrayInstallVersion  = "xray_install_version"
-	xrayRecoveryCommandCooldown    = 20 * time.Second
-	maxNodeRecoveryEvents          = 12
+	commandTypeXrayStart          = "xray_start"
+	commandTypeXrayRestart        = "xray_restart"
+	commandTypeXrayStatus         = "xray_status"
+	commandTypeConfigSync         = "config_sync"
+	commandTypeXrayInstallVersion = "xray_install_version"
+	xrayRecoveryCommandCooldown   = 20 * time.Second
+	nodeCommandPendingTTL         = 2 * time.Minute
+	nodeCommandInflightTTL        = 10 * time.Minute
+	maxNodeRecoveryEvents         = 12
 )
 
 type NodeRecoveryEvent struct {
@@ -116,6 +118,7 @@ func (t *NodeRecoveryTracker) queueCommand(nodeID int64, commandType, source, re
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	t.pruneStaleCommandsLocked(nodeID)
 	if t.hasPendingOrInflightCommandLocked(nodeID, commandType) {
 		return Command{}, false
 	}
@@ -164,6 +167,7 @@ func (t *NodeRecoveryTracker) GetPendingCommands(nodeID int64) []Command {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	t.pruneStaleCommandsLocked(nodeID)
 	queued := t.pendingCommands[nodeID]
 	if len(queued) == 0 {
 		return []Command{}
@@ -275,6 +279,60 @@ func (t *NodeRecoveryTracker) hasPendingOrInflightCommandLocked(nodeID int64, co
 		if entry.NodeID == nodeID && entry.Command.Type == commandType {
 			return true
 		}
+	}
+	return false
+}
+
+func (t *NodeRecoveryTracker) pruneStaleCommandsLocked(nodeID int64) {
+	if nodeID <= 0 {
+		return
+	}
+
+	now := time.Now()
+	if queued := t.pendingCommands[nodeID]; len(queued) > 0 {
+		filtered := queued[:0]
+		for _, cmd := range queued {
+			if t.commandEventOlderThanLocked(nodeID, cmd.ID, now, nodeCommandPendingTTL) {
+				t.updateEventStatusLocked(nodeID, cmd.ID, "expired", "命令等待节点心跳领取超时，已从队列移除；请先确认节点 Agent 已注册")
+				continue
+			}
+			filtered = append(filtered, cmd)
+		}
+		if len(filtered) == 0 {
+			delete(t.pendingCommands, nodeID)
+		} else {
+			t.pendingCommands[nodeID] = filtered
+		}
+	}
+
+	for commandID, entry := range t.inflightCommands {
+		if entry.NodeID != nodeID || entry.Command.Type == commandTypeXrayInstallVersion {
+			continue
+		}
+		if t.commandEventOlderThanLocked(nodeID, commandID, now, nodeCommandInflightTTL) {
+			delete(t.inflightCommands, commandID)
+			t.updateEventStatusLocked(nodeID, commandID, "expired", "命令下发后长时间未收到结果，已允许重新下发")
+		}
+	}
+}
+
+func (t *NodeRecoveryTracker) commandEventOlderThanLocked(nodeID int64, commandID string, now time.Time, ttl time.Duration) bool {
+	if ttl <= 0 {
+		return false
+	}
+	for index := range t.recentEvents[nodeID] {
+		event := t.recentEvents[nodeID][index]
+		if event.CommandID != commandID {
+			continue
+		}
+		if event.Status != "queued" && event.Status != "dispatched" {
+			return false
+		}
+		createdAt, err := time.Parse(time.RFC3339, event.CreatedAt)
+		if err != nil {
+			return false
+		}
+		return now.Sub(createdAt) > ttl
 	}
 	return false
 }

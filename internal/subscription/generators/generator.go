@@ -194,6 +194,7 @@ func normalizeGeneratorSettings(settings map[string]interface{}) map[string]inte
 
 	normalizeAlterIDSettings(normalized)
 	normalizeLegacyTLSSettings(normalized)
+	normalizeClientSNITLSSettings(normalized)
 	normalizeNestedTransportSettings(normalized)
 	return normalized
 }
@@ -216,6 +217,15 @@ func normalizeLegacyTLSSettings(settings map[string]interface{}) {
 	if security == "none" {
 		delete(settings, "tls")
 	}
+}
+
+func normalizeClientSNITLSSettings(settings map[string]interface{}) {
+	sni := proxylib.ResolveSNI(settings)
+	if sni == "" {
+		return
+	}
+	settings["sni"] = sni
+	settings["server_name"] = sni
 }
 
 func normalizeNestedTransportSettings(settings map[string]interface{}) {

@@ -321,7 +321,7 @@ func (s *Service) GetAccessibleProxies(ctx context.Context, userID int64) ([]*re
 		if err != nil {
 			return nil, nil, err
 		}
-		usableProxies, filterErr := s.filterUsableUserProxies(ctx, proxies)
+		usableProxies, filterErr := s.filterUsableUserProxies(ctx, proxies, false)
 		if filterErr != nil {
 			return nil, nil, filterErr
 		}
@@ -373,7 +373,7 @@ func (s *Service) GetSubscriptionProxies(ctx context.Context, userID int64) ([]*
 		if err != nil {
 			return nil, nil, err
 		}
-		usableProxies, filterErr := s.filterUsableUserProxies(ctx, proxies)
+		usableProxies, filterErr := s.filterUsableUserProxies(ctx, proxies, true)
 		if filterErr != nil {
 			return nil, nil, filterErr
 		}
@@ -403,6 +403,9 @@ func (s *Service) GetSubscriptionProxies(ctx context.Context, userID int64) ([]*
 
 	for _, nodeModel := range availableNodes {
 		if nodeModel == nil {
+			continue
+		}
+		if !nodeReadyForUserTraffic(nodeModel) {
 			continue
 		}
 		if _, exists := existingNodeIDs[nodeModel.ID]; exists {
@@ -757,7 +760,7 @@ func (s *Service) getOrAssignNode(ctx context.Context, userID int64) (int64, err
 	if assignment != nil {
 		node, nodeErr := s.nodeRepo.GetByID(ctx, assignment.NodeID)
 		proxies, proxyErr := s.proxyRepo.GetByNodeID(ctx, assignment.NodeID)
-		if nodeErr == nil && node.Status == repository.NodeStatusOnline && (node.MaxUsers == 0 || node.CurrentUsers < node.MaxUsers) && ((proxyErr == nil && len(sharedOnly(enabledOnly(proxies))) > 0) || s.canAutoProvisionDefaultProxy()) {
+		if nodeErr == nil && nodeReadyForUserTraffic(node) && (node.MaxUsers == 0 || node.CurrentUsers < node.MaxUsers) && ((proxyErr == nil && len(sharedOnly(enabledOnly(proxies))) > 0) || s.canAutoProvisionDefaultProxy()) {
 			return assignment.NodeID, nil
 		}
 	}
@@ -780,6 +783,9 @@ func (s *Service) getOrAssignNode(ctx context.Context, userID int64) (int64, err
 	)
 
 	for _, candidate := range availableNodes {
+		if !nodeReadyForUserTraffic(candidate) {
+			continue
+		}
 		proxies, proxyErr := s.proxyRepo.GetByNodeID(ctx, candidate.ID)
 		if proxyErr != nil {
 			continue
@@ -903,7 +909,7 @@ func (s *Service) autoProvisionDefaultProxy(ctx context.Context, userID, nodeID 
 		return nil, err
 	}
 	if enabled := enabledOnly(existing); len(enabled) > 0 {
-		usable, filterErr := s.filterUsableUserProxies(ctx, enabled)
+		usable, filterErr := s.filterUsableUserProxies(ctx, enabled, false)
 		if filterErr != nil {
 			return nil, filterErr
 		}
@@ -1263,9 +1269,13 @@ func applyAutoProvisionNodeSecurity(node *repository.Node, protocolName string, 
 	if connectHost := autoProvisionConnectHost(node); connectHost != "" {
 		settings["server"] = connectHost
 	}
-	settings["server_name"] = node.TLSDomain
+	serverName := proxylib.NormalizeTLSServerName(node.TLSDomain)
+	if serverName == "" {
+		serverName = strings.TrimSpace(node.TLSDomain)
+	}
+	settings["server_name"] = serverName
 	settings["tls_domain"] = node.TLSDomain
-	settings["sni"] = node.TLSDomain
+	settings["sni"] = serverName
 	return settings
 }
 
@@ -1299,13 +1309,13 @@ func (s *Service) trialConfig() *trial.Config {
 	return s.trialService.GetConfig()
 }
 
-func (s *Service) filterUsableUserProxies(ctx context.Context, proxies []*repository.Proxy) ([]*repository.Proxy, error) {
+func (s *Service) filterUsableUserProxies(ctx context.Context, proxies []*repository.Proxy, allowUnhealthy bool) ([]*repository.Proxy, error) {
 	if len(proxies) == 0 || s == nil || s.nodeRepo == nil {
 		return proxies, nil
 	}
 
 	usable := make([]*repository.Proxy, 0, len(proxies))
-	nodeOnlineCache := make(map[int64]bool)
+	nodeUsableCache := make(map[int64]bool)
 
 	for _, proxyModel := range proxies {
 		if proxyModel == nil {
@@ -1317,7 +1327,7 @@ func (s *Service) filterUsableUserProxies(ctx context.Context, proxies []*reposi
 		}
 
 		nodeID := *proxyModel.NodeID
-		online, ok := nodeOnlineCache[nodeID]
+		usableNode, ok := nodeUsableCache[nodeID]
 		if !ok {
 			nodeModel, err := s.nodeRepo.GetByID(ctx, nodeID)
 			if err != nil {
@@ -1327,20 +1337,43 @@ func (s *Service) filterUsableUserProxies(ctx context.Context, proxies []*reposi
 						logger.F("proxy_id", proxyModel.ID),
 						logger.F("node_id", nodeID),
 					)
-					nodeOnlineCache[nodeID] = false
+					nodeUsableCache[nodeID] = false
 					continue
 				}
 				return nil, err
 			}
-			online = nodeModel != nil && nodeModel.Status == repository.NodeStatusOnline
-			nodeOnlineCache[nodeID] = online
+			usableNode = nodeCanServeExistingUserProxy(nodeModel, allowUnhealthy)
+			nodeUsableCache[nodeID] = usableNode
 		}
-		if online {
+		if usableNode {
 			usable = append(usable, proxyModel)
 		}
 	}
 
 	return usable, nil
+}
+
+func nodeCanServeExistingUserProxy(node *repository.Node, allowUnhealthy bool) bool {
+	if node == nil {
+		return false
+	}
+	if allowUnhealthy {
+		return node.Status != repository.NodeStatusOffline
+	}
+	return node.Status == repository.NodeStatusOnline
+}
+
+func nodeReadyForUserTraffic(node *repository.Node) bool {
+	if node == nil || node.Status != repository.NodeStatusOnline {
+		return false
+	}
+
+	switch strings.TrimSpace(node.SyncStatus) {
+	case "", repository.NodeSyncStatusSynced:
+		return true
+	default:
+		return false
+	}
 }
 
 func enabledOnly(proxies []*repository.Proxy) []*repository.Proxy {

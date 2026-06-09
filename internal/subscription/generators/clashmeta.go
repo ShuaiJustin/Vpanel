@@ -333,30 +333,39 @@ func (g *ClashMetaGenerator) generateShadowsocksProxy(info *ProxyInfo) (map[stri
 // generateProxyGroups generates default proxy groups for Clash Meta.
 func (g *ClashMetaGenerator) generateProxyGroups(proxyNames []string, options *GeneratorOptions) []ClashProxyGroup {
 	selectProxies := append([]string{}, proxyNames...)
-	selectProxies = append(selectProxies, clashAutoGroupName(options), clashFallbackGroupName(options), "DIRECT", "REJECT")
+	if len(proxyNames) > 1 {
+		selectProxies = append(selectProxies, clashAutoGroupName(options), clashFallbackGroupName(options))
+	}
+	selectProxies = append(selectProxies, "DIRECT")
 	autoProxies := proxyNames
 
-	return []ClashProxyGroup{
+	groups := []ClashProxyGroup{
 		{
 			Name:    clashSelectGroupName(options),
 			Type:    "select",
 			Proxies: selectProxies,
 		},
-		{
+	}
+	if len(proxyNames) <= 1 {
+		return groups
+	}
+
+	return append(groups,
+		ClashProxyGroup{
 			Name:     clashAutoGroupName(options),
 			Type:     "url-test",
 			Proxies:  autoProxies,
 			URL:      "https://www.gstatic.com/generate_204",
 			Interval: 300,
 		},
-		{
+		ClashProxyGroup{
 			Name:     clashFallbackGroupName(options),
 			Type:     "fallback",
 			Proxies:  autoProxies,
 			URL:      "https://www.gstatic.com/generate_204",
 			Interval: 300,
 		},
-	}
+	)
 }
 
 // generateRules generates default rules for Clash Meta.

@@ -90,10 +90,11 @@ func createTestNode(t *testing.T, db *gorm.DB, name string) *repository.Node {
 	t.Helper()
 
 	node := &repository.Node{
-		Name:    name,
-		Address: name + ".example.com",
-		Token:   name + "-token",
-		Status:  repository.NodeStatusOnline,
+		Name:       name,
+		Address:    name + ".example.com",
+		Token:      name + "-token",
+		Status:     repository.NodeStatusOnline,
+		SyncStatus: repository.NodeSyncStatusSynced,
 	}
 	if err := db.Create(node).Error; err != nil {
 		t.Fatalf("failed to create node: %v", err)
@@ -1125,7 +1126,7 @@ func TestGetAccessibleProxies_ReassignsWhenExistingProxyNodeUnhealthy(t *testing
 	}
 }
 
-func TestGetSubscriptionProxies_ExcludesUnhealthyExistingNode(t *testing.T) {
+func TestGetSubscriptionProxies_KeepsUnhealthyExistingNodeForSubscriptionFiltering(t *testing.T) {
 	service, db := setupTestService(t)
 	user := createTestUser(t, db, "subscription-healthy-only-user")
 	badNode := createTestNode(t, db, "subscription-bad-node")
@@ -1161,8 +1162,47 @@ func TestGetSubscriptionProxies_ExcludesUnhealthyExistingNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected subscription proxies, got error: %v", err)
 	}
+	if len(proxies) != 2 {
+		t.Fatalf("expected unhealthy existing proxy plus healthy fallback proxy, got %d", len(proxies))
+	}
+	foundBadNode := false
+	foundGoodNode := false
+	for _, proxyModel := range proxies {
+		if proxyModel == nil || proxyModel.NodeID == nil {
+			continue
+		}
+		if *proxyModel.NodeID == badNode.ID {
+			foundBadNode = true
+		}
+		if *proxyModel.NodeID == goodNode.ID {
+			foundGoodNode = true
+		}
+	}
+	if !foundBadNode || !foundGoodNode {
+		t.Fatalf("expected subscription proxies on bad node %d and good node %d, got %+v", badNode.ID, goodNode.ID, proxies)
+	}
+}
+
+func TestGetSubscriptionProxies_DoesNotAutoProvisionOnPendingSyncNode(t *testing.T) {
+	service, db := setupTestService(t)
+	user := createTestUser(t, db, "subscription-synced-only-user")
+	pendingNode := createTestNode(t, db, "subscription-pending-node")
+	pendingNode.SyncStatus = repository.NodeSyncStatusPending
+	if err := db.Save(pendingNode).Error; err != nil {
+		t.Fatalf("failed to mark subscription node pending: %v", err)
+	}
+	goodNode := createTestNode(t, db, "subscription-synced-node")
+	goodNode.Protocols = `["vmess"]`
+	if err := db.Save(goodNode).Error; err != nil {
+		t.Fatalf("failed to update synced node protocols: %v", err)
+	}
+
+	proxies, _, err := service.GetSubscriptionProxies(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("expected subscription proxies, got error: %v", err)
+	}
 	if len(proxies) != 1 {
-		t.Fatalf("expected one healthy subscription proxy, got %d", len(proxies))
+		t.Fatalf("expected one auto provisioned synced subscription proxy, got %d", len(proxies))
 	}
 	if proxies[0].NodeID == nil || *proxies[0].NodeID != goodNode.ID {
 		t.Fatalf("expected subscription proxy on node %d, got %+v", goodNode.ID, proxies[0].NodeID)

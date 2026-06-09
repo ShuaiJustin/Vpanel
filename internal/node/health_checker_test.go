@@ -44,6 +44,34 @@ func TestHeartbeatFallbackMessage(t *testing.T) {
 	assert.Equal(t, "Recent heartbeat confirms Xray is running and at least one sampled proxy endpoint is reachable", heartbeatFallbackMessage(true))
 }
 
+func TestSampledProxyEndpointsHealthyForPrimary(t *testing.T) {
+	assert.True(t, sampledProxyEndpointsHealthyForPrimary(sampledProxyEndpointHealth{}))
+	assert.True(t, sampledProxyEndpointsHealthyForPrimary(sampledProxyEndpointHealth{
+		HasSampled:   true,
+		AnyReachable: true,
+		AllReachable: true,
+	}))
+	assert.False(t, sampledProxyEndpointsHealthyForPrimary(sampledProxyEndpointHealth{
+		HasSampled:   true,
+		AnyReachable: true,
+		AllReachable: false,
+	}))
+	assert.False(t, sampledProxyEndpointsHealthyForPrimary(sampledProxyEndpointHealth{
+		HasSampled:   true,
+		AnyReachable: false,
+		AllReachable: false,
+	}))
+}
+
+func TestSampledProxyEndpointFailureMessageIncludesTarget(t *testing.T) {
+	message := sampledProxyEndpointFailureMessage(sampledProxyEndpointHealth{
+		FirstUnreachableTarget: "node.example.com:20001",
+	})
+
+	assert.Contains(t, message, "node.example.com:20001")
+	assert.Contains(t, message, "sampled proxy endpoint")
+}
+
 func TestResolveHealthCheckProxyHost_PrefersNodeAddressForAutoProvisionedProxy(t *testing.T) {
 	nodeModel := &repository.Node{Address: "node.example.com"}
 	proxyModel := &repository.Proxy{
