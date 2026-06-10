@@ -21,10 +21,26 @@ export const useUserStore = defineStore('user', () => {
   const restoreStoredUser = () => {
     try {
       const raw = localStorage.getItem(ADMIN_USER_INFO_KEY) || sessionStorage.getItem(ADMIN_USER_INFO_KEY)
-      return raw ? JSON.parse(raw) : null
+      return raw ? normalizeAdminUserInfo(JSON.parse(raw)) : null
     } catch {
       return null
     }
+  }
+
+  const normalizeAdminUserInfo = (userInfo) => {
+    if (!userInfo || typeof userInfo !== 'object') {
+      return userInfo
+    }
+
+    const permissions = Array.isArray(userInfo.permissions) ? userInfo.permissions : []
+    if (userInfo.role === 'admin' && permissions.length === 0) {
+      return {
+        ...userInfo,
+        permissions: ['*']
+      }
+    }
+
+    return userInfo
   }
 
   // 状态
@@ -48,12 +64,13 @@ export const useUserStore = defineStore('user', () => {
   const setUser = (userInfo) => {
     const storage = getCurrentAdminStorage()
     const otherStorage = storage === localStorage ? sessionStorage : localStorage
-    user.value = userInfo
-    storage.setItem(ADMIN_USER_INFO_KEY, JSON.stringify(userInfo || null))
+    const normalizedUserInfo = normalizeAdminUserInfo(userInfo)
+    user.value = normalizedUserInfo
+    storage.setItem(ADMIN_USER_INFO_KEY, JSON.stringify(normalizedUserInfo || null))
     otherStorage.removeItem(ADMIN_USER_INFO_KEY)
     // 同步角色到 localStorage，供路由守卫使用
-    if (userInfo?.role) {
-      storage.setItem(ADMIN_ROLE_KEY, userInfo.role)
+    if (normalizedUserInfo?.role) {
+      storage.setItem(ADMIN_ROLE_KEY, normalizedUserInfo.role)
       otherStorage.removeItem(ADMIN_ROLE_KEY)
     }
   }

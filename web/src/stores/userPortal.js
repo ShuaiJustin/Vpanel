@@ -48,16 +48,17 @@ export const useUserPortalStore = defineStore('userPortal', () => {
   function syncUserInfoStorage(value) {
     const storage = getCurrentAuthStorage()
     const otherStorage = storage === localStorage ? sessionStorage : localStorage
+    const normalizedValue = normalizeAdminUserInfo(value)
 
-    if (value == null) {
+    if (normalizedValue == null) {
       storage.removeItem('userInfo')
       otherStorage.removeItem('userInfo')
       return
     }
 
-    storage.setItem('userInfo', JSON.stringify(value))
+    storage.setItem('userInfo', JSON.stringify(normalizedValue))
     otherStorage.removeItem('userInfo')
-    syncAdminBridge(storage, otherStorage, value, token.value || getStoredValue('userToken'), false)
+    syncAdminBridge(storage, otherStorage, normalizedValue, token.value || getStoredValue('userToken'), false)
   }
 
   function clearPersistedAuth() {
@@ -86,10 +87,11 @@ export const useUserPortalStore = defineStore('userPortal', () => {
   }
 
   function syncAdminBridge(storage, otherStorage, userInfo, tokenValue, clearExisting = true) {
-    if (userInfo?.role === 'admin' && tokenValue) {
+    const normalizedUserInfo = normalizeAdminUserInfo(userInfo)
+    if (normalizedUserInfo?.role === 'admin' && tokenValue) {
       storage.setItem('token', tokenValue)
-      storage.setItem(ADMIN_USER_INFO_KEY, JSON.stringify(userInfo))
-      storage.setItem(ADMIN_ROLE_KEY, userInfo.role)
+      storage.setItem(ADMIN_USER_INFO_KEY, JSON.stringify(normalizedUserInfo))
+      storage.setItem(ADMIN_ROLE_KEY, normalizedUserInfo.role)
       otherStorage.removeItem('token')
       otherStorage.removeItem(ADMIN_USER_INFO_KEY)
       otherStorage.removeItem(ADMIN_ROLE_KEY)
@@ -103,7 +105,23 @@ export const useUserPortalStore = defineStore('userPortal', () => {
   function hasPermission(userInfo, permission) {
     if (!permission) return true
     const permissions = Array.isArray(userInfo?.permissions) ? userInfo.permissions : []
-    return permissions.includes('*') || permissions.includes(permission)
+    return userInfo?.role === 'admin' || permissions.includes('*') || permissions.includes(permission)
+  }
+
+  function normalizeAdminUserInfo(userInfo) {
+    if (!userInfo || typeof userInfo !== 'object') {
+      return userInfo
+    }
+
+    const permissions = Array.isArray(userInfo.permissions) ? userInfo.permissions : []
+    if (userInfo.role === 'admin' && permissions.length === 0) {
+      return {
+        ...userInfo,
+        permissions: ['*']
+      }
+    }
+
+    return userInfo
   }
 
   function hasAllPermissions(userInfo, permissions = []) {

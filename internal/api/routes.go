@@ -175,7 +175,8 @@ func (r *Router) Setup() {
 	healthHandler := handlers.NewHealthHandler(r.repos, r.logger, nil)
 	roleHandler := handlers.NewRoleHandler(r.logger, r.repos.Role).WithAuditService(auditSvc)
 	statsHandler := handlers.NewStatsHandler(r.logger, r.repos, statsCache)
-	settingsHandler := handlers.NewSettingsHandler(r.logger, r.settingsService)
+	settingsHandler := handlers.NewSettingsHandler(r.logger, r.settingsService).
+		WithRuntimeDatabaseConfig(r.config.Database.Driver, r.config.Database.DSN, r.config.Database.Path)
 	// Source DB injection so the migration endpoint can read from the
 	// currently-active database.
 	if dbPtr := r.repos.DB(); dbPtr != nil {

@@ -60,6 +60,26 @@ describe('userPortal store admin bridge', () => {
     expect(sessionStorage.getItem('adminRole')).toBe('admin')
   })
 
+  it('normalizes admin bridge permissions when the profile omits them', async () => {
+    sessionStorage.setItem('userToken', 'portal-admin-token')
+    const store = useUserPortalStore()
+
+    portalAuthMocks.getProfile.mockResolvedValueOnce({
+      id: 1,
+      username: 'admin',
+      role: 'admin',
+    })
+
+    await store.fetchProfile({ silent: true })
+
+    expect(store.isAdmin).toBe(true)
+    expect(store.adminEntryPath).toBe('/admin/dashboard')
+    expect(JSON.parse(sessionStorage.getItem('adminUserInfo'))).toMatchObject({
+      role: 'admin',
+      permissions: ['*'],
+    })
+  })
+
   it('does not remove an independent admin session during non-admin profile refresh', async () => {
     sessionStorage.setItem('userToken', 'portal-user-token')
     sessionStorage.setItem('token', 'separate-admin-token')

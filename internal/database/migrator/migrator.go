@@ -11,7 +11,7 @@
 //     mid-way the target DB is left in a partial state. Callers should warn
 //     the user and recommend they take a backup first.
 //   - Cutover is manual: after a successful migration the operator must
-//     update their config (V_DATABASE_DRIVER / V_DATABASE_DSN) and restart
+//     update their config (V_DB_DRIVER / V_DB_DSN) and restart
 //     the process to start using the target DB. The migrator does NOT
 //     switch the running process.
 package migrator

@@ -382,7 +382,37 @@ const activeMenu = computed(() => {
 })
 const currentTitle = computed(() => route.meta?.title || 'V 管理面板')
 
-const storedPermissions = computed(() => Array.isArray(userStore.user?.permissions) ? userStore.user.permissions : [])
+const getStoredItem = (key) => sessionStorage.getItem(key) || localStorage.getItem(key)
+
+const getStoredAdminUserInfo = () => {
+  const raw = getStoredItem('adminUserInfo')
+  if (!raw) {
+    return null
+  }
+
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+const storedPermissions = computed(() => {
+  if (userStore.user?.role === 'admin') {
+    return ['*']
+  }
+
+  if (Array.isArray(userStore.user?.permissions) && userStore.user.permissions.length > 0) {
+    return userStore.user.permissions
+  }
+
+  const storedUserInfo = getStoredAdminUserInfo()
+  if (storedUserInfo?.role === 'admin' || getStoredItem('adminRole') === 'admin') {
+    return ['*']
+  }
+
+  return Array.isArray(storedUserInfo?.permissions) ? storedUserInfo.permissions : []
+})
 
 const canAccessPermission = permission => {
   if (!permission) return true

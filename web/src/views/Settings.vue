@@ -20,6 +20,7 @@
       >
         <el-form
           :model="serverForm"
+          :label-position="settingsLabelPosition"
           :label-width="settingsLabelWidth"
           class="settings-form"
         >
@@ -122,7 +123,7 @@
                 placeholder="/app/certs/privkey.pem"
               />
               <div class="form-tips">
-                同上。两个路径都填且文件存在时，重启后面板自动切到 HTTPS；只填一个会忽略
+                同上。两个路径都填且文件存在时，重启后面板自动切到 HTTPS；只填一个会被保存校验拒绝
               </div>
             </el-form-item>
           </template>
@@ -176,6 +177,7 @@
       >
         <el-form
           :model="dbForm"
+          :label-position="settingsLabelPosition"
           :label-width="settingsLabelWidth"
           class="settings-form"
         >
@@ -186,10 +188,10 @@
             class="settings-note"
           >
             <template #title>
-              当前运行数据库由 <code>V_DATABASE_DRIVER</code> / <code>V_DATABASE_DSN</code> 决定（启动时读取），<strong>无法通过 UI 直接保存切换</strong>。下方表单仅作为"测试连接"和"迁移数据"的目标 DB 输入。要真正切换：先备份，再迁移，最后修改环境变量并重启容器。
+              当前运行数据库由 <code>V_DB_DRIVER</code> / <code>V_DB_DSN</code> 决定（SQLite 也兼容 <code>V_DB_PATH</code>），<strong>无法通过 UI 直接保存切换</strong>。下方表单仅作为"测试连接"和"迁移数据"的目标 DB 输入。要真正切换：先备份，再迁移，最后修改环境变量并重启容器。
             </template>
           </el-alert>
-          <el-form-item label="数据库类型">
+          <el-form-item label="目标数据库类型">
             <el-select
               v-model="dbForm.dbType"
               style="width: 100%"
@@ -210,13 +212,13 @@
           </el-form-item>
           
           <template v-if="dbForm.dbType !== 'sqlite'">
-            <el-form-item label="数据库服务器">
+            <el-form-item label="目标数据库服务器">
               <el-input
                 v-model="dbForm.dbHost"
                 placeholder="localhost"
               />
             </el-form-item>
-            <el-form-item label="数据库端口">
+            <el-form-item label="目标数据库端口">
               <el-input-number 
                 v-model="dbForm.dbPort" 
                 :min="1" 
@@ -224,7 +226,7 @@
                 :placeholder="dbForm.dbType === 'mysql' ? '3306' : '5432'"
               />
             </el-form-item>
-            <el-form-item label="数据库名称">
+            <el-form-item label="目标数据库名称">
               <el-input
                 v-model="dbForm.dbName"
                 placeholder="v_panel"
@@ -247,13 +249,13 @@
           </template>
           
           <template v-else>
-            <el-form-item label="SQLite文件路径">
+            <el-form-item label="目标 SQLite 路径">
               <el-input
                 v-model="dbForm.sqlitePath"
-                placeholder="/usr/local/v-panel/data.db"
+                placeholder="/app/data/v-next.db"
               />
               <div class="form-tips">
-                默认在程序目录下的 data.db 文件
+                这是测试连接和迁移数据的目标文件路径，不是当前运行库路径
               </div>
             </el-form-item>
           </template>
@@ -267,7 +269,7 @@
               type="success"
               @click="backupDb"
             >
-              备份数据库
+              备份当前 SQLite
             </el-button>
             <el-button
               type="danger"
@@ -286,7 +288,7 @@
             <template #title>
               数据库切换说明
             </template>
-            "迁移数据到目标数据库" 会把当前 DB 的所有表 + 数据复制到上方填写的目标 DB。<strong>迁移完成后，本服务仍连接旧 DB</strong>——请手动在 docker-compose.yml 或环境变量中设置 <code>V_DATABASE_DRIVER</code> / <code>V_DATABASE_DSN</code>，然后重启容器才会真正切换。建议先点 备份数据库 留好快照。
+            "迁移数据到目标数据库" 会把当前 DB 的所有表 + 数据复制到上方填写的目标 DB。<strong>迁移完成后，本服务仍连接旧 DB</strong>——请手动在 docker-compose.yml 或环境变量中设置 <code>V_DB_DRIVER</code> / <code>V_DB_DSN</code>，然后重启容器才会真正切换。SQLite 文件路径也可以继续使用 <code>V_DB_PATH</code>。建议先点 备份当前 SQLite 留好快照。
           </el-alert>
         </el-form>
       </el-tab-pane>
@@ -297,6 +299,7 @@
       >
         <el-form
           :model="logForm"
+          :label-position="settingsLabelPosition"
           :label-width="settingsLabelWidth"
           class="settings-form"
         >
@@ -375,6 +378,7 @@
       >
         <el-form
           :model="emailForm"
+          :label-position="settingsLabelPosition"
           :label-width="settingsLabelWidth"
           class="settings-form"
         >
@@ -494,6 +498,7 @@
       >
         <el-form
           :model="adminForm"
+          :label-position="settingsLabelPosition"
           :label-width="settingsLabelWidth"
           class="settings-form"
         >
@@ -565,6 +570,7 @@
       >
         <el-form
           :model="securityForm"
+          :label-position="settingsLabelPosition"
           :label-width="settingsLabelWidth"
           class="settings-form security-form"
         >
@@ -647,7 +653,10 @@
         label="协议管理"
         name="protocol"
       >
-        <el-form class="settings-form">
+        <el-form
+          class="settings-form"
+          :label-position="settingsLabelPosition"
+        >
           <el-form-item
             label="支持的协议"
             :label-width="settingsLabelWidth"
@@ -1039,7 +1048,8 @@ const { isMobile } = useViewport()
 
 // 当前活动标签页
 const activeName = ref('server')
-const settingsLabelWidth = computed(() => (isMobile.value ? '100%' : '168px'))
+const settingsLabelPosition = computed(() => (isMobile.value ? 'top' : 'right'))
+const settingsLabelWidth = computed(() => (isMobile.value ? 'auto' : '168px'))
 
 // 表单数据
 const serverForm = reactive({
@@ -1066,7 +1076,7 @@ const dbForm = reactive({
   dbName: 'v_panel',
   dbUser: 'root',
   dbPassword: '',
-  sqlitePath: '/usr/local/v-panel/data.db'
+  sqlitePath: ''
 })
 
 const logForm = reactive({
@@ -1149,7 +1159,7 @@ const applyDbSettings = (settings) => {
   dbForm.dbName = settings?.db_name || 'v_panel'
   dbForm.dbUser = settings?.db_user || 'root'
   dbForm.dbPassword = ''
-  dbForm.sqlitePath = settings?.sqlite_path || './data/v.db'
+  dbForm.sqlitePath = ''
 }
 
 const applyLogSettings = (settings) => {
@@ -1351,20 +1361,63 @@ const applyCertificate = async () => {
   }
 }
 
+const normalizePanelBasePath = (value) => {
+  let basePath = String(value || '').trim()
+  if (!basePath || basePath === '/') return { value: '/' }
+  if (basePath.includes('://')) {
+    return { error: '面板URL基础路径只能填写路径，例如 /vpanel，不能填写完整 URL' }
+  }
+  if (/[\s?#]/.test(basePath)) {
+    return { error: '面板URL基础路径不能包含空格、查询参数或 # 片段' }
+  }
+  if (!basePath.startsWith('/')) {
+    basePath = `/${basePath}`
+  }
+  basePath = basePath.replace(/\/+$/g, '')
+  if (!basePath) return { value: '/' }
+  if (basePath.includes('//')) {
+    return { error: '面板URL基础路径不能包含连续斜杠' }
+  }
+  return { value: basePath }
+}
+
+const buildServerSettingsPayload = () => {
+  const panelPort = Number(serverForm.panelPort)
+  if (!Number.isInteger(panelPort) || panelPort < 1 || panelPort > 65535) {
+    ElMessage.warning('面板端口必须在 1-65535 之间')
+    return null
+  }
+
+  const normalizedBasePath = normalizePanelBasePath(serverForm.panelBasePath)
+  if (normalizedBasePath.error) {
+    ElMessage.warning(normalizedBasePath.error)
+    return null
+  }
+
+  const certPath = serverForm.panelCertPath.trim()
+  const keyPath = serverForm.panelKeyPath.trim()
+  if (Boolean(certPath) !== Boolean(keyPath)) {
+    ElMessage.warning('TLS 证书路径和私钥路径必须同时填写，或同时留空')
+    return null
+  }
+
+  return {
+    panel_access_ip: serverForm.panelListenIP.trim(),
+    panel_port: panelPort,
+    panel_base_path: normalizedBasePath.value,
+    panel_cert_path: certPath,
+    panel_key_path: keyPath,
+    timezone: serverForm.timezone
+  }
+}
+
 // 方法
 const saveServerSettings = async () => {
+  const payload = buildServerSettingsPayload()
+  if (!payload) return
+
   try {
-    // All fields persist to settings DB and take effect on next restart.
-    // The warning banner makes the Docker port-mapping caveat explicit so
-    // admin owns the consequences.
-    const response = await api.put('/settings', {
-      panel_access_ip: serverForm.panelListenIP.trim(),
-      panel_port: serverForm.panelPort,
-      panel_base_path: serverForm.panelBasePath.trim() || '/',
-      panel_cert_path: serverForm.panelCertPath.trim(),
-      panel_key_path: serverForm.panelKeyPath.trim(),
-      timezone: serverForm.timezone
-    })
+    const response = await api.put('/settings', payload)
     applyServerSettings(response?.data || {})
     ElMessage.success('服务器配置保存成功（重启面板后生效）')
   } catch (error) {
@@ -1397,11 +1450,15 @@ const restartPanel = () => {
 
 const saveDbSettings = async () => {
   // The DB config tab no longer offers a "save" button: the running DB is
-  // determined by V_DATABASE_DRIVER / V_DATABASE_DSN at startup (see warning
+  // determined by V_DB_DRIVER / V_DB_DSN at startup (see warning
   // banner in the UI). Kept as a stub so any leftover references don't break.
 }
 
 const testDbConnection = async () => {
+  if (dbForm.dbType === 'sqlite' && !dbForm.sqlitePath.trim()) {
+    return ElMessage.warning('请填写目标 SQLite 路径')
+  }
+
   try {
     await api.post('/settings/test-db', {
       db_type: dbForm.dbType,
@@ -1821,6 +1878,14 @@ const saveProtocolSettings = async () => {
   gap: 8px;
   width: 100%;
   align-items: center;
+}
+
+.cert-picker :deep(.el-select) {
+  min-width: 0;
+}
+
+.cert-picker :deep(.el-button) {
+  flex-shrink: 0;
 }
 
 .manual-cert-toggle-link {
@@ -2265,6 +2330,21 @@ const saveProtocolSettings = async () => {
   }
 
   .settings-form :deep(.el-form-item__content) {
+    width: 100%;
+    max-width: 100%;
+    flex: 0 0 100%;
+    margin-left: 0 !important;
+  }
+
+  .cert-picker {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cert-picker :deep(.el-button),
+  .settings-form :deep(.form-actions-row .el-button),
+  .settings-form :deep(.el-input-number) {
+    width: 100%;
     margin-left: 0 !important;
   }
 

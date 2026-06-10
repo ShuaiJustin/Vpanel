@@ -85,6 +85,9 @@ function getStoredAdminUserInfo() {
 
 function getStoredPermissions() {
   const userInfo = getStoredAdminUserInfo()
+  if (userInfo?.role === 'admin') {
+    return ['*']
+  }
   return Array.isArray(userInfo?.permissions) ? userInfo.permissions : []
 }
 

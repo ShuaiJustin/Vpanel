@@ -49,7 +49,7 @@ type ServerConfig struct {
 // DatabaseConfig contains database connection settings.
 type DatabaseConfig struct {
 	Driver          string `yaml:"driver" env:"V_DB_DRIVER" default:"sqlite"`
-	DSN             string `yaml:"dsn" env:"V_DB_DSN" default:"./data/v.db"`
+	DSN             string `yaml:"dsn" env:"V_DB_DSN" default:""`
 	Path            string `yaml:"path" env:"V_DB_PATH" default:"./data/v.db"`
 	MaxOpenConns    int    `yaml:"max_open_conns" env:"V_DB_MAX_OPEN_CONNS" default:"10"`
 	MaxIdleConns    int    `yaml:"max_idle_conns" env:"V_DB_MAX_IDLE_CONNS" default:"5"`
@@ -175,6 +175,8 @@ func NewLoader(configPath string) *Loader {
 // Environment variables take precedence over file values.
 func (l *Loader) Load() (*Config, error) {
 	cfg := &Config{}
+	preferSQLitePath := strings.TrimSpace(os.Getenv("V_DB_PATH")) != "" &&
+		strings.TrimSpace(os.Getenv("V_DB_DSN")) == ""
 
 	// Apply defaults first
 	if err := applyDefaults(cfg); err != nil {
@@ -195,6 +197,8 @@ func (l *Loader) Load() (*Config, error) {
 	if err := applyEnvOverrides(cfg); err != nil {
 		return nil, fmt.Errorf("failed to apply env overrides: %w", err)
 	}
+
+	cfg.normalizeDatabase(preferSQLitePath)
 
 	return cfg, nil
 }
@@ -275,8 +279,12 @@ func (cfg *Config) validateDatabase(errs *ValidationErrors) {
 	}
 
 	validDrivers := map[string]bool{"sqlite": true, "postgres": true, "mysql": true}
-	if !validDrivers[strings.ToLower(cfg.Database.Driver)] {
+	driver := strings.ToLower(cfg.Database.Driver)
+	if !validDrivers[driver] {
 		errs.Add("database.driver", "must be one of: sqlite, postgres, mysql")
+	}
+	if driver != "sqlite" && strings.TrimSpace(cfg.Database.DSN) == "" {
+		errs.Add("database.dsn", "database DSN is required for mysql/postgres")
 	}
 
 	// Validate DSN format based on driver
@@ -326,6 +334,29 @@ func (cfg *Config) validateDSN() error {
 	}
 
 	return nil
+}
+
+func (cfg *Config) normalizeDatabase(preferSQLitePath bool) {
+	if cfg == nil {
+		return
+	}
+
+	cfg.Database.Driver = strings.ToLower(strings.TrimSpace(cfg.Database.Driver))
+	cfg.Database.DSN = strings.TrimSpace(cfg.Database.DSN)
+	cfg.Database.Path = strings.TrimSpace(cfg.Database.Path)
+
+	if cfg.Database.Driver == "" {
+		cfg.Database.Driver = "sqlite"
+	}
+
+	if cfg.Database.Driver == "sqlite" || cfg.Database.Driver == "sqlite3" {
+		if cfg.Database.Path == "" && cfg.Database.DSN != "" {
+			cfg.Database.Path = cfg.Database.DSN
+		}
+		if cfg.Database.DSN == "" || preferSQLitePath {
+			cfg.Database.DSN = cfg.Database.Path
+		}
+	}
 }
 
 // validateAuth validates authentication configuration.

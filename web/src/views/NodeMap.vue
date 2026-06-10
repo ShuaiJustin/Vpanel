@@ -760,13 +760,13 @@ onBeforeUnmount(() => {
 
 .map-stage__glow--top {
   top: -70px;
-  right: -40px;
+  right: 0;
   background: rgba(59, 130, 246, 0.26);
 }
 
 .map-stage__glow--bottom {
   bottom: -90px;
-  left: -60px;
+  left: 0;
   background: rgba(14, 165, 233, 0.2);
 }
 

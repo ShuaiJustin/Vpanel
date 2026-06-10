@@ -18,8 +18,8 @@ import (
 	"v/internal/api/middleware"
 	"v/internal/database"
 	"v/internal/database/migrator"
-	"v/internal/logger"
 	"v/internal/database/repository"
+	"v/internal/logger"
 	"v/internal/monitor"
 	"v/internal/settings"
 	"v/pkg/errors"
@@ -30,6 +30,9 @@ type SettingsHandler struct {
 	logger          logger.Logger
 	settingsService *settings.Service
 	sourceDB        *gorm.DB // current running DB; used as the source for migrations
+	runtimeDBDriver string
+	runtimeDBDSN    string
+	runtimeDBPath   string
 	auditService    monitor.AuditService
 	certRepo        repository.CertificateRepository // for ApplyCertificate
 	dataDir         string                           // base dir for writing applied panel certs
@@ -50,6 +53,16 @@ func NewSettingsHandler(log logger.Logger, settingsService *settings.Service) *S
 // MigrateDatabase endpoint to read rows out of the running DB.
 func (h *SettingsHandler) WithSourceDB(db *gorm.DB) *SettingsHandler {
 	h.sourceDB = db
+	return h
+}
+
+// WithRuntimeDatabaseConfig injects the database settings used at process
+// startup. The database tab stores target connection fields for test/migrate,
+// so manual backups must not infer the active DB from those persisted values.
+func (h *SettingsHandler) WithRuntimeDatabaseConfig(driver, dsn, path string) *SettingsHandler {
+	h.runtimeDBDriver = strings.TrimSpace(driver)
+	h.runtimeDBDSN = strings.TrimSpace(dsn)
+	h.runtimeDBPath = strings.TrimSpace(path)
 	return h
 }
 
@@ -298,13 +311,20 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 	}
 	// Panel settings
 	if req.PanelAccessIP != nil {
-		currentSettings.PanelAccessIP = *req.PanelAccessIP
+		currentSettings.PanelAccessIP = strings.TrimSpace(*req.PanelAccessIP)
 	}
 	if req.PanelPort != nil {
 		currentSettings.PanelPort = *req.PanelPort
 	}
 	if req.PanelBasePath != nil {
-		currentSettings.PanelBasePath = strings.TrimSpace(*req.PanelBasePath)
+		basePath, normErr := normalizePanelBasePath(*req.PanelBasePath)
+		if normErr != nil {
+			middleware.RespondWithError(c, errors.NewValidationError("invalid settings", map[string]interface{}{
+				"panel_base_path": normErr.Error(),
+			}))
+			return
+		}
+		currentSettings.PanelBasePath = basePath
 	}
 	if req.ProxyMode != nil {
 		currentSettings.ProxyMode = strings.TrimSpace(*req.ProxyMode)
@@ -313,10 +333,10 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 		currentSettings.Timezone = strings.TrimSpace(*req.Timezone)
 	}
 	if req.PanelCertPath != nil {
-		currentSettings.PanelCertPath = *req.PanelCertPath
+		currentSettings.PanelCertPath = strings.TrimSpace(*req.PanelCertPath)
 	}
 	if req.PanelKeyPath != nil {
-		currentSettings.PanelKeyPath = *req.PanelKeyPath
+		currentSettings.PanelKeyPath = strings.TrimSpace(*req.PanelKeyPath)
 	}
 	if req.PanelAPIDomain != nil {
 		currentSettings.PanelAPIDomain = *req.PanelAPIDomain
@@ -444,6 +464,13 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 		return
 	}
 
+	if err := validatePanelSettings(currentSettings); err != nil {
+		middleware.RespondWithError(c, errors.NewValidationError("invalid settings", map[string]interface{}{
+			"error": err.Error(),
+		}))
+		return
+	}
+
 	if err := validateIPWhitelist(currentSettings.IPWhitelist); err != nil {
 		middleware.RespondWithError(c, errors.NewValidationError("invalid settings", map[string]interface{}{
 			"ip_whitelist": err.Error(),
@@ -543,7 +570,7 @@ func buildDatabaseTestConfig(req TestDatabaseRequest) (*database.Config, error) 
 	case "sqlite":
 		path := strings.TrimSpace(req.SQLitePath)
 		if path == "" {
-			path = "./data/v.db"
+			return nil, fmt.Errorf("sqlite target path is required")
 		}
 		cfg.DSN = path
 	case "mysql":
@@ -594,6 +621,167 @@ func buildDatabaseTestConfig(req TestDatabaseRequest) (*database.Config, error) 
 	return cfg, nil
 }
 
+func sameFilePath(a, b string) bool {
+	a = strings.TrimSpace(a)
+	b = strings.TrimSpace(b)
+	if a == "" || b == "" {
+		return false
+	}
+
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	if errA == nil && errB == nil {
+		return filepath.Clean(absA) == filepath.Clean(absB)
+	}
+
+	return filepath.Clean(a) == filepath.Clean(b)
+}
+
+func (h *SettingsHandler) validateMigrationTarget(cfg *database.Config) error {
+	if cfg == nil {
+		return fmt.Errorf("target database config is required")
+	}
+	driver := strings.ToLower(strings.TrimSpace(cfg.Driver))
+	if driver != "sqlite" && driver != "sqlite3" {
+		return nil
+	}
+
+	targetPath, err := sqliteBackupPathFromDSN(cfg.DSN)
+	if err != nil {
+		return err
+	}
+	if targetPath == "" {
+		return fmt.Errorf("sqlite target path is required")
+	}
+
+	sourcePath, ok, err := h.currentSQLiteDatabasePath(nil)
+	if err != nil || !ok || sourcePath == "" {
+		return err
+	}
+	if sameFilePath(sourcePath, targetPath) {
+		return fmt.Errorf("target SQLite path must be different from the currently-running database")
+	}
+
+	return nil
+}
+
+func normalizePanelBasePath(value string) (string, error) {
+	basePath := strings.TrimSpace(value)
+	if basePath == "" || basePath == "/" {
+		return "/", nil
+	}
+	if strings.Contains(basePath, "://") {
+		return "", fmt.Errorf("base path must be a path like /vpanel, not a full URL")
+	}
+	if strings.ContainsAny(basePath, " \t\r\n?#") {
+		return "", fmt.Errorf("base path must not contain whitespace, query strings, or fragments")
+	}
+	if !strings.HasPrefix(basePath, "/") {
+		basePath = "/" + basePath
+	}
+	basePath = strings.TrimRight(basePath, "/")
+	if basePath == "" {
+		return "/", nil
+	}
+	if strings.Contains(basePath, "//") {
+		return "", fmt.Errorf("base path must not contain repeated slashes")
+	}
+	return basePath, nil
+}
+
+func validatePanelSettings(systemSettings *settings.SystemSettings) error {
+	if systemSettings == nil {
+		return nil
+	}
+
+	if systemSettings.PanelPort < 1 || systemSettings.PanelPort > 65535 {
+		return fmt.Errorf("panel port must be between 1 and 65535")
+	}
+
+	basePath, err := normalizePanelBasePath(systemSettings.PanelBasePath)
+	if err != nil {
+		return err
+	}
+	systemSettings.PanelBasePath = basePath
+
+	certPath := strings.TrimSpace(systemSettings.PanelCertPath)
+	keyPath := strings.TrimSpace(systemSettings.PanelKeyPath)
+	if (certPath == "") != (keyPath == "") {
+		return fmt.Errorf("panel TLS cert path and key path must be provided together")
+	}
+	systemSettings.PanelCertPath = certPath
+	systemSettings.PanelKeyPath = keyPath
+
+	if tz := strings.TrimSpace(systemSettings.Timezone); tz != "" {
+		if _, err := time.LoadLocation(tz); err != nil {
+			return fmt.Errorf("timezone is invalid: %w", err)
+		}
+		systemSettings.Timezone = tz
+	}
+
+	return nil
+}
+
+func sqliteBackupPathFromDSN(dsn string) (string, error) {
+	value := strings.TrimSpace(dsn)
+	if value == "" {
+		return "", nil
+	}
+	if value == ":memory:" || strings.Contains(value, "mode=memory") {
+		return "", fmt.Errorf("in-memory SQLite databases cannot be backed up by file copy")
+	}
+
+	if strings.HasPrefix(value, "file:") {
+		value = strings.TrimPrefix(value, "file:")
+	}
+	if idx := strings.Index(value, "?"); idx >= 0 {
+		value = value[:idx]
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", fmt.Errorf("SQLite DSN does not include a file path")
+	}
+	if value == ":memory:" {
+		return "", fmt.Errorf("in-memory SQLite databases cannot be backed up by file copy")
+	}
+	return value, nil
+}
+
+func (h *SettingsHandler) currentSQLiteDatabasePath(settingsValue *settings.SystemSettings) (string, bool, error) {
+	driver := strings.ToLower(strings.TrimSpace(h.runtimeDBDriver))
+	if driver == "" && settingsValue != nil {
+		driver = strings.ToLower(strings.TrimSpace(settingsValue.DBType))
+	}
+	if driver == "" {
+		driver = "sqlite"
+	}
+	if driver != "sqlite" && driver != "sqlite3" {
+		return "", false, nil
+	}
+
+	for _, candidate := range []string{h.runtimeDBDSN, h.runtimeDBPath} {
+		path, err := sqliteBackupPathFromDSN(candidate)
+		if err != nil {
+			return "", true, err
+		}
+		if path != "" {
+			return path, true, nil
+		}
+	}
+
+	if settingsValue != nil {
+		path, err := sqliteBackupPathFromDSN(settingsValue.SQLitePath)
+		if err != nil {
+			return "", true, err
+		}
+		if path != "" {
+			return path, true, nil
+		}
+	}
+
+	return "./data/v.db", true, nil
+}
+
 // TestDatabase tests a database connection using the provided settings.
 func (h *SettingsHandler) TestDatabase(c *gin.Context) {
 	var req TestDatabaseRequest
@@ -635,7 +823,7 @@ func (h *SettingsHandler) TestDatabase(c *gin.Context) {
 	})
 }
 
-// BackupDatabase creates a backup of the configured SQLite database file.
+// BackupDatabase creates a backup of the currently-running SQLite database file.
 func (h *SettingsHandler) BackupDatabase(c *gin.Context) {
 	settingsValue, err := h.settingsService.GetSystemSettings(c.Request.Context())
 	if err != nil {
@@ -643,20 +831,18 @@ func (h *SettingsHandler) BackupDatabase(c *gin.Context) {
 		return
 	}
 
-	dbType := strings.ToLower(strings.TrimSpace(settingsValue.DBType))
-	if dbType == "" {
-		dbType = "sqlite"
-	}
-	if dbType != "sqlite" {
-		c.JSON(http.StatusNotImplemented, gin.H{
-			"error": "Only SQLite database backup is currently supported",
-		})
+	sourcePath, ok, pathErr := h.currentSQLiteDatabasePath(settingsValue)
+	if pathErr != nil {
+		middleware.RespondWithError(c, errors.NewValidationError("invalid database config", map[string]interface{}{
+			"error": pathErr.Error(),
+		}))
 		return
 	}
-
-	sourcePath := strings.TrimSpace(settingsValue.SQLitePath)
-	if sourcePath == "" {
-		sourcePath = "./data/v.db"
+	if !ok {
+		c.JSON(http.StatusNotImplemented, gin.H{
+			"error": "Only the currently-running SQLite database can be backed up from this page",
+		})
+		return
 	}
 
 	if _, statErr := os.Stat(sourcePath); statErr != nil {
@@ -711,7 +897,7 @@ type MigrateDatabaseRequest struct {
 // MigrateDatabase copies every table from the currently-running database to
 // the target database described in the request. It does NOT switch the
 // running process to the new DB — the operator must update their config
-// (V_DATABASE_DRIVER / V_DATABASE_DSN) and restart manually.
+// (V_DB_DRIVER / V_DB_DSN) and restart manually.
 //
 // The endpoint is intentionally synchronous: GORM's INSERTs over the wire
 // are slow but the data volume in a typical V Panel install (users + traffic
@@ -740,6 +926,12 @@ func (h *SettingsHandler) MigrateDatabase(c *gin.Context) {
 
 	cfg, err := buildDatabaseTestConfig(req.TestDatabaseRequest)
 	if err != nil {
+		middleware.RespondWithError(c, errors.NewValidationError("invalid target database config", map[string]interface{}{
+			"error": err.Error(),
+		}))
+		return
+	}
+	if err := h.validateMigrationTarget(cfg); err != nil {
 		middleware.RespondWithError(c, errors.NewValidationError("invalid target database config", map[string]interface{}{
 			"error": err.Error(),
 		}))
@@ -785,8 +977,8 @@ func (h *SettingsHandler) MigrateDatabase(c *gin.Context) {
 // lets the UI render copy buttons.
 func buildCutoverInstruction(cfg *database.Config) map[string]string {
 	return map[string]string{
-		"V_DATABASE_DRIVER": cfg.Driver,
-		"V_DATABASE_DSN":    cfg.DSN,
+		"V_DB_DRIVER": cfg.Driver,
+		"V_DB_DSN":    cfg.DSN,
 	}
 }
 
@@ -810,7 +1002,6 @@ func maskDSN(dsn string) string {
 	}
 	return dsn
 }
-
 
 // TestEmailRequest represents a test email request.
 type TestEmailRequest struct {

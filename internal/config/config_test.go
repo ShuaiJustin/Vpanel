@@ -124,7 +124,7 @@ func TestConfigPrecedence_DefaultsApplied(t *testing.T) {
 	// Clear all relevant environment variables
 	envVars := []string{
 		"V_SERVER_HOST", "V_SERVER_PORT",
-		"V_DB_PATH", "V_LOG_LEVEL", "V_LOG_FORMAT",
+		"V_DB_DSN", "V_DB_PATH", "V_LOG_LEVEL", "V_LOG_FORMAT",
 	}
 	for _, v := range envVars {
 		os.Unsetenv(v)
@@ -152,6 +152,42 @@ func TestConfigPrecedence_DefaultsApplied(t *testing.T) {
 	}
 }
 
+func TestDatabaseConfig_SQLitePathEnvFeedsDSN(t *testing.T) {
+	t.Setenv("V_DB_DRIVER", "sqlite")
+	t.Setenv("V_DB_PATH", "/app/data/custom.db")
+	t.Setenv("V_DB_DSN", "")
+
+	cfg, err := NewLoader("").Load()
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if cfg.Database.Path != "/app/data/custom.db" {
+		t.Fatalf("expected V_DB_PATH to populate path, got %q", cfg.Database.Path)
+	}
+	if cfg.Database.DSN != "/app/data/custom.db" {
+		t.Fatalf("expected sqlite DSN to follow V_DB_PATH, got %q", cfg.Database.DSN)
+	}
+}
+
+func TestDatabaseConfig_DSNEnvWinsOverSQLitePath(t *testing.T) {
+	t.Setenv("V_DB_DRIVER", "sqlite")
+	t.Setenv("V_DB_PATH", "/app/data/path.db")
+	t.Setenv("V_DB_DSN", "/app/data/dsn.db")
+
+	cfg, err := NewLoader("").Load()
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if cfg.Database.Path != "/app/data/path.db" {
+		t.Fatalf("expected V_DB_PATH to populate path, got %q", cfg.Database.Path)
+	}
+	if cfg.Database.DSN != "/app/data/dsn.db" {
+		t.Fatalf("expected V_DB_DSN to win, got %q", cfg.Database.DSN)
+	}
+}
+
 // Helper function to convert int to string
 func itoa(i int) string {
 	if i == 0 {
@@ -164,7 +200,6 @@ func itoa(i int) string {
 	}
 	return result
 }
-
 
 // Property 4: Configuration Validation at Startup
 // For any invalid configuration (missing required fields, invalid values),
@@ -371,7 +406,6 @@ func createValidConfig() *Config {
 		},
 	}
 }
-
 
 // Property 4: JWT Secret Validation
 // For any JWT secret configuration, secrets with length less than 32 characters
@@ -610,7 +644,7 @@ func TestConfigurationValidation_TokenExpiry(t *testing.T) {
 
 	// Refresh token must be >= token expiry
 	cfg = createValidConfig()
-	cfg.Auth.TokenExpiry = 24 * 60 * 60 * 1000000000     // 24h
+	cfg.Auth.TokenExpiry = 24 * 60 * 60 * 1000000000       // 24h
 	cfg.Auth.RefreshTokenExpiry = 1 * 60 * 60 * 1000000000 // 1h
 	if !hasValidationError(cfg.Validate(), "auth.refresh_token_expiry") {
 		t.Error("Refresh token expiry < token expiry should cause validation error")
