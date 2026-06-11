@@ -87,12 +87,15 @@ const toggleTheme = () => {
 <style scoped>
 .auth-layout {
   min-height: 100vh;
+  min-height: 100svh;
   display: flex;
   align-items: center;
   justify-content: center;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 40px 0;
 }
 
 .auth-layout.dark-mode {
@@ -194,7 +197,7 @@ const toggleTheme = () => {
 .auth-card {
   background: var(--color-bg-card);
   border-radius: 16px;
-  padding: 32px;
+  padding: 40px 36px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
 }
 
@@ -205,7 +208,7 @@ const toggleTheme = () => {
 /* 底部 */
 .auth-footer {
   text-align: center;
-  margin-top: 24px;
+  margin-top: 20px;
 }
 
 .footer-links {
@@ -268,21 +271,29 @@ const toggleTheme = () => {
 
 /* 响应式 */
 @media (max-width: 480px) {
+  .auth-layout {
+    padding: 20px 0;
+  }
+
   .auth-container {
     padding: 16px;
   }
-  
+
   .auth-card {
-    padding: 24px;
+    padding: 28px 24px;
     border-radius: 12px;
   }
-  
+
+  .auth-header {
+    margin-bottom: 24px;
+  }
+
   .logo-icon {
     width: 40px;
     height: 40px;
     font-size: 20px;
   }
-  
+
   .logo-text {
     font-size: 24px;
   }

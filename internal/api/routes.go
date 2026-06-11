@@ -919,6 +919,11 @@ func (r *Router) Setup() {
 				adminNodes.POST("/:id/core/restart", authMiddleware.RequirePermission("system:write"), nodeHandler.RestartCore)
 				adminNodes.POST("/:id/core/sync-config", authMiddleware.RequirePermission("system:write"), nodeHandler.SyncCoreConfig)
 				adminNodes.POST("/:id/core/install-version", authMiddleware.RequirePermission("system:write"), nodeHandler.InstallCoreVersion)
+				adminNodes.POST("/:id/agent/update", authMiddleware.RequirePermission("system:write"), nodeHandler.UpdateAgent)
+
+				// SSH metadata routes
+				adminNodes.GET("/:id/ssh-metadata", authMiddleware.RequirePermission("system:read"), nodeHandler.GetSSHMetadata)
+				adminNodes.POST("/:id/ssh-metadata", authMiddleware.RequirePermission("system:write"), nodeHandler.SaveSSHMetadata)
 
 				// Xray version list from GitHub (panel proxy, no local state).
 				// Used by the per-node "切换版本" dropdown.

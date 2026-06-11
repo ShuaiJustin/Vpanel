@@ -20,6 +20,15 @@ type AutoProxySettings struct {
 	ProtocolPriority []string `json:"protocol_priority"`
 }
 
+// RuntimeDatabaseInfo describes the database connection currently used by
+// the running process. It is returned with system settings for display only;
+// it is not persisted back into the settings table.
+type RuntimeDatabaseInfo struct {
+	Driver    string `json:"driver"`
+	Path      string `json:"path,omitempty"`
+	DSNMasked string `json:"dsn_masked,omitempty"`
+}
+
 // SystemSettings represents all system settings.
 type SystemSettings struct {
 	SiteName            string `json:"site_name"`
@@ -47,14 +56,15 @@ type SystemSettings struct {
 	PanelAPIDomain string `json:"panel_api_domain"` // 面板 API 域名
 
 	// Database settings
-	DBType               string `json:"db_type"`
-	DBHost               string `json:"db_host"`
-	DBPort               int    `json:"db_port"`
-	DBName               string `json:"db_name"`
-	DBUser               string `json:"db_user"`
-	DBPassword           string `json:"-"`
-	DBPasswordConfigured bool   `json:"db_password_configured"`
-	SQLitePath           string `json:"sqlite_path"`
+	DBType               string               `json:"db_type"`
+	DBHost               string               `json:"db_host"`
+	DBPort               int                  `json:"db_port"`
+	DBName               string               `json:"db_name"`
+	DBUser               string               `json:"db_user"`
+	DBPassword           string               `json:"-"`
+	DBPasswordConfigured bool                 `json:"db_password_configured"`
+	SQLitePath           string               `json:"sqlite_path"`
+	RuntimeDatabase      *RuntimeDatabaseInfo `json:"runtime_database,omitempty"`
 
 	// Log settings
 	LogLevel           string `json:"log_level"`
@@ -118,24 +128,24 @@ func DefaultSettings() *SystemSettings {
 		// 默认与 config.yaml.example / Dockerfile EXPOSE 对齐 (8080)。
 		// 若 admin 在 UI 改了端口，会持久化到 settings 表并在重启时覆盖
 		// cfg.Server.Port；保持默认就不会触发覆盖。
-		PanelPort:           8080,
-		PanelBasePath:       "/",
-		ProxyMode:           "compatible",
-		Timezone:            "Asia/Shanghai",
-		DBType:              "sqlite",
-		DBPort:              3306,
-		DBName:              "v_panel",
-		DBUser:              "root",
-		SQLitePath:          "./data/v.db",
-		LogLevel:            "info",
-		LogRetentionDays:    30,
-		LogPath:             "./logs",
-		EnableAccessLog:     true,
-		EnableOperationLog:  true,
-		SMTPPort:            587,
-		RateLimitEnabled:    true,
-		RateLimitRequests:   100,
-		RateLimitWindow:     60, // seconds
+		PanelPort:          8080,
+		PanelBasePath:      "/",
+		ProxyMode:          "compatible",
+		Timezone:           "Asia/Shanghai",
+		DBType:             "sqlite",
+		DBPort:             3306,
+		DBName:             "v_panel",
+		DBUser:             "root",
+		SQLitePath:         "./data/v.db",
+		LogLevel:           "info",
+		LogRetentionDays:   30,
+		LogPath:            "./logs",
+		EnableAccessLog:    true,
+		EnableOperationLog: true,
+		SMTPPort:           587,
+		RateLimitEnabled:   true,
+		RateLimitRequests:  100,
+		RateLimitWindow:    60, // seconds
 	}
 }
 

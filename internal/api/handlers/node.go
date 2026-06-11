@@ -1226,7 +1226,13 @@ func (h *NodeHandler) Create(c *gin.Context) {
 	h.logger.Info("Node created", logger.F("node_id", n.ID), logger.F("name", n.Name))
 
 	if req.SSH != nil {
-		if err := h.nodeService.UpdateSSHConfig(c.Request.Context(), n.ID, req.SSH.Host, req.SSH.Port, req.SSH.Username, req.SSH.Password, ""); err != nil {
+		if err := persistNodeSSHMetadata(c.Request.Context(), h.nodeService, n.ID, nodeSSHMetadataInput{
+			Host:       req.SSH.Host,
+			Port:       req.SSH.Port,
+			Username:   req.SSH.Username,
+			Password:   req.SSH.Password,
+			PrivateKey: req.SSH.PrivateKey,
+		}); err != nil {
 			h.logger.Warn("Failed to persist node SSH metadata after create", logger.Err(err), logger.F("node_id", n.ID))
 		} else {
 			n, err = h.nodeService.GetByID(c.Request.Context(), n.ID)
@@ -1475,7 +1481,13 @@ func (h *NodeHandler) Update(c *gin.Context) {
 	}
 
 	if req.SSH != nil {
-		if err := h.nodeService.UpdateSSHConfig(c.Request.Context(), id, req.SSH.Host, req.SSH.Port, req.SSH.Username, req.SSH.Password, ""); err != nil {
+		if err := persistNodeSSHMetadata(c.Request.Context(), h.nodeService, id, nodeSSHMetadataInput{
+			Host:       req.SSH.Host,
+			Port:       req.SSH.Port,
+			Username:   req.SSH.Username,
+			Password:   req.SSH.Password,
+			PrivateKey: req.SSH.PrivateKey,
+		}); err != nil {
 			h.logger.Warn("Failed to persist node SSH metadata after update", logger.Err(err), logger.F("node_id", id))
 		} else {
 			n, err = h.nodeService.GetByID(c.Request.Context(), id)
@@ -1914,6 +1926,62 @@ func (h *NodeHandler) InstallCoreVersion(c *gin.Context) {
 			return h.recoveryTracker.QueueXrayInstallVersionCommand(nodeID, source, reason, targetVersion)
 		},
 	)
+}
+
+func (h *NodeHandler) UpdateAgent(c *gin.Context) {
+	h.queueNodeCommand(
+		c,
+		commandTypeAgentUpdate,
+		"管理员更新节点 Agent",
+		"Agent 更新命令已加入队列，节点将在下次心跳时下载并重启",
+		h.recoveryTracker.QueueAgentUpdateCommand,
+	)
+}
+
+// GetSSHMetadata returns SSH connection metadata for a node.
+// GET /api/admin/nodes/:id/ssh-metadata
+func (h *NodeHandler) GetSSHMetadata(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid node ID"})
+		return
+	}
+
+	node, err := h.nodeService.GetByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Node not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"host":     node.SSHHost,
+		"port":     node.SSHPort,
+		"username": node.SSHUser,
+	})
+}
+
+// SaveSSHMetadata saves SSH connection metadata for a node.
+// POST /api/admin/nodes/:id/ssh-metadata
+func (h *NodeHandler) SaveSSHMetadata(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid node ID"})
+		return
+	}
+
+	var input nodeSSHMetadataInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	if err := persistNodeSSHMetadata(c.Request.Context(), h.nodeService, id, input); err != nil {
+		h.logger.Error("Failed to save SSH metadata", logger.Err(err), logger.F("node_id", id))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save SSH metadata"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "SSH metadata saved successfully"})
 }
 
 // GetXrayConfig returns the Xray configuration for a node.

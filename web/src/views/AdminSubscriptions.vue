@@ -125,6 +125,7 @@
     </div>
 
     <el-table
+      v-if="!isMobile"
       v-loading="loading"
       :data="subscriptions"
       border
@@ -256,13 +257,121 @@
       </el-table-column>
     </el-table>
 
+    <div
+      v-else
+      v-loading="loading"
+      class="subscription-mobile-list"
+    >
+      <el-empty
+        v-if="!loading && !subscriptions.length"
+        :description="hasActiveFilters ? '暂无匹配的订阅' : '暂无订阅记录'"
+      />
+      <article
+        v-for="row in subscriptions"
+        :key="row.id"
+        class="subscription-mobile-card"
+      >
+        <div class="mobile-card__header">
+          <div class="mobile-card__identity">
+            <span
+              class="mobile-card__name"
+              :title="row.username_display"
+            >{{ row.username_display }}</span>
+            <span class="mobile-card__meta">用户ID：{{ row.user_id }} · 订阅ID：{{ row.id }}</span>
+          </div>
+          <span :class="['activity-pill', row.activity_class]">
+            {{ row.activity_label }}
+          </span>
+        </div>
+
+        <div class="mobile-card__hint">
+          {{ row.activity_hint }}
+        </div>
+
+        <div class="mobile-credential-group">
+          <div class="credential-item">
+            <span class="credential-label">令牌</span>
+            <div class="credential-main">
+              <span
+                class="credential-value"
+                :title="row.token"
+              >{{ maskToken(row.token) }}</span>
+              <el-button
+                text
+                class="copy-token-btn"
+                @click="copyToken(row.token)"
+              >
+                <el-icon><DocumentCopy /></el-icon>
+              </el-button>
+            </div>
+          </div>
+          <div class="credential-item">
+            <span class="credential-label">短码</span>
+            <div class="credential-main">
+              <span
+                class="credential-value"
+                :title="row.short_code || '未设置'"
+              >{{ row.short_code || '未设置' }}</span>
+              <el-button
+                text
+                class="copy-token-btn"
+                :disabled="!row.short_code"
+                @click="copyShortCode(row.short_code)"
+              >
+                <el-icon><DocumentCopy /></el-icon>
+              </el-button>
+            </div>
+          </div>
+        </div>
+
+        <div class="mobile-detail-grid">
+          <div class="mobile-detail-item">
+            <span class="detail-label">访问次数</span>
+            <span :class="['access-badge', row.activity_class]">
+              {{ row.access_count }}
+            </span>
+          </div>
+          <div class="mobile-detail-item">
+            <span class="detail-label">创建时间</span>
+            <span class="detail-value">{{ row.created_at_display }}</span>
+          </div>
+          <div class="mobile-detail-item">
+            <span class="detail-label">最后访问</span>
+            <span class="detail-value">{{ row.last_access_display }}</span>
+          </div>
+          <div class="mobile-detail-item">
+            <span class="detail-label">最后 IP</span>
+            <span class="detail-value">{{ row.last_ip || '-' }}</span>
+          </div>
+        </div>
+
+        <div class="mobile-card__actions operation-btns">
+          <el-button
+            size="small"
+            class="row-action row-action--warning"
+            @click="handleResetStats(row)"
+          >
+            重置
+          </el-button>
+          <el-button
+            size="small"
+            class="row-action row-action--danger"
+            @click="handleRevoke(row)"
+          >
+            撤销
+          </el-button>
+        </div>
+      </article>
+    </div>
+
     <div class="pagination-container">
       <el-pagination
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
         :page-sizes="[10, 20, 50, 100]"
-        layout="total, sizes, prev, pager, next, jumper"
+        :layout="isMobile ? 'prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
         :total="total"
+        :pager-count="isMobile ? 5 : 7"
         @size-change="handleSizeChange"
         @current-change="handleCurrentChange"
       />
@@ -276,10 +385,12 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { DocumentCopy, RefreshRight, Search } from '@element-plus/icons-vue'
 import { subscriptionApi } from '@/api/index'
+import { useViewport } from '@/composables/useViewport'
 import { debounce } from '@/utils/debounce'
 import { extractErrorMessage } from '@/utils/entitlement'
 
 const route = useRoute()
+const { isMobile } = useViewport()
 
 const subscriptions = ref([])
 const loading = ref(false)
@@ -756,6 +867,102 @@ onUnmounted(() => {
   background-color: var(--admin-border);
 }
 
+.subscription-mobile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.subscription-mobile-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--admin-surface-strong) 0%, var(--admin-surface) 100%);
+  box-shadow: var(--admin-shadow-soft);
+}
+
+.mobile-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mobile-card__identity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mobile-card__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--admin-title);
+}
+
+.mobile-card__meta {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--admin-text-muted);
+}
+
+.mobile-card__hint {
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--admin-border);
+  background: var(--admin-surface-soft);
+  color: var(--admin-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.mobile-credential-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mobile-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobile-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: var(--admin-surface-soft);
+}
+
+.mobile-detail-item .detail-value {
+  text-align: left;
+}
+
+.mobile-card__actions {
+  justify-content: stretch;
+}
+
+.mobile-card__actions .el-button {
+  flex: 1;
+}
+
 .user-cell {
   display: flex;
   flex-direction: column;
@@ -993,15 +1200,32 @@ onUnmounted(() => {
   .page-header {
     flex-direction: column;
     align-items: stretch;
+    padding: 16px;
   }
 
   .overview-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .overview-card {
+    padding: 12px;
+    border-radius: 8px;
+  }
+
+  .overview-value {
+    font-size: 20px;
+  }
+
+  .toolbar-card {
+    padding: 14px;
+    border-radius: 8px;
   }
 
   .toolbar-search,
   .toolbar-filters,
-  .toolbar-filters .el-select {
+  .toolbar-filters .el-select,
+  .toolbar-filters .el-button {
     width: 100%;
   }
 
@@ -1010,32 +1234,46 @@ onUnmounted(() => {
     align-items: stretch;
   }
 
-  :deep(.subscriptions-table .cell) {
-    padding: 12px 10px;
+  .toolbar-summary {
+    text-align: center;
   }
 
-  .credential-item,
-  .detail-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
+  .credential-item {
+    align-items: stretch;
+    gap: 8px;
   }
 
   .credential-label {
-    width: auto;
+    width: 38px;
+    padding-top: 7px;
   }
 
-  .detail-value {
-    text-align: left;
+  .credential-main {
+    min-height: 36px;
+    padding: 6px 8px;
+  }
+
+  .mobile-detail-grid {
+    grid-template-columns: 1fr;
   }
 
   .operation-btns {
     justify-content: flex-start;
   }
 
+  :deep(.operation-btns .el-button) {
+    height: 34px;
+  }
+
   .pagination-container {
     justify-content: center;
     overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  :deep(.el-pagination) {
+    max-width: 100%;
+    white-space: nowrap;
   }
 }
 </style>

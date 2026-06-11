@@ -85,9 +85,8 @@
       </el-col>
     </el-row>
 
-    <!-- 流量使用 -->
-    <el-row :gutter="20" class="main-content">
-      <el-col :xs="24" :lg="16">
+    <div class="dashboard-layout">
+      <section class="dashboard-main">
         <el-card class="traffic-card" shadow="never">
           <template #header>
             <div class="card-header">
@@ -140,10 +139,51 @@
             </div>
           </div>
         </el-card>
-      </el-col>
 
-      <!-- 快捷操作 -->
-      <el-col :xs="24" :lg="8">
+        <!-- 公告区域 -->
+        <el-card
+          v-if="announcements.length > 0"
+          class="announcements-card"
+          shadow="never"
+        >
+          <template #header>
+            <div class="card-header">
+              <span>
+                <el-icon><Bell /></el-icon>
+                最新公告
+              </span>
+              <el-button link type="primary" @click="goToAnnouncements">
+                查看全部
+                <el-icon><ArrowRight /></el-icon>
+              </el-button>
+            </div>
+          </template>
+
+          <div class="announcement-list">
+            <div
+              v-for="item in announcements"
+              :key="item.id"
+              class="announcement-item"
+              @click="viewAnnouncement(item.id)"
+            >
+              <el-tag
+                :type="getCategoryType(item.category)"
+                size="small"
+                class="announcement-tag"
+              >
+                {{ getCategoryLabel(item.category) }}
+              </el-tag>
+              <span class="announcement-title">{{ item.title }}</span>
+              <span class="announcement-date">{{
+                formatDate(item.published_at)
+              }}</span>
+            </div>
+          </div>
+        </el-card>
+      </section>
+
+      <aside class="dashboard-side">
+        <!-- 快捷操作 -->
         <el-card class="quick-actions-card" shadow="never">
           <template #header>
             <span>快捷操作</span>
@@ -194,59 +234,12 @@
             </div>
           </div>
         </el-card>
-      </el-col>
-    </el-row>
 
-    <!-- 公告区域 -->
-    <el-card
-      v-if="announcements.length > 0"
-      class="announcements-card"
-      shadow="never"
-    >
-      <template #header>
-        <div class="card-header">
-          <span>
-            <el-icon><Bell /></el-icon>
-            最新公告
-          </span>
-          <el-button link type="primary" @click="goToAnnouncements">
-            查看全部
-            <el-icon><ArrowRight /></el-icon>
-          </el-button>
-        </div>
-      </template>
-
-      <div class="announcement-list">
-        <div
-          v-for="item in announcements"
-          :key="item.id"
-          class="announcement-item"
-          @click="viewAnnouncement(item.id)"
-        >
-          <el-tag
-            :type="getCategoryType(item.category)"
-            size="small"
-            class="announcement-tag"
-          >
-            {{ getCategoryLabel(item.category) }}
-          </el-tag>
-          <span class="announcement-title">{{ item.title }}</span>
-          <span class="announcement-date">{{
-            formatDate(item.published_at)
-          }}</span>
-        </div>
-      </div>
-    </el-card>
-
-    <!-- 试用和暂停状态卡片 -->
-    <el-row :gutter="20" class="status-section">
-      <el-col :xs="24" :lg="12">
+        <!-- 试用和暂停状态卡片 -->
         <TrialCard />
-      </el-col>
-      <el-col :xs="24" :lg="12">
         <PauseCard />
-      </el-col>
-    </el-row>
+      </aside>
+    </div>
   </div>
 </template>
 
@@ -729,21 +722,35 @@ onBeforeUnmount(() => {
 }
 
 /* 主内容区 */
-.main-content {
+.dashboard-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  gap: 20px;
+  align-items: start;
   margin-bottom: 20px;
+}
+
+.dashboard-main,
+.dashboard-side {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
 }
 
 .traffic-card,
 .quick-actions-card,
 .announcements-card {
-  height: 100%;
   border-radius: 8px;
 }
 
-.traffic-card :deep(.el-card__body),
-.quick-actions-card :deep(.el-card__body) {
+.traffic-card :deep(.el-card__body) {
   display: flex;
   min-height: 280px;
+}
+
+.quick-actions-card :deep(.el-card__body) {
+  display: block;
 }
 
 .card-header {
@@ -821,11 +828,9 @@ onBeforeUnmount(() => {
 /* 快捷操作 */
 .quick-actions {
   display: grid;
-  flex: 1;
-  align-content: start;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-auto-rows: minmax(88px, 1fr);
-  gap: 16px;
+  grid-auto-rows: minmax(76px, auto);
+  gap: 12px;
 }
 
 .action-item {
@@ -833,8 +838,8 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 88px;
-  padding: 16px;
+  min-height: 76px;
+  padding: 12px 8px;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.3s;
@@ -856,10 +861,6 @@ onBeforeUnmount(() => {
 }
 
 /* 公告列表 */
-.announcements-card {
-  margin-top: 20px;
-}
-
 .announcements-card .card-header span {
   display: flex;
   align-items: center;
@@ -910,12 +911,13 @@ onBeforeUnmount(() => {
   margin-left: 12px;
 }
 
-/* 试用和暂停状态区域 */
-.status-section {
-  margin-top: 20px;
+/* 响应式 */
+@media (max-width: 1180px) {
+  .dashboard-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
-/* 响应式 */
 @media (max-width: 768px) {
   .welcome-section {
     flex-direction: column;
@@ -928,8 +930,7 @@ onBeforeUnmount(() => {
     gap: 24px;
   }
 
-  .traffic-card :deep(.el-card__body),
-  .quick-actions-card :deep(.el-card__body) {
+  .traffic-card :deep(.el-card__body) {
     min-height: auto;
   }
 

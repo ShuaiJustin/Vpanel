@@ -386,6 +386,22 @@
               <strong>{{ item.value }}</strong>
             </div>
           </div>
+          <el-alert
+            v-else-if="networkOptimizationError"
+            type="error"
+            :closable="false"
+            show-icon
+            class="optimization-error"
+          >
+            <template #title>
+              {{ networkOptimizationError.title }}
+            </template>
+            <template #default>
+              <div class="optimization-error__message">
+                {{ networkOptimizationError.message }}
+              </div>
+            </template>
+          </el-alert>
           <el-empty
             v-else
             description="尚未检测远端网络优化状态"
@@ -504,6 +520,7 @@
     <el-dialog
       v-model="networkOptimizationDialogVisible"
       title="SSH 连接配置"
+      class="network-ssh-dialog"
       :width="networkDialogWidth"
     >
       <div class="network-dialog-content">
@@ -516,8 +533,31 @@
             网络优化会直接修改节点的 Linux `sysctl` 参数。请使用具备 root 或 sudo 权限的 SSH 账户。
           </template>
         </el-alert>
+        <div
+          v-if="hasSavedSSHCredentials"
+          class="network-credential-summary"
+        >
+          <el-tag
+            v-if="networkOptimizationMeta.ssh_defaults?.has_saved_password"
+            size="small"
+            type="success"
+            effect="plain"
+          >
+            已保存 SSH 密码
+          </el-tag>
+          <el-tag
+            v-if="networkOptimizationMeta.ssh_defaults?.has_saved_private_key"
+            size="small"
+            type="success"
+            effect="plain"
+          >
+            已保存 SSH 私钥
+          </el-tag>
+          <span>留空密码和私钥时，将继续使用已保存凭据。</span>
+        </div>
         <el-form
-          label-width="110px"
+          :label-position="isMobile ? 'top' : 'right'"
+          :label-width="isMobile ? 'auto' : '110px'"
           class="network-dialog-form"
         >
           <el-form-item label="SSH 主机">
@@ -545,7 +585,7 @@
               v-model="sshForm.password"
               type="password"
               show-password
-              placeholder="留空则尝试节点已保存密码"
+              :placeholder="networkOptimizationMeta.ssh_defaults?.has_saved_password ? '已保存密码，留空继续使用' : '请输入 SSH 密码'"
             />
           </el-form-item>
           <el-form-item label="SSH 私钥">
@@ -553,7 +593,7 @@
               v-model="sshForm.private_key"
               type="textarea"
               :rows="7"
-              placeholder="留空则尝试节点已保存私钥路径"
+              :placeholder="networkOptimizationMeta.ssh_defaults?.has_saved_private_key ? '已保存私钥，留空继续使用' : '粘贴 SSH 私钥内容'"
             />
           </el-form-item>
         </el-form>
@@ -620,6 +660,7 @@ const networkOptimizationAction = ref('')
 const networkLogPanels = ref([])
 const networkOptimizationLogs = ref('')
 const networkOptimizationState = ref(null)
+const networkOptimizationError = ref(null)
 const savingSSHConfig = ref(false)
 const networkOptimizationMeta = ref({
   has_saved_settings: false,
@@ -787,6 +828,18 @@ const applyNetworkOptimizationForm = (settings) => {
 const updateNetworkLogs = (logs) => {
   networkOptimizationLogs.value = logs || ''
   networkLogPanels.value = networkOptimizationLogs.value ? ['network-log'] : []
+}
+
+const clearNetworkOptimizationError = () => {
+  networkOptimizationError.value = null
+}
+
+const setNetworkOptimizationError = (title, error, fallbackMessage) => {
+  networkOptimizationState.value = null
+  networkOptimizationError.value = {
+    title,
+    message: extractErrorMessage(error) || fallbackMessage
+  }
 }
 
 const loadRecommendedOptimization = () => {
@@ -990,16 +1043,14 @@ const saveSSHConfig = async () => {
     ElMessage.warning('SSH 端口必须在 1-65535 之间')
     return
   }
-  if (!sshForm.password && !hasSavedSSHCredentials.value) {
-    ElMessage.warning('首次保存 SSH 配置时请输入密码')
+  if (!sshForm.password && !sshForm.private_key && !hasSavedSSHCredentials.value) {
+    ElMessage.warning('首次保存 SSH 配置时请输入密码或私钥')
     return
-  }
-  if (sshForm.private_key && !sshForm.password) {
-    ElMessage.warning('私钥内容仅用于本次操作；当前保存按钮会保存主机、端口、用户名和密码')
   }
 
   savingSSHConfig.value = true
   try {
+    clearNetworkOptimizationError()
     const ssh = {
       host: sshForm.host,
       port: sshForm.port,
@@ -1008,9 +1059,13 @@ const saveSSHConfig = async () => {
     if (sshForm.password) {
       ssh.password = sshForm.password
     }
+    if (sshForm.private_key) {
+      ssh.private_key = sshForm.private_key
+    }
 
     await nodesApi.update(node.value.id, { ssh })
     sshForm.password = ''
+    sshForm.private_key = ''
     ElMessage.success('SSH 配置已保存')
     networkOptimizationDialogVisible.value = false
     await fetchNode()
@@ -1024,12 +1079,21 @@ const saveSSHConfig = async () => {
 
 const validateNetworkOptimizationSSH = () => {
   if (!sshForm.host || !sshForm.username) {
+    clearNetworkOptimizationError()
     ElMessage.warning('请先填写 SSH 主机和用户名')
     networkOptimizationDialogVisible.value = true
     return false
   }
 
+  if (!sshForm.port || sshForm.port < 1 || sshForm.port > 65535) {
+    clearNetworkOptimizationError()
+    ElMessage.warning('SSH 端口必须在 1-65535 之间')
+    networkOptimizationDialogVisible.value = true
+    return false
+  }
+
   if (!sshForm.password && !sshForm.private_key && !hasSavedSSHCredentials.value) {
+    clearNetworkOptimizationError()
     ElMessage.warning('请提供 SSH 密码或私钥')
     networkOptimizationDialogVisible.value = true
     return false
@@ -1042,6 +1106,7 @@ const inspectNetworkOptimization = async () => {
   if (!node.value || !validateNetworkOptimizationSSH()) return
   networkOptimizationAction.value = 'inspect'
   try {
+    clearNetworkOptimizationError()
     const response = await nodesApi.inspectNetworkOptimization(node.value.id, {
       ssh: getNetworkOptimizationSSHPayload()
     })
@@ -1053,7 +1118,9 @@ const inspectNetworkOptimization = async () => {
     ElMessage.success('节点网络状态检测完成')
   } catch (error) {
     updateNetworkLogs(error?.logs || error?.response?.data?.logs)
-    ElMessage.error(extractErrorMessage(error) || '检测节点网络优化状态失败')
+    const message = extractErrorMessage(error) || '检测节点网络优化状态失败'
+    setNetworkOptimizationError('检测失败', error, message)
+    ElMessage.error(message)
   } finally {
     networkOptimizationAction.value = ''
   }
@@ -1074,6 +1141,7 @@ const applyNetworkOptimization = async () => {
 
   networkOptimizationAction.value = 'apply'
   try {
+    clearNetworkOptimizationError()
     const response = await nodesApi.applyNetworkOptimization(node.value.id, {
       ssh: getNetworkOptimizationSSHPayload(),
       settings: { ...networkOptimizationForm }
@@ -1086,7 +1154,9 @@ const applyNetworkOptimization = async () => {
     await refreshData()
   } catch (error) {
     updateNetworkLogs(error?.logs || error?.response?.data?.logs)
-    ElMessage.error(extractErrorMessage(error) || '应用节点网络优化失败')
+    const message = extractErrorMessage(error) || '应用节点网络优化失败'
+    setNetworkOptimizationError('应用失败', error, message)
+    ElMessage.error(message)
   } finally {
     networkOptimizationAction.value = ''
   }
@@ -1107,6 +1177,7 @@ const rollbackNetworkOptimization = async () => {
 
   networkOptimizationAction.value = 'rollback'
   try {
+    clearNetworkOptimizationError()
     const response = await nodesApi.rollbackNetworkOptimization(node.value.id, {
       ssh: getNetworkOptimizationSSHPayload()
     })
@@ -1118,8 +1189,10 @@ const rollbackNetworkOptimization = async () => {
     ElMessage.success(response?.message || '节点网络优化已回滚')
     await refreshData()
   } catch (error) {
-    networkOptimizationLogs.value = error?.logs || error?.response?.data?.logs || ''
-    ElMessage.error(extractErrorMessage(error) || '回滚节点网络优化失败')
+    updateNetworkLogs(error?.logs || error?.response?.data?.logs)
+    const message = extractErrorMessage(error) || '回滚节点网络优化失败'
+    setNetworkOptimizationError('回滚失败', error, message)
+    ElMessage.error(message)
   } finally {
     networkOptimizationAction.value = ''
   }
@@ -1137,6 +1210,7 @@ watch(
     activeWorkspace.value = 'core'
     updateNetworkLogs('')
     networkOptimizationState.value = null
+    clearNetworkOptimizationError()
     networkOptimizationMeta.value.has_saved_settings = false
     networkOptimizationMeta.value.saved_settings = {}
     sshForm.host = ''
@@ -1465,6 +1539,15 @@ watch(
   color: var(--el-text-color-secondary);
 }
 
+.optimization-error {
+  margin-top: 16px;
+}
+
+.optimization-error__message {
+  line-height: 1.6;
+  word-break: break-word;
+}
+
 .optimization-log {
   max-height: 220px;
   margin: 0;
@@ -1542,10 +1625,30 @@ watch(
   margin-top: 4px;
 }
 
+.network-dialog-form :deep(.el-form-item__content),
+.network-dialog-form :deep(.el-input),
+.network-dialog-form :deep(.el-input-number),
+.network-dialog-form :deep(.el-textarea) {
+  width: 100%;
+  min-width: 0;
+}
+
+.network-dialog-form :deep(.el-input-number .el-input__wrapper) {
+  width: 100%;
+}
+
 .network-dialog-footer {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+}
+
+:global(.network-ssh-dialog) {
+  max-width: calc(100vw - 24px);
+}
+
+:global(.network-ssh-dialog .el-dialog__body) {
+  overflow-x: hidden;
 }
 
 @media (max-width: 1280px) {
@@ -1603,6 +1706,68 @@ watch(
   .workspace-toolbar__switcher :deep(.el-radio-button),
   .workspace-toolbar__switcher :deep(.el-radio-button__inner) {
     width: 100%;
+  }
+
+  :global(.network-ssh-dialog) {
+    width: calc(100vw - 24px) !important;
+    max-width: 520px;
+  }
+
+  :global(.network-ssh-dialog .el-dialog__header) {
+    padding: 20px 20px 12px;
+  }
+
+  :global(.network-ssh-dialog .el-dialog__title) {
+    font-size: 20px;
+    line-height: 1.35;
+  }
+
+  :global(.network-ssh-dialog .el-dialog__body) {
+    max-height: calc(100svh - 190px);
+    padding: 12px 20px 16px;
+    overflow-y: auto;
+  }
+
+  :global(.network-ssh-dialog .el-dialog__footer) {
+    padding: 0 20px 20px;
+  }
+
+  .network-dialog-content {
+    gap: 14px;
+  }
+
+  .network-dialog-form {
+    margin-top: 0;
+  }
+
+  .network-dialog-form :deep(.el-form-item) {
+    margin-bottom: 16px;
+  }
+
+  .network-dialog-form :deep(.el-form-item__label) {
+    width: 100% !important;
+    padding-bottom: 6px;
+    line-height: 1.35;
+    text-align: left;
+  }
+
+  .network-dialog-form :deep(.el-input-number) {
+    display: block;
+  }
+
+  .network-dialog-form :deep(.el-input-number .el-input__inner) {
+    text-align: left;
+  }
+
+  .network-dialog-footer {
+    width: 100%;
+    flex-direction: column-reverse;
+    gap: 10px;
+  }
+
+  .network-dialog-footer :deep(.el-button) {
+    width: 100%;
+    margin: 0;
   }
 }
 </style>

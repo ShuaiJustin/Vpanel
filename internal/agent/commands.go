@@ -6,6 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -97,6 +100,8 @@ func (e *CommandExecutor) Execute(ctx context.Context, cmd *Command) *CommandRes
 		result = e.executeSystemMetrics(ctx, cmd)
 
 	// Agent commands
+	case CommandAgentUpdate:
+		result = e.executeAgentUpdate(ctx, cmd)
 	case CommandAgentRestart:
 		result = e.executeAgentRestart(ctx, cmd)
 
@@ -363,6 +368,81 @@ func (e *CommandExecutor) executeSystemMetrics(ctx context.Context, cmd *Command
 	result.Success = true
 	result.Message = "Metrics retrieved"
 	result.Data = metrics
+	return result
+}
+
+// executeAgentUpdate downloads and installs a new agent binary.
+func (e *CommandExecutor) executeAgentUpdate(ctx context.Context, cmd *Command) *CommandResult {
+	result := &CommandResult{CommandID: cmd.ID}
+
+	panelURL := e.agent.config.Panel.URL
+	if panelURL == "" {
+		result.Success = false
+		result.Message = "panel URL not configured"
+		return result
+	}
+
+	exePath, err := os.Executable()
+	if err != nil {
+		result.Success = false
+		result.Message = fmt.Sprintf("failed to get executable path: %v", err)
+		return result
+	}
+
+	tmpPath := exePath + ".new"
+	downloadURL := fmt.Sprintf("%s/api/admin/nodes/agent/download?arch=%s", strings.TrimRight(panelURL, "/"), runtime.GOARCH)
+
+	e.logger.Info("downloading agent update", logger.F("url", downloadURL))
+
+	resp, err := e.agent.httpClient.Get(downloadURL)
+	if err != nil {
+		result.Success = false
+		result.Message = fmt.Sprintf("download failed: %v", err)
+		return result
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		result.Success = false
+		result.Message = fmt.Sprintf("download failed: HTTP %d", resp.StatusCode)
+		return result
+	}
+
+	tmpFile, err := os.Create(tmpPath)
+	if err != nil {
+		result.Success = false
+		result.Message = fmt.Sprintf("failed to create temp file: %v", err)
+		return result
+	}
+
+	_, err = tmpFile.ReadFrom(resp.Body)
+	tmpFile.Close()
+	if err != nil {
+		os.Remove(tmpPath)
+		result.Success = false
+		result.Message = fmt.Sprintf("failed to write binary: %v", err)
+		return result
+	}
+
+	if err := os.Chmod(tmpPath, 0755); err != nil {
+		os.Remove(tmpPath)
+		result.Success = false
+		result.Message = fmt.Sprintf("failed to set permissions: %v", err)
+		return result
+	}
+
+	go func() {
+		time.Sleep(2 * time.Second)
+		if err := os.Rename(tmpPath, exePath); err != nil {
+			e.logger.Error("failed to replace agent binary", logger.F("error", err))
+			return
+		}
+		e.logger.Info("agent binary updated, exiting for restart...")
+		os.Exit(0)
+	}()
+
+	result.Success = true
+	result.Message = "Agent update scheduled"
 	return result
 }
 

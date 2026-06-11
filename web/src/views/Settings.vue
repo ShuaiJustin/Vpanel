@@ -191,6 +191,17 @@
               当前运行数据库由 <code>V_DB_DRIVER</code> / <code>V_DB_DSN</code> 决定（SQLite 也兼容 <code>V_DB_PATH</code>），<strong>无法通过 UI 直接保存切换</strong>。下方表单仅作为"测试连接"和"迁移数据"的目标 DB 输入。要真正切换：先备份，再迁移，最后修改环境变量并重启容器。
             </template>
           </el-alert>
+          <el-alert
+            type="info"
+            :closable="false"
+            show-icon
+            class="settings-note"
+          >
+            <template #title>
+              当前运行数据库：<strong>{{ runtimeDatabaseLabel }}</strong>
+              <span v-if="runtimeDatabaseDetail">（{{ runtimeDatabaseDetail }}）</span>
+            </template>
+          </el-alert>
           <el-form-item label="目标数据库类型">
             <el-select
               v-model="dbForm.dbType"
@@ -1079,6 +1090,35 @@ const dbForm = reactive({
   sqlitePath: ''
 })
 
+const runtimeDatabase = reactive({
+  driver: 'sqlite',
+  path: '',
+  dsnMasked: ''
+})
+
+const normalizeRuntimeDbDriver = (driver) => {
+  const value = String(driver || '').trim().toLowerCase()
+  if (value === 'sqlite3') return 'sqlite'
+  if (value === 'postgresql') return 'postgres'
+  return ['sqlite', 'mysql', 'postgres'].includes(value) ? value : 'sqlite'
+}
+
+const runtimeDatabaseLabel = computed(() => {
+  const labels = {
+    sqlite: 'SQLite',
+    mysql: 'MySQL',
+    postgres: 'PostgreSQL'
+  }
+  return labels[runtimeDatabase.driver] || runtimeDatabase.driver || 'SQLite'
+})
+
+const runtimeDatabaseDetail = computed(() => {
+  if (runtimeDatabase.driver === 'sqlite') {
+    return runtimeDatabase.path || ''
+  }
+  return runtimeDatabase.dsnMasked || ''
+})
+
 const logForm = reactive({
   logLevel: 'info',
   logRetentionDays: 30,
@@ -1153,11 +1193,16 @@ const applyServerSettings = (settings) => {
 }
 
 const applyDbSettings = (settings) => {
-  dbForm.dbType = settings?.db_type || 'sqlite'
-  dbForm.dbHost = settings?.db_host || 'localhost'
-  dbForm.dbPort = settings?.db_port || (dbForm.dbType === 'postgres' ? 5432 : 3306)
-  dbForm.dbName = settings?.db_name || 'v_panel'
-  dbForm.dbUser = settings?.db_user || 'root'
+  const runtime = settings?.runtime_database || {}
+  runtimeDatabase.driver = normalizeRuntimeDbDriver(runtime.driver || settings?.db_type)
+  runtimeDatabase.path = runtime.path || ''
+  runtimeDatabase.dsnMasked = runtime.dsn_masked || ''
+
+  dbForm.dbType = runtimeDatabase.driver
+  dbForm.dbHost = 'localhost'
+  dbForm.dbPort = dbForm.dbType === 'postgres' ? 5432 : 3306
+  dbForm.dbName = 'v_panel'
+  dbForm.dbUser = dbForm.dbType === 'postgres' ? 'postgres' : 'root'
   dbForm.dbPassword = ''
   dbForm.sqlitePath = ''
 }

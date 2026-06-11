@@ -116,6 +116,7 @@ func (h *SettingsHandler) GetSettings(c *gin.Context) {
 		middleware.RespondWithError(c, errors.NewDatabaseError("get settings", err))
 		return
 	}
+	systemSettings.RuntimeDatabase = h.runtimeDatabaseInfo()
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
@@ -619,6 +620,38 @@ func buildDatabaseTestConfig(req TestDatabaseRequest) (*database.Config, error) 
 	}
 
 	return cfg, nil
+}
+
+func (h *SettingsHandler) runtimeDatabaseInfo() *settings.RuntimeDatabaseInfo {
+	driver := strings.ToLower(strings.TrimSpace(h.runtimeDBDriver))
+	if driver == "" {
+		driver = "sqlite"
+	}
+	if driver == "sqlite3" {
+		driver = "sqlite"
+	}
+
+	info := &settings.RuntimeDatabaseInfo{Driver: driver}
+	dsn := strings.TrimSpace(h.runtimeDBDSN)
+	path := strings.TrimSpace(h.runtimeDBPath)
+
+	if driver == "sqlite" {
+		if parsed, err := sqliteBackupPathFromDSN(dsn); err == nil && parsed != "" {
+			info.Path = parsed
+		} else if path != "" {
+			info.Path = path
+		} else if dsn != "" {
+			info.Path = dsn
+		} else {
+			info.Path = "./data/v.db"
+		}
+		return info
+	}
+
+	if dsn != "" {
+		info.DSNMasked = maskDSN(dsn)
+	}
+	return info
 }
 
 func sameFilePath(a, b string) bool {

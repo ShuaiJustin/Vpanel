@@ -216,7 +216,9 @@ export const nodesApi = {
    * @returns {Promise<Object>}
    */
   inspectNetworkOptimization: (id, data) =>
-    api.post(`/admin/nodes/${id}/network-optimization/inspect`, data),
+    api.post(`/admin/nodes/${id}/network-optimization/inspect`, data, {
+      silent: true,
+    }),
 
   /**
    * 应用节点网络优化
@@ -226,6 +228,7 @@ export const nodesApi = {
    */
   applyNetworkOptimization: (id, data) =>
     api.post(`/admin/nodes/${id}/network-optimization/apply`, data, {
+      silent: true,
       timeout: 300000,
     }),
 
@@ -237,6 +240,7 @@ export const nodesApi = {
    */
   rollbackNetworkOptimization: (id, data) =>
     api.post(`/admin/nodes/${id}/network-optimization/rollback`, data, {
+      silent: true,
       timeout: 300000,
     }),
 

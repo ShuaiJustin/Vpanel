@@ -181,7 +181,13 @@ func (h *NodeDeployHandler) DeployAgent(c *gin.Context) {
 		logger.F("node_id", nodeID),
 		logger.F("panel_url", panelURL))
 
-	if err := h.nodeService.UpdateSSHConfig(c.Request.Context(), nodeID, req.Host, req.Port, req.Username, req.Password, ""); err != nil {
+	if err := persistNodeSSHMetadata(c.Request.Context(), h.nodeService, nodeID, nodeSSHMetadataInput{
+		Host:       req.Host,
+		Port:       req.Port,
+		Username:   req.Username,
+		Password:   req.Password,
+		PrivateKey: req.PrivateKey,
+	}); err != nil {
 		h.logger.Warn("Failed to persist node SSH metadata before deployment",
 			logger.Err(err),
 			logger.F("node_id", nodeID))

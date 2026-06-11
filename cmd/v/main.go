@@ -134,9 +134,9 @@ func main() {
 
 	// Initialize auth service
 	authService := auth.NewService(auth.Config{
-		JWTSecret:           cfg.Auth.JWTSecret,
-		TokenExpiry:         cfg.Auth.TokenExpiry,
-		RefreshTokenExpiry:  cfg.Auth.RefreshTokenExpiry,
+		JWTSecret:          cfg.Auth.JWTSecret,
+		TokenExpiry:        cfg.Auth.TokenExpiry,
+		RefreshTokenExpiry: cfg.Auth.RefreshTokenExpiry,
 	})
 
 	// Ensure system roles exist
@@ -199,7 +199,6 @@ func main() {
 	log.Info("server stopped gracefully")
 }
 
-
 // applyStartupOverridesFromSettings reads system settings persisted in the
 // database (managed via the admin UI) and overrides matching fields on cfg.
 // This is what makes admin UI changes to "panel port", "log retention", etc.
@@ -244,11 +243,30 @@ func applyStartupOverridesFromSettings(cfg *config.Config, svc *settings.Service
 		}
 	}
 
-	// TLS overrides — admin can paste paths via UI. Both must be set for
-	// the server to switch to HTTPS at next restart; setting one of them
-	// (mismatched) leaves the server on HTTP to avoid a half-broken state.
-	certPath := strings.TrimSpace(raw["panel_cert_path"])
-	keyPath := strings.TrimSpace(raw["panel_key_path"])
+	// TLS overrides — the UI owns these values once either key has been
+	// written. Empty values intentionally clear config.yaml/env TLS paths so
+	// an admin can disable panel HTTPS from the UI and have it take effect on
+	// the next restart.
+	certPath, certPathSet := raw["panel_cert_path"]
+	keyPath, keyPathSet := raw["panel_key_path"]
+	if certPathSet || keyPathSet {
+		certPath = strings.TrimSpace(certPath)
+		keyPath = strings.TrimSpace(keyPath)
+		cfg.Server.TLSCert = ""
+		cfg.Server.TLSKey = ""
+		if (certPath == "") != (keyPath == "") {
+			log.Warn("startup: incomplete panel TLS override in settings, disabling panel TLS",
+				logger.F("cert_path_set", certPath != ""),
+				logger.F("key_path_set", keyPath != ""),
+			)
+			certPath = ""
+			keyPath = ""
+		}
+		if certPath == "" || keyPath == "" {
+			certPath = ""
+			keyPath = ""
+		}
+	}
 	if certPath != "" && keyPath != "" {
 		cfg.Server.TLSCert = certPath
 		cfg.Server.TLSKey = keyPath
@@ -306,17 +324,39 @@ func applyStartupOverridesFromSettings(cfg *config.Config, svc *settings.Service
 	// Panel base path (e.g. "/vpanel") — mounts the entire UI + API under
 	// this prefix. Useful for reverse-proxy scenarios where the proxy does
 	// NOT strip the prefix. Normalize so downstream consumers see either
-	// "" or a leading-slash, no-trailing-slash form.
+	// "" or a leading-slash, no-trailing-slash form. An explicit "/" in the
+	// settings table clears any config.yaml/env prefix.
 	if v, ok := raw["panel_base_path"]; ok {
-		bp := strings.TrimSpace(v)
-		bp = strings.TrimRight(bp, "/")
-		if bp != "" && bp != "/" {
-			if !strings.HasPrefix(bp, "/") {
-				bp = "/" + bp
-			}
+		bp, bpOK := normalizeStartupBasePath(v)
+		if !bpOK {
+			log.Warn("startup: invalid panel base path in settings, keeping config value",
+				logger.F("panel_base_path", v),
+			)
+		} else {
 			cfg.Server.BasePath = bp
 		}
 	}
+}
+
+func normalizeStartupBasePath(value string) (string, bool) {
+	basePath := strings.TrimSpace(value)
+	if basePath == "" || basePath == "/" {
+		return "", true
+	}
+	if strings.Contains(basePath, "://") || strings.ContainsAny(basePath, " \t\r\n?#") {
+		return "", false
+	}
+	if !strings.HasPrefix(basePath, "/") {
+		basePath = "/" + basePath
+	}
+	basePath = strings.TrimRight(basePath, "/")
+	if basePath == "" || basePath == "/" {
+		return "", true
+	}
+	if strings.Contains(basePath, "//") {
+		return "", false
+	}
+	return basePath, true
 }
 
 // ensureAdminUser creates the default admin user if it doesn't exist.
@@ -335,19 +375,19 @@ func ensureAdminUser(userRepo repository.UserRepository, authService *auth.Servi
 	if err == nil {
 		// Admin user already exists
 		updated := false
-		
+
 		// Update password if different
 		if existingUser.PasswordHash != passwordHash {
 			existingUser.PasswordHash = passwordHash
 			updated = true
 		}
-		
+
 		// Set default display name if empty
 		if existingUser.DisplayName == "" {
 			existingUser.DisplayName = "系统管理员"
 			updated = true
 		}
-		
+
 		if updated {
 			if err := userRepo.Update(ctx, existingUser); err != nil {
 				return fmt.Errorf("failed to update admin user: %w", err)

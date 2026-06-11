@@ -129,6 +129,7 @@
               <span>流量趋势</span>
               <el-radio-group
                 v-model="trafficPeriod"
+                class="traffic-period-group"
                 size="small"
                 @change="changeTrafficPeriod"
               >
@@ -176,7 +177,10 @@
           </el-button>
         </div>
       </template>
-      <div class="table-shell">
+      <div
+        v-if="!isMobile"
+        class="table-shell"
+      >
         <el-table
           v-loading="loading"
           :data="protocolStats"
@@ -231,6 +235,48 @@
           </el-table-column>
         </el-table>
       </div>
+      <div
+        v-else
+        v-loading="loading"
+        class="mobile-card-list"
+      >
+        <el-empty
+          v-if="!loading && !protocolStats.length"
+          description="暂无协议统计数据"
+          :image-size="64"
+        />
+        <article
+          v-for="row in protocolStats"
+          :key="row.protocol"
+          class="mobile-stat-card"
+        >
+          <div class="mobile-stat-card__header">
+            <el-tag :type="getProtocolTagType(row.protocol)">
+              {{ row.protocol.toUpperCase() }}
+            </el-tag>
+            <el-tag
+              :type="row.status === 'active' ? 'success' : 'danger'"
+              size="small"
+            >
+              {{ row.status === 'active' ? '正常' : '异常' }}
+            </el-tag>
+          </div>
+          <div class="mobile-stat-grid">
+            <div class="mobile-stat-item">
+              <span>代理数量</span>
+              <strong>{{ row.count }}</strong>
+            </div>
+            <div class="mobile-stat-item">
+              <span>流量使用</span>
+              <strong>{{ formatBytes(row.traffic) }}</strong>
+            </div>
+          </div>
+          <el-progress
+            :percentage="getTrafficPercentage(row.traffic)"
+            :color="getProtocolColor(row.protocol)"
+          />
+        </article>
+      </div>
     </el-card>
 
     <!-- 用户统计 -->
@@ -240,7 +286,10 @@
           <span>用户流量排行</span>
         </div>
       </template>
-      <div class="table-shell">
+      <div
+        v-if="!isMobile"
+        class="table-shell"
+      >
         <el-table
           v-loading="loading"
           :data="userStats"
@@ -290,6 +339,40 @@
         </el-table>
       </div>
       <div
+        v-else
+        v-loading="loading"
+        class="mobile-card-list"
+      >
+        <article
+          v-for="row in userStats"
+          :key="row.username"
+          class="mobile-stat-card"
+        >
+          <div class="mobile-stat-card__header">
+            <span class="mobile-user-name">{{ row.username }}</span>
+            <span class="mobile-total-traffic">{{ formatBytes(row.total) }}</span>
+          </div>
+          <div class="mobile-stat-grid">
+            <div class="mobile-stat-item">
+              <span>代理数</span>
+              <strong>{{ row.proxy_count }}</strong>
+            </div>
+            <div class="mobile-stat-item">
+              <span>上传流量</span>
+              <strong>{{ formatBytes(row.upload) }}</strong>
+            </div>
+            <div class="mobile-stat-item">
+              <span>下载流量</span>
+              <strong>{{ formatBytes(row.download) }}</strong>
+            </div>
+            <div class="mobile-stat-item">
+              <span>最后活跃</span>
+              <strong>{{ row.last_active || '-' }}</strong>
+            </div>
+          </div>
+        </article>
+      </div>
+      <div
         v-if="userStats.length === 0"
         class="empty-data"
       >
@@ -300,7 +383,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { User, Connection, DataLine, Monitor, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import echarts from '@/utils/charts'
@@ -312,7 +395,7 @@ const loading = ref(false)
 const trafficPeriod = ref('today')
 const lastSuccessfulTrafficPeriod = ref(trafficPeriod.value)
 const { isMobile, isTablet } = useViewport()
-const statCardSpan = computed(() => (isMobile.value ? 12 : isTablet.value ? 12 : 6))
+const statCardSpan = computed(() => (isMobile.value ? 24 : isTablet.value ? 12 : 6))
 const chartSpan = computed(() => (isMobile.value ? 24 : 12))
 
 const protocolChartRef = ref(null)
@@ -402,26 +485,49 @@ const getTrafficPercentage = (traffic) => {
   return Math.round((traffic / totalTraffic.value) * 100)
 }
 
-// 初始化协议分布图表
-const initProtocolChart = () => {
-  if (!protocolChartRef.value) return
-  
-  protocolChart = echarts.init(protocolChartRef.value)
-  protocolChart.setOption({
+const getAxisLabelOptions = () => ({
+  fontSize: isMobile.value ? 11 : 12,
+  color: '#606266',
+  hideOverlap: true
+})
+
+const getProtocolChartOption = () => {
+  const mobile = isMobile.value
+  const data = protocolStats.value.map(item => ({
+    name: item.protocol.toUpperCase(),
+    value: item.count,
+    itemStyle: {
+      color: getProtocolColor(item.protocol)
+    }
+  }))
+
+  return {
     tooltip: {
       trigger: 'item',
+      confine: true,
       formatter: '{b}: {c} ({d}%)'
     },
     legend: {
-      orient: 'vertical',
-      left: 'left'
+      type: mobile ? 'scroll' : 'plain',
+      orient: mobile ? 'horizontal' : 'vertical',
+      left: mobile ? 8 : 'left',
+      right: mobile ? 8 : undefined,
+      top: mobile ? 4 : 'middle',
+      itemWidth: mobile ? 16 : 22,
+      itemHeight: mobile ? 10 : 14,
+      itemGap: mobile ? 10 : 12,
+      textStyle: {
+        fontSize: mobile ? 11 : 12,
+        color: '#303133'
+      }
     },
     series: [
       {
         name: '协议分布',
         type: 'pie',
-        radius: ['40%', '70%'],
-        avoidLabelOverlap: false,
+        radius: mobile ? ['32%', '56%'] : ['40%', '70%'],
+        center: mobile ? ['50%', '64%'] : ['58%', '50%'],
+        avoidLabelOverlap: true,
         itemStyle: {
           borderRadius: 10,
           borderColor: '#fff',
@@ -433,7 +539,7 @@ const initProtocolChart = () => {
         },
         emphasis: {
           label: {
-            show: true,
+            show: !mobile,
             fontSize: 20,
             fontWeight: 'bold'
           }
@@ -441,20 +547,22 @@ const initProtocolChart = () => {
         labelLine: {
           show: false
         },
-        data: []
+        data
       }
     ]
-  })
+  }
 }
 
-// 初始化流量趋势图表
-const initTrafficChart = () => {
-  if (!trafficChartRef.value) return
-  
-  trafficChart = echarts.init(trafficChartRef.value)
-  trafficChart.setOption({
+const getTrafficChartOption = (timeline = trafficTimeline.value) => {
+  const mobile = isMobile.value
+  const times = timeline.map(item => formatTimelineLabel(item.time))
+  const uploads = timeline.map(item => item.upload)
+  const downloads = timeline.map(item => item.download)
+
+  return {
     tooltip: {
       trigger: 'axis',
+      confine: true,
       axisPointer: {
         type: 'cross',
         label: {
@@ -463,22 +571,33 @@ const initTrafficChart = () => {
       }
     },
     legend: {
-      data: ['上传', '下载']
+      top: mobile ? 2 : 4,
+      left: 'center',
+      data: ['上传', '下载'],
+      itemWidth: mobile ? 16 : 22,
+      itemHeight: mobile ? 10 : 12,
+      textStyle: {
+        fontSize: mobile ? 11 : 12,
+        color: '#606266'
+      }
     },
     grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
+      top: mobile ? 42 : 48,
+      left: mobile ? 8 : 14,
+      right: mobile ? 8 : 18,
+      bottom: mobile ? 8 : 16,
       containLabel: true
     },
     xAxis: {
       type: 'category',
       boundaryGap: false,
-      data: []
+      data: times,
+      axisLabel: getAxisLabelOptions()
     },
     yAxis: {
       type: 'value',
       axisLabel: {
+        ...getAxisLabelOptions(),
         formatter: (value) => formatBytes(value)
       }
     },
@@ -491,7 +610,7 @@ const initTrafficChart = () => {
         emphasis: {
           focus: 'series'
         },
-        data: []
+        data: uploads
       },
       {
         name: '下载',
@@ -501,48 +620,40 @@ const initTrafficChart = () => {
         emphasis: {
           focus: 'series'
         },
-        data: []
+        data: downloads
       }
     ]
-  })
+  }
+}
+
+// 初始化协议分布图表
+const initProtocolChart = () => {
+  if (!protocolChartRef.value) return
+  
+  protocolChart = echarts.init(protocolChartRef.value)
+  protocolChart.setOption(getProtocolChartOption(), true)
+}
+
+// 初始化流量趋势图表
+const initTrafficChart = () => {
+  if (!trafficChartRef.value) return
+  
+  trafficChart = echarts.init(trafficChartRef.value)
+  trafficChart.setOption(getTrafficChartOption(), true)
 }
 
 // 更新协议图表
 const updateProtocolChart = () => {
   if (!protocolChart) return
-  
-  const data = protocolStats.value.map(item => ({
-    name: item.protocol.toUpperCase(),
-    value: item.count,
-    itemStyle: {
-      color: getProtocolColor(item.protocol)
-    }
-  }))
-  
-  protocolChart.setOption({
-    series: [{
-      data: data
-    }]
-  })
+
+  protocolChart.setOption(getProtocolChartOption(), true)
 }
 
 // 更新流量图表
 const updateTrafficChart = (timeline) => {
   if (!trafficChart || !timeline) return
-  
-  const times = timeline.map(item => formatTimelineLabel(item.time))
-  const uploads = timeline.map(item => item.upload)
-  const downloads = timeline.map(item => item.download)
-  
-  trafficChart.setOption({
-    xAxis: {
-      data: times
-    },
-    series: [
-      { data: uploads },
-      { data: downloads }
-    ]
-  })
+
+  trafficChart.setOption(getTrafficChartOption(timeline), true)
 }
 
 // 加载仪表盘统计
@@ -636,6 +747,15 @@ const handleResize = () => {
   protocolChart?.resize()
   trafficChart?.resize()
 }
+
+watch(isMobile, () => {
+  updateProtocolChart()
+  updateTrafficChart(trafficTimeline.value)
+  requestAnimationFrame(() => {
+    protocolChart?.resize()
+    trafficChart?.resize()
+  })
+})
 
 onMounted(() => {
   initProtocolChart()
@@ -774,6 +894,75 @@ onUnmounted(() => {
   min-width: 760px;
 }
 
+.mobile-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mobile-stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--color-border, #dcdfe6);
+  border-radius: 8px;
+  background: var(--color-bg-card, #ffffff);
+}
+
+.mobile-stat-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mobile-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobile-stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--color-border-light, #ebeef5);
+  border-radius: 8px;
+  background: var(--color-bg-soft, #f8fafc);
+  color: #909399;
+  font-size: 12px;
+}
+
+.mobile-stat-item strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text-primary);
+  font-size: 14px;
+}
+
+.mobile-user-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.mobile-total-traffic {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
 @media (max-width: 768px) {
   .stats-page {
     padding: 12px;
@@ -781,6 +970,10 @@ onUnmounted(() => {
 
   .stat-card {
     min-height: 0;
+  }
+
+  :deep(.stat-card .el-card__body) {
+    padding: 14px;
   }
 
   .card-header {
@@ -794,6 +987,7 @@ onUnmounted(() => {
     flex-direction: row;
     gap: 14px;
     padding: 4px 0;
+    min-width: 0;
   }
 
   .stat-icon {
@@ -805,10 +999,43 @@ onUnmounted(() => {
 
   .stat-value {
     font-size: 24px;
+    overflow-wrap: anywhere;
+  }
+
+  .stat-footer {
+    overflow-wrap: anywhere;
+  }
+
+  .traffic-period-group {
+    width: 100%;
+  }
+
+  .traffic-period-group :deep(.el-radio-button) {
+    flex: 1;
+  }
+
+  .traffic-period-group :deep(.el-radio-button__inner) {
+    width: 100%;
+    padding-inline: 0;
+  }
+
+  :deep(.charts-row .el-card__header),
+  :deep(.protocol-table .el-card__header),
+  :deep(.user-stats .el-card__header) {
+    padding: 14px 16px;
+  }
+
+  :deep(.charts-row .el-card__body) {
+    padding: 12px 10px 10px;
   }
 
   .chart-container {
-    height: 260px;
+    height: 280px;
+    min-width: 0;
+  }
+
+  .mobile-stat-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

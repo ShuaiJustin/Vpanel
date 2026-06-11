@@ -55,6 +55,16 @@ export function generateErrorId() {
 }
 
 /**
+ * 生成唯一的请求追踪 ID
+ * @returns {string} 请求 ID
+ */
+export function generateRequestId() {
+  const timestamp = Date.now().toString(36)
+  const random = Math.random().toString(36).substring(2, 8)
+  return `REQ-${timestamp}-${random}`.toUpperCase()
+}
+
+/**
  * 获取错误消息
  * @param {string} code 错误码
  * @param {string} defaultMessage 默认消息
@@ -144,7 +154,7 @@ api.interceptors.request.use(
     
     // 添加请求ID用于追踪
     if (!config.headers['X-Request-ID']) {
-      config.headers['X-Request-ID'] = generateErrorId()
+      config.headers['X-Request-ID'] = generateRequestId()
     }
     
     // 支持请求取消
