@@ -1681,6 +1681,12 @@ watch(
   word-break: break-word;
 }
 
+@media (max-width: 1440px) {
+  .detail-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 1180px) {
   .detail-layout {
     grid-template-columns: 1fr;
