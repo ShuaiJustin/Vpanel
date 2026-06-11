@@ -25,7 +25,22 @@ vi.mock('@/utils/requestManager', () => ({
   },
 }))
 
-import { formatApiError } from './base'
+import { formatApiError, generateErrorId, generateRequestId } from './base'
+
+describe('request and error ids', () => {
+  it('uses REQ prefix for normal request tracing ids', () => {
+    const requestId = generateRequestId()
+
+    expect(requestId).toMatch(/^REQ-[A-Z0-9]+-[A-Z0-9]+$/)
+    expect(requestId.startsWith('ERR-')).toBe(false)
+  })
+
+  it('keeps ERR prefix for actual frontend error ids', () => {
+    const errorId = generateErrorId()
+
+    expect(errorId).toMatch(/^ERR-[A-Z0-9]+-[A-Z0-9]+$/)
+  })
+})
 
 describe('formatApiError', () => {
   beforeEach(() => {

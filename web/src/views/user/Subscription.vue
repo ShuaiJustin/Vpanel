@@ -64,11 +64,12 @@
             <!-- 升级/降级按钮 -->
             <div class="action-buttons">
               <el-button
+                v-if="hasCurrentPlan"
                 type="primary"
-                @click="handlePrimaryPlanAction"
+                @click="goToPlanUpgrade"
               >
                 <el-icon><TrendCharts /></el-icon>
-                {{ hasActiveSubscription ? '升级/降级套餐' : '升级为正式套餐' }}
+                升级/降级套餐
               </el-button>
               <el-button
                 type="success"
@@ -376,7 +377,7 @@ const trafficLimit = computed(() => userStore.trafficLimit)
 const trafficUsageDisplay = computed(() => `${formatTrafficBytes(trafficUsed.value)} / ${formatTrafficLimit(trafficLimit.value)}`)
 const availableNodes = computed(() => userStore.availableNodes || 0)
 const secondaryPlanActionLabel = computed(() => {
-  if (hasCurrentPlan.value) return '续费套餐'
+  if (hasCurrentPlan.value || isExpiredEntitlement.value) return '续费套餐'
   if (hasTrialEntitlement.value) return '升级为正式套餐'
   return '购买套餐'
 })
@@ -512,15 +513,6 @@ async function confirmReset() {
 
 function goToDownload() {
   router.push('/user/download')
-}
-
-function handlePrimaryPlanAction() {
-  if (hasCurrentPlan.value) {
-    goToPlanUpgrade()
-    return
-  }
-
-  goToPlans()
 }
 
 function goToPlanUpgrade() {

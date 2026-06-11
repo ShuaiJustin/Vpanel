@@ -87,6 +87,38 @@ func TestBuildDatabaseTestConfigRequiresExplicitSQLitePath(t *testing.T) {
 	}
 }
 
+func TestRuntimeDatabaseInfoUsesRuntimeSQLitePath(t *testing.T) {
+	handler := NewSettingsHandler(logger.NewNopLogger(), nil).
+		WithRuntimeDatabaseConfig("sqlite", "/runtime/v.db", "/runtime/path-only.db")
+
+	got := handler.runtimeDatabaseInfo()
+	if got.Driver != "sqlite" {
+		t.Fatalf("expected sqlite driver, got %q", got.Driver)
+	}
+	if got.Path != "/runtime/v.db" {
+		t.Fatalf("expected runtime sqlite path, got %q", got.Path)
+	}
+	if got.DSNMasked != "" {
+		t.Fatalf("did not expect masked DSN for sqlite, got %q", got.DSNMasked)
+	}
+}
+
+func TestRuntimeDatabaseInfoMasksNonSQLiteDSN(t *testing.T) {
+	handler := NewSettingsHandler(logger.NewNopLogger(), nil).
+		WithRuntimeDatabaseConfig("mysql", "user:secret@tcp(db:3306)/vpanel", "")
+
+	got := handler.runtimeDatabaseInfo()
+	if got.Driver != "mysql" {
+		t.Fatalf("expected mysql driver, got %q", got.Driver)
+	}
+	if got.DSNMasked != "user:***@tcp(db:3306)/vpanel" {
+		t.Fatalf("expected masked DSN, got %q", got.DSNMasked)
+	}
+	if strings.Contains(got.DSNMasked, "secret") {
+		t.Fatalf("masked DSN leaked password: %q", got.DSNMasked)
+	}
+}
+
 func TestValidateMigrationTargetRejectsCurrentSQLiteDatabase(t *testing.T) {
 	current := t.TempDir() + "/v.db"
 	handler := NewSettingsHandler(logger.NewNopLogger(), nil).

@@ -10,6 +10,54 @@ const hmrClientPort = Number(process.env.VITE_HMR_CLIENT_PORT || 0) || undefined
 const openBrowser = process.env.VITE_OPEN_BROWSER !== 'false'
 const enableBuildSourceMap = /^(1|true)$/i.test(process.env.VITE_BUILD_SOURCEMAP || '')
 
+const normalizeModuleId = (id) => id.replace(/\\/g, '/')
+
+const manualChunks = (id) => {
+  const normalizedId = normalizeModuleId(id)
+
+  if (!normalizedId.includes('/node_modules/')) {
+    return undefined
+  }
+
+  if (
+    normalizedId.includes('/node_modules/vue/') ||
+    normalizedId.includes('/node_modules/vue-router/') ||
+    normalizedId.includes('/node_modules/pinia/') ||
+    normalizedId.includes('/node_modules/@vue/')
+  ) {
+    return 'vue-core'
+  }
+
+  if (normalizedId.includes('/node_modules/@element-plus/icons-vue/')) {
+    return 'element-plus-icons'
+  }
+
+  if (normalizedId.includes('/node_modules/element-plus/')) {
+    return 'element-plus'
+  }
+
+  if (normalizedId.includes('/node_modules/echarts/core')) {
+    return 'echarts-core'
+  }
+
+  if (normalizedId.includes('/node_modules/echarts/renderers')) {
+    return 'echarts-renderers'
+  }
+
+  if (normalizedId.includes('/node_modules/chart.js/')) {
+    return 'chartjs'
+  }
+
+  if (
+    normalizedId.includes('/node_modules/axios/') ||
+    normalizedId.includes('/node_modules/qrcode/')
+  ) {
+    return 'utils'
+  }
+
+  return undefined
+}
+
 export default defineConfig({
   plugins: [vue()],
   resolve: {
@@ -120,12 +168,19 @@ export default defineConfig({
   optimizeDeps: {
     include: ['vue', 'vue-router', 'pinia', 'element-plus', 'axios', 'qrcode'],
   },
+  css: {
+    preprocessorOptions: {
+      scss: {
+        api: 'modern-compiler',
+      },
+    },
+  },
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: enableBuildSourceMap,
     reportCompressedSize: false,
-    chunkSizeWarningLimit: 500,
+    chunkSizeWarningLimit: 650,
     minify: 'terser',
     terserOptions: {
       compress: {
@@ -138,29 +193,7 @@ export default defineConfig({
         chunkFileNames: 'assets/js/[name]-[hash].js',
         entryFileNames: 'assets/js/[name]-[hash].js',
         assetFileNames: 'assets/[ext]/[name]-[hash].[ext]',
-        manualChunks: {
-          // Vue core (~100KB) - Core Vue framework and state management
-          'vue-core': ['vue', 'vue-router', 'pinia'],
-          
-          // Element Plus (~400KB) - UI component library
-          'element-plus': ['element-plus', '@element-plus/icons-vue'],
-          
-          // ECharts (~200KB with selective imports) - Only used chart types
-          // Selective imports in utils/charts.ts: LineChart, BarChart, PieChart
-          // Components: Title, Tooltip, Grid, Legend
-          // Renderer: CanvasRenderer only
-          'echarts': [
-            'echarts/core',
-            'echarts/renderers',
-            'vue-echarts'
-          ],
-          
-          // Chart.js (~200KB) - Used in user stats
-          'chartjs': ['chart.js'],
-          
-          // Utils (~100KB) - HTTP client and utilities
-          'utils': ['axios', 'qrcode'],
-        }
+        manualChunks
       }
     }
   },

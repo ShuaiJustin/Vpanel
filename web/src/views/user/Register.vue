@@ -144,6 +144,8 @@
       v-model="showSuccessDialog"
       title="注册成功"
       width="400px"
+      class="register-success-dialog"
+      align-center
       :close-on-click-modal="false"
       :show-close="false"
     >
@@ -335,69 +337,108 @@ function showPrivacy() {
 
 <style scoped>
 .register-page {
-  min-height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
+  width: 100%;
 }
 
 .register-card {
   width: 100%;
-  max-width: 420px;
-  background: var(--color-bg-card);
-  border-radius: 12px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
-  padding: 40px;
+  max-width: 380px;
+  margin: 0 auto;
 }
 
 .register-header {
   text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: 26px;
 }
 
 .register-title {
-  font-size: 28px;
+  font-size: 30px;
   font-weight: 600;
   color: var(--color-text-primary);
-  margin: 0 0 8px 0;
+  line-height: 1.2;
+  margin: 0 0 10px;
 }
 
 .register-subtitle {
-  font-size: 14px;
+  font-size: 15px;
   color: #909399;
   margin: 0;
 }
 
 .register-form {
-  margin-bottom: 16px;
+  margin-bottom: 14px;
+}
+
+.register-form :deep(.el-form-item) {
+  margin-bottom: 14px;
+}
+
+.register-form :deep(.el-input__wrapper) {
+  min-height: 46px;
+  border-radius: 8px;
+  padding: 0 14px;
+  transition: box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.register-form :deep(.el-input__prefix) {
+  margin-right: 10px;
+  color: #a8abb2;
+}
+
+.register-form :deep(.el-input__inner) {
+  min-width: 0;
+  height: 46px;
+  font-size: 15px;
+  color: var(--color-text-primary);
+}
+
+.register-form :deep(.el-input__inner::placeholder) {
+  color: #a8abb2;
 }
 
 .register-btn {
   width: 100%;
-  height: 44px;
+  height: 48px;
+  border-radius: 8px;
   font-size: 16px;
+  font-weight: 600;
 }
 
 .agreement-item {
-  margin-bottom: 22px;
+  margin-bottom: 18px;
+}
+
+.agreement-item :deep(.el-form-item__content) {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  line-height: normal;
 }
 
 .agreement-item :deep(.el-checkbox) {
   display: flex;
   align-items: flex-start;
+  align-self: flex-start;
+  max-width: 100%;
   white-space: normal;
 }
 
 .agreement-item :deep(.el-checkbox__label) {
   white-space: normal;
-  line-height: 1.5;
+  line-height: 1.45;
   word-break: break-word;
 }
 
 .agreement-text {
   display: inline;
-  line-height: 1.5;
+  line-height: 1.45;
+  font-size: 14px;
+}
+
+.agreement-item :deep(.el-form-item__error) {
+  position: static;
+  margin-top: 8px;
+  line-height: 1.4;
 }
 
 .agreement-link {
@@ -427,7 +468,7 @@ function showPrivacy() {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
   padding: 0 2px;
 }
 
@@ -501,7 +542,7 @@ function showPrivacy() {
 /* 成功对话框 */
 .success-content {
   text-align: center;
-  padding: 20px 0;
+  padding: 16px 0 12px;
 }
 
 .success-icon {
@@ -522,16 +563,90 @@ function showPrivacy() {
   color: #606266;
   margin: 0;
   line-height: 1.6;
+  word-break: break-word;
+}
+
+:global(.register-success-dialog) {
+  max-width: calc(100vw - 32px);
+  border-radius: 14px;
+}
+
+:global(.register-success-dialog .el-dialog__header) {
+  padding-bottom: 10px;
+}
+
+:global(.register-success-dialog .el-dialog__footer) {
+  padding-top: 0;
+}
+
+:global(.register-success-dialog .el-dialog__footer .el-button) {
+  min-width: 128px;
 }
 
 /* 响应式 */
 @media (max-width: 480px) {
-  .register-card {
-    padding: 24px;
-  }
-  
   .register-title {
-    font-size: 24px;
+    font-size: 26px;
+  }
+
+  .register-card {
+    max-width: 100%;
+  }
+
+  .register-form :deep(.el-form-item) {
+    margin-bottom: 12px;
+  }
+
+  .agreement-text {
+    font-size: 13px;
+  }
+
+  .success-content {
+    padding: 8px 0 6px;
+  }
+
+  .success-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+  }
+
+  .success-content h3 {
+    font-size: 18px;
+    margin-bottom: 10px;
+  }
+
+  .success-content p {
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  :global(.register-success-dialog) {
+    width: calc(100vw - 32px) !important;
+    max-width: 360px;
+  }
+
+  :global(.register-success-dialog .el-dialog__header) {
+    padding: 18px 18px 8px;
+  }
+
+  :global(.register-success-dialog .el-dialog__title) {
+    font-size: 18px;
+    line-height: 1.35;
+  }
+
+  :global(.register-success-dialog .el-dialog__body) {
+    padding: 8px 22px 18px;
+    max-height: none;
+  }
+
+  :global(.register-success-dialog .el-dialog__footer) {
+    padding: 0 22px 22px;
+  }
+
+  :global(.register-success-dialog .el-dialog__footer .el-button) {
+    width: 100%;
+    min-height: 42px;
+    margin: 0;
   }
 }
 </style>

@@ -1009,10 +1009,11 @@ async function savePreferences() {
 }
 
 function logout() {
-  ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+  ElMessageBox.confirm('确定退出当前账号吗？', '退出登录', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
-    type: 'warning'
+    type: 'warning',
+    customClass: 'portal-logout-confirm'
   }).then(async () => {
     loggingOut.value = true
     await userStore.logout()

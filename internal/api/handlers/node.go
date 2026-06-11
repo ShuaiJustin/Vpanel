@@ -1226,7 +1226,13 @@ func (h *NodeHandler) Create(c *gin.Context) {
 	h.logger.Info("Node created", logger.F("node_id", n.ID), logger.F("name", n.Name))
 
 	if req.SSH != nil {
-		if err := h.nodeService.UpdateSSHConfig(c.Request.Context(), n.ID, req.SSH.Host, req.SSH.Port, req.SSH.Username, req.SSH.Password, ""); err != nil {
+		if err := persistNodeSSHMetadata(c.Request.Context(), h.nodeService, n.ID, nodeSSHMetadataInput{
+			Host:       req.SSH.Host,
+			Port:       req.SSH.Port,
+			Username:   req.SSH.Username,
+			Password:   req.SSH.Password,
+			PrivateKey: req.SSH.PrivateKey,
+		}); err != nil {
 			h.logger.Warn("Failed to persist node SSH metadata after create", logger.Err(err), logger.F("node_id", n.ID))
 		} else {
 			n, err = h.nodeService.GetByID(c.Request.Context(), n.ID)
@@ -1475,7 +1481,13 @@ func (h *NodeHandler) Update(c *gin.Context) {
 	}
 
 	if req.SSH != nil {
-		if err := h.nodeService.UpdateSSHConfig(c.Request.Context(), id, req.SSH.Host, req.SSH.Port, req.SSH.Username, req.SSH.Password, ""); err != nil {
+		if err := persistNodeSSHMetadata(c.Request.Context(), h.nodeService, id, nodeSSHMetadataInput{
+			Host:       req.SSH.Host,
+			Port:       req.SSH.Port,
+			Username:   req.SSH.Username,
+			Password:   req.SSH.Password,
+			PrivateKey: req.SSH.PrivateKey,
+		}); err != nil {
 			h.logger.Warn("Failed to persist node SSH metadata after update", logger.Err(err), logger.F("node_id", id))
 		} else {
 			n, err = h.nodeService.GetByID(c.Request.Context(), id)
@@ -1913,6 +1925,16 @@ func (h *NodeHandler) InstallCoreVersion(c *gin.Context) {
 		func(nodeID int64, source, reason string) (Command, bool) {
 			return h.recoveryTracker.QueueXrayInstallVersionCommand(nodeID, source, reason, targetVersion)
 		},
+	)
+}
+
+func (h *NodeHandler) UpdateAgent(c *gin.Context) {
+	h.queueNodeCommand(
+		c,
+		commandTypeAgentUpdate,
+		"管理员更新节点 Agent",
+		"Agent 更新命令已加入队列，节点将在下次心跳时下载并重启",
+		h.recoveryTracker.QueueAgentUpdateCommand,
 	)
 }
 

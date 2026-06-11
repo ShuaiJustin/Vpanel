@@ -263,6 +263,7 @@ import { MapChart, ScatterChart, EffectScatterChart } from 'echarts/charts'
 import { GeoComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { useNodeStore } from '@/stores/node'
+import worldMapUrl from '@/assets/maps/world.json?url'
 
 echarts.use([GeoComponent, TooltipComponent, MapChart, ScatterChart, EffectScatterChart, CanvasRenderer])
 
@@ -617,8 +618,13 @@ const initChart = async () => {
   if (!mapChartRef.value) return
 
   if (!worldMapReady) {
-    const worldGeoJsonModule = await import('@/assets/maps/world.json')
-    echarts.registerMap('WORLD', worldGeoJsonModule.default || worldGeoJsonModule)
+    const worldGeoJsonResponse = await fetch(worldMapUrl)
+    if (!worldGeoJsonResponse.ok) {
+      throw new Error('世界地图数据加载失败')
+    }
+
+    const worldGeoJson = await worldGeoJsonResponse.json()
+    echarts.registerMap('WORLD', worldGeoJson)
     worldMapReady = true
   }
 

@@ -109,7 +109,8 @@ func (h *SubscriptionHandler) GetLink(c *gin.Context) {
 		return
 	}
 
-	info, err := h.service.GetSubscriptionInfoWithBaseURL(c.Request.Context(), userID.(int64), subscriptionBaseURLFromRequest(c))
+	baseURL := subscriptionBaseURLFromRequest(c)
+	info, err := h.service.GetSubscriptionInfoWithBaseURL(c.Request.Context(), userID.(int64), baseURL)
 	if err != nil {
 		h.logger.Error("failed to get subscription info",
 			logger.F("error", err),
@@ -134,7 +135,26 @@ func (h *SubscriptionHandler) GetLink(c *gin.Context) {
 		response.Stats.LastAccessAt = info.LastAccessAt.Format("2006-01-02T15:04:05Z")
 	}
 
+	// 检测是否为本地地址
+	if baseURL == "" || isLikelyLocalURL(info.Link) {
+		h.logger.Warn("subscription link may be using local address",
+			logger.F("link", info.Link),
+			logger.F("base_url", baseURL),
+			logger.UserID(userID.(int64)))
+	}
+
 	c.JSON(http.StatusOK, response)
+}
+
+func isLikelyLocalURL(rawURL string) bool {
+	if rawURL == "" {
+		return true
+	}
+	lower := strings.ToLower(rawURL)
+	return strings.Contains(lower, "localhost") ||
+		strings.Contains(lower, "127.0.0.1") ||
+		strings.Contains(lower, "0.0.0.0") ||
+		strings.Contains(lower, "::1")
 }
 
 // GetInfo returns detailed subscription information for the current user.
@@ -285,21 +305,43 @@ func subscriptionBaseURLFromRequest(c *gin.Context) string {
 	scheme := "http"
 	if xfProto := strings.TrimSpace(c.GetHeader("X-Forwarded-Proto")); xfProto != "" {
 		scheme = strings.Split(xfProto, ",")[0]
+	} else if xfScheme := strings.TrimSpace(c.GetHeader("X-Forwarded-Scheme")); xfScheme != "" {
+		scheme = xfScheme
 	} else if c.Request.TLS != nil {
 		scheme = "https"
 	}
 
 	host := strings.TrimSpace(c.GetHeader("X-Forwarded-Host"))
 	if host == "" {
+		host = strings.TrimSpace(c.GetHeader("X-Original-Host"))
+	}
+	if host == "" {
 		host = strings.TrimSpace(c.Request.Host)
 	}
 	host = strings.Split(host, ",")[0]
 	host = strings.TrimSpace(host)
-	if host == "" {
+
+	if host == "" || isLocalOrWildcardHost(host) {
 		return ""
 	}
 
 	return fmt.Sprintf("%s://%s", scheme, host)
+}
+
+func isLocalOrWildcardHost(host string) bool {
+	if host == "" {
+		return true
+	}
+	hostname := host
+	if colonIdx := strings.LastIndex(host, ":"); colonIdx > 0 {
+		hostname = host[:colonIdx]
+	}
+	switch strings.ToLower(hostname) {
+	case "localhost", "127.0.0.1", "0.0.0.0", "::", "::1":
+		return true
+	default:
+		return false
+	}
 }
 
 func subscriptionRequestHostname(c *gin.Context) string {
@@ -506,27 +548,25 @@ func (h *SubscriptionHandler) recordSubscriptionUsage(parent context.Context, su
 		return
 	}
 
-	go func() {
-		recordCtx, cancel := newHandlerBackgroundTaskContext(parent)
-		defer cancel()
+	recordCtx, cancel := newHandlerBackgroundTaskContext(parent)
+	defer cancel()
 
-		if err := h.ipService.RecordActivity(recordCtx, uint(sub.UserID), clientIP, userAgent, ip.AccessTypeSubscription); err != nil {
-			h.logger.Error("failed to record subscription activity",
-				logger.F("error", err),
-				logger.UserID(sub.UserID),
-				logger.F("subscription_id", sub.ID),
-				logger.F("ip", clientIP))
-		}
+	if err := h.ipService.RecordActivity(recordCtx, uint(sub.UserID), clientIP, userAgent, ip.AccessTypeSubscription); err != nil {
+		h.logger.Error("failed to record subscription activity",
+			logger.F("error", err),
+			logger.UserID(sub.UserID),
+			logger.F("subscription_id", sub.ID),
+			logger.F("ip", clientIP))
+	}
 
-		subscriptionIPService := ip.NewSubscriptionIPService(tracker.GetDB(), h.ipService.GeoService())
-		if err := subscriptionIPService.RecordAccess(recordCtx, uint(sub.ID), clientIP, userAgent); err != nil {
-			h.logger.Error("failed to record subscription access ip",
-				logger.F("error", err),
-				logger.UserID(sub.UserID),
-				logger.F("subscription_id", sub.ID),
-				logger.F("ip", clientIP))
-		}
-	}()
+	subscriptionIPService := ip.NewSubscriptionIPService(tracker.GetDB(), h.ipService.GeoService())
+	if err := subscriptionIPService.RecordAccess(recordCtx, uint(sub.ID), clientIP, userAgent); err != nil {
+		h.logger.Error("failed to record subscription access ip",
+			logger.F("error", err),
+			logger.UserID(sub.UserID),
+			logger.F("subscription_id", sub.ID),
+			logger.F("ip", clientIP))
+	}
 }
 
 const handlerBackgroundTaskTimeout = 5 * time.Second

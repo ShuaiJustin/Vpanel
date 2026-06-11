@@ -246,7 +246,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import echarts from '@/utils/charts'
 import { systemApi } from '@/api'
 import { ElMessage } from 'element-plus'
@@ -286,6 +286,8 @@ const gridGutter = computed(() => (isMobile.value ? 12 : 20))
 const progressWidth = computed(() => (isMobile.value ? 132 : isTablet.value ? 150 : 168))
 const descriptionColumns = computed(() => (isMobile.value ? 1 : 2))
 const processSearchWidth = computed(() => (isMobile.value ? '100%' : isTablet.value ? '180px' : '220px'))
+const resourceHistoryPointCount = computed(() => (isMobile.value ? 6 : 10))
+const diskHistoryPointCount = computed(() => (isMobile.value ? 6 : 7))
 
 // 计算属性
 const filteredProcesses = computed(() => {
@@ -337,93 +339,54 @@ const formatBytes = (bytes) => {
   return parseFloat((normalized / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
+const getChartLayoutOptions = () => {
+  const mobile = isMobile.value
+
+  return {
+    title: {
+      show: false
+    },
+    legend: {
+      top: mobile ? 2 : 4,
+      left: 'center',
+      itemWidth: mobile ? 16 : 22,
+      itemHeight: mobile ? 10 : 12,
+      itemGap: mobile ? 14 : 20,
+      textStyle: {
+        fontSize: mobile ? 11 : 12,
+        color: '#606266'
+      }
+    },
+    grid: {
+      top: mobile ? 40 : 48,
+      right: mobile ? 8 : 18,
+      bottom: mobile ? 8 : 16,
+      left: mobile ? 8 : 14,
+      containLabel: true
+    },
+    textStyle: {
+      color: '#606266'
+    }
+  }
+}
+
+const getAxisLabelOptions = () => ({
+  fontSize: isMobile.value ? 11 : 12,
+  color: '#606266',
+  hideOverlap: true
+})
+
 // 初始化图表
 const initCharts = () => {
   if (!resourceChartRef.value || !diskChartRef.value) {
     return
   }
 
-  // CPU/内存历史趋势图表
   resourceChart = echarts.init(resourceChartRef.value)
-  resourceChart.setOption({
-    title: {
-      text: 'CPU/内存使用率趋势'
-    },
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: {
-        type: 'cross',
-        label: {
-          backgroundColor: '#6a7985'
-        }
-      }
-    },
-    legend: {
-      data: ['CPU', '内存']
-    },
-    xAxis: {
-      type: 'category',
-      boundaryGap: false,
-      data: generateTimePoints(10)
-    },
-    yAxis: {
-      type: 'value',
-      min: 0,
-      max: 100,
-      name: '使用率 (%)'
-    },
-    series: [
-      {
-        name: 'CPU',
-        type: 'line',
-        data: generateRandomData(10, 10, 70),
-        areaStyle: {}
-      },
-      {
-        name: '内存',
-        type: 'line',
-        data: generateRandomData(10, 30, 90),
-        areaStyle: {}
-      }
-    ]
-  })
-  
-  // 磁盘 I/O 图表
+  resourceChart.setOption(buildResourceChartOption(), true)
+
   diskChart = echarts.init(diskChartRef.value)
-  diskChart.setOption({
-    title: {
-      text: '磁盘 I/O 活动'
-    },
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: {
-        type: 'shadow'
-      }
-    },
-    legend: {
-      data: ['读取', '写入']
-    },
-    xAxis: {
-      type: 'category',
-      data: generateTimePoints(7)
-    },
-    yAxis: {
-      type: 'value',
-      name: '速率 (MB/s)'
-    },
-    series: [
-      {
-        name: '读取',
-        type: 'bar',
-        data: generateRandomData(7, 0, 50)
-      },
-      {
-        name: '写入',
-        type: 'bar',
-        data: generateRandomData(7, 5, 70)
-      }
-    ]
-  })
+  diskChart.setOption(buildDiskChartOption(), true)
 }
 
 // 生成随机数据
@@ -442,41 +405,118 @@ const generateTimePoints = (count) => {
 
 
 
+const buildResourceChartOption = () => {
+  const layout = getChartLayoutOptions()
+  const pointCount = resourceHistoryPointCount.value
+
+  return {
+    ...layout,
+    tooltip: {
+      trigger: 'axis',
+      confine: true,
+      axisPointer: {
+        type: 'cross',
+        label: {
+          backgroundColor: '#6a7985'
+        }
+      }
+    },
+    legend: {
+      ...layout.legend,
+      data: ['CPU', '内存']
+    },
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      data: generateTimePoints(pointCount),
+      axisLabel: getAxisLabelOptions()
+    },
+    yAxis: {
+      type: 'value',
+      min: 0,
+      max: 100,
+      name: isMobile.value ? '' : '使用率 (%)',
+      nameGap: 18,
+      nameTextStyle: {
+        color: '#606266',
+        fontSize: 12
+      },
+      axisLabel: getAxisLabelOptions()
+    },
+    series: [
+      {
+        name: 'CPU',
+        type: 'line',
+        data: generateRandomData(pointCount, 10, 70),
+        areaStyle: {}
+      },
+      {
+        name: '内存',
+        type: 'line',
+        data: generateRandomData(pointCount, 30, 90),
+        areaStyle: {}
+      }
+    ]
+  }
+}
+
+const buildDiskChartOption = () => {
+  const layout = getChartLayoutOptions()
+  const pointCount = diskHistoryPointCount.value
+
+  return {
+    ...layout,
+    tooltip: {
+      trigger: 'axis',
+      confine: true,
+      axisPointer: {
+        type: 'shadow'
+      }
+    },
+    legend: {
+      ...layout.legend,
+      data: ['读取', '写入']
+    },
+    xAxis: {
+      type: 'category',
+      data: generateTimePoints(pointCount),
+      axisLabel: getAxisLabelOptions()
+    },
+    yAxis: {
+      type: 'value',
+      name: isMobile.value ? '' : '速率 (MB/s)',
+      nameGap: 18,
+      nameTextStyle: {
+        color: '#606266',
+        fontSize: 12
+      },
+      axisLabel: getAxisLabelOptions()
+    },
+    series: [
+      {
+        name: '读取',
+        type: 'bar',
+        barMaxWidth: isMobile.value ? 14 : 22,
+        data: generateRandomData(pointCount, 0, 50)
+      },
+      {
+        name: '写入',
+        type: 'bar',
+        barMaxWidth: isMobile.value ? 14 : 22,
+        data: generateRandomData(pointCount, 5, 70)
+      }
+    ]
+  }
+}
+
 // 更新图表数据
 const updateCharts = () => {
   if (!resourceChart || !diskChart) {
     return
   }
 
-  // 更新CPU/内存图表
-  resourceChart.setOption({
-    xAxis: {
-      data: generateTimePoints(10)
-    },
-    series: [
-      {
-        data: generateRandomData(10, 10, 70)
-      },
-      {
-        data: generateRandomData(10, 30, 90)
-      }
-    ]
-  })
-  
-  // 更新磁盘I/O图表
-  diskChart.setOption({
-    xAxis: {
-      data: generateTimePoints(7)
-    },
-    series: [
-      {
-        data: generateRandomData(7, 0, 50)
-      },
-      {
-        data: generateRandomData(7, 5, 70)
-      }
-    ]
-  })
+  resourceChart.setOption(buildResourceChartOption(), true)
+  diskChart.setOption(buildDiskChartOption(), true)
 }
 
 // 刷新数据
@@ -590,6 +630,14 @@ const handleVisibilityChange = () => {
     refreshData({ silent: true })
   }
 }
+
+watch(isMobile, () => {
+  updateCharts()
+  requestAnimationFrame(() => {
+    resourceChart?.resize()
+    diskChart?.resize()
+  })
+})
 
 onMounted(() => {
   // 初始化图表
@@ -744,8 +792,17 @@ onUnmounted(() => {
     padding: 8px 0;
   }
 
+  :deep(.chart-card .el-card__header) {
+    padding: 14px 16px;
+  }
+
+  :deep(.chart-card .el-card__body) {
+    padding: 12px 10px 10px;
+  }
+
   .chart {
-    height: 260px;
+    height: 240px;
+    min-width: 0;
   }
 }
 

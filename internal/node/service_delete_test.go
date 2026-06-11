@@ -175,7 +175,8 @@ func TestServiceUpdateSSHConfigPersistsFields(t *testing.T) {
 		t.Fatalf("failed to create node: %v", err)
 	}
 
-	if err := service.UpdateSSHConfig(ctx, nodeModel.ID, "198.51.100.20", 2222, "admin", "secret-password", ""); err != nil {
+	keyPath := "/tmp/vpanel-node-test.key"
+	if err := service.UpdateSSHConfig(ctx, nodeModel.ID, "198.51.100.20", 2222, "admin", "secret-password", keyPath); err != nil {
 		t.Fatalf("expected UpdateSSHConfig to succeed, got %v", err)
 	}
 
@@ -200,6 +201,9 @@ func TestServiceUpdateSSHConfigPersistsFields(t *testing.T) {
 	}
 	if reloaded.SSHPassword != "secret-password" {
 		t.Fatalf("expected SSHPassword to be persisted, got %q", reloaded.SSHPassword)
+	}
+	if reloaded.SSHKeyPath != keyPath {
+		t.Fatalf("expected SSHKeyPath to be persisted, got %q", reloaded.SSHKeyPath)
 	}
 	if rawNode.SSHPassword == "secret-password" {
 		t.Fatal("expected raw SSHPassword to be encrypted at rest")

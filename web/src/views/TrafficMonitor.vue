@@ -90,7 +90,10 @@
         </el-card>
       </div>
       
-      <div class="table-shell">
+      <div
+        v-if="!isMobile"
+        class="table-shell"
+      >
         <el-table
           v-loading="loading"
           :data="trafficData"
@@ -150,12 +153,46 @@
           </el-table-column>
         </el-table>
       </div>
+
+      <div
+        v-else
+        v-loading="loading"
+        class="traffic-mobile-list"
+      >
+        <el-empty
+          v-if="!loading && !trafficData.length"
+          description="暂无历史流量"
+          :image-size="64"
+        />
+        <article
+          v-for="row in trafficData"
+          :key="row.timestamp"
+          class="traffic-mobile-card"
+        >
+          <div class="mobile-card__header">
+            <span class="mobile-card__time">{{ formatHistoryTableDate(row.timestamp) }}</span>
+            <span class="mobile-card__total">{{ formatTraffic(row.total) }}</span>
+          </div>
+          <div class="mobile-traffic-grid">
+            <div class="mobile-traffic-item">
+              <span class="mobile-traffic-label">上行流量</span>
+              <strong>{{ formatTraffic(row.inbound) }}</strong>
+              <span>{{ formatPercentage(row.upPercentage) }}</span>
+            </div>
+            <div class="mobile-traffic-item">
+              <span class="mobile-traffic-label">下行流量</span>
+              <strong>{{ formatTraffic(row.outbound) }}</strong>
+              <span>{{ formatPercentage(row.downPercentage) }}</span>
+            </div>
+          </div>
+        </article>
+      </div>
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import * as echarts from 'echarts/core'
 import { BarChart, LineChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TitleComponent, TooltipComponent } from 'echarts/components'
@@ -163,6 +200,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 
 import { ElMessage } from 'element-plus'
 import { nodesApi, statsApi } from '@/api'
+import { useViewport } from '@/composables/useViewport'
 
 echarts.use([
   TitleComponent,
@@ -173,6 +211,8 @@ echarts.use([
   LineChart,
   CanvasRenderer,
 ])
+
+const { isMobile } = useViewport()
 
 // 图表引用
 const realtimeChartRef = ref(null)
@@ -242,114 +282,154 @@ const mapHistoryRows = (response) => {
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
 }
 
+const getChartLayoutOptions = (legendCount = 2) => {
+  const mobile = isMobile.value
 
-// 初始化图表
-const initCharts = () => {
-  // 实时流量图表
-  realtimeChart = echarts.init(realtimeChartRef.value)
-  realtimeChart.setOption({
-    tooltip: {
-      trigger: 'axis'
+  return {
+    grid: {
+      top: mobile ? (legendCount > 2 ? 52 : 44) : 48,
+      right: mobile ? 8 : 18,
+      bottom: mobile ? 8 : 16,
+      left: mobile ? 8 : 14,
+      containLabel: true
     },
     legend: {
+      top: mobile ? 2 : 4,
+      left: 'center',
+      itemWidth: mobile ? 16 : 22,
+      itemHeight: mobile ? 10 : 12,
+      itemGap: mobile ? 12 : 20,
+      textStyle: {
+        fontSize: mobile ? 11 : 12,
+        color: '#606266'
+      }
+    },
+    textStyle: {
+      color: '#606266'
+    }
+  }
+}
+
+const getAxisLabelOptions = () => ({
+  fontSize: isMobile.value ? 11 : 12,
+  color: '#606266',
+  hideOverlap: true
+})
+
+const getRealtimeChartOption = () => {
+  const realtimeData = realtimeNodeTraffic.value
+  const layout = getChartLayoutOptions(2)
+
+  return {
+    ...layout,
+    tooltip: {
+      trigger: 'axis',
+      confine: true
+    },
+    legend: {
+      ...layout.legend,
       data: ['上行流量', '下行流量']
     },
     xAxis: {
       type: 'category',
-      data: []
+      data: realtimeData.map(item => item.label),
+      axisLabel: getAxisLabelOptions()
     },
     yAxis: {
       type: 'value',
-      name: '流量 (MB)'
+      name: isMobile.value ? '' : '流量 (MB)',
+      nameGap: 18,
+      nameTextStyle: {
+        color: '#606266',
+        fontSize: 12
+      },
+      axisLabel: getAxisLabelOptions()
     },
     series: [
       {
         name: '上行流量',
         type: 'bar',
-        data: []
+        barMaxWidth: isMobile.value ? 14 : 22,
+        data: realtimeData.map(item => Number((item.inbound / 1024 / 1024).toFixed(2)))
       },
       {
         name: '下行流量',
         type: 'bar',
-        data: []
+        barMaxWidth: isMobile.value ? 14 : 22,
+        data: realtimeData.map(item => Number((item.outbound / 1024 / 1024).toFixed(2)))
       }
     ]
-  })
+  }
+}
 
-  // 历史流量图表
-  historyChart = echarts.init(historyChartRef.value)
-  historyChart.setOption({
+const getHistoryChartOption = () => {
+  const historyData = [...trafficData.value].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+  const layout = getChartLayoutOptions(3)
+
+  return {
+    ...layout,
     tooltip: {
-      trigger: 'axis'
+      trigger: 'axis',
+      confine: true
     },
     legend: {
+      ...layout.legend,
       data: ['上行流量', '下行流量', '总流量']
     },
     xAxis: {
       type: 'category',
-      data: []
+      data: historyData.map(item => formatDate(item.timestamp, historyPeriod.value === 'today' ? 'HH:mm' : 'MM-DD')),
+      axisLabel: getAxisLabelOptions()
     },
     yAxis: {
       type: 'value',
-      name: '流量 (GB)'
+      name: isMobile.value ? '' : '流量 (GB)',
+      nameGap: 18,
+      nameTextStyle: {
+        color: '#606266',
+        fontSize: 12
+      },
+      axisLabel: getAxisLabelOptions()
     },
     series: [
       {
         name: '上行流量',
         type: 'bar',
-        data: []
+        barMaxWidth: isMobile.value ? 14 : 22,
+        data: historyData.map(item => Number((item.inbound / 1024 / 1024 / 1024).toFixed(2)))
       },
       {
         name: '下行流量',
         type: 'bar',
-        data: []
+        barMaxWidth: isMobile.value ? 14 : 22,
+        data: historyData.map(item => Number((item.outbound / 1024 / 1024 / 1024).toFixed(2)))
       },
       {
         name: '总流量',
         type: 'line',
-        data: []
+        data: historyData.map(item => Number((item.total / 1024 / 1024 / 1024).toFixed(2)))
       }
     ]
-  })
+  }
+}
+
+// 初始化图表
+const initCharts = () => {
+  realtimeChart = echarts.init(realtimeChartRef.value)
+  realtimeChart.setOption(getRealtimeChartOption(), true)
+
+  historyChart = echarts.init(historyChartRef.value)
+  historyChart.setOption(getHistoryChartOption(), true)
 }
 
 // 更新图表数据
 const updateCharts = () => {
-  const realtimeData = realtimeNodeTraffic.value
-  const historyData = [...trafficData.value].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
-  
-  // 更新实时流量图表
-  realtimeChart.setOption({
-    xAxis: {
-      data: realtimeData.map(item => item.label)
-    },
-    series: [
-      {
-        data: realtimeData.map(item => Number((item.inbound / 1024 / 1024).toFixed(2)))
-      },
-      {
-        data: realtimeData.map(item => Number((item.outbound / 1024 / 1024).toFixed(2)))
-      }
-    ]
-  })
+  if (!realtimeChart || !historyChart) {
+    return
+  }
 
-  // 更新历史流量图表
-  historyChart.setOption({
-    xAxis: {
-      data: historyData.map(item => formatDate(item.timestamp, historyPeriod.value === 'today' ? 'HH:mm' : 'MM-DD'))
-    },
-    series: [
-      {
-        data: historyData.map(item => Number((item.inbound / 1024 / 1024 / 1024).toFixed(2)))
-      },
-      {
-        data: historyData.map(item => Number((item.outbound / 1024 / 1024 / 1024).toFixed(2)))
-      },
-      {
-        data: historyData.map(item => Number((item.total / 1024 / 1024 / 1024).toFixed(2)))
-      }
-    ]
-  })
+  realtimeChart.setOption(getRealtimeChartOption(), true)
+  historyChart.setOption(getHistoryChartOption(), true)
 }
 
 // 刷新数据
@@ -432,6 +512,14 @@ const handleResize = () => {
   realtimeChart?.resize()
   historyChart?.resize()
 }
+
+watch(isMobile, () => {
+  updateCharts()
+  requestAnimationFrame(() => {
+    realtimeChart?.resize()
+    historyChart?.resize()
+  })
+})
 
 onMounted(() => {
   // 初始化图表
@@ -548,6 +636,79 @@ onUnmounted(() => {
   min-width: 880px;
 }
 
+.traffic-mobile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.traffic-mobile-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--color-border, #dcdfe6);
+  border-radius: 8px;
+  background: var(--color-bg-card, #ffffff);
+}
+
+.mobile-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mobile-card__time {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.mobile-card__total {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.mobile-traffic-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobile-traffic-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--color-border-light, #ebeef5);
+  border-radius: 8px;
+  background: var(--color-bg-soft, #f8fafc);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.mobile-traffic-item strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text-primary);
+  font-size: 14px;
+}
+
+.mobile-traffic-label {
+  color: var(--color-text-secondary);
+}
+
 @media (max-width: 768px) {
   .traffic-monitor {
     padding: 12px;
@@ -586,8 +747,22 @@ onUnmounted(() => {
     width: 100%;
   }
 
+  :deep(.chart-card .el-card__header) {
+    padding: 14px 16px;
+  }
+
+  :deep(.chart-card .el-card__body) {
+    padding: 12px 10px 10px;
+  }
+
   .chart {
-    height: 220px;
+    height: 240px;
+    min-width: 0;
+    margin-top: 0;
+  }
+
+  .mobile-traffic-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style> 

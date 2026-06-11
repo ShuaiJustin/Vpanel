@@ -74,12 +74,12 @@
       </div>
     </div>
 
-    <el-row
+    <div
       v-loading="loading"
-      :gutter="isMobile ? 12 : 20"
+      class="detail-layout"
     >
       <!-- 基本信息 -->
-      <el-col :span="mainColumnSpan">
+      <section class="detail-main">
         <el-card
           shadow="never"
           class="info-card"
@@ -275,27 +275,23 @@
               </el-radio-group>
             </PageSectionHeader>
           </template>
-          <el-row :gutter="isMobile ? 12 : 20">
-            <el-col :span="24">
-              <div class="traffic-cycle-note">
-                {{ cycleTrafficHint }}
-              </div>
-            </el-col>
-            <el-col
+          <div class="traffic-stat-grid">
+            <div class="traffic-cycle-note">
+              {{ cycleTrafficHint }}
+            </div>
+            <div
               v-for="item in trafficSummaryCards"
               :key="item.key"
-              :span="trafficStatSpan"
+              class="traffic-stat"
             >
-              <div class="traffic-stat">
-                <div class="traffic-value">
-                  {{ item.value }}
-                </div>
-                <div class="traffic-label">
-                  {{ item.label }}
-                </div>
+              <div class="traffic-value">
+                {{ item.value }}
               </div>
-            </el-col>
-          </el-row>
+              <div class="traffic-label">
+                {{ item.label }}
+              </div>
+            </div>
+          </div>
         </el-card>
 
         <!-- Top 用户 -->
@@ -359,13 +355,10 @@
             :image-size="56"
           />
         </el-card>
-      </el-col>
+      </section>
 
       <!-- 右侧面板 -->
-      <el-col
-        :span="sideColumnSpan"
-        class="side-column"
-      >
+      <aside class="detail-side">
         <el-card
           shadow="never"
           class="info-card"
@@ -540,8 +533,8 @@
             </el-button>
           </div>
         </el-card>
-      </el-col>
-    </el-row>
+      </aside>
+    </div>
 
     <!-- Token 管理对话框 -->
     <el-dialog
@@ -680,10 +673,7 @@ const hasNodeNotes = computed(() => Boolean(
   node.value?.remarks ||
   ipWhitelistEntries.value.length
 ))
-const mainColumnSpan = computed(() => (isMobile.value ? 24 : 16))
-const sideColumnSpan = computed(() => (isMobile.value ? 24 : 8))
 const detailColumns = computed(() => (isMobile.value ? 1 : 2))
-const trafficStatSpan = computed(() => (isMobile.value ? 24 : 8))
 const tokenDialogWidth = computed(() => (isMobile.value ? 'calc(100vw - 24px)' : '500px'))
 const trafficPeriodText = computed(() => {
   const map = {
@@ -1086,7 +1076,7 @@ watch(
   padding: 20px;
 }
 
-.page-header {
+.node-detail-page .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1110,16 +1100,16 @@ watch(
   gap: 12px;
 }
 
-.overview-grid {
+.node-detail-page .overview-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 16px;
   margin-bottom: 20px;
 }
 
-.overview-card {
+.node-detail-page .overview-card {
   display: flex;
-  min-height: 132px;
+  min-height: 124px;
   flex-direction: column;
   gap: 10px;
   padding: 18px;
@@ -1128,29 +1118,30 @@ watch(
   background: linear-gradient(180deg, var(--el-fill-color-light) 0%, var(--el-bg-color) 100%);
 }
 
-.overview-card-primary {
+.node-detail-page .overview-card-primary {
+  grid-column: span 2;
   background: linear-gradient(140deg, var(--el-color-primary-light-9) 0%, var(--el-bg-color) 100%);
 }
 
-.overview-label {
+.node-detail-page .overview-label {
   font-size: 12px;
   color: var(--el-text-color-secondary);
   letter-spacing: 0.04em;
 }
 
-.overview-value {
+.node-detail-page .overview-value {
   font-size: 24px;
   font-weight: 600;
   line-height: 1.2;
   color: var(--el-text-color-primary);
 }
 
-.overview-address {
+.node-detail-page .overview-address {
   font-size: 20px;
   word-break: break-word;
 }
 
-.overview-meta {
+.node-detail-page .overview-meta {
   margin-top: auto;
   font-size: 13px;
   line-height: 1.5;
@@ -1158,14 +1149,31 @@ watch(
   word-break: break-word;
 }
 
-.overview-tag-row {
+.node-detail-page .overview-tag-row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.info-card {
-  margin-bottom: 20px;
+.detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  gap: 20px;
+  align-items: start;
+}
+
+.detail-main,
+.detail-side {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.node-detail-page .info-card {
+  margin-bottom: 0;
+  border-radius: 16px;
+  overflow: hidden;
 }
 
 .traffic-diagnostic {
@@ -1271,8 +1279,14 @@ watch(
   gap: 8px;
 }
 
+.traffic-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .traffic-cycle-note {
-  margin-bottom: 16px;
+  grid-column: 1 / -1;
   padding: 12px 14px;
   border-radius: 12px;
   background: var(--el-fill-color-light);
@@ -1282,8 +1296,12 @@ watch(
 }
 
 .traffic-stat {
+  min-width: 0;
   text-align: center;
-  padding: 20px 0;
+  padding: 18px 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 14px;
+  background: var(--el-bg-color);
 }
 
 .traffic-value {
@@ -1320,10 +1338,6 @@ watch(
 
 .load-progress {
   width: 120px;
-}
-
-.side-column {
-  min-width: 0;
 }
 
 .runtime-pill-grid {
@@ -1667,12 +1681,32 @@ watch(
   word-break: break-word;
 }
 
+@media (max-width: 1180px) {
+  .detail-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .node-detail-page .overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .node-detail-page .overview-card-primary {
+    grid-column: span 1;
+  }
+}
+
 @media (max-width: 768px) {
   .node-detail-page {
     padding: 12px;
   }
 
-  .page-header,
+  .node-detail-page .page-header,
+  .node-detail-page .overview-grid,
+  .traffic-stat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .node-detail-page .page-header,
   .header-left,
   .header-actions,
   .status-item,
@@ -1681,6 +1715,7 @@ watch(
   .recovery-event-header {
     flex-direction: column;
     align-items: flex-start;
+    gap: 12px;
   }
 
   .header-actions,
@@ -1732,7 +1767,7 @@ watch(
   }
 
   .traffic-stat {
-    padding: 14px 0;
+    padding: 14px 12px;
   }
 }
 </style>

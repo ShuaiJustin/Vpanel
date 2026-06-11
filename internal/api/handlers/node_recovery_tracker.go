@@ -14,6 +14,7 @@ const (
 	commandTypeXrayStatus         = "xray_status"
 	commandTypeConfigSync         = "config_sync"
 	commandTypeXrayInstallVersion = "xray_install_version"
+	commandTypeAgentUpdate        = "agent_update"
 	xrayRecoveryCommandCooldown   = 20 * time.Second
 	nodeCommandPendingTTL         = 2 * time.Minute
 	nodeCommandInflightTTL        = 10 * time.Minute
@@ -112,6 +113,13 @@ func (t *NodeRecoveryTracker) QueueXrayInstallVersionCommand(nodeID int64, sourc
 	return t.queueCommand(nodeID, commandTypeXrayInstallVersion, source, reason, map[string]any{
 		"version": version,
 	})
+}
+
+func (t *NodeRecoveryTracker) QueueAgentUpdateCommand(nodeID int64, source, reason string) (Command, bool) {
+	if t == nil || nodeID <= 0 {
+		return Command{}, false
+	}
+	return t.queueCommand(nodeID, commandTypeAgentUpdate, source, reason, nil)
 }
 
 func (t *NodeRecoveryTracker) queueCommand(nodeID int64, commandType, source, reason string, payload any) (Command, bool) {

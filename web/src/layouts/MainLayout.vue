@@ -476,10 +476,11 @@ const handleMobileUserCommand = (command) => {
 
 // 确认退出登录
 const confirmLogout = () => {
-  ElMessageBox.confirm('确定要退出管理后台吗?', '提示', {
+  ElMessageBox.confirm('确定退出当前账号吗？', '退出登录', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
-    type: 'warning'
+    type: 'warning',
+    customClass: 'portal-logout-confirm'
   }).then(async () => {
     await userStore.logout()
     closeMobileMenu()

@@ -310,20 +310,13 @@ onMounted(async () => {
 
 <style scoped>
 .login-page {
-  min-height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
+  width: 100%;
 }
 
 .login-card {
   width: 100%;
-  max-width: 400px;
-  background: var(--color-bg-card);
-  border-radius: 12px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
-  padding: 40px;
+  max-width: 360px;
+  margin: 0 auto;
 }
 
 .login-header {
@@ -335,11 +328,12 @@ onMounted(async () => {
   font-size: 28px;
   font-weight: 600;
   color: var(--color-text-primary);
-  margin: 0 0 8px 0;
+  line-height: 1.2;
+  margin: 0 0 12px;
 }
 
 .login-subtitle {
-  font-size: 14px;
+  font-size: 15px;
   color: #909399;
   margin: 0;
 }
@@ -348,11 +342,48 @@ onMounted(async () => {
   margin-bottom: 24px;
 }
 
+.login-form :deep(.el-form-item) {
+  margin-bottom: 20px;
+}
+
+.login-form :deep(.el-input__wrapper) {
+  min-height: 48px;
+  border-radius: 8px;
+  padding: 0 14px;
+  transition: box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.login-form :deep(.el-input__prefix) {
+  margin-right: 10px;
+  color: #a8abb2;
+}
+
+.login-form :deep(.el-input__inner) {
+  min-width: 0;
+  height: 48px;
+  font-size: 15px;
+  color: var(--color-text-primary);
+}
+
+.login-form :deep(.el-input__inner::placeholder) {
+  color: #a8abb2;
+}
+
 .form-options {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
   margin-bottom: 24px;
+  min-width: 0;
+}
+
+.form-options :deep(.el-checkbox) {
+  min-width: 0;
+}
+
+.form-options :deep(.el-checkbox__label) {
+  font-size: 14px;
 }
 
 .forgot-link {
@@ -367,8 +398,10 @@ onMounted(async () => {
 
 .login-btn {
   width: 100%;
-  height: 44px;
+  height: 48px;
+  border-radius: 8px;
   font-size: 16px;
+  font-weight: 600;
 }
 
 .login-footer {
@@ -390,13 +423,13 @@ onMounted(async () => {
 /* 2FA 样式 */
 .twofa-header {
   text-align: center;
-  margin-bottom: 24px;
+  margin-bottom: 22px;
 }
 
 .twofa-icon {
-  font-size: 48px;
+  font-size: 44px;
   color: #409eff;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .twofa-header h3 {
@@ -414,8 +447,8 @@ onMounted(async () => {
 
 .twofa-input :deep(.el-input__inner) {
   text-align: center;
-  font-size: 24px;
-  letter-spacing: 8px;
+  font-size: 22px;
+  letter-spacing: 6px;
 }
 
 .twofa-options {
@@ -426,12 +459,16 @@ onMounted(async () => {
 
 /* 响应式 */
 @media (max-width: 480px) {
-  .login-card {
-    padding: 24px;
-  }
-  
   .login-title {
-    font-size: 24px;
+    font-size: 26px;
+  }
+
+  .login-card {
+    max-width: 100%;
+  }
+
+  .form-options {
+    align-items: flex-start;
   }
 }
 </style>
