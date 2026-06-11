@@ -1633,6 +1633,13 @@ onUnmounted(() => {
   color: #dc2626;
 }
 
+@media (max-width: 1440px) {
+  .node-dashboard-page .dashboard-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
 @media (max-width: 1280px) {
   .node-dashboard-page .metrics-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1640,6 +1647,11 @@ onUnmounted(() => {
 
   .node-dashboard-page .dashboard-grid {
     grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .node-dashboard-page .dashboard-side {
+    order: -1;
   }
 }
 
