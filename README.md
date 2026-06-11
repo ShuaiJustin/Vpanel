@@ -1,26 +1,48 @@
 # V Panel
 
-多协议代理面板：在一台机器上集中管理多个远程代理节点的下发、用户、流量、订阅、计费和 TLS 证书。
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go" alt="Go Version">
+  <img src="https://img.shields.io/badge/Vue-3.x-4FC08D?style=flat&logo=vue.js" alt="Vue Version">
+  <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License">
+  <img src="https://img.shields.io/badge/Docker-20+-2496ED?style=flat&logo=docker" alt="Docker">
+</p>
 
-后端 Go + Gin，前端 Vue 3 + Element Plus，存储 SQLite，容器化部署。
-
----
-
-## 功能
-
-- **多协议节点**：VLESS / VMess / Trojan / Shadowsocks，含 Reality、XTLS、WebSocket、gRPC
-- **远程节点管理**：一台主面板，SSH 下发 Xray 配置到多个出口节点
-- **用户与流量**：用户隔离、流量统计、配额、到期、订阅链接（Clash / Shadowrocket / V2rayN 等）
-- **商业化**：套餐、订单、优惠券、礼品卡、试用、邀请返佣、支付宝/微信支付
-- **HTTPS 证书**：界面里申请 Let's Encrypt 证书（含泛域名，dns_cf / dns_dp / dns_ali 等），一键应用到面板自身
-- **审计与监控**：操作日志、登录日志、节点心跳、流量曲线
-- **IP 限制**：单个订阅最多并发的客户端 IP 上限
+<p align="center">
+  现代化的多协议代理管理面板，支持集中管理远程节点、用户订阅、流量统计和商业化运营
+</p>
 
 ---
 
-## 快速部署
+## ✨ 特性
 
-要求：Docker 20+ 和 Docker Compose v2。
+### 核心功能
+- 🚀 **多协议支持** - VLESS、VMess、Trojan、Shadowsocks，支持 Reality、XTLS、WebSocket、gRPC
+- 🌐 **远程节点管理** - 集中管理多个远程 Xray 节点，自动配置下发
+- 👥 **用户管理** - 用户隔离、流量统计、配额管理、订阅链接生成
+- 📊 **流量监控** - 实时流量统计、历史数据分析、节点健康检查
+- 🔒 **HTTPS 证书** - 集成 Let's Encrypt，支持泛域名证书自动申请和续期
+
+### 商业化功能
+- 💰 **套餐系统** - 灵活的套餐配置、订单管理
+- 🎫 **营销工具** - 优惠券、礼品卡、试用、邀请返佣
+- 💳 **支付集成** - 支付宝、微信支付
+- 📈 **数据分析** - 用户统计、收入报表
+
+### 运维功能
+- 📝 **操作审计** - 完整的操作日志记录
+- 🔐 **安全控制** - IP 限制、JWT 认证、CSRF 保护
+- 🔄 **自动备份** - 数据库定期备份，可配置保留策略
+- 📡 **Agent 管理** - 远程 Agent 自动更新、SSH 配置管理
+
+---
+
+## 🚀 快速开始
+
+### 环境要求
+- Docker 20+
+- Docker Compose v2
+
+### 一键部署
 
 ```bash
 git clone https://github.com/chengchnegcheng/Vpanel.git
@@ -28,156 +50,242 @@ cd Vpanel
 ./vpanel.sh
 ```
 
-`vpanel.sh` 是交互菜单：选 **"Docker 一键部署"**。首次运行会：
+选择 **"Docker 一键部署"**，脚本会自动：
+1. 生成随机管理员密码和 JWT Secret
+2. 分配随机宿主机端口（10000-65000）
+3. 构建并启动容器
 
-1. 复制 `deployments/docker/.env.example` 到 `deployments/docker/.env`
-2. **自动生成随机管理员密码和 JWT Secret** 写入 `.env`
-3. 随机分配宿主机端口（10000–65000，避免冲突）
-4. 构建镜像并启动容器
-
-启动完成后菜单会显示访问地址。
-
-### 不想用菜单，纯命令行
+### 手动部署
 
 ```bash
 cd deployments/docker
 cp .env.example .env
-# 编辑 .env：把 V_ADMIN_PASS 和 V_JWT_SECRET 改成真实值，VPANEL_PUBLISH_PORT 改成你想用的端口
+nano .env  # 配置必要参数
 docker compose up -d --build
 ```
 
----
+### 首次登录
 
-## 首次登录
+1. 访问 `http://<your-host>:<端口>/`
+2. 用户名：`admin`
+3. 密码：查看 `deployments/docker/.env` 中的 `V_ADMIN_PASS`
 
-打开 `http://<your-host>:<端口>/`，账号默认 `admin`。
-
-**密码不是 admin123**。密码来自这里，按顺序找：
-
-1. 看 `deployments/docker/.env` 里的 `V_ADMIN_PASS` —— 菜单首次启动时随机生成的强密码
-2. 容器首次启动日志里也会打印一次（之后启动不再打）：`docker logs vpanel-v-panel-1 | grep "admin user created"`
-
-记得**首次登录后立刻改密码**（右上角头像 → 修改密码）。
+⚠️ **登录后请立即修改密码**（右上角头像 → 修改密码）
 
 ---
 
-## 启用 HTTPS
+## 📖 文档
 
-不需要改 `.env`，全在面板里操作：
-
-1. **证书管理 → 申请证书** → 选 DNS 验证 → 选 DNS 提供商（如 Cloudflare `dns_cf`）→ 填 API 凭证 → 提交
-2. 等 1–2 分钟，证书状态变 "有效"
-3. **系统设置 → 服务器配置 → HTTPS/TLS** → 下拉选刚签的证书 → "应用并保存"
-4. 顶部 **重启面板**
-
-重启后浏览器访问 `https://...`，应用会自动把生成链接（订阅、邮件）也升级到 https。
-
----
-
-## 常用操作
-
-```bash
-./vpanel.sh                                 # 进交互菜单
-./deployments/scripts/start.sh start        # 启动
-./deployments/scripts/start.sh stop         # 停止
-./deployments/scripts/start.sh restart      # 重启
-./deployments/scripts/start.sh logs         # 跟踪日志
-./deployments/scripts/start.sh status       # 状态
-docker exec -it vpanel-v-panel-1 sh         # 进容器
-```
-
-**升级**：
-
-```bash
-git pull
-./vpanel.sh   # 菜单里选 "重新构建并启动"
-# 或
-cd deployments/docker && docker compose up -d --build
-```
-
-数据卷 (`v-panel-data` / `v-panel-config` / `v-panel-logs` / `v-panel-xray`) 不会被 rebuild 影响，升级是安全的。
-
-**完整清理**（**会删数据**）：
-
-```bash
-cd deployments/docker
-docker compose down -v   # -v 会删数据卷
-```
+| 文档 | 说明 |
+|------|------|
+| [生产部署检查清单](docs/production-checklist.md) | 生产环境部署完整指南 |
+| [订阅链接配置](docs/subscription-url-config.md) | 订阅链接地址配置方法 |
+| [运维指南](Docs/OPERATIONS-GUIDE.md) | 日常运维操作手册 |
+| [节点部署](Docs/NODE-AGENT-GUIDE.md) | 远程节点 Agent 部署 |
+| [证书申请](Docs/certificate-guide.md) | Let's Encrypt 证书申请流程 |
+| [快速参考](Docs/QUICK-REFERENCE.md) | 常用命令速查 |
 
 ---
 
-## 配置（`deployments/docker/.env` 关键项）
+## 🔧 配置
 
-| 变量 | 说明 | 默认 |
-|---|---|---|
-| `VPANEL_PUBLISH_PORT` | 宿主机映射端口 | 首次随机分配 |
+### 核心配置（`.env` 文件）
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `V_SERVER_PUBLIC_URL` | 公网访问地址（用于 Agent 部署） | 必须配置 |
+| `V_SERVER_BASE_URL` | 订阅链接基础地址 | 自动检测 |
 | `V_ADMIN_USER` | 管理员用户名 | `admin` |
-| `V_ADMIN_PASS` | 管理员密码 | 首次随机生成 |
-| `V_JWT_SECRET` | JWT 签名密钥 | 首次随机生成 |
-| `V_SERVER_PUBLIC_URL` | 对外完整 URL（订阅/邮件链接用） | 留空走 host:port |
-| `V_SERVER_CORS_ORIGINS` | CORS 白名单 | 同上 |
-| `V_LOG_LEVEL` | 日志级别 | `info` |
-| `TZ` | 时区 | `UTC` |
+| `V_ADMIN_PASS` | 管理员密码 | 自动生成 |
+| `V_JWT_SECRET` | JWT 签名密钥 | 自动生成 |
+| `V_SERVER_CORS_ORIGINS` | CORS 白名单 | 生产必须配置 |
+| `VPANEL_PUBLISH_PORT` | 宿主机端口 | 自动分配 |
 | `VPANEL_BACKUP_ENABLED` | 自动备份 | `1` |
 | `VPANEL_BACKUP_RETENTION_DAYS` | 备份保留天数 | `14` |
 
-启用 HTTPS 后 `V_SERVER_PUBLIC_URL` / `V_SERVER_CORS_ORIGINS` 的 `http://` 在启动时会自动升级到 `https://`，无需手动改。
+完整配置说明：[deployments/docker/.env.example](deployments/docker/.env.example)
 
 ---
 
-## 远程节点
-
-主面板自己**不**跑 Xray —— 各个出口节点跑 Xray，由主面板通过 SSH 下发配置和 Node Agent 反向上报心跳。
-
-部署方法看 [Docs/NODE-AGENT-GUIDE.md](Docs/NODE-AGENT-GUIDE.md)。
-
----
-
-## 故障排查速查
-
-| 现象 | 先查 |
-|---|---|
-| 容器 unhealthy | `docker logs vpanel-v-panel-1` 看启动错误 |
-| 浏览器 "不安全"（HTTPS 启用后） | 证书 SAN 是否覆盖访问的域名（泛域名不匹配根域，需要同时签发） |
-| acme.sh 申请超时 / `signal: killed` | 容器能否访问 DNS 提供商的 API（Cloudflare 等） |
-| 证书申请后下拉里看不到 | 证书状态在"证书管理"里看——只有 "valid/expiring" 才会进 HTTPS 下拉 |
-| 节点心跳一直 unhealthy | 节点的 panel URL 用对协议（启用 HTTPS 后必须 https://） |
-| 改了 `.env` 不生效 | 必须 `docker compose up -d` 重建容器，重启容器不读 .env |
-
-更详细见 [Docs/OPERATIONS-GUIDE.md](Docs/OPERATIONS-GUIDE.md)。
-
----
-
-## 项目文档
-
-| 文档 | 内容 |
-|---|---|
-| [Docs/QUICK-REFERENCE.md](Docs/QUICK-REFERENCE.md) | 常用命令速查 |
-| [Docs/OPERATIONS-GUIDE.md](Docs/OPERATIONS-GUIDE.md) | 运维手册 |
-| [Docs/NODE-AGENT-GUIDE.md](Docs/NODE-AGENT-GUIDE.md) | 节点 Agent 部署 |
-| [Docs/certificate-guide.md](Docs/certificate-guide.md) | 证书申请详细流程 |
-| [Docs/remote-deploy-guide.md](Docs/remote-deploy-guide.md) | 远程节点部署 |
-
----
-
-## 开发
+## 🛠️ 常用命令
 
 ```bash
-# 本地后端
-go run ./cmd/v
+# 使用交互菜单
+./vpanel.sh
 
-# 前端 dev server（另一终端）
-cd web && npm install && npm run dev
+# 直接操作
+./deployments/scripts/start.sh start      # 启动
+./deployments/scripts/start.sh stop       # 停止
+./deployments/scripts/start.sh restart    # 重启
+./deployments/scripts/start.sh logs       # 查看日志
+./deployments/scripts/start.sh status     # 查看状态
 
-# 完整测试
-go test ./...
-cd web && npm test
+# 进入容器
+docker exec -it vpanel-v-panel-1 sh
+
+# 升级
+git pull
+./vpanel.sh  # 选择 "重新构建并启动"
 ```
-
-提交前跑 `go vet ./... && go test ./...`，前端 `npm run lint`。
 
 ---
 
-## License
+## 🔒 启用 HTTPS
 
-[MIT](LICENSE)
+无需修改配置文件，在面板界面操作：
+
+1. **证书管理** → 申请证书 → 选择 DNS 验证 → 填写 DNS API 凭证
+2. 等待证书签发完成（1-2 分钟）
+3. **系统设置** → HTTPS/TLS → 选择证书 → 应用
+4. 重启面板
+
+详见：[证书申请指南](Docs/certificate-guide.md)
+
+---
+
+## 🌐 部署远程节点
+
+主面板负责管理，各个出口节点运行 Xray。部署方法：
+
+1. 在面板中添加节点，获取 Token
+2. 在远程服务器上安装 Agent
+3. Agent 自动连接主面板并接收配置
+
+详见：[节点 Agent 部署指南](Docs/NODE-AGENT-GUIDE.md)
+
+---
+
+## 🐛 故障排查
+
+| 问题 | 解决方法 |
+|------|----------|
+| 订阅链接显示 localhost | 配置 `V_SERVER_BASE_URL` 或使用 Nginx 反向代理 |
+| 容器 unhealthy | 查看日志：`docker logs vpanel-v-panel-1` |
+| Agent 无法连接 | 检查 `V_SERVER_PUBLIC_URL` 是否为公网地址 |
+| 证书申请失败 | 检查 DNS API 凭证和网络连接 |
+| 配置修改不生效 | 需要重建容器：`docker compose up -d` |
+
+更多问题：[运维指南](Docs/OPERATIONS-GUIDE.md)
+
+---
+
+## 🏗️ 架构
+
+```
+┌─────────────┐
+│  Web Panel  │  ← Vue 3 + Element Plus
+│   (主面板)   │
+└──────┬──────┘
+       │
+       │ HTTP/HTTPS
+       │
+┌──────┴──────┐
+│  Go Backend │  ← Gin + SQLite
+│  API Server │
+└──────┬──────┘
+       │
+       │ SSH / Agent
+       │
+┌──────┴──────┬──────────┬──────────┐
+│   Node 1    │  Node 2  │  Node 3  │
+│  Xray +     │  Xray +  │  Xray +  │
+│  Agent      │  Agent   │  Agent   │
+└─────────────┴──────────┴──────────┘
+```
+
+---
+
+## 🔄 API 功能
+
+### 新增接口（v1.1.0）
+- `POST /api/admin/nodes/:id/agent/update` - Agent 远程更新
+- `GET/POST /api/admin/nodes/:id/ssh-metadata` - SSH 配置管理
+
+### 订阅链接优化
+- 支持更多反向代理头（`X-Forwarded-Host`, `X-Forwarded-Proto`）
+- 自动过滤本地地址（localhost/127.0.0.1）
+- 智能 URL 检测
+
+---
+
+## 👨‍💻 开发
+
+### 本地开发
+
+```bash
+# 后端
+go run ./cmd/v
+
+# 前端（新终端）
+cd web
+npm install
+npm run dev
+```
+
+### 测试
+
+```bash
+# 后端测试
+go vet ./...
+go test ./...
+
+# 前端测试
+cd web
+npm run lint
+npm test
+```
+
+### 代码提交
+
+提交前确保通过所有测试和代码检查。
+
+---
+
+## 📊 技术栈
+
+### 后端
+- **语言**: Go 1.21+
+- **框架**: Gin
+- **数据库**: SQLite
+- **认证**: JWT
+
+### 前端
+- **框架**: Vue 3
+- **UI**: Element Plus
+- **构建**: Vite
+- **状态管理**: Pinia
+
+### 基础设施
+- **容器**: Docker + Docker Compose
+- **反向代理**: Nginx
+- **证书**: Let's Encrypt (acme.sh)
+
+---
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交改动 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 提交 Pull Request
+
+---
+
+## 📄 许可证
+
+本项目采用 [MIT](LICENSE) 许可证。
+
+---
+
+## 🙏 致谢
+
+感谢所有贡献者和使用者的支持！
+
+---
+
+<p align="center">
+  Made with ❤️ by <a href="https://github.com/chengchnegcheng">chengcheng</a>
+</p>
