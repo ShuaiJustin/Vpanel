@@ -349,6 +349,46 @@ onMounted(() => {
   padding: 20px;
 }
 
+.overview-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.overview-card {
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.overview-label {
+  display: block;
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+
+.overview-value {
+  display: block;
+  font-size: 24px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.overview-value.is-success {
+  color: #10b981;
+}
+
+.overview-value.is-warning {
+  color: #f59e0b;
+}
+
+.overview-value.is-primary {
+  color: #3b82f6;
+}
+
 .trial-search-form {
   display: flex;
   flex-wrap: wrap;
@@ -365,9 +405,27 @@ onMounted(() => {
   color: #64748b;
 }
 
+@media (max-width: 1280px) {
+  .overview-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 768px) {
   .admin-trials-page {
     padding: 12px;
   }
+
+  .overview-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
 }
+
+@media (max-width: 480px) {
+  .overview-strip {
+    grid-template-columns: 1fr;
+  }
+}
+
 </style>
