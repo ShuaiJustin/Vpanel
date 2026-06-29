@@ -317,7 +317,13 @@ func (hc *HealthChecker) performCheck(node *repository.Node) *HealthCheckResult 
 	}
 
 	// Determine overall status
-	if result.TCPOk && result.APIOk && result.XrayOk && sampledProxyEndpointsHealthyForPrimary(proxyHealth) {
+	if result.TCPOk && result.APIOk && result.XrayOk && shouldDeferProxyEndpointFailureForConfigSync(node, proxyHealth) {
+		result.Status = repository.HealthCheckStatusSuccess
+		result.Message = sampledProxyEndpointConfigPendingMessage(proxyHealth)
+		if certWarning != "" {
+			result.Message = fmt.Sprintf("%s. %s", result.Message, certWarning)
+		}
+	} else if result.TCPOk && result.APIOk && result.XrayOk && sampledProxyEndpointsHealthyForPrimary(proxyHealth) {
 		result.Status = repository.HealthCheckStatusSuccess
 		if certWarning != "" {
 			result.Message = fmt.Sprintf("All checks passed. %s", certWarning)
@@ -356,6 +362,13 @@ func (hc *HealthChecker) performCheck(node *repository.Node) *HealthCheckResult 
 	return result
 }
 
+func shouldDeferProxyEndpointFailureForConfigSync(node *repository.Node, proxyHealth sampledProxyEndpointHealth) bool {
+	if node == nil || node.SyncStatus != repository.NodeSyncStatusPending {
+		return false
+	}
+	return proxyHealth.HasSampled && !proxyHealth.AnyReachable
+}
+
 type sampledProxyEndpointHealth struct {
 	HasSampled             bool
 	AnyReachable           bool
@@ -373,6 +386,13 @@ func sampledProxyEndpointFailureMessage(proxyHealth sampledProxyEndpointHealth) 
 		return fmt.Sprintf("Agent and Xray checks passed, but sampled proxy endpoint %s is unreachable from the panel", proxyHealth.FirstUnreachableTarget)
 	}
 	return "Agent and Xray checks passed, but sampled proxy endpoints are unreachable from the panel"
+}
+
+func sampledProxyEndpointConfigPendingMessage(proxyHealth sampledProxyEndpointHealth) string {
+	if proxyHealth.FirstUnreachableTarget != "" {
+		return fmt.Sprintf("配置同步未完成，代理端口 %s 暂未从面板侧连通；等待 Agent 同步并重启 Xray 后复查", proxyHealth.FirstUnreachableTarget)
+	}
+	return "配置同步未完成，代理端口暂未从面板侧连通；等待 Agent 同步并重启 Xray 后复查"
 }
 
 func sampledProxyEndpointWarningMessage(proxyHealth sampledProxyEndpointHealth) string {

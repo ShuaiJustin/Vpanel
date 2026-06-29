@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -143,6 +144,8 @@ type UpdateSettingsRequest struct {
 	PanelAccessIP  *string `json:"panel_access_ip"`
 	PanelPort      *int    `json:"panel_port"`
 	PanelBasePath  *string `json:"panel_base_path"`
+	PublicURL      *string `json:"public_url"`
+	CORSOrigins    *string `json:"cors_origins"`
 	ProxyMode      *string `json:"proxy_mode"`
 	Timezone       *string `json:"timezone"`
 	PanelCertPath  *string `json:"panel_cert_path"`
@@ -326,6 +329,26 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 			return
 		}
 		currentSettings.PanelBasePath = basePath
+	}
+	if req.PublicURL != nil {
+		publicURL, normErr := normalizePublicURL(*req.PublicURL)
+		if normErr != nil {
+			middleware.RespondWithError(c, errors.NewValidationError("invalid settings", map[string]interface{}{
+				"public_url": normErr.Error(),
+			}))
+			return
+		}
+		currentSettings.PublicURL = publicURL
+	}
+	if req.CORSOrigins != nil {
+		corsOrigins, normErr := normalizeCORSOrigins(*req.CORSOrigins)
+		if normErr != nil {
+			middleware.RespondWithError(c, errors.NewValidationError("invalid settings", map[string]interface{}{
+				"cors_origins": normErr.Error(),
+			}))
+			return
+		}
+		currentSettings.CORSOrigins = corsOrigins
 	}
 	if req.ProxyMode != nil {
 		currentSettings.ProxyMode = strings.TrimSpace(*req.ProxyMode)
@@ -722,6 +745,57 @@ func normalizePanelBasePath(value string) (string, error) {
 	return basePath, nil
 }
 
+func normalizePublicURL(value string) (string, error) {
+	raw := strings.TrimSpace(value)
+	if raw == "" {
+		return "", nil
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("public URL must be a complete URL like https://panel.example.com")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", fmt.Errorf("public URL scheme must be http or https")
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("public URL must not include user info, query strings, or fragments")
+	}
+	if parsed.Path != "" && parsed.Path != "/" {
+		return "", fmt.Errorf("public URL must be an origin only; use panel base path for URL paths")
+	}
+	return strings.TrimSuffix(parsed.Scheme+"://"+parsed.Host, "/"), nil
+}
+
+func normalizeCORSOrigins(value string) (string, error) {
+	raw := strings.ReplaceAll(value, "\n", ",")
+	parts := strings.Split(raw, ",")
+	normalized := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		origin := strings.TrimSpace(part)
+		if origin == "" {
+			continue
+		}
+		if origin == "*" {
+			if _, ok := seen[origin]; !ok {
+				seen[origin] = struct{}{}
+				normalized = append(normalized, origin)
+			}
+			continue
+		}
+		publicURL, err := normalizePublicURL(origin)
+		if err != nil {
+			return "", fmt.Errorf("invalid CORS origin %q: %w", origin, err)
+		}
+		if _, ok := seen[publicURL]; ok {
+			continue
+		}
+		seen[publicURL] = struct{}{}
+		normalized = append(normalized, publicURL)
+	}
+	return strings.Join(normalized, ", "), nil
+}
+
 func validatePanelSettings(systemSettings *settings.SystemSettings) error {
 	if systemSettings == nil {
 		return nil
@@ -736,6 +810,18 @@ func validatePanelSettings(systemSettings *settings.SystemSettings) error {
 		return err
 	}
 	systemSettings.PanelBasePath = basePath
+
+	publicURL, err := normalizePublicURL(systemSettings.PublicURL)
+	if err != nil {
+		return err
+	}
+	systemSettings.PublicURL = publicURL
+
+	corsOrigins, err := normalizeCORSOrigins(systemSettings.CORSOrigins)
+	if err != nil {
+		return err
+	}
+	systemSettings.CORSOrigins = corsOrigins
 
 	certPath := strings.TrimSpace(systemSettings.PanelCertPath)
 	keyPath := strings.TrimSpace(systemSettings.PanelKeyPath)

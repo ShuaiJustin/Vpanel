@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 
@@ -49,6 +50,8 @@ type SystemSettings struct {
 	PanelAccessIP  string `json:"panel_access_ip"`  // 面板访问 IP
 	PanelPort      int    `json:"panel_port"`       // 面板监听端口
 	PanelBasePath  string `json:"panel_base_path"`  // 面板基础路径
+	PublicURL      string `json:"public_url"`       // 面板公网访问地址
+	CORSOrigins    string `json:"cors_origins"`     // CORS 白名单，逗号分隔
 	ProxyMode      string `json:"proxy_mode"`       // 代理模式
 	Timezone       string `json:"timezone"`         // 系统时区
 	PanelCertPath  string `json:"panel_cert_path"`  // 面板证书公钥路径
@@ -130,6 +133,8 @@ func DefaultSettings() *SystemSettings {
 		// cfg.Server.Port；保持默认就不会触发覆盖。
 		PanelPort:          8080,
 		PanelBasePath:      "/",
+		PublicURL:          strings.TrimSuffix(strings.TrimSpace(os.Getenv("V_SERVER_PUBLIC_URL")), "/"),
+		CORSOrigins:        strings.TrimSpace(os.Getenv("V_SERVER_CORS_ORIGINS")),
 		ProxyMode:          "compatible",
 		Timezone:           "Asia/Shanghai",
 		DBType:             "sqlite",
@@ -414,6 +419,12 @@ func (s *Service) GetSystemSettings(ctx context.Context) (*SystemSettings, error
 	if v, ok := allSettings["panel_base_path"]; ok && v != "" {
 		settings.PanelBasePath = v
 	}
+	if v, ok := allSettings["public_url"]; ok {
+		settings.PublicURL = v
+	}
+	if v, ok := allSettings["cors_origins"]; ok {
+		settings.CORSOrigins = v
+	}
 	if v, ok := allSettings["proxy_mode"]; ok && v != "" {
 		settings.ProxyMode = v
 	}
@@ -606,6 +617,8 @@ func (s *Service) UpdateSystemSettingsWithOptions(ctx context.Context, settings 
 		updates["panel_port"] = string(data)
 	}
 	updates["panel_base_path"] = settings.PanelBasePath
+	updates["public_url"] = settings.PublicURL
+	updates["cors_origins"] = settings.CORSOrigins
 	updates["proxy_mode"] = settings.ProxyMode
 	updates["timezone"] = settings.Timezone
 	updates["panel_cert_path"] = settings.PanelCertPath

@@ -39,6 +39,27 @@ func TestShouldAcceptHeartbeatFallback(t *testing.T) {
 	assert.False(t, shouldAcceptHeartbeatFallback(true, true, false))
 }
 
+func TestShouldDeferProxyEndpointFailureForConfigSync(t *testing.T) {
+	proxyHealth := sampledProxyEndpointHealth{
+		HasSampled:   true,
+		AnyReachable: false,
+		AllReachable: false,
+	}
+
+	assert.True(t, shouldDeferProxyEndpointFailureForConfigSync(&repository.Node{
+		SyncStatus: repository.NodeSyncStatusPending,
+	}, proxyHealth))
+	assert.False(t, shouldDeferProxyEndpointFailureForConfigSync(&repository.Node{
+		SyncStatus: repository.NodeSyncStatusSynced,
+	}, proxyHealth))
+	assert.False(t, shouldDeferProxyEndpointFailureForConfigSync(&repository.Node{
+		SyncStatus: repository.NodeSyncStatusPending,
+	}, sampledProxyEndpointHealth{
+		HasSampled:   true,
+		AnyReachable: true,
+	}))
+}
+
 func TestHeartbeatFallbackMessage(t *testing.T) {
 	assert.Equal(t, "Recent heartbeat confirms Xray is running", heartbeatFallbackMessage(false))
 	assert.Equal(t, "Recent heartbeat confirms Xray is running and at least one sampled proxy endpoint is reachable", heartbeatFallbackMessage(true))

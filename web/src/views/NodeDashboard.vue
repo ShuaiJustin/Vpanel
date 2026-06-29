@@ -326,6 +326,7 @@
                   :key="`${node.id}-${issue.label}`"
                   class="issue-pill"
                   :class="`issue-pill--${issue.level}`"
+                  :title="issue.detail || issue.label"
                 >
                   {{ issue.label }}
                 </span>
@@ -587,6 +588,7 @@ import {
 } from "@element-plus/icons-vue";
 import { useNodeStore } from "@/stores/node";
 import { useNodeGroupStore } from "@/stores/nodeGroup";
+import { nodeHealthApi } from "@/api";
 import { extractErrorMessage } from "@/utils/entitlement";
 
 const router = useRouter();
@@ -598,6 +600,7 @@ const loading = ref(false);
 const nodeFilter = ref("focus");
 const trafficStats = ref({ upload: 0, download: 0, total: 0 });
 const lastUpdatedAt = ref(null);
+const healthLatestByNode = ref({});
 
 let refreshInterval = null;
 
@@ -796,7 +799,8 @@ function buildNodeIssues(node, loadRatio) {
   if (node.status === "offline") {
     issues.push({ level: "error", label: "节点离线" });
   } else if (node.status === "unhealthy") {
-    issues.push({ level: "error", label: "健康检查异常" });
+    const healthIssue = buildHealthIssue(node);
+    issues.push({ level: "error", label: healthIssue.label, detail: healthIssue.detail });
   }
 
   if (node.status === "online" && node.xray_running === false) {
@@ -822,6 +826,92 @@ function buildNodeIssues(node, loadRatio) {
   }
 
   return issues.slice(0, 3);
+}
+
+function buildHealthIssue(node) {
+  const latest = healthLatestByNode.value?.[node.id];
+  const reason = formatHealthCheckReason(latest?.message || node.health_message || "");
+
+  if (!reason) {
+    return { label: "健康检查异常", detail: "暂无最新健康检查详情" };
+  }
+
+  return {
+    label: `健康检查异常：${reason}`,
+    detail: latest?.checked_at ? `${reason} · 检查于 ${formatRelativeTime(latest.checked_at)}` : reason,
+  };
+}
+
+function formatHealthCheckReason(message) {
+  const raw = String(message || "").trim();
+  if (!raw) return "";
+
+  if (/配置同步未完成/.test(raw)) {
+    return raw;
+  }
+
+  if (/while at least one sampled proxy endpoint is reachable/i.test(raw)) {
+    return "部分代理端口不可达（至少还有一个代理端口可连通）";
+  }
+
+  const endpointMatch = raw.match(/sampled proxy endpoint\s+([^\s]+)\s+is unreachable/i);
+  if (endpointMatch) {
+    return `代理端口不可达 ${endpointMatch[1]}（Agent/Xray 正常，可能是配置未同步或防火墙未放行）`;
+  }
+
+  if (/sampled proxy endpoints are unreachable/i.test(raw)) {
+    return "代理端口不可达（Agent/Xray 正常，可能是配置未同步或防火墙未放行）";
+  }
+
+  if (/Node traffic limit exceeded/i.test(raw)) {
+    return "节点流量已超限";
+  }
+
+  if (/Recent heartbeat confirms Xray is running/i.test(raw)) {
+    return "最近心跳确认 Xray 正在运行，但健康检查路径仍存在异常";
+  }
+
+  if (/Health check failed/i.test(raw)) {
+    const translated = raw
+      .replace(/Health check failed:\s*/i, "")
+      .replace(/[\[\]]/g, "")
+      .replace(/TCP connection failed/gi, "TCP 连接失败")
+      .replace(/API not responding/gi, "Agent API 无响应")
+      .replace(/Xray not running/gi, "Xray 未运行")
+      .trim();
+    return translated || "健康检查失败";
+  }
+
+  if (/All checks passed/i.test(raw)) {
+    return "健康检查已恢复正常";
+  }
+
+  return raw;
+}
+
+async function refreshLatestHealthReasons() {
+  const unhealthyNodes = nodeStore.nodes.filter((node) => node.status === "unhealthy");
+
+  if (!unhealthyNodes.length) {
+    healthLatestByNode.value = {};
+    return;
+  }
+
+  const results = await Promise.allSettled(
+    unhealthyNodes.map(async (node) => {
+      const latest = await nodeHealthApi.getLatest(node.id);
+      return [node.id, latest];
+    }),
+  );
+
+  const latestByNode = {};
+  results.forEach((result) => {
+    if (result.status !== "fulfilled") return;
+    const [nodeID, latest] = result.value;
+    latestByNode[nodeID] = latest;
+  });
+
+  healthLatestByNode.value = latestByNode;
 }
 
 function getStatusType(status) {
@@ -948,6 +1038,10 @@ async function fetchData() {
         totalTraffic?.stats || totalTraffic || { upload: 0, download: 0, total: 0 };
     } else {
       trafficStats.value = { upload: 0, download: 0, total: 0 };
+    }
+
+    if (results[0]?.status === "fulfilled") {
+      await refreshLatestHealthReasons();
     }
 
     lastUpdatedAt.value = new Date();

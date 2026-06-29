@@ -242,10 +242,10 @@ func shouldServeNodeProxyInbounds(nodeData *repository.Node) bool {
 	if nodeData == nil {
 		return true
 	}
-	if nodeData.Status != repository.NodeStatusOnline {
+	if nodeData.TrafficLimit > 0 && nodeData.TrafficTotal >= nodeData.TrafficLimit {
 		return false
 	}
-	if nodeData.TrafficLimit > 0 && nodeData.TrafficTotal >= nodeData.TrafficLimit {
+	if nodeData.Status == repository.NodeStatusOffline {
 		return false
 	}
 	return true

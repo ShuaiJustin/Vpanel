@@ -29,6 +29,8 @@ type RemoteDeployService struct {
 	tasks    map[int64]*DeployTaskStatus
 }
 
+const autoProvisionFirewallPortRange = "20000-60000"
+
 // DeployTaskStatus represents async deployment progress for a node.
 type DeployTaskStatus struct {
 	NodeID     int64        `json:"node_id"`
@@ -325,6 +327,13 @@ func (s *RemoteDeployService) Deploy(ctx context.Context, config *DeployConfig) 
 		finishedAt := time.Now()
 		publish("failed", result.Message, &finishedAt)
 		return result, err
+	}
+	if err := s.configureNodeFirewall(ctx, client, config, &logBuffer); err != nil {
+		s.logger.Warn("节点防火墙端口配置失败，继续部署",
+			logger.Err(err),
+			logger.F("node_id", config.NodeID),
+			logger.F("host", config.Host))
+		logBuffer.WriteString(fmt.Sprintf("⚠ 防火墙端口配置失败，请手动放行 Agent 端口和自动代理端口范围: %v\n", err))
 	}
 	markSuccess(stepIdx)
 	logBuffer.WriteString("\n")
@@ -1156,6 +1165,45 @@ echo "✓ systemd 服务文件已创建"
 	}
 
 	logBuffer.WriteString("✓ Agent 配置完成\n")
+	return nil
+}
+
+func (s *RemoteDeployService) configureNodeFirewall(ctx context.Context, client *ssh.Client, config *DeployConfig, logBuffer *bytes.Buffer) error {
+	agentHealthPort := s.resolveAgentHealthPort(ctx, config)
+	iptablesPortRange := strings.ReplaceAll(autoProvisionFirewallPortRange, "-", ":")
+	script := fmt.Sprintf(`
+echo "=== 配置节点防火墙端口 ==="
+AGENT_HEALTH_PORT=%d
+AUTO_PROXY_PORT_RANGE="%s"
+AUTO_PROXY_IPTABLES_RANGE="%s"
+
+if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld 2>/dev/null; then
+    echo "检测到 firewalld，放行 Agent 健康端口和自动代理端口范围..."
+    firewall-cmd --permanent --add-port="${AGENT_HEALTH_PORT}/tcp" || true
+    firewall-cmd --permanent --add-port="${AGENT_HEALTH_PORT}/udp" || true
+    firewall-cmd --permanent --add-port="${AUTO_PROXY_PORT_RANGE}/tcp" || true
+    firewall-cmd --reload || true
+    firewall-cmd --list-ports || true
+elif command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi "Status: active"; then
+    echo "检测到 ufw，放行 Agent 健康端口和自动代理端口范围..."
+    ufw allow "${AGENT_HEALTH_PORT}/tcp" || true
+    ufw allow "${AGENT_HEALTH_PORT}/udp" || true
+    ufw allow "${AUTO_PROXY_IPTABLES_RANGE}/tcp" || true
+elif command -v iptables >/dev/null 2>&1; then
+    echo "检测到 iptables，添加运行时放行规则..."
+    iptables -C INPUT -p tcp --dport "${AGENT_HEALTH_PORT}" -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport "${AGENT_HEALTH_PORT}" -j ACCEPT || true
+    iptables -C INPUT -p udp --dport "${AGENT_HEALTH_PORT}" -j ACCEPT 2>/dev/null || iptables -I INPUT -p udp --dport "${AGENT_HEALTH_PORT}" -j ACCEPT || true
+    iptables -C INPUT -p tcp --dport "${AUTO_PROXY_IPTABLES_RANGE}" -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport "${AUTO_PROXY_IPTABLES_RANGE}" -j ACCEPT || true
+else
+    echo "未检测到 firewalld/ufw/iptables，跳过自动防火墙配置"
+fi
+
+echo "✓ 防火墙端口配置检查完成"
+`, agentHealthPort, autoProvisionFirewallPortRange, iptablesPortRange)
+
+	if err := s.executeCommandWithTimeout(ctx, client, script, serviceCommandTimeout, logBuffer); err != nil {
+		return fmt.Errorf("配置节点防火墙端口失败: %w", err)
+	}
 	return nil
 }
 

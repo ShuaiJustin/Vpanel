@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -242,6 +243,24 @@ func applyStartupOverridesFromSettings(cfg *config.Config, svc *settings.Service
 			}
 		}
 	}
+	if v, ok := raw["public_url"]; ok {
+		if publicURL, valid := normalizeStartupPublicURL(v); valid {
+			cfg.Server.PublicURL = publicURL
+		} else {
+			log.Warn("startup: invalid public URL in settings, keeping config value",
+				logger.F("public_url", v),
+			)
+		}
+	}
+	if v, ok := raw["cors_origins"]; ok {
+		if origins, valid := normalizeStartupCORSOrigins(v); valid {
+			cfg.Server.CORSOrigins = origins
+		} else {
+			log.Warn("startup: invalid CORS origins in settings, keeping config value",
+				logger.F("cors_origins", v),
+			)
+		}
+	}
 
 	// TLS overrides — the UI owns these values once either key has been
 	// written. Empty values intentionally clear config.yaml/env TLS paths so
@@ -357,6 +376,57 @@ func normalizeStartupBasePath(value string) (string, bool) {
 		return "", false
 	}
 	return basePath, true
+}
+
+func normalizeStartupPublicURL(value string) (string, bool) {
+	raw := strings.TrimSpace(value)
+	if raw == "" {
+		return "", true
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", false
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", false
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", false
+	}
+	if parsed.Path != "" && parsed.Path != "/" {
+		return "", false
+	}
+	return parsed.Scheme + "://" + parsed.Host, true
+}
+
+func normalizeStartupCORSOrigins(value string) ([]string, bool) {
+	raw := strings.ReplaceAll(value, "\n", ",")
+	parts := strings.Split(raw, ",")
+	origins := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		origin := strings.TrimSpace(part)
+		if origin == "" {
+			continue
+		}
+		if origin == "*" {
+			if _, ok := seen[origin]; !ok {
+				seen[origin] = struct{}{}
+				origins = append(origins, origin)
+			}
+			continue
+		}
+		normalized, ok := normalizeStartupPublicURL(origin)
+		if !ok {
+			return nil, false
+		}
+		if _, exists := seen[normalized]; exists {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		origins = append(origins, normalized)
+	}
+	return origins, true
 }
 
 // ensureAdminUser creates the default admin user if it doesn't exist.

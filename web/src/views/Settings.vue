@@ -33,7 +33,7 @@
             <template #title>
               修改下方字段后需点击 <strong>重启面板</strong> 才会生效。<br>
               ⚠️ Docker 部署：如果修改了"面板端口"，请同步修改 <code>docker-compose.yml</code> 的端口映射（如 <code>13212:8080</code> 中的容器端口），否则重启后面板将无法访问。<br>
-              ⚠️ 启用 HTTPS：填写证书 + 私钥路径后，还需把 <code>.env</code> 的 <code>V_SERVER_PUBLIC_URL</code> 和 <code>V_SERVER_CORS_ORIGINS</code> 协议改为 <code>https://</code>。如果不确定，仅修改 <strong>面板URL基础路径</strong> 和 <strong>服务时区</strong> 是安全的。
+              ⚠️ 反向代理 / Cloudflare Tunnel 场景：公网访问地址填写外部可访问的完整地址，CORS 白名单填写允许访问面板 API 的浏览器来源。
             </template>
           </el-alert>
           <el-form-item label="面板监听地址">
@@ -62,6 +62,26 @@
             />
             <div class="form-tips">
               默认 /，设置为如 /vpanel 时，面板会挂载到 https://yourdomain/vpanel/ 下（保存后需要重启面板生效）
+            </div>
+          </el-form-item>
+          <el-form-item label="公网访问地址">
+            <el-input
+              v-model="serverForm.publicUrl"
+              placeholder="https://panel.example.com"
+            />
+            <div class="form-tips">
+              用于远程部署、订阅链接、邀请链接等外部回调地址。只填写协议 + 域名 + 可选端口，不填写路径
+            </div>
+          </el-form-item>
+          <el-form-item label="CORS 白名单">
+            <el-input
+              v-model="serverForm.corsOrigins"
+              type="textarea"
+              :rows="2"
+              placeholder="https://panel.example.com, https://admin.example.com"
+            />
+            <div class="form-tips">
+              多个来源可用逗号或换行分隔。留空时保持当前兼容行为：允许所有跨域来源
             </div>
           </el-form-item>
           <el-divider content-position="left">
@@ -1067,6 +1087,8 @@ const serverForm = reactive({
   panelListenIP: '0.0.0.0',
   panelPort: 8080,
   panelBasePath: '/',
+  publicUrl: '',
+  corsOrigins: '',
   panelCertPath: '',
   panelKeyPath: '',
   selectedCertId: null,
@@ -1186,6 +1208,8 @@ const applyServerSettings = (settings) => {
   serverForm.panelListenIP = settings?.panel_access_ip || '0.0.0.0'
   serverForm.panelPort = settings?.panel_port || 8080
   serverForm.panelBasePath = settings?.panel_base_path || '/'
+  serverForm.publicUrl = settings?.public_url || ''
+  serverForm.corsOrigins = settings?.cors_origins || ''
   serverForm.panelCertPath = settings?.panel_cert_path || ''
   serverForm.panelKeyPath = settings?.panel_key_path || ''
   serverForm.proxyMode = settings?.proxy_mode || 'compatible'
@@ -1426,6 +1450,50 @@ const normalizePanelBasePath = (value) => {
   return { value: basePath }
 }
 
+const normalizeOriginUrl = (value, label) => {
+  const raw = String(value || '').trim()
+  if (!raw) return { value: '' }
+  try {
+    const url = new URL(raw)
+    if (!['http:', 'https:'].includes(url.protocol)) {
+      return { error: `${label}只支持 http 或 https` }
+    }
+    if (url.username || url.password || url.search || url.hash) {
+      return { error: `${label}不能包含用户名、密码、查询参数或 # 片段` }
+    }
+    if (url.pathname && url.pathname !== '/') {
+      return { error: `${label}只填写协议、域名和端口；路径请使用面板URL基础路径` }
+    }
+    return { value: url.origin }
+  } catch (error) {
+    return { error: `${label}格式不正确，例如 https://panel.example.com` }
+  }
+}
+
+const normalizeCorsOrigins = (value) => {
+  const parts = String(value || '')
+    .split(/[,\n]/)
+    .map(item => item.trim())
+    .filter(Boolean)
+  const seen = new Set()
+  const normalized = []
+  for (const part of parts) {
+    if (part === '*') {
+      if (!seen.has(part)) {
+        seen.add(part)
+        normalized.push(part)
+      }
+      continue
+    }
+    const origin = normalizeOriginUrl(part, 'CORS 来源')
+    if (origin.error) return origin
+    if (seen.has(origin.value)) continue
+    seen.add(origin.value)
+    normalized.push(origin.value)
+  }
+  return { value: normalized.join(', ') }
+}
+
 const buildServerSettingsPayload = () => {
   const panelPort = Number(serverForm.panelPort)
   if (!Number.isInteger(panelPort) || panelPort < 1 || panelPort > 65535) {
@@ -1446,10 +1514,24 @@ const buildServerSettingsPayload = () => {
     return null
   }
 
+  const publicUrl = normalizeOriginUrl(serverForm.publicUrl, '公网访问地址')
+  if (publicUrl.error) {
+    ElMessage.warning(publicUrl.error)
+    return null
+  }
+
+  const corsOrigins = normalizeCorsOrigins(serverForm.corsOrigins)
+  if (corsOrigins.error) {
+    ElMessage.warning(corsOrigins.error)
+    return null
+  }
+
   return {
     panel_access_ip: serverForm.panelListenIP.trim(),
     panel_port: panelPort,
     panel_base_path: normalizedBasePath.value,
+    public_url: publicUrl.value,
+    cors_origins: corsOrigins.value,
     panel_cert_path: certPath,
     panel_key_path: keyPath,
     timezone: serverForm.timezone

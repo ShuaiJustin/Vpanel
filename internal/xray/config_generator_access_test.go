@@ -116,6 +116,42 @@ func TestGenerateForNode_DisablesProxyInboundsWhenNodeTrafficLimitExceeded(t *te
 	assert.Equal(t, "api", config.Inbounds[0].Tag)
 }
 
+func TestGenerateForNode_KeepsProxyInboundsWhenNodeUnhealthy(t *testing.T) {
+	db := setupConfigGeneratorNodeTestDB(t)
+	ctx := context.Background()
+	nodeID := int64(8)
+	nodeRepo := repository.NewNodeRepository(db)
+	proxyRepo := repository.NewProxyRepository(db)
+
+	require.NoError(t, nodeRepo.Create(ctx, &repository.Node{
+		ID:      nodeID,
+		Name:    "recovering-node",
+		Address: "127.0.0.1",
+		Status:  repository.NodeStatusUnhealthy,
+	}))
+	require.NoError(t, proxyRepo.Create(ctx, &repository.Proxy{
+		UserID:   0,
+		NodeID:   &nodeID,
+		Enabled:  true,
+		Protocol: "vmess",
+		Port:     12002,
+		Host:     "127.0.0.1",
+		Settings: map[string]any{"uuid": "recovering-user"},
+	}))
+
+	generator := NewConfigGenerator(proxyRepo, nil, nodeRepo, logger.NewNopLogger())
+	config, err := generator.GenerateForNode(ctx, nodeID)
+	require.NoError(t, err)
+	require.Len(t, config.Inbounds, 2)
+
+	ports := make([]int, 0, len(config.Inbounds))
+	for _, inbound := range config.Inbounds {
+		ports = append(ports, inbound.Port)
+	}
+
+	assert.Contains(t, ports, 12002)
+}
+
 func TestGenerateForNode_ConfiguresAccessLogPath(t *testing.T) {
 	repo := newMockProxyRepoForSync()
 	generator := NewConfigGenerator(repo, nil, nil, logger.NewNopLogger())

@@ -80,6 +80,44 @@ func TestApplyStartupOverridesNormalizesPanelBasePath(t *testing.T) {
 	}
 }
 
+func TestApplyStartupOverridesAppliesPublicURLAndCORSOrigins(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Server.PublicURL = "https://old.example.com"
+	cfg.Server.CORSOrigins = []string{"https://old.example.com"}
+
+	applyStartupOverridesFromSettings(cfg, newStartupSettingsService(map[string]string{
+		"public_url":   "https://panel.example.com/",
+		"cors_origins": "https://panel.example.com/, https://admin.example.com\nhttps://panel.example.com",
+	}), logger.NewNopLogger())
+
+	if cfg.Server.PublicURL != "https://panel.example.com" {
+		t.Fatalf("expected public URL override, got %q", cfg.Server.PublicURL)
+	}
+	if len(cfg.Server.CORSOrigins) != 2 ||
+		cfg.Server.CORSOrigins[0] != "https://panel.example.com" ||
+		cfg.Server.CORSOrigins[1] != "https://admin.example.com" {
+		t.Fatalf("expected normalized CORS origins, got %#v", cfg.Server.CORSOrigins)
+	}
+}
+
+func TestApplyStartupOverridesAllowsClearingPublicURLAndCORSOrigins(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Server.PublicURL = "https://old.example.com"
+	cfg.Server.CORSOrigins = []string{"https://old.example.com"}
+
+	applyStartupOverridesFromSettings(cfg, newStartupSettingsService(map[string]string{
+		"public_url":   "",
+		"cors_origins": "",
+	}), logger.NewNopLogger())
+
+	if cfg.Server.PublicURL != "" {
+		t.Fatalf("expected public URL to be cleared, got %q", cfg.Server.PublicURL)
+	}
+	if len(cfg.Server.CORSOrigins) != 0 {
+		t.Fatalf("expected CORS origins to be cleared, got %#v", cfg.Server.CORSOrigins)
+	}
+}
+
 func TestApplyStartupOverridesAllowsClearingPanelTLS(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Server.TLSCert = "/env/cert.pem"
