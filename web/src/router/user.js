@@ -12,6 +12,7 @@ const UserLogin = () => import(/* webpackChunkName: "user-auth" */ '../views/use
 const UserRegister = () => import(/* webpackChunkName: "user-auth" */ '../views/user/Register.vue')
 const ForgotPassword = () => import(/* webpackChunkName: "user-auth" */ '../views/user/ForgotPassword.vue')
 const ResetPassword = () => import(/* webpackChunkName: "user-auth" */ '../views/user/ResetPassword.vue')
+const OAuthCallback = () => import(/* webpackChunkName: "user-auth" */ '../views/user/OAuthCallback.vue')
 
 // 用户核心页面
 const UserDashboard = () => import(/* webpackChunkName: "user-core" */ '../views/user/Dashboard.vue')
@@ -333,6 +334,20 @@ export const userRoutes = [
         meta: {
           title: '用户注册',
           guest: true
+        }
+      }
+    ]
+  },
+  {
+    path: '/user/oauth/callback',
+    component: AuthLayout,
+    children: [
+      {
+        path: '',
+        name: 'UserOAuthCallback',
+        component: OAuthCallback,
+        meta: {
+          title: '第三方登录'
         }
       }
     ]

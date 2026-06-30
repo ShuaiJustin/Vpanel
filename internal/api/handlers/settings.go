@@ -117,12 +117,13 @@ func (h *SettingsHandler) GetSettings(c *gin.Context) {
 		middleware.RespondWithError(c, errors.NewDatabaseError("get settings", err))
 		return
 	}
-	systemSettings.RuntimeDatabase = h.runtimeDatabaseInfo()
+	publicSettings := publicSystemSettings(systemSettings)
+	publicSettings.RuntimeDatabase = h.runtimeDatabaseInfo()
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "success",
-		"data":    systemSettings,
+		"data":    publicSettings,
 	})
 }
 
@@ -202,6 +203,9 @@ type UpdateSettingsRequest struct {
 
 	// Xray settings
 	XrayConfigTemplate *string `json:"xray_config_template"`
+
+	// Authentication settings
+	Auth *settings.AuthSettings `json:"auth"`
 }
 
 func hasPersistedPaymentSettings(values map[string]string) bool {
@@ -476,6 +480,9 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 	if req.XrayConfigTemplate != nil {
 		currentSettings.XrayConfigTemplate = *req.XrayConfigTemplate
 	}
+	if req.Auth != nil {
+		currentSettings.Auth = settings.MergeAuthSettings(currentSettings.Auth, *req.Auth)
+	}
 
 	currentSettings.SMTPPasswordConfigured = strings.TrimSpace(currentSettings.SMTPPassword) != ""
 	currentSettings.PaymentAlipayPrivateKeyConfigured = strings.TrimSpace(currentSettings.PaymentAlipayPrivateKey) != ""
@@ -519,6 +526,21 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 		if currentSettings.LockDuration <= 0 {
 			middleware.RespondWithError(c, errors.NewValidationError("invalid settings", map[string]interface{}{
 				"lock_duration": "lock duration must be greater than 0 minutes",
+			}))
+			return
+		}
+	}
+
+	if currentSettings.Auth.BasicAuth.Enabled {
+		if strings.TrimSpace(currentSettings.Auth.BasicAuth.Username) == "" {
+			middleware.RespondWithError(c, errors.NewValidationError("invalid settings", map[string]interface{}{
+				"auth.basic_auth.username": "username is required when basic authentication is enabled",
+			}))
+			return
+		}
+		if strings.TrimSpace(currentSettings.Auth.BasicAuth.Password) == "" {
+			middleware.RespondWithError(c, errors.NewValidationError("invalid settings", map[string]interface{}{
+				"auth.basic_auth.password": "password is required when basic authentication is enabled",
 			}))
 			return
 		}
@@ -569,8 +591,17 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "settings updated",
-		"data":    currentSettings,
+		"data":    publicSystemSettings(currentSettings),
 	})
+}
+
+func publicSystemSettings(systemSettings *settings.SystemSettings) *settings.SystemSettings {
+	if systemSettings == nil {
+		return nil
+	}
+	output := *systemSettings
+	output.Auth = settings.PublicAuthSettings(output.Auth)
+	return &output
 }
 
 type TestDatabaseRequest struct {

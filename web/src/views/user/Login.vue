@@ -67,9 +67,31 @@
         </el-form-item>
       </el-form>
 
+      <div
+        v-if="!show2FA && oauthProviders.length"
+        class="oauth-login"
+      >
+        <div class="oauth-divider">
+          <span>第三方登录</span>
+        </div>
+        <div class="oauth-buttons">
+          <el-button
+            v-for="provider in oauthProviders"
+            :key="provider.key"
+            class="oauth-button"
+            size="large"
+            :loading="oauthLoading === provider.key"
+            @click="startOAuthLogin(provider.key)"
+          >
+            <span class="oauth-mark">{{ provider.label.slice(0, 1) }}</span>
+            <span>{{ provider.label }}</span>
+          </el-button>
+        </div>
+      </div>
+
       <!-- 2FA 验证表单 -->
       <el-form
-        v-else
+        v-if="show2FA"
         ref="twoFAFormRef"
         :model="twoFAForm"
         :rules="twoFARules"
@@ -143,7 +165,11 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock, Key } from '@element-plus/icons-vue'
 import { useUserPortalStore } from '@/stores/userPortal'
-import { verifyEmail as verifyPortalEmail } from '@/api/modules/portal/auth'
+import {
+  getOAuthProviders,
+  getOAuthStartUrl,
+  verifyEmail as verifyPortalEmail
+} from '@/api/modules/portal/auth'
 import { extractErrorMessage, getErrorStatus } from '@/utils/entitlement'
 
 const router = useRouter()
@@ -159,6 +185,8 @@ const loading = ref(false)
 const show2FA = ref(false)
 const useBackupCode = ref(false)
 const pendingUserId = ref(null)
+const oauthProviders = ref([])
+const oauthLoading = ref('')
 
 // 登录表单
 const loginForm = reactive({
@@ -202,6 +230,20 @@ function getSafeRedirectPath() {
     return ''
   }
   return redirect
+}
+
+async function loadOAuthProviders() {
+  try {
+    const response = await getOAuthProviders()
+    oauthProviders.value = Array.isArray(response?.providers) ? response.providers : []
+  } catch {
+    oauthProviders.value = []
+  }
+}
+
+function startOAuthLogin(providerKey) {
+  oauthLoading.value = providerKey
+  window.location.href = getOAuthStartUrl(providerKey, getSafeRedirectPath())
 }
 
 function getPostLoginPath(user) {
@@ -290,6 +332,16 @@ function cancelTwoFA() {
 }
 
 onMounted(async () => {
+  await loadOAuthProviders()
+  const oauthError = route.query.oauth_error
+  if (typeof oauthError === 'string' && oauthError) {
+    ElMessage.error(oauthError)
+    const query = { ...route.query }
+    delete query.oauth_error
+    router.replace({ path: route.path, query })
+    return
+  }
+
   const token = route.query.verify_email_token
   if (!token || typeof token !== 'string') {
     return
@@ -402,6 +454,54 @@ onMounted(async () => {
   border-radius: 8px;
   font-size: 16px;
   font-weight: 600;
+}
+
+.oauth-login {
+  margin-bottom: 24px;
+}
+
+.oauth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+  color: #909399;
+  font-size: 13px;
+}
+
+.oauth-divider::before,
+.oauth-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--el-border-color-lighter);
+}
+
+.oauth-buttons {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.oauth-button {
+  width: 100%;
+  height: 46px;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.oauth-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 2px;
+  border-radius: 50%;
+  background: var(--el-fill-color-light);
+  color: var(--el-color-primary);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .login-footer {

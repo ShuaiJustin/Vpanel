@@ -30,6 +30,19 @@ export function login(data) {
   return api.post(`${BASE_URL}/login`, data)
 }
 
+export function getOAuthProviders() {
+  return api.get(`${BASE_URL}/oauth/providers`)
+}
+
+export function getOAuthStartUrl(provider, redirect = '') {
+  const baseURL = api.defaults.baseURL || '/api'
+  const params = new URLSearchParams()
+  if (redirect) {
+    params.set('redirect', redirect)
+  }
+  return `${baseURL}${BASE_URL}/oauth/${encodeURIComponent(provider)}/start${params.toString() ? `?${params.toString()}` : ''}`
+}
+
 /**
  * 完成两步验证登录
  * @param {Object} data - 验证数据

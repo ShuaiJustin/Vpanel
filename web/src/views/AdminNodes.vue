@@ -1133,6 +1133,8 @@ const trafficStateFilter = ref("");
 let installStatusTimer = null;
 let shouldPollInstallStatus = false;
 
+const DEFAULT_TLS_DOMAIN = "www.shcrystal.top";
+
 const form = reactive({
   id: null,
   name: "",
@@ -1143,8 +1145,8 @@ const form = reactive({
   max_users: 0,
   tags: [],
   ip_whitelist_str: "",
-  tls_enabled: false,
-  tls_domain: "",
+  tls_enabled: true,
+  tls_domain: DEFAULT_TLS_DOMAIN,
   certificate_id: null,
   // 安装方式
   installMethod: "manual",
@@ -1286,8 +1288,12 @@ const deployRules = {
 const normalizeText = (value) =>
   typeof value === "string" ? value.trim() : "";
 
-const normalizeCertificateDomain = (domain) =>
-  normalizeText(domain).replace(/^\*\./, "").toLowerCase();
+const normalizeCertificateDomain = (domain) => {
+  const normalized = normalizeText(domain).toLowerCase();
+  if (!normalized) return "";
+  if (normalized === "*.shcrystal.top") return DEFAULT_TLS_DOMAIN;
+  return normalized.replace(/^\*\./, "");
+};
 
 const formatCertificateDate = (value) => {
   if (!value) return "-";

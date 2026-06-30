@@ -136,6 +136,7 @@ func (r *Router) Setup() {
 	r.engine.Use(middleware.CORS(r.config.Server.CORSOrigins))
 	r.engine.Use(middleware.RequestID())
 	r.engine.Use(middleware.ErrorHandler(r.logger)) // 统一错误处理
+	r.engine.Use(middleware.BasicAuthGate(r.settingsService, r.logger))
 
 	// SECURITY: Add CSRF protection for authenticated requests
 	// Note: CSRF middleware will skip GET/HEAD/OPTIONS and unauthenticated requests
@@ -1597,7 +1598,8 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 		WithAvatarStoragePath(filepath.Join("data", "avatars")).
 		WithRoleRepository(r.repos.Role).
 		WithEntitlementService(r.entitlementService).
-		WithAuditService(r.auditService)
+		WithAuditService(r.auditService).
+		WithSettingsService(r.settingsService)
 	portalDashboardHandler := handlers.NewPortalDashboardHandler(r.repos.User, statsService, announcementService, r.logger).
 		WithEntitlementService(r.entitlementService)
 	portalNodeHandler := handlers.NewPortalNodeHandler(portalNodeService, r.nodeRecoveryTracker, r.logger)
@@ -1623,6 +1625,9 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 			portalAuth.GET("/verify-email", portalAuthHandler.VerifyEmail)
 			portalAuth.GET("/avatar/:filename", portalAuthHandler.GetAvatar)
 			portalAuth.POST("/2fa/login", middleware.AuthRateLimit("login"), portalAuthHandler.Verify2FALogin)
+			portalAuth.GET("/oauth/providers", portalAuthHandler.GetOAuthProviders)
+			portalAuth.GET("/oauth/:provider/start", portalAuthHandler.StartOAuth)
+			portalAuth.GET("/oauth/:provider/callback", portalAuthHandler.OAuthCallback)
 		}
 
 		// Public help center routes

@@ -175,6 +175,19 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     clearPersistedAuth()
   }
 
+  function persistAuthResponse(response, remember = false) {
+    const storage = getAuthStorage(Boolean(remember))
+    const otherStorage = storage === localStorage ? sessionStorage : localStorage
+
+    token.value = response.token
+    user.value = response.user
+    storage.setItem('userToken', response.token)
+    storage.setItem('userInfo', JSON.stringify(response.user))
+    otherStorage.removeItem('userToken')
+    otherStorage.removeItem('userInfo')
+    syncAdminBridge(storage, otherStorage, response.user, response.token)
+  }
+
   // 方法
   async function login(credentials) {
     loading.value = true
@@ -185,17 +198,7 @@ export const useUserPortalStore = defineStore('userPortal', () => {
         return response
       }
 
-      const storage = getAuthStorage(Boolean(credentials?.remember))
-      const otherStorage = storage === localStorage ? sessionStorage : localStorage
-
-      token.value = response.token
-      user.value = response.user
-      storage.setItem('userToken', response.token)
-      storage.setItem('userInfo', JSON.stringify(response.user))
-      otherStorage.removeItem('userToken')
-      otherStorage.removeItem('userInfo')
-      syncAdminBridge(storage, otherStorage, response.user, response.token)
-      
+      persistAuthResponse(response, Boolean(credentials?.remember))
       return response
     } catch (err) {
       const normalizedError = toNormalizedError(err, '登录失败')
@@ -211,17 +214,7 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     error.value = null
     try {
       const response = await authApi.verify2FALogin(data)
-      const storage = getAuthStorage(remember)
-      const otherStorage = storage === localStorage ? sessionStorage : localStorage
-
-      token.value = response.token
-      user.value = response.user
-      storage.setItem('userToken', response.token)
-      storage.setItem('userInfo', JSON.stringify(response.user))
-      otherStorage.removeItem('userToken')
-      otherStorage.removeItem('userInfo')
-      syncAdminBridge(storage, otherStorage, response.user, response.token)
-
+      persistAuthResponse(response, remember)
       return response
     } catch (err) {
       const normalizedError = toNormalizedError(err, '两步验证失败')
@@ -230,6 +223,11 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     } finally {
       loading.value = false
     }
+  }
+
+  function completeOAuthLogin(response, remember = false) {
+    persistAuthResponse(response, remember)
+    return response
   }
 
   async function register(data) {
@@ -468,6 +466,7 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     // 方法
     login,
     completeTwoFactorLogin,
+    completeOAuthLogin,
     register,
     logout,
     fetchProfile,

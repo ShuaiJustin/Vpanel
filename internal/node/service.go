@@ -37,6 +37,9 @@ var (
 // TokenLength is the length of generated tokens in bytes (64 hex chars = 32 bytes)
 const TokenLength = 32
 
+// DefaultTLSDomain is the deployment-wide SNI used when TLS is enabled on a node.
+const DefaultTLSDomain = "www.shcrystal.top"
+
 // Node represents a node in the service layer.
 type Node struct {
 	ID                int64        `json:"id"`
@@ -347,6 +350,11 @@ func (s *Service) Create(ctx context.Context, req *CreateNodeRequest) (*Node, er
 			}
 		}
 	}
+
+	if req.TLSEnabled && strings.TrimSpace(req.TLSDomain) == "" {
+		req.TLSDomain = DefaultTLSDomain
+	}
+	req.TLSDomain = strings.TrimSpace(strings.ToLower(req.TLSDomain))
 
 	// 验证 TLS 配置
 	if req.TLSEnabled && req.TLSDomain == "" {

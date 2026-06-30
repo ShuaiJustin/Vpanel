@@ -77,6 +77,7 @@ func (m *mockCache) Close() error {
 type mockNodeRepo struct {
 	countByStatusCalls int
 	stats              map[string]int64
+	created            *repository.Node
 }
 
 func (m *mockNodeRepo) CountByStatus(ctx context.Context) (map[string]int64, error) {
@@ -93,6 +94,8 @@ func (m *mockNodeRepo) CountByAddressPort(ctx context.Context, address string, p
 }
 
 func (m *mockNodeRepo) Create(ctx context.Context, node *repository.Node) error {
+	m.created = node
+	node.ID = 1
 	return nil
 }
 
@@ -247,6 +250,32 @@ func TestGetStatistics_WithCache(t *testing.T) {
 
 	if stats2["active"] != 10 || stats2["inactive"] != 5 || stats2["offline"] != 2 {
 		t.Errorf("Unexpected cached stats: %v", stats2)
+	}
+}
+
+func TestCreate_DefaultsTLSDomainWhenTLSEnabled(t *testing.T) {
+	ctx := context.Background()
+	mockRepo := &mockNodeRepo{}
+	service := NewService(mockRepo, nil, nil, logger.NewNopLogger())
+
+	created, err := service.Create(ctx, &CreateNodeRequest{
+		Name:       "test-node",
+		Address:    "203.0.113.10",
+		TLSEnabled: true,
+		Protocols:  []string{"vmess"},
+	})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	if created.TLSDomain != DefaultTLSDomain {
+		t.Fatalf("expected returned TLS domain %q, got %q", DefaultTLSDomain, created.TLSDomain)
+	}
+	if mockRepo.created == nil {
+		t.Fatal("expected node to be persisted")
+	}
+	if mockRepo.created.TLSDomain != DefaultTLSDomain {
+		t.Fatalf("expected persisted TLS domain %q, got %q", DefaultTLSDomain, mockRepo.created.TLSDomain)
 	}
 }
 

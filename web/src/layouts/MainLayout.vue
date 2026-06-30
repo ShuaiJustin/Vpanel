@@ -210,6 +210,12 @@
             配置管理
           </el-menu-item>
           <el-menu-item
+            v-if="canAccess('system:write')"
+            index="/admin/system-settings/auth/basic-auth"
+          >
+            身份验证
+          </el-menu-item>
+          <el-menu-item
             v-if="canAccess('system:read')"
             index="/admin/logs"
           >
@@ -370,6 +376,10 @@ const isCollapse = ref(false)
 const isMobileMenuOpen = ref(false)
 const username = computed(() => userStore.user?.username || '管理员')
 const activeMenu = computed(() => {
+  if (route.path.startsWith('/admin/system-settings/auth') || route.path.startsWith('/system-settings/auth')) {
+    return '/admin/system-settings/auth/basic-auth'
+  }
+
   if (route.path === '/admin/node-operations' || route.path.endsWith('/operations')) {
     return '/admin/node-operations'
   }

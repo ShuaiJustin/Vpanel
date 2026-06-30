@@ -21,6 +21,7 @@ import (
 	"v/internal/logger"
 	"v/internal/monitor"
 	portalauth "v/internal/portal/auth"
+	"v/internal/settings"
 	pkgerrors "v/pkg/errors"
 )
 
@@ -39,6 +40,7 @@ type PortalAuthHandler struct {
 	rateLimiter       *portalauth.RateLimiter
 	rateLimitConfig   portalauth.RateLimitConfig
 	auditService      monitor.AuditService
+	settingsService   *settings.Service
 	logger            logger.Logger
 }
 
@@ -127,6 +129,12 @@ func (h *PortalAuthHandler) WithRoleRepository(roleRepo repository.RoleRepositor
 // WithAuditService wires the audit emitter for portal user operations.
 func (h *PortalAuthHandler) WithAuditService(audit monitor.AuditService) *PortalAuthHandler {
 	h.auditService = audit
+	return h
+}
+
+// WithSettingsService wires authentication integration settings.
+func (h *PortalAuthHandler) WithSettingsService(settingsService *settings.Service) *PortalAuthHandler {
+	h.settingsService = settingsService
 	return h
 }
 
@@ -653,16 +661,16 @@ func (h *PortalAuthHandler) GetProfile(c *gin.Context) {
 
 // PortalUpdateProfileRequest represents a profile update request.
 type PortalUpdateProfileRequest struct {
-	Email          *string `json:"email,omitempty"`
-	DisplayName    *string `json:"display_name,omitempty"`
-	AvatarURL      *string `json:"avatar_url,omitempty"`
-	NotifyEmail    *bool   `json:"notify_email,omitempty"`
-	NotifyTelegram *bool   `json:"notify_telegram,omitempty"`
-	NotifyTrafficWarning *bool `json:"notify_traffic_warning,omitempty"`
-	NotifyExpiryReminder *bool `json:"notify_expiry_reminder,omitempty"`
-	NotifyAnnouncements  *bool `json:"notify_announcements,omitempty"`
-	Theme          *string `json:"theme,omitempty"`
-	Language       *string `json:"language,omitempty"`
+	Email                *string `json:"email,omitempty"`
+	DisplayName          *string `json:"display_name,omitempty"`
+	AvatarURL            *string `json:"avatar_url,omitempty"`
+	NotifyEmail          *bool   `json:"notify_email,omitempty"`
+	NotifyTelegram       *bool   `json:"notify_telegram,omitempty"`
+	NotifyTrafficWarning *bool   `json:"notify_traffic_warning,omitempty"`
+	NotifyExpiryReminder *bool   `json:"notify_expiry_reminder,omitempty"`
+	NotifyAnnouncements  *bool   `json:"notify_announcements,omitempty"`
+	Theme                *string `json:"theme,omitempty"`
+	Language             *string `json:"language,omitempty"`
 }
 
 // UpdateProfile updates the current user's profile.
@@ -811,20 +819,20 @@ func (h *PortalAuthHandler) UpdateProfile(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"message": "资料未发生变化",
 			"user": gin.H{
-				"email":             user.Email,
-				"email_verified":    user.EmailVerified,
-				"email_verified_at": user.EmailVerifiedAt,
-				"display_name":      user.DisplayName,
-				"avatar_url":        user.AvatarURL,
-				"notify_email":      user.NotifyEmail,
-				"notify_telegram":   user.NotifyTelegram,
+				"email":                  user.Email,
+				"email_verified":         user.EmailVerified,
+				"email_verified_at":      user.EmailVerifiedAt,
+				"display_name":           user.DisplayName,
+				"avatar_url":             user.AvatarURL,
+				"notify_email":           user.NotifyEmail,
+				"notify_telegram":        user.NotifyTelegram,
 				"notify_traffic_warning": user.NotifyTrafficWarning,
 				"notify_expiry_reminder": user.NotifyExpiryReminder,
 				"notify_announcements":   user.NotifyAnnouncements,
-				"theme":             user.Theme,
-				"language":          user.Language,
-				"telegram_id":       user.TelegramID,
-				"telegram_bound":    strings.TrimSpace(user.TelegramID) != "",
+				"theme":                  user.Theme,
+				"language":               user.Language,
+				"telegram_id":            user.TelegramID,
+				"telegram_bound":         strings.TrimSpace(user.TelegramID) != "",
 			},
 		})
 		return
@@ -861,20 +869,20 @@ func (h *PortalAuthHandler) UpdateProfile(c *gin.Context) {
 		"need_email_verification": emailChanged,
 		"verification_email_sent": verificationEmailSent,
 		"user": gin.H{
-			"email":             user.Email,
-			"email_verified":    user.EmailVerified,
-			"email_verified_at": user.EmailVerifiedAt,
-			"display_name":      user.DisplayName,
-			"avatar_url":        user.AvatarURL,
-			"notify_email":      user.NotifyEmail,
-			"notify_telegram":   user.NotifyTelegram,
+			"email":                  user.Email,
+			"email_verified":         user.EmailVerified,
+			"email_verified_at":      user.EmailVerifiedAt,
+			"display_name":           user.DisplayName,
+			"avatar_url":             user.AvatarURL,
+			"notify_email":           user.NotifyEmail,
+			"notify_telegram":        user.NotifyTelegram,
 			"notify_traffic_warning": user.NotifyTrafficWarning,
 			"notify_expiry_reminder": user.NotifyExpiryReminder,
 			"notify_announcements":   user.NotifyAnnouncements,
-			"theme":             user.Theme,
-			"language":          user.Language,
-			"telegram_id":       user.TelegramID,
-			"telegram_bound":    strings.TrimSpace(user.TelegramID) != "",
+			"theme":                  user.Theme,
+			"language":               user.Language,
+			"telegram_id":            user.TelegramID,
+			"telegram_bound":         strings.TrimSpace(user.TelegramID) != "",
 		},
 	})
 }

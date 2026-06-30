@@ -119,6 +119,28 @@ func TestRuntimeDatabaseInfoMasksNonSQLiteDSN(t *testing.T) {
 	}
 }
 
+func TestPublicSystemSettingsDoesNotMutateAuthSecrets(t *testing.T) {
+	systemSettings := settings.DefaultSettings()
+	systemSettings.Auth.BasicAuth.Password = "basic-secret"
+	github := systemSettings.Auth.OAuth.Providers["github"]
+	github.ClientSecret = "github-secret"
+	systemSettings.Auth.OAuth.Providers["github"] = github
+
+	publicSettings := publicSystemSettings(systemSettings)
+	if publicSettings.Auth.BasicAuth.Password != "" {
+		t.Fatal("expected public basic auth password to be hidden")
+	}
+	if publicSettings.Auth.OAuth.Providers["github"].ClientSecret != "" {
+		t.Fatal("expected public oauth client secret to be hidden")
+	}
+	if systemSettings.Auth.BasicAuth.Password != "basic-secret" {
+		t.Fatal("expected source basic auth password to remain intact")
+	}
+	if systemSettings.Auth.OAuth.Providers["github"].ClientSecret != "github-secret" {
+		t.Fatal("expected source oauth client secret to remain intact")
+	}
+}
+
 func TestValidateMigrationTargetRejectsCurrentSQLiteDatabase(t *testing.T) {
 	current := t.TempDir() + "/v.db"
 	handler := NewSettingsHandler(logger.NewNopLogger(), nil).

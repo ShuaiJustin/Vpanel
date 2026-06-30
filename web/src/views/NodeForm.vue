@@ -721,6 +721,8 @@ const TRAFFIC_LIMIT_UNIT_MULTIPLIERS = Object.freeze({
   TiB: 1024 ** 4,
 });
 
+const DEFAULT_TLS_DOMAIN = "www.shcrystal.top";
+
 const form = reactive({
   name: "",
   address: "",
@@ -734,8 +736,8 @@ const form = reactive({
   traffic_limit_value: 0,
   traffic_limit_unit: "GiB",
   alert_traffic_threshold: 80,
-  tls_enabled: false,
-  tls_domain: "",
+  tls_enabled: true,
+  tls_domain: DEFAULT_TLS_DOMAIN,
   certificate_id: null,
   // SSH 连接信息
   ssh_host: "",
@@ -1027,8 +1029,12 @@ function validateAddress(rule, value, callback) {
   callback();
 }
 
-const normalizeCertificateDomain = (domain) =>
-  normalizeText(domain).replace(/^\*\./, "").toLowerCase();
+const normalizeCertificateDomain = (domain) => {
+  const normalized = normalizeText(domain).toLowerCase();
+  if (!normalized) return "";
+  if (normalized === "*.shcrystal.top") return DEFAULT_TLS_DOMAIN;
+  return normalized.replace(/^\*\./, "");
+};
 
 const formatCertificateDate = (value) => {
   if (!value) return "-";

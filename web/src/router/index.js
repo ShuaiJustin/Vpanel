@@ -29,6 +29,7 @@ const Stats = () => import(/* webpackChunkName: "monitor" */ '../views/Stats.vue
 
 // 系统管理 - 按需加载
 const Settings = () => import(/* webpackChunkName: "system" */ '../views/Settings.vue')
+const AuthSettings = () => import(/* webpackChunkName: "system" */ '../views/AuthSettings.vue')
 const Certificates = () => import(/* webpackChunkName: "system" */ '../views/Certificates.vue')
 const Logs = () => import(/* webpackChunkName: "system" */ '../views/Logs.vue')
 const AdminAuditLogs = () => import(/* webpackChunkName: "system" */ '../views/AdminAuditLogs.vue')
@@ -128,6 +129,8 @@ const adminRoutePermissionMeta = Object.freeze({
   AdminTrafficMonitor: { permissionsAll: ['stats:read', 'system:read'] },
   AdminStats: { permissionsAll: ['stats:read'] },
   AdminSettings: { permissionsAll: ['system:write'] },
+  AdminAuthSettings: { permissionsAll: ['system:write'] },
+  SystemAuthSettings: { permissionsAll: ['system:write'] },
   AdminCertificates: { permissionsAll: ['system:write'] },
   AdminLogs: { permissionsAll: ['system:read'] },
   AdminAuditLogs: { permissionsAll: ['system:read'] },
@@ -309,6 +312,17 @@ const routes = [
           requiresAuth: true,
           title: '系统设置',
           roles: ['admin']
+        }
+      },
+      {
+        path: 'system-settings/auth/:section?',
+        name: 'AdminAuthSettings',
+        component: AuthSettings,
+        meta: {
+          requiresAuth: true,
+          title: '身份验证',
+          roles: ['admin'],
+          permissionsAll: ['system:write']
         }
       },
       {
@@ -545,6 +559,26 @@ const routes = [
           requiresAuth: true,
           title: '节点性能对比',
           roles: ['admin']
+        }
+      }
+    ]
+  },
+
+  // 系统设置快捷入口
+  {
+    path: '/system-settings',
+    component: MainLayout,
+    meta: { requiresAuth: true, permissionsAll: ['system:write'] },
+    children: [
+      {
+        path: 'auth/:section?',
+        name: 'SystemAuthSettings',
+        component: AuthSettings,
+        meta: {
+          requiresAuth: true,
+          title: '身份验证',
+          roles: ['admin'],
+          permissionsAll: ['system:write']
         }
       }
     ]

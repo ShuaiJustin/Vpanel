@@ -13,12 +13,62 @@ import (
 )
 
 const AutoProxySettingsKey = "auto_proxy_settings"
+const AuthSettingsKey = "auth_settings"
 
 var defaultAutoProxyProtocolPriority = []string{"trojan", "vmess", "vless", "shadowsocks"}
+
+var defaultOAuthProviderOrder = []string{"custom", "github", "discord", "oidc", "telegram", "linuxdo", "wechat", "wecom"}
 
 // AutoProxySettings controls automatic proxy provisioning behavior.
 type AutoProxySettings struct {
 	ProtocolPriority []string `json:"protocol_priority"`
+}
+
+// BasicAuthSettings controls optional HTTP basic-auth style authentication.
+type BasicAuthSettings struct {
+	Enabled            bool   `json:"enabled"`
+	Username           string `json:"username"`
+	Password           string `json:"password,omitempty"`
+	PasswordConfigured bool   `json:"password_configured"`
+	ClearPassword      bool   `json:"clear_password,omitempty"`
+	Realm              string `json:"realm"`
+}
+
+// OAuthProviderSettings stores one OAuth/OIDC provider configuration.
+type OAuthProviderSettings struct {
+	Enabled                bool     `json:"enabled"`
+	ClientID               string   `json:"client_id"`
+	ClientSecret           string   `json:"client_secret,omitempty"`
+	ClientSecretConfigured bool     `json:"client_secret_configured"`
+	ClearClientSecret      bool     `json:"clear_client_secret,omitempty"`
+	AuthorizeURL           string   `json:"authorize_url"`
+	TokenURL               string   `json:"token_url"`
+	UserInfoURL            string   `json:"userinfo_url"`
+	IssuerURL              string   `json:"issuer_url"`
+	RedirectURI            string   `json:"redirect_uri"`
+	Scopes                 []string `json:"scopes"`
+	BotToken               string   `json:"bot_token,omitempty"`
+	BotTokenConfigured     bool     `json:"bot_token_configured"`
+	ClearBotToken          bool     `json:"clear_bot_token,omitempty"`
+	CorpID                 string   `json:"corp_id"`
+	AgentID                string   `json:"agent_id"`
+}
+
+// OAuthSettings controls all external identity providers.
+type OAuthSettings struct {
+	Enabled              bool                             `json:"enabled"`
+	AllowRegistration    bool                             `json:"allow_registration"`
+	AllowAccountLinking  bool                             `json:"allow_account_linking"`
+	RequireVerifiedEmail bool                             `json:"require_verified_email"`
+	DefaultRole          string                           `json:"default_role"`
+	ProviderOrder        []string                         `json:"provider_order"`
+	Providers            map[string]OAuthProviderSettings `json:"providers"`
+}
+
+// AuthSettings stores authentication integration settings.
+type AuthSettings struct {
+	BasicAuth BasicAuthSettings `json:"basic_auth"`
+	OAuth     OAuthSettings     `json:"oauth"`
 }
 
 // RuntimeDatabaseInfo describes the database connection currently used by
@@ -113,6 +163,9 @@ type SystemSettings struct {
 
 	// Xray settings
 	XrayConfigTemplate string `json:"xray_config_template"`
+
+	// Authentication settings
+	Auth AuthSettings `json:"auth"`
 }
 
 // DefaultSettings returns default system settings.
@@ -151,6 +204,61 @@ func DefaultSettings() *SystemSettings {
 		RateLimitEnabled:   true,
 		RateLimitRequests:  100,
 		RateLimitWindow:    60, // seconds
+		Auth:               DefaultAuthSettings(),
+	}
+}
+
+// DefaultAuthSettings returns default authentication integration settings.
+func DefaultAuthSettings() AuthSettings {
+	providers := map[string]OAuthProviderSettings{
+		"custom": {
+			Scopes: []string{"openid", "profile", "email"},
+		},
+		"github": {
+			AuthorizeURL: "https://github.com/login/oauth/authorize",
+			TokenURL:     "https://github.com/login/oauth/access_token",
+			UserInfoURL:  "https://api.github.com/user",
+			Scopes:       []string{"read:user", "user:email"},
+		},
+		"discord": {
+			AuthorizeURL: "https://discord.com/api/oauth2/authorize",
+			TokenURL:     "https://discord.com/api/oauth2/token",
+			UserInfoURL:  "https://discord.com/api/users/@me",
+			Scopes:       []string{"identify", "email"},
+		},
+		"oidc": {
+			Scopes: []string{"openid", "profile", "email"},
+		},
+		"telegram": {},
+		"linuxdo": {
+			AuthorizeURL: "https://connect.linux.do/oauth2/authorize",
+			TokenURL:     "https://connect.linux.do/oauth2/token",
+			UserInfoURL:  "https://connect.linux.do/api/user",
+			Scopes:       []string{"read"},
+		},
+		"wechat": {
+			AuthorizeURL: "https://open.weixin.qq.com/connect/qrconnect",
+			TokenURL:     "https://api.weixin.qq.com/sns/oauth2/access_token",
+			UserInfoURL:  "https://api.weixin.qq.com/sns/userinfo",
+			Scopes:       []string{"snsapi_login"},
+		},
+		"wecom": {
+			AuthorizeURL: "https://login.work.weixin.qq.com/wwlogin/sso/login",
+			TokenURL:     "https://qyapi.weixin.qq.com/cgi-bin/gettoken",
+			Scopes:       []string{"snsapi_privateinfo"},
+		},
+	}
+	return AuthSettings{
+		BasicAuth: BasicAuthSettings{
+			Realm: "V Panel",
+		},
+		OAuth: OAuthSettings{
+			ProviderOrder:        append([]string{}, defaultOAuthProviderOrder...),
+			Providers:            providers,
+			AllowAccountLinking:  true,
+			RequireVerifiedEmail: true,
+			DefaultRole:          "user",
+		},
 	}
 }
 
@@ -570,6 +678,12 @@ func (s *Service) GetSystemSettings(ctx context.Context) (*SystemSettings, error
 	if v, ok := allSettings["xray_config_template"]; ok {
 		settings.XrayConfigTemplate = v
 	}
+	if v, ok := allSettings[AuthSettingsKey]; ok && strings.TrimSpace(v) != "" {
+		var authSettings AuthSettings
+		if json.Unmarshal([]byte(v), &authSettings) == nil {
+			settings.Auth = normalizeAuthSettings(authSettings)
+		}
+	}
 
 	// Update cache
 	s.cacheMu.Lock()
@@ -684,8 +798,157 @@ func (s *Service) UpdateSystemSettingsWithOptions(ctx context.Context, settings 
 	}
 
 	updates["xray_config_template"] = settings.XrayConfigTemplate
+	if data, err := json.Marshal(normalizeAuthSettings(settings.Auth)); err == nil {
+		updates[AuthSettingsKey] = string(data)
+	}
 
 	return s.SetMultiple(ctx, updates)
+}
+
+// MergeAuthSettings preserves existing secrets unless the incoming payload
+// supplies a new one or explicitly clears it.
+func MergeAuthSettings(current, next AuthSettings) AuthSettings {
+	merged := normalizeAuthSettings(next)
+	current = normalizeAuthSettings(current)
+
+	if strings.TrimSpace(merged.BasicAuth.Password) == "" && !merged.BasicAuth.ClearPassword {
+		merged.BasicAuth.Password = current.BasicAuth.Password
+	}
+	if merged.BasicAuth.ClearPassword {
+		merged.BasicAuth.Password = ""
+	}
+
+	for providerKey, provider := range merged.OAuth.Providers {
+		currentProvider := current.OAuth.Providers[providerKey]
+		if strings.TrimSpace(provider.ClientSecret) == "" && !provider.ClearClientSecret {
+			provider.ClientSecret = currentProvider.ClientSecret
+		}
+		if provider.ClearClientSecret {
+			provider.ClientSecret = ""
+		}
+		if strings.TrimSpace(provider.BotToken) == "" && !provider.ClearBotToken {
+			provider.BotToken = currentProvider.BotToken
+		}
+		if provider.ClearBotToken {
+			provider.BotToken = ""
+		}
+		merged.OAuth.Providers[providerKey] = provider
+	}
+
+	return normalizeAuthSettings(merged)
+}
+
+// PublicAuthSettings returns an API-safe copy with secrets removed and
+// configured markers preserved for the admin UI.
+func PublicAuthSettings(input AuthSettings) AuthSettings {
+	output := normalizeAuthSettings(input)
+	output.BasicAuth.PasswordConfigured = strings.TrimSpace(output.BasicAuth.Password) != "" || output.BasicAuth.PasswordConfigured
+	output.BasicAuth.Password = ""
+	output.BasicAuth.ClearPassword = false
+
+	for providerKey, provider := range output.OAuth.Providers {
+		provider.ClientSecretConfigured = strings.TrimSpace(provider.ClientSecret) != "" || provider.ClientSecretConfigured
+		provider.ClientSecret = ""
+		provider.ClearClientSecret = false
+		provider.BotTokenConfigured = strings.TrimSpace(provider.BotToken) != "" || provider.BotTokenConfigured
+		provider.BotToken = ""
+		provider.ClearBotToken = false
+		output.OAuth.Providers[providerKey] = provider
+	}
+
+	return output
+}
+
+func normalizeAuthSettings(input AuthSettings) AuthSettings {
+	defaults := DefaultAuthSettings()
+	normalized := input
+
+	normalized.BasicAuth.Username = strings.TrimSpace(normalized.BasicAuth.Username)
+	normalized.BasicAuth.Realm = strings.TrimSpace(normalized.BasicAuth.Realm)
+	if normalized.BasicAuth.Realm == "" {
+		normalized.BasicAuth.Realm = defaults.BasicAuth.Realm
+	}
+	normalized.BasicAuth.PasswordConfigured = strings.TrimSpace(normalized.BasicAuth.Password) != "" || normalized.BasicAuth.PasswordConfigured
+
+	normalized.OAuth.DefaultRole = strings.TrimSpace(normalized.OAuth.DefaultRole)
+	if normalized.OAuth.DefaultRole == "" {
+		normalized.OAuth.DefaultRole = defaults.OAuth.DefaultRole
+	}
+	if len(normalized.OAuth.ProviderOrder) == 0 {
+		normalized.OAuth.ProviderOrder = append([]string{}, defaults.OAuth.ProviderOrder...)
+	} else {
+		normalized.OAuth.ProviderOrder = append([]string{}, normalized.OAuth.ProviderOrder...)
+	}
+
+	providers := make(map[string]OAuthProviderSettings, len(input.OAuth.Providers)+len(defaultOAuthProviderOrder))
+	for key, provider := range input.OAuth.Providers {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		providers[key] = normalizeOAuthProvider(provider)
+	}
+
+	for _, key := range defaultOAuthProviderOrder {
+		provider := defaults.OAuth.Providers[key]
+		if existing, ok := input.OAuth.Providers[key]; ok {
+			provider = mergeOAuthProviderDefaults(provider, existing)
+		}
+		providers[key] = normalizeOAuthProvider(provider)
+	}
+
+	normalized.OAuth.Providers = providers
+	return normalized
+}
+
+func mergeOAuthProviderDefaults(defaults, next OAuthProviderSettings) OAuthProviderSettings {
+	if strings.TrimSpace(next.AuthorizeURL) == "" {
+		next.AuthorizeURL = defaults.AuthorizeURL
+	}
+	if strings.TrimSpace(next.TokenURL) == "" {
+		next.TokenURL = defaults.TokenURL
+	}
+	if strings.TrimSpace(next.UserInfoURL) == "" {
+		next.UserInfoURL = defaults.UserInfoURL
+	}
+	if len(next.Scopes) == 0 {
+		next.Scopes = append([]string{}, defaults.Scopes...)
+	}
+	return next
+}
+
+func normalizeOAuthProvider(provider OAuthProviderSettings) OAuthProviderSettings {
+	provider.ClientID = strings.TrimSpace(provider.ClientID)
+	provider.ClientSecret = strings.TrimSpace(provider.ClientSecret)
+	provider.AuthorizeURL = strings.TrimSpace(provider.AuthorizeURL)
+	provider.TokenURL = strings.TrimSpace(provider.TokenURL)
+	provider.UserInfoURL = strings.TrimSpace(provider.UserInfoURL)
+	provider.IssuerURL = strings.TrimSpace(provider.IssuerURL)
+	provider.RedirectURI = strings.TrimSpace(provider.RedirectURI)
+	provider.BotToken = strings.TrimSpace(provider.BotToken)
+	provider.CorpID = strings.TrimSpace(provider.CorpID)
+	provider.AgentID = strings.TrimSpace(provider.AgentID)
+	provider.Scopes = normalizeScopes(provider.Scopes)
+	provider.ClientSecretConfigured = provider.ClientSecret != "" || provider.ClientSecretConfigured
+	provider.BotTokenConfigured = provider.BotToken != "" || provider.BotTokenConfigured
+	return provider
+}
+
+func normalizeScopes(scopes []string) []string {
+	seen := map[string]struct{}{}
+	normalized := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		scope = strings.TrimSpace(scope)
+		if scope == "" {
+			continue
+		}
+		if _, ok := seen[scope]; ok {
+			continue
+		}
+		seen[scope] = struct{}{}
+		normalized = append(normalized, scope)
+	}
+	return normalized
 }
 
 // Backup creates a backup of all settings.

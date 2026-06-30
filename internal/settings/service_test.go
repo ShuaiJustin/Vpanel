@@ -331,6 +331,107 @@ func TestSettingsService_PaymentSettingsPersistence(t *testing.T) {
 	assert.True(t, readSettings.PaymentWeChatSandbox)
 }
 
+func TestSettingsService_AuthSettingsSecretMergePersistAndPublicView(t *testing.T) {
+	current := DefaultAuthSettings()
+	current.BasicAuth.Password = "basic-secret"
+	github := current.OAuth.Providers["github"]
+	github.ClientSecret = "github-secret"
+	telegram := current.OAuth.Providers["telegram"]
+	telegram.BotToken = "telegram-secret"
+	current.OAuth.Providers["github"] = github
+	current.OAuth.Providers["telegram"] = telegram
+
+	next := DefaultAuthSettings()
+	next.BasicAuth.Enabled = true
+	next.BasicAuth.Username = "edge"
+	next.BasicAuth.Password = ""
+	github = next.OAuth.Providers["github"]
+	github.Enabled = true
+	github.ClientID = "github-client"
+	github.ClientSecret = ""
+	next.OAuth.Providers["github"] = github
+
+	merged := MergeAuthSettings(current, next)
+	assert.Equal(t, "basic-secret", merged.BasicAuth.Password)
+	assert.Equal(t, "github-secret", merged.OAuth.Providers["github"].ClientSecret)
+	assert.Equal(t, "telegram-secret", merged.OAuth.Providers["telegram"].BotToken)
+
+	payload, err := json.Marshal(merged)
+	require.NoError(t, err)
+	assert.Contains(t, string(payload), "basic-secret")
+	assert.Contains(t, string(payload), "github-secret")
+	assert.Contains(t, string(payload), "telegram-secret")
+
+	publicPayload, err := json.Marshal(PublicAuthSettings(merged))
+	require.NoError(t, err)
+	assert.NotContains(t, string(publicPayload), "basic-secret")
+	assert.NotContains(t, string(publicPayload), "github-secret")
+	assert.NotContains(t, string(publicPayload), "telegram-secret")
+	assert.Contains(t, string(publicPayload), `"password_configured":true`)
+	assert.Contains(t, string(publicPayload), `"client_secret_configured":true`)
+	assert.Contains(t, string(publicPayload), `"bot_token_configured":true`)
+}
+
+func TestSettingsService_AuthSettingsSecretsPersistAndReadBack(t *testing.T) {
+	repo := newMockSettingsRepository()
+	service := NewService(repo)
+	ctx := context.Background()
+
+	systemSettings := DefaultSettings()
+	systemSettings.Auth.BasicAuth.Enabled = true
+	systemSettings.Auth.BasicAuth.Username = "edge"
+	systemSettings.Auth.BasicAuth.Password = "basic-secret"
+	github := systemSettings.Auth.OAuth.Providers["github"]
+	github.Enabled = true
+	github.ClientID = "github-client"
+	github.ClientSecret = "github-secret"
+	systemSettings.Auth.OAuth.Providers["github"] = github
+
+	err := service.UpdateSystemSettings(ctx, systemSettings)
+	require.NoError(t, err)
+
+	rawAuthSettings, err := service.Get(ctx, AuthSettingsKey)
+	require.NoError(t, err)
+	assert.Contains(t, rawAuthSettings, "basic-secret")
+	assert.Contains(t, rawAuthSettings, "github-secret")
+
+	reloadedService := NewService(repo)
+	readSettings, err := reloadedService.GetSystemSettings(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "basic-secret", readSettings.Auth.BasicAuth.Password)
+	assert.Equal(t, "github-secret", readSettings.Auth.OAuth.Providers["github"].ClientSecret)
+}
+
+func TestSettingsService_PublicAuthSettingsDoesNotMutateCachedSecrets(t *testing.T) {
+	repo := newMockSettingsRepository()
+	service := NewService(repo)
+	ctx := context.Background()
+
+	systemSettings := DefaultSettings()
+	systemSettings.Auth.BasicAuth.Enabled = true
+	systemSettings.Auth.BasicAuth.Username = "edge"
+	systemSettings.Auth.BasicAuth.Password = "basic-secret"
+	github := systemSettings.Auth.OAuth.Providers["github"]
+	github.Enabled = true
+	github.ClientID = "github-client"
+	github.ClientSecret = "github-secret"
+	systemSettings.Auth.OAuth.Providers["github"] = github
+
+	err := service.UpdateSystemSettings(ctx, systemSettings)
+	require.NoError(t, err)
+
+	readSettings, err := service.GetSystemSettings(ctx)
+	require.NoError(t, err)
+	publicAuth := PublicAuthSettings(readSettings.Auth)
+	assert.Empty(t, publicAuth.BasicAuth.Password)
+	assert.Empty(t, publicAuth.OAuth.Providers["github"].ClientSecret)
+
+	cachedSettings, err := service.GetSystemSettings(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "basic-secret", cachedSettings.Auth.BasicAuth.Password)
+	assert.Equal(t, "github-secret", cachedSettings.Auth.OAuth.Providers["github"].ClientSecret)
+}
+
 func TestSettingsService_UpdateSystemSettingsWithOptions_SkipsPaymentSettings(t *testing.T) {
 	repo := newMockSettingsRepository()
 	service := NewService(repo)
