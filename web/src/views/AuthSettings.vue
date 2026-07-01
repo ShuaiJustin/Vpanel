@@ -128,51 +128,46 @@
               </button>
             </nav>
 
-            <div
-              v-for="provider in providers"
-              v-show="activeProvider === provider.key"
-              :key="provider.key"
-              class="provider-panel"
-            >
+            <div class="provider-panel">
               <div class="provider-head">
                 <div>
-                  <h3>{{ provider.label }}</h3>
-                  <p>{{ provider.description }}</p>
+                  <h3>{{ activeProviderConfig.label }}</h3>
+                  <p>{{ activeProviderConfig.description }}</p>
                 </div>
                 <div class="section-switch">
-                  <span>{{ providerForms[provider.key].enabled ? '已启用' : '未启用' }}</span>
-                  <el-switch v-model="providerForms[provider.key].enabled" />
+                  <span>{{ providerForms[activeProvider].enabled ? '已启用' : '未启用' }}</span>
+                  <el-switch v-model="providerForms[activeProvider].enabled" />
                 </div>
               </div>
 
               <el-form
-                :model="providerForms[provider.key]"
+                :model="providerForms[activeProvider]"
                 :label-position="labelPosition"
                 :label-width="labelWidth"
                 class="auth-form"
               >
                 <div class="provider-grid">
                   <el-form-item label="Client ID / App ID">
-                    <el-input v-model="providerForms[provider.key].clientId" />
+                    <el-input v-model="providerForms[activeProvider].clientId" />
                   </el-form-item>
                   <el-form-item label="Client Secret">
                     <el-input
-                      v-model="providerForms[provider.key].clientSecret"
+                      v-model="providerForms[activeProvider].clientSecret"
                       type="password"
                       show-password
-                      :placeholder="providerForms[provider.key].clientSecretConfigured ? '已配置，留空保持不变' : '输入 Secret'"
+                      :placeholder="providerForms[activeProvider].clientSecretConfigured ? '已配置，留空保持不变' : '输入 Secret'"
                     />
-                    <div v-if="providerForms[provider.key].clientSecretConfigured" class="field-tip">
+                    <div v-if="providerForms[activeProvider].clientSecretConfigured" class="field-tip">
                       当前已配置 Client Secret
                     </div>
                   </el-form-item>
-                  <el-form-item v-if="providerForms[provider.key].clientSecretConfigured" label="清除 Secret">
-                    <el-checkbox v-model="providerForms[provider.key].clearClientSecret">
+                  <el-form-item v-if="providerForms[activeProvider].clientSecretConfigured" label="清除 Secret">
+                    <el-checkbox v-model="providerForms[activeProvider].clearClientSecret">
                       保存时清除当前 Secret
                     </el-checkbox>
                   </el-form-item>
 
-                  <el-form-item v-if="provider.key === 'telegram'" label="Bot Token">
+                  <el-form-item v-if="activeProvider === 'telegram'" label="Bot Token">
                     <el-input
                       v-model="providerForms.telegram.botToken"
                       type="password"
@@ -180,43 +175,43 @@
                       :placeholder="providerForms.telegram.botTokenConfigured ? '已配置，留空保持不变' : '输入 Bot Token'"
                     />
                   </el-form-item>
-                  <el-form-item v-if="provider.key === 'telegram' && providerForms.telegram.botTokenConfigured" label="清除 Bot Token">
+                  <el-form-item v-if="activeProvider === 'telegram' && providerForms.telegram.botTokenConfigured" label="清除 Bot Token">
                     <el-checkbox v-model="providerForms.telegram.clearBotToken">
                       保存时清除当前 Bot Token
                     </el-checkbox>
                   </el-form-item>
 
-                  <el-form-item v-if="provider.key === 'wecom'" label="Corp ID">
+                  <el-form-item v-if="activeProvider === 'wecom'" label="Corp ID">
                     <el-input v-model="providerForms.wecom.corpId" />
                   </el-form-item>
-                  <el-form-item v-if="provider.key === 'wecom'" label="Agent ID">
+                  <el-form-item v-if="activeProvider === 'wecom'" label="Agent ID">
                     <el-input v-model="providerForms.wecom.agentId" />
                   </el-form-item>
 
                   <el-form-item label="回调地址">
                     <el-input
-                      v-model="providerForms[provider.key].redirectUri"
-                      :placeholder="defaultRedirectUri(provider.key)"
+                      v-model="providerForms[activeProvider].redirectUri"
+                      :placeholder="defaultRedirectUri(activeProvider)"
                     />
                   </el-form-item>
                   <el-form-item label="Scopes">
                     <el-input
-                      v-model="providerForms[provider.key].scopes"
+                      v-model="providerForms[activeProvider].scopes"
                       placeholder="openid profile email"
                     />
                   </el-form-item>
 
                   <el-form-item label="授权地址">
-                    <el-input v-model="providerForms[provider.key].authorizeUrl" />
+                    <el-input v-model="providerForms[activeProvider].authorizeUrl" />
                   </el-form-item>
                   <el-form-item label="Token 地址">
-                    <el-input v-model="providerForms[provider.key].tokenUrl" />
+                    <el-input v-model="providerForms[activeProvider].tokenUrl" />
                   </el-form-item>
                   <el-form-item label="用户信息地址">
-                    <el-input v-model="providerForms[provider.key].userInfoUrl" />
+                    <el-input v-model="providerForms[activeProvider].userInfoUrl" />
                   </el-form-item>
-                  <el-form-item v-if="provider.key === 'oidc' || provider.key === 'custom'" label="Issuer">
-                    <el-input v-model="providerForms[provider.key].issuerUrl" />
+                  <el-form-item v-if="activeProvider === 'oidc' || activeProvider === 'custom'" label="Issuer">
+                    <el-input v-model="providerForms[activeProvider].issuerUrl" />
                   </el-form-item>
                 </div>
               </el-form>
@@ -276,6 +271,7 @@ const oauthForm = reactive({
 })
 
 const providerForms = reactive({})
+const activeProviderConfig = computed(() => providers.find((provider) => provider.key === activeProvider.value) || providers[0])
 
 const emptyProviderForm = () => ({
   enabled: false,
