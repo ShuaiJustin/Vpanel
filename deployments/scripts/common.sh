@@ -72,6 +72,22 @@ read_env_var() {
     grep "^${var_name}=" "$env_file" 2>/dev/null | head -n1 | cut -d'=' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
 }
 
+panel_access_url() {
+    local env_file=$1
+    local public_url
+    local publish_port
+
+    public_url=$(read_env_var "V_SERVER_PUBLIC_URL" "$env_file")
+    publish_port=$(read_env_var "VPANEL_PUBLISH_PORT" "$env_file")
+    publish_port=${publish_port:-8080}
+
+    if [ -n "$public_url" ]; then
+        echo "$public_url"
+    else
+        echo "http://localhost:${publish_port}"
+    fi
+}
+
 is_default_jwt_secret() {
     case "$1" in
         ""|"CHANGE_ME_OR_AUTO_GENERATE_ON_FIRST_START"|"CHANGE_ME_OR_SYSTEM_WILL_REFUSE_TO_START"|"your-secure-jwt-secret-change-me"|"change-me-in-production")
@@ -143,6 +159,19 @@ check_container_status() {
 
     cd "$current_dir" 2>/dev/null || true
     return $result
+}
+
+vpanel_container_id() {
+    local current_dir
+    current_dir="$(pwd)"
+
+    cd "$DOCKER_DIR" 2>/dev/null || return 1
+    local container_id
+    container_id="$(docker_compose_cmd ps -q v-panel 2>/dev/null | head -n1)"
+    cd "$current_dir" 2>/dev/null || true
+
+    [ -n "$container_id" ] || return 1
+    echo "$container_id"
 }
 
 show_volume_backup_hint() {

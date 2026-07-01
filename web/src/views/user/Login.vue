@@ -386,7 +386,7 @@ onMounted(async () => {
 
 .login-subtitle {
   font-size: 15px;
-  color: #909399;
+  color: var(--color-text-secondary);
   margin: 0;
 }
 
@@ -407,7 +407,7 @@ onMounted(async () => {
 
 .login-form :deep(.el-input__prefix) {
   margin-right: 10px;
-  color: #a8abb2;
+  color: var(--color-text-placeholder);
 }
 
 .login-form :deep(.el-input__inner) {
@@ -418,7 +418,7 @@ onMounted(async () => {
 }
 
 .login-form :deep(.el-input__inner::placeholder) {
-  color: #a8abb2;
+  color: var(--color-text-placeholder);
 }
 
 .form-options {
@@ -465,7 +465,7 @@ onMounted(async () => {
   align-items: center;
   gap: 12px;
   margin: 0 0 16px;
-  color: #909399;
+  color: var(--color-text-secondary);
   font-size: 13px;
 }
 
@@ -507,7 +507,7 @@ onMounted(async () => {
 .login-footer {
   text-align: center;
   font-size: 14px;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 .register-link {
@@ -541,7 +541,7 @@ onMounted(async () => {
 
 .twofa-header p {
   font-size: 14px;
-  color: #909399;
+  color: var(--color-text-secondary);
   margin: 0;
 }
 

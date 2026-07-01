@@ -18,15 +18,6 @@
   box-shadow: var(--shadow-sm) !important;
 }
 
-/* 登录/注册表单 */
-.dark .login-card,
-.dark .register-card,
-.dark .reset-password-card,
-.dark .forgot-password-card {
-  background: var(--color-bg-card) !important;
-  box-shadow: var(--shadow-md) !important;
-}
-
 /* 二维码容器 */
 .dark .qrcode-wrapper {
   background: var(--color-bg-card) !important;

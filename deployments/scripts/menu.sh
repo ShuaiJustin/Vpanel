@@ -8,7 +8,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # 清屏函数
 clear_screen() {
-    clear
+    if [ -t 1 ] && command -v clear >/dev/null 2>&1 && [ -n "${TERM:-}" ] && [ "${TERM:-}" != "dumb" ]; then
+        clear || true
+    else
+        printf '\n'
+    fi
 }
 
 # 显示标题
@@ -129,7 +133,11 @@ docker_menu() {
                 docker_compose_cmd ps
                 echo ""
                 echo -e "${CYAN}资源使用:${NC}"
-                docker stats --no-stream v-panel 2>/dev/null || echo "容器未运行"
+                if container_id=$(vpanel_container_id); then
+                    docker stats --no-stream "$container_id"
+                else
+                    echo "容器未运行"
+                fi
                 pause
                 ;;
             8)
@@ -137,8 +145,13 @@ docker_menu() {
                     echo -e "${RED}错误: 容器未运行${NC}"
                     pause
                 else
+                    if ! container_id=$(vpanel_container_id); then
+                        echo -e "${RED}错误: 无法找到 V Panel 容器${NC}"
+                        pause
+                        continue
+                    fi
                     echo -e "${CYAN}进入容器 Shell (输入 exit 退出)${NC}"
-                    docker exec -it v-panel sh
+                    docker exec -it "$container_id" sh
                 fi
                 ;;
             9)
@@ -523,14 +536,14 @@ main_menu() {
         # 显示快速状态
         echo -e "${CYAN}快速状态:${NC}"
         if check_container_status 2>/dev/null; then
-            # 读取端口
+            # Docker 部署下 V_SERVER_PORT 是容器内监听端口，实际访问端口看
+            # VPANEL_PUBLISH_PORT 或 V_SERVER_PUBLIC_URL。
             if [ -f "$DOCKER_DIR/.env" ]; then
-                PORT=$(read_env_var "V_SERVER_PORT" "$DOCKER_DIR/.env")
-                PORT=${PORT:-8080}
+                ACCESS_URL=$(panel_access_url "$DOCKER_DIR/.env")
             else
-                PORT=8080
+                ACCESS_URL="http://localhost:8080"
             fi
-            echo -e "  Docker: ${GREEN}运行中${NC} | 访问: ${YELLOW}http://localhost:${PORT}${NC}"
+            echo -e "  Docker: ${GREEN}运行中${NC} | 访问: ${YELLOW}${ACCESS_URL}${NC}"
         else
             echo -e "  Docker: ${YELLOW}已停止${NC}"
         fi

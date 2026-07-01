@@ -361,7 +361,7 @@ function showPrivacy() {
 
 .register-subtitle {
   font-size: 15px;
-  color: #909399;
+  color: var(--color-text-secondary);
   margin: 0;
 }
 
@@ -382,7 +382,7 @@ function showPrivacy() {
 
 .register-form :deep(.el-input__prefix) {
   margin-right: 10px;
-  color: #a8abb2;
+  color: var(--color-text-placeholder);
 }
 
 .register-form :deep(.el-input__inner) {
@@ -393,7 +393,7 @@ function showPrivacy() {
 }
 
 .register-form :deep(.el-input__inner::placeholder) {
-  color: #a8abb2;
+  color: var(--color-text-placeholder);
 }
 
 .register-btn {
@@ -475,7 +475,7 @@ function showPrivacy() {
 .strength-bar {
   flex: 1;
   height: 4px;
-  background: #ebeef5;
+  background: var(--color-border);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -526,7 +526,7 @@ function showPrivacy() {
 .register-footer {
   text-align: center;
   font-size: 14px;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 .login-link {
@@ -560,7 +560,7 @@ function showPrivacy() {
 
 .success-content p {
   font-size: 14px;
-  color: #606266;
+  color: var(--color-text-regular);
   margin: 0;
   line-height: 1.6;
   word-break: break-word;

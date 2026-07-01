@@ -91,7 +91,9 @@ const toggleTheme = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background:
+    radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.16), transparent 26%),
+    linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   position: relative;
   overflow-x: hidden;
   overflow-y: auto;
@@ -99,7 +101,10 @@ const toggleTheme = () => {
 }
 
 .auth-layout.dark-mode {
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  background:
+    radial-gradient(circle at 18% 18%, rgba(96, 165, 250, 0.15), transparent 28%),
+    radial-gradient(circle at 82% 72%, rgba(14, 165, 233, 0.1), transparent 30%),
+    linear-gradient(135deg, #111827 0%, #172033 100%);
 }
 
 /* 背景装饰 */
@@ -113,7 +118,7 @@ const toggleTheme = () => {
 .bg-shape {
   position: absolute;
   border-radius: 50%;
-  opacity: 0.1;
+  opacity: 0.12;
 }
 
 .bg-shape-1 {
@@ -177,7 +182,7 @@ const toggleTheme = () => {
 }
 
 .dark-mode .logo-icon {
-  background: #409eff;
+  background: var(--color-primary);
   color: #fff;
 }
 
@@ -196,13 +201,16 @@ const toggleTheme = () => {
 /* 卡片 */
 .auth-card {
   background: var(--color-bg-card);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 16px;
   padding: 40px 36px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
 }
 
 .dark-mode .auth-card {
-  background: #1f2937;
+  background: rgba(31, 41, 55, 0.94);
+  border-color: rgba(148, 163, 184, 0.22);
+  box-shadow: 0 24px 80px rgba(2, 6, 23, 0.45);
 }
 
 /* 底部 */

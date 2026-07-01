@@ -77,6 +77,7 @@ if [ -f "$DOCKER_DIR/.env" ]; then
     V_JWT_SECRET=$(read_env_var "V_JWT_SECRET" "$DOCKER_DIR/.env")
     V_ADMIN_PASS=$(read_env_var "V_ADMIN_PASS" "$DOCKER_DIR/.env")
     V_SERVER_PORT=$(read_env_var "V_SERVER_PORT" "$DOCKER_DIR/.env")
+    VPANEL_PUBLISH_PORT=$(read_env_var "VPANEL_PUBLISH_PORT" "$DOCKER_DIR/.env")
     
     # 检查服务器模式
     if [ "$V_SERVER_MODE" = "release" ]; then
@@ -128,26 +129,37 @@ echo ""
 echo -e "${CYAN}[4/6] 网络配置检查${NC}"
 
 if [ -n "$V_SERVER_PORT" ]; then
-    check_item "服务端口配置" "pass" "端口: ${V_SERVER_PORT}"
-    
-    # 检查端口是否被占用
+    check_item "容器内监听端口配置" "pass" "端口: ${V_SERVER_PORT}"
+else
+    check_item "容器内监听端口配置" "fail" "V_SERVER_PORT 未配置"
+fi
+
+HOST_PORT=${VPANEL_PUBLISH_PORT:-8080}
+if [ -n "$HOST_PORT" ]; then
+    check_item "宿主机发布端口配置" "pass" "端口: ${HOST_PORT}"
+
+    PORT_IN_USE=0
     if command -v lsof &> /dev/null; then
-        if lsof -i :$V_SERVER_PORT &> /dev/null; then
-            check_item "端口可用性" "fail" "端口 ${V_SERVER_PORT} 已被占用"
-        else
-            check_item "端口可用性" "pass" "端口 ${V_SERVER_PORT} 可用"
-        fi
+        lsof -i :$HOST_PORT &> /dev/null && PORT_IN_USE=1
     elif command -v ss &> /dev/null; then
-        if ss -ln | grep -E ":${V_SERVER_PORT}[[:space:]]" &> /dev/null; then
-            check_item "端口可用性" "fail" "端口 ${V_SERVER_PORT} 已被占用"
-        else
-            check_item "端口可用性" "pass" "端口 ${V_SERVER_PORT} 可用"
-        fi
+        ss -ln | grep -E ":${HOST_PORT}[[:space:]]" &> /dev/null && PORT_IN_USE=1
     else
-        check_item "端口可用性" "warn" "无法检查端口状态 (缺少 lsof/ss 工具)"
+        check_item "发布端口可用性" "warn" "无法检查端口状态 (缺少 lsof/ss 工具)"
+    fi
+
+    if command -v lsof &> /dev/null || command -v ss &> /dev/null; then
+        if [ "$PORT_IN_USE" -eq 1 ]; then
+            if check_container_status 2>/dev/null; then
+                check_item "发布端口可用性" "pass" "端口 ${HOST_PORT} 已由当前 V Panel 服务占用"
+            else
+                check_item "发布端口可用性" "fail" "端口 ${HOST_PORT} 已被其他进程占用"
+            fi
+        else
+            check_item "发布端口可用性" "pass" "端口 ${HOST_PORT} 可用"
+        fi
     fi
 else
-    check_item "服务端口配置" "fail" "端口未配置"
+    check_item "宿主机发布端口配置" "fail" "端口未配置"
 fi
 
 echo ""

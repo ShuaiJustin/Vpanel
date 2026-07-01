@@ -55,12 +55,19 @@ production_security_check() {
     
     # 检查端口配置
     local server_port=$(read_env_var "V_SERVER_PORT" "$env_file")
+    local publish_port=$(read_env_var "VPANEL_PUBLISH_PORT" "$env_file")
     if [ -z "$server_port" ]; then
-        echo -e "${RED}✗ 服务端口未配置！${NC}"
-        echo -e "  生产环境必须设置固定端口"
+        echo -e "${RED}✗ 容器内监听端口未配置！${NC}"
+        echo -e "  生产环境必须设置 V_SERVER_PORT，Docker 默认 8080"
         has_error=1
     else
-        echo -e "${GREEN}✓ 服务端口: ${server_port}${NC}"
+        echo -e "${GREEN}✓ 容器内监听端口: ${server_port}${NC}"
+    fi
+
+    if [ -z "$publish_port" ]; then
+        echo -e "${YELLOW}! 宿主机发布端口未配置，将默认使用 8080${NC}"
+    else
+        echo -e "${GREEN}✓ 宿主机发布端口: ${publish_port}${NC}"
     fi
     
     if [ $has_error -eq 1 ]; then
@@ -163,6 +170,7 @@ cd "$DOCKER_DIR" || {
 # 读取配置
 V_SERVER_PORT=$(read_env_var "V_SERVER_PORT" ".env")
 V_SERVER_MODE=$(read_env_var "V_SERVER_MODE" ".env")
+ACCESS_URL=$(panel_access_url ".env")
 
 # 端口处理逻辑
 if [ -z "$V_SERVER_PORT" ]; then
@@ -211,7 +219,8 @@ case "${1:-start}" in
             echo -e "${GREEN}========================================${NC}"
             echo -e "${GREEN}V Panel 启动成功！${NC}"
             echo -e "${GREEN}========================================${NC}"
-            echo -e "访问地址: ${YELLOW}http://localhost:${V_SERVER_PORT}${NC}"
+            echo -e "访问地址: ${YELLOW}${ACCESS_URL}${NC}"
+            echo -e "容器端口: ${YELLOW}${V_SERVER_PORT}${NC}"
             echo -e "用户名:   ${YELLOW}admin${NC}"
             echo -e "密码:     ${YELLOW}${admin_pass}${NC}"
             echo -e "模式:     ${YELLOW}${V_SERVER_MODE}${NC}"
@@ -234,7 +243,7 @@ case "${1:-start}" in
         echo -e "${YELLOW}重启 V Panel...${NC}"
         if docker_compose_cmd down && docker_compose_cmd up -d --build; then
             echo -e "${GREEN}V Panel 已重启${NC}"
-            echo -e "访问地址: ${YELLOW}http://localhost:${V_SERVER_PORT}${NC}"
+            echo -e "访问地址: ${YELLOW}${ACCESS_URL}${NC}"
         else
             echo -e "${RED}重启失败！${NC}"
             exit 1
@@ -246,7 +255,8 @@ case "${1:-start}" in
     status)
         docker_compose_cmd ps
         echo ""
-        echo -e "访问地址: ${YELLOW}http://localhost:${V_SERVER_PORT}${NC}"
+        echo -e "访问地址: ${YELLOW}${ACCESS_URL}${NC}"
+        echo -e "容器端口: ${YELLOW}${V_SERVER_PORT}${NC}"
         echo -e "模式:     ${YELLOW}${V_SERVER_MODE}${NC}"
         ;;
     clean)

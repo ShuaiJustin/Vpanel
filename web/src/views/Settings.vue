@@ -31,62 +31,128 @@
             class="settings-note"
           >
             <template #title>
-              修改下方字段后需点击 <strong>重启面板</strong> 才会生效。<br>
-              ⚠️ Docker 部署：如果修改了"面板端口"，请同步修改 <code>docker-compose.yml</code> 的端口映射（如 <code>13212:8080</code> 中的容器端口），否则重启后面板将无法访问。<br>
-              ⚠️ 反向代理 / Cloudflare Tunnel 场景：公网访问地址填写外部可访问的完整地址，CORS 白名单填写允许访问面板 API 的浏览器来源。
+              修改服务器监听、URL、TLS 或时区后，需要点击 <strong>重启面板</strong> 才会生效。
             </template>
           </el-alert>
-          <el-form-item label="面板监听地址">
-            <el-input
-              v-model="serverForm.panelListenIP"
-              placeholder="0.0.0.0"
-            />
-            <div class="form-tips">
-              默认 0.0.0.0（监听所有接口）。一般不需要改，除非你想只监听某个网卡 IP
+
+          <section class="settings-section">
+            <div class="settings-section__header">
+              <div>
+                <h3 class="settings-section__title">
+                  当前运行状态
+                </h3>
+                <p class="settings-section__description">
+                  只读信息，来自当前容器和环境变量
+                </p>
+              </div>
             </div>
-          </el-form-item>
-          <el-form-item label="面板端口">
-            <el-input-number
-              v-model="serverForm.panelPort"
-              :min="1"
-              :max="65535"
-            />
-            <div class="form-tips">
-              容器内监听端口。改这个的时候 docker-compose 端口映射要同步改
+
+            <div class="runtime-summary-grid">
+              <div class="runtime-summary-item">
+                <span class="runtime-summary-label">对外访问地址</span>
+                <strong class="runtime-summary-value">{{ runtimePublicUrlLabel }}</strong>
+              </div>
+              <div class="runtime-summary-item">
+                <span class="runtime-summary-label">Docker 端口映射（HOST -> CONTAINER）</span>
+                <strong class="runtime-summary-value">{{ runtimePortMappingLabel }}</strong>
+              </div>
+              <div class="runtime-summary-item">
+                <span class="runtime-summary-label">容器监听</span>
+                <strong class="runtime-summary-value">{{ runtimeListenLabel }}</strong>
+              </div>
+              <div class="runtime-summary-item">
+                <span class="runtime-summary-label">URL 基础路径</span>
+                <strong class="runtime-summary-value">{{ serverForm.panelBasePath || '/' }}</strong>
+              </div>
             </div>
-          </el-form-item>
-          <el-form-item label="面板URL基础路径">
-            <el-input
-              v-model="serverForm.panelBasePath"
-              placeholder="/"
-            />
-            <div class="form-tips">
-              默认 /，设置为如 /vpanel 时，面板会挂载到 https://yourdomain/vpanel/ 下（保存后需要重启面板生效）
+          </section>
+
+          <section class="settings-section">
+            <div class="settings-section__header">
+              <div>
+                <h3 class="settings-section__title">
+                  对外访问
+                </h3>
+                <p class="settings-section__description">
+                  用于远程部署、订阅链接、邀请链接和浏览器跨域访问
+                </p>
+              </div>
             </div>
-          </el-form-item>
-          <el-form-item label="公网访问地址">
-            <el-input
-              v-model="serverForm.publicUrl"
-              placeholder="https://panel.example.com"
-            />
-            <div class="form-tips">
-              用于远程部署、订阅链接、邀请链接等外部回调地址。只填写协议 + 域名 + 可选端口，不填写路径
+
+            <el-form-item label="对外访问地址">
+              <el-input
+                v-model="serverForm.publicUrl"
+                placeholder="https://panel.example.com:13212"
+              />
+              <div class="form-tips">
+                填浏览器和节点实际访问的 Origin：协议 + 域名/IP + 可选端口，不填写路径
+              </div>
+            </el-form-item>
+            <el-form-item label="URL 基础路径">
+              <el-input
+                v-model="serverForm.panelBasePath"
+                placeholder="/"
+              />
+              <div class="form-tips">
+                默认 /。如面板挂在反向代理的 /vpanel 下，这里填写 /vpanel
+              </div>
+            </el-form-item>
+            <el-form-item label="允许的浏览器来源">
+              <el-input
+                v-model="serverForm.corsOrigins"
+                type="textarea"
+                :rows="2"
+                placeholder="https://panel.example.com:13212"
+              />
+              <div class="form-tips">
+                CORS Origin 列表，通常与对外访问地址一致；多个来源可用逗号或换行分隔。公网环境建议明确填写来源，留空时保持兼容模式
+              </div>
+            </el-form-item>
+          </section>
+
+          <section class="settings-section">
+            <el-collapse
+              v-model="serverAdvancedSections"
+              class="advanced-collapse"
+            >
+              <el-collapse-item name="listen">
+                <template #title>
+                  <span class="advanced-collapse-title">服务监听（高级）</span>
+                </template>
+                <el-form-item label="监听地址">
+                  <el-input
+                    v-model="serverForm.panelListenIP"
+                    placeholder="0.0.0.0"
+                  />
+                  <div class="form-tips">
+                    容器内应用绑定地址。Docker 部署通常保持 0.0.0.0
+                  </div>
+                </el-form-item>
+                <el-form-item label="监听端口">
+                  <el-input-number
+                    v-model="serverForm.panelPort"
+                    :min="1"
+                    :max="65535"
+                  />
+                  <div class="form-tips">
+                    容器内 target 端口，Docker 部署通常保持 8080；对外端口由发布端口决定
+                  </div>
+                </el-form-item>
+              </el-collapse-item>
+            </el-collapse>
+          </section>
+
+          <section class="settings-section">
+            <div class="settings-section__header">
+              <div>
+                <h3 class="settings-section__title">
+                  HTTPS / TLS（可选）
+                </h3>
+                <p class="settings-section__description">
+                  直接在面板应用内启用 HTTPS；使用反向代理终止 TLS 时可留空
+                </p>
+              </div>
             </div>
-          </el-form-item>
-          <el-form-item label="CORS 白名单">
-            <el-input
-              v-model="serverForm.corsOrigins"
-              type="textarea"
-              :rows="2"
-              placeholder="https://panel.example.com, https://admin.example.com"
-            />
-            <div class="form-tips">
-              多个来源可用逗号或换行分隔。留空时保持当前兼容行为：允许所有跨域来源
-            </div>
-          </el-form-item>
-          <el-divider content-position="left">
-            HTTPS / TLS（可选）
-          </el-divider>
           <el-form-item label="选择证书">
             <div class="cert-picker">
               <el-select
@@ -143,10 +209,20 @@
                 placeholder="/app/certs/privkey.pem"
               />
               <div class="form-tips">
-                同上。两个路径都填且文件存在时，重启后面板自动切到 HTTPS；只填一个会被保存校验拒绝
+              同上。两个路径都填且文件存在时，重启后面板自动切到 HTTPS；只填一个会被保存校验拒绝
               </div>
             </el-form-item>
           </template>
+          </section>
+
+          <section class="settings-section">
+            <div class="settings-section__header">
+              <div>
+                <h3 class="settings-section__title">
+                  运行环境
+                </h3>
+              </div>
+            </div>
           <el-form-item label="服务时区">
             <el-select
               v-model="serverForm.timezone"
@@ -173,6 +249,7 @@
               保存后立即生效；同时影响日志、调度等所有时间戳
             </div>
           </el-form-item>
+          </section>
           <el-divider />
           <el-form-item class="form-actions-row">
             <el-button
@@ -1101,6 +1178,7 @@ const availableCerts = ref([])
 const certListLoading = ref(false)
 const applyingCert = ref(false)
 const showManualCertPaths = ref(false)
+const serverAdvancedSections = ref([])
 
 const dbForm = reactive({
   dbType: 'sqlite',
@@ -1116,6 +1194,28 @@ const runtimeDatabase = reactive({
   driver: 'sqlite',
   path: '',
   dsnMasked: ''
+})
+
+const runtimePanel = reactive({
+  listenHost: '0.0.0.0',
+  listenPort: 8080,
+  publicUrl: '',
+  publicHost: '',
+  publicPort: null,
+  publishPort: null
+})
+
+const runtimePublicUrlLabel = computed(() => runtimePanel.publicUrl || '未配置')
+const runtimeListenLabel = computed(() => {
+  const host = runtimePanel.listenHost || serverForm.panelListenIP || '0.0.0.0'
+  const port = runtimePanel.listenPort || serverForm.panelPort || 8080
+  return `${host}:${port}`
+})
+const runtimePortMappingLabel = computed(() => {
+  const publishPort = runtimePanel.publishPort || runtimePanel.publicPort
+  const targetPort = runtimePanel.listenPort || serverForm.panelPort || 8080
+  if (!publishPort) return `未检测到 HOST 端口 -> ${targetPort}`
+  return `${publishPort} -> ${targetPort}`
 })
 
 const normalizeRuntimeDbDriver = (driver) => {
@@ -1214,6 +1314,14 @@ const applyServerSettings = (settings) => {
   serverForm.panelKeyPath = settings?.panel_key_path || ''
   serverForm.proxyMode = settings?.proxy_mode || 'compatible'
   serverForm.timezone = settings?.timezone || 'Asia/Shanghai'
+
+  const runtime = settings?.runtime_panel || {}
+  runtimePanel.listenHost = runtime.listen_host || serverForm.panelListenIP || '0.0.0.0'
+  runtimePanel.listenPort = runtime.listen_port || serverForm.panelPort || 8080
+  runtimePanel.publicUrl = runtime.public_url || serverForm.publicUrl || ''
+  runtimePanel.publicHost = runtime.public_host || ''
+  runtimePanel.publicPort = runtime.public_port || null
+  runtimePanel.publishPort = runtime.publish_port || null
 }
 
 const applyDbSettings = (settings) => {
@@ -1497,7 +1605,7 @@ const normalizeCorsOrigins = (value) => {
 const buildServerSettingsPayload = () => {
   const panelPort = Number(serverForm.panelPort)
   if (!Number.isInteger(panelPort) || panelPort < 1 || panelPort > 65535) {
-    ElMessage.warning('面板端口必须在 1-65535 之间')
+    ElMessage.warning('容器内监听端口必须在 1-65535 之间')
     return null
   }
 
@@ -1998,6 +2106,91 @@ const saveProtocolSettings = async () => {
 .settings-form {
   max-width: 800px;
   margin-top: 20px;
+}
+
+.settings-section {
+  padding: 18px 0 4px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.settings-note + .settings-section {
+  border-top: 0;
+  padding-top: 4px;
+}
+
+.settings-section__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.settings-section__title {
+  margin: 0;
+  color: var(--admin-title);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.settings-section__description {
+  margin: 4px 0 0;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.runtime-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.runtime-summary-item {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 8px;
+  background: var(--admin-surface);
+}
+
+.runtime-summary-label {
+  display: block;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.runtime-summary-value {
+  display: block;
+  margin-top: 5px;
+  color: var(--admin-title);
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.advanced-collapse {
+  width: 100%;
+  border-top: 0;
+  border-bottom: 0;
+}
+
+.advanced-collapse :deep(.el-collapse-item__header) {
+  height: 44px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  color: var(--admin-title);
+  font-weight: 700;
+}
+
+.advanced-collapse :deep(.el-collapse-item__wrap) {
+  border-bottom: 0;
+}
+
+.advanced-collapse-title {
+  font-size: 15px;
 }
 
 .cert-picker {

@@ -151,16 +151,12 @@ async function resendEmail() {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
 }
 
 .forgot-card {
   width: 100%;
-  max-width: 400px;
-  background: var(--color-bg-card);
-  border-radius: 12px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
-  padding: 40px;
+  max-width: 360px;
+  margin: 0 auto;
 }
 
 .forgot-header {
@@ -183,7 +179,7 @@ async function resendEmail() {
 
 .forgot-subtitle {
   font-size: 14px;
-  color: #909399;
+  color: var(--color-text-secondary);
   margin: 0;
   line-height: 1.6;
 }
@@ -220,13 +216,13 @@ async function resendEmail() {
 
 .success-message p {
   font-size: 14px;
-  color: #606266;
+  color: var(--color-text-regular);
   margin: 0 0 8px 0;
   line-height: 1.6;
 }
 
 .success-message .hint {
-  color: #909399;
+  color: var(--color-text-secondary);
   font-size: 13px;
 }
 
@@ -249,10 +245,6 @@ async function resendEmail() {
 
 /* 响应式 */
 @media (max-width: 480px) {
-  .forgot-card {
-    padding: 24px;
-  }
-  
   .forgot-title {
     font-size: 20px;
   }

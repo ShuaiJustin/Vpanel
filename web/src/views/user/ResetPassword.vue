@@ -301,16 +301,12 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
 }
 
 .reset-card {
   width: 100%;
-  max-width: 400px;
-  background: var(--color-bg-card);
-  border-radius: 12px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
-  padding: 40px;
+  max-width: 360px;
+  margin: 0 auto;
 }
 
 /* 验证状态 */
@@ -332,7 +328,7 @@ onMounted(() => {
 
 .verifying-state p {
   margin-top: 16px;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 /* 无效状态 */
@@ -365,7 +361,7 @@ onMounted(() => {
 .invalid-state p,
 .success-state p {
   font-size: 14px;
-  color: #606266;
+  color: var(--color-text-regular);
   margin: 0 0 24px 0;
   line-height: 1.6;
 }
@@ -391,7 +387,7 @@ onMounted(() => {
 
 .reset-subtitle {
   font-size: 14px;
-  color: #909399;
+  color: var(--color-text-secondary);
   margin: 0;
 }
 
@@ -417,7 +413,7 @@ onMounted(() => {
 .strength-bar {
   flex: 1;
   height: 4px;
-  background: #ebeef5;
+  background: var(--color-border);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -462,10 +458,6 @@ onMounted(() => {
 
 /* 响应式 */
 @media (max-width: 480px) {
-  .reset-card {
-    padding: 24px;
-  }
-  
   .reset-title {
     font-size: 20px;
   }

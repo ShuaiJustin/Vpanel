@@ -80,6 +80,18 @@ type RuntimeDatabaseInfo struct {
 	DSNMasked string `json:"dsn_masked,omitempty"`
 }
 
+// RuntimePanelInfo describes how the current process is exposed at runtime.
+// It helps Docker deployments distinguish the internal listen port from the
+// host/public port.
+type RuntimePanelInfo struct {
+	ListenHost  string `json:"listen_host"`
+	ListenPort  int    `json:"listen_port"`
+	PublicURL   string `json:"public_url,omitempty"`
+	PublicHost  string `json:"public_host,omitempty"`
+	PublicPort  int    `json:"public_port,omitempty"`
+	PublishPort int    `json:"publish_port,omitempty"`
+}
+
 // SystemSettings represents all system settings.
 type SystemSettings struct {
 	SiteName            string `json:"site_name"`
@@ -118,6 +130,7 @@ type SystemSettings struct {
 	DBPasswordConfigured bool                 `json:"db_password_configured"`
 	SQLitePath           string               `json:"sqlite_path"`
 	RuntimeDatabase      *RuntimeDatabaseInfo `json:"runtime_database,omitempty"`
+	RuntimePanel         *RuntimePanelInfo    `json:"runtime_panel,omitempty"`
 
 	// Log settings
 	LogLevel           string `json:"log_level"`

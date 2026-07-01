@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -119,6 +120,7 @@ func (h *SettingsHandler) GetSettings(c *gin.Context) {
 	}
 	publicSettings := publicSystemSettings(systemSettings)
 	publicSettings.RuntimeDatabase = h.runtimeDatabaseInfo()
+	publicSettings.RuntimePanel = h.runtimePanelInfo(publicSettings)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
@@ -588,10 +590,14 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 		})
 	}
 
+	responseSettings := publicSystemSettings(currentSettings)
+	responseSettings.RuntimeDatabase = h.runtimeDatabaseInfo()
+	responseSettings.RuntimePanel = h.runtimePanelInfo(responseSettings)
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "settings updated",
-		"data":    publicSystemSettings(currentSettings),
+		"data":    responseSettings,
 	})
 }
 
@@ -602,6 +608,50 @@ func publicSystemSettings(systemSettings *settings.SystemSettings) *settings.Sys
 	output := *systemSettings
 	output.Auth = settings.PublicAuthSettings(output.Auth)
 	return &output
+}
+
+func (h *SettingsHandler) runtimePanelInfo(systemSettings *settings.SystemSettings) *settings.RuntimePanelInfo {
+	info := &settings.RuntimePanelInfo{}
+	if systemSettings != nil {
+		info.ListenHost = strings.TrimSpace(systemSettings.PanelAccessIP)
+		info.ListenPort = systemSettings.PanelPort
+		info.PublicURL = strings.TrimSuffix(strings.TrimSpace(systemSettings.PublicURL), "/")
+	}
+	if info.ListenHost == "" {
+		info.ListenHost = "0.0.0.0"
+	}
+
+	if publishPort := parseRuntimePort(os.Getenv("VPANEL_PUBLISH_PORT")); publishPort > 0 {
+		info.PublishPort = publishPort
+	}
+	if info.PublicURL != "" {
+		if parsed, err := url.Parse(info.PublicURL); err == nil {
+			info.PublicHost = parsed.Hostname()
+			if port := parseRuntimePort(parsed.Port()); port > 0 {
+				info.PublicPort = port
+			} else if strings.EqualFold(parsed.Scheme, "https") {
+				info.PublicPort = 443
+			} else if strings.EqualFold(parsed.Scheme, "http") {
+				info.PublicPort = 80
+			}
+		}
+	}
+	if info.PublicPort == 0 && info.PublishPort > 0 {
+		info.PublicPort = info.PublishPort
+	}
+	return info
+}
+
+func parseRuntimePort(value string) int {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1 || port > 65535 {
+		return 0
+	}
+	return port
 }
 
 type TestDatabaseRequest struct {

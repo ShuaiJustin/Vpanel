@@ -119,6 +119,27 @@ func TestRuntimeDatabaseInfoMasksNonSQLiteDSN(t *testing.T) {
 	}
 }
 
+func TestRuntimePanelInfoReportsDockerPublishPort(t *testing.T) {
+	t.Setenv("VPANEL_PUBLISH_PORT", "13212")
+	handler := NewSettingsHandler(logger.NewNopLogger(), nil)
+
+	got := handler.runtimePanelInfo(&settings.SystemSettings{
+		PanelAccessIP: "0.0.0.0",
+		PanelPort:     8080,
+		PublicURL:     "https://panel.shcrystal.top:13212",
+	})
+
+	if got.ListenPort != 8080 {
+		t.Fatalf("expected internal listen port 8080, got %d", got.ListenPort)
+	}
+	if got.PublishPort != 13212 {
+		t.Fatalf("expected publish port 13212, got %d", got.PublishPort)
+	}
+	if got.PublicPort != 13212 {
+		t.Fatalf("expected public port 13212, got %d", got.PublicPort)
+	}
+}
+
 func TestPublicSystemSettingsDoesNotMutateAuthSecrets(t *testing.T) {
 	systemSettings := settings.DefaultSettings()
 	systemSettings.Auth.BasicAuth.Password = "basic-secret"
