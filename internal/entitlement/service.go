@@ -458,6 +458,18 @@ func (s *Service) GetSubscriptionProxies(ctx context.Context, userID int64) ([]*
 	return result, state, nil
 }
 
+// EnsureRuntimeProxies initializes the user's runtime proxies according to their current access tier.
+func (s *Service) EnsureRuntimeProxies(ctx context.Context, userID int64) ([]*repository.Proxy, *AccessState, error) {
+	state, err := s.EvaluateAccess(ctx, userID)
+	if err != nil {
+		return nil, state, err
+	}
+	if state.HasActiveSubscription {
+		return s.GetSubscriptionProxies(ctx, userID)
+	}
+	return s.GetAccessibleProxies(ctx, userID)
+}
+
 // ProvisionNodeProxies proactively creates default proxies for all currently entitled portal users on a node.
 func (s *Service) ProvisionNodeProxies(ctx context.Context, nodeID int64) (*NodeProvisionResult, error) {
 	result := &NodeProvisionResult{NodeID: nodeID}

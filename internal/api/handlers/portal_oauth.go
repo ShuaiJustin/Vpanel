@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +33,7 @@ var portalOAuthProviderLabels = map[string]string{
 	"oidc":    "OIDC",
 	"linuxdo": "LinuxDO",
 	"wechat":  "微信",
+	"wecom":   "企业微信",
 }
 
 var portalOAuthGenericProviders = map[string]struct{}{
@@ -65,6 +67,8 @@ type portalOAuthTokenResponse struct {
 	Error       string `json:"error"`
 	Description string `json:"error_description"`
 }
+
+type portalOAuthHTTPClientKey struct{}
 
 // GetOAuthProviders returns public OAuth login providers for the portal login page.
 func (h *PortalAuthHandler) GetOAuthProviders(c *gin.Context) {
@@ -161,21 +165,21 @@ func (h *PortalAuthHandler) OAuthCallback(c *gin.Context) {
 
 	tokenResponse, err := h.exchangePortalOAuthCode(c.Request.Context(), c, providerKey, provider, code)
 	if err != nil {
-		h.logger.Warn("oauth token exchange failed", logger.F("provider", providerKey), logger.F("error", err))
+		h.logger.Warn("oauth token exchange failed", logger.F("provider", providerKey), logger.Err(err))
 		c.Redirect(http.StatusFound, portalOAuthLoginErrorURL("第三方登录授权失败"))
 		return
 	}
 
-	userInfo, err := h.fetchPortalOAuthUserInfo(c.Request.Context(), providerKey, provider, tokenResponse.AccessToken)
+	userInfo, err := h.fetchPortalOAuthUserInfo(c.Request.Context(), providerKey, provider, tokenResponse)
 	if err != nil {
-		h.logger.Warn("oauth userinfo failed", logger.F("provider", providerKey), logger.F("error", err))
+		h.logger.Warn("oauth userinfo failed", logger.F("provider", providerKey), logger.Err(err))
 		c.Redirect(http.StatusFound, portalOAuthLoginErrorURL("无法获取第三方账号信息"))
 		return
 	}
 
 	user, err := h.resolvePortalOAuthUser(c.Request.Context(), authSettings, providerKey, userInfo)
 	if err != nil {
-		h.logger.Warn("oauth user resolve failed", logger.F("provider", providerKey), logger.F("error", err))
+		h.logger.Warn("oauth user resolve failed", logger.F("provider", providerKey), logger.Err(err))
 		c.Redirect(http.StatusFound, portalOAuthLoginErrorURL(err.Error()))
 		return
 	}
@@ -187,6 +191,14 @@ func (h *PortalAuthHandler) OAuthCallback(c *gin.Context) {
 	if user.IsExpired() {
 		c.Redirect(http.StatusFound, portalOAuthLoginErrorURL("账号已过期，请续费"))
 		return
+	}
+	if h.entitlement != nil {
+		if _, _, entitlementErr := h.entitlement.EnsureRuntimeProxies(c.Request.Context(), user.ID); entitlementErr != nil && !pkgerrors.IsForbidden(entitlementErr) {
+			h.logger.Warn("failed to initialize portal oauth entitlement",
+				logger.F("user_id", user.ID),
+				logger.F("error", entitlementErr),
+			)
+		}
 	}
 
 	token, err := h.authService.GenerateToken(user.ID, user.Username, user.Role)
@@ -247,6 +259,13 @@ func (h *PortalAuthHandler) resolvePortalOAuthProvider(c *gin.Context, providerK
 func isPortalOAuthProviderLoginReady(key string, provider settings.OAuthProviderSettings) bool {
 	if !provider.Enabled {
 		return false
+	}
+	if key == "wecom" {
+		return strings.TrimSpace(provider.CorpID) != "" &&
+			strings.TrimSpace(provider.AgentID) != "" &&
+			strings.TrimSpace(provider.ClientSecret) != "" &&
+			strings.TrimSpace(provider.AuthorizeURL) != "" &&
+			strings.TrimSpace(provider.TokenURL) != ""
 	}
 	if _, ok := portalOAuthGenericProviders[key]; !ok {
 		return false
@@ -321,6 +340,18 @@ func buildPortalOAuthAuthorizeURL(c *gin.Context, providerKey string, provider s
 		return "", err
 	}
 	query := parsed.Query()
+	if providerKey == "wecom" {
+		query.Set("login_type", "CorpApp")
+		query.Set("appid", strings.TrimSpace(provider.CorpID))
+		query.Set("agentid", strings.TrimSpace(provider.AgentID))
+		query.Set("redirect_uri", portalOAuthRedirectURI(c, providerKey, provider))
+		query.Set("state", state)
+		if len(provider.Scopes) > 0 {
+			query.Set("scope", strings.Join(provider.Scopes, " "))
+		}
+		parsed.RawQuery = query.Encode()
+		return parsed.String(), nil
+	}
 	query.Set("response_type", "code")
 	query.Set("client_id", strings.TrimSpace(provider.ClientID))
 	query.Set("redirect_uri", portalOAuthRedirectURI(c, providerKey, provider))
@@ -345,6 +376,9 @@ func portalOAuthRedirectURI(c *gin.Context, providerKey string, provider setting
 }
 
 func (h *PortalAuthHandler) exchangePortalOAuthCode(ctx context.Context, c *gin.Context, providerKey string, provider settings.OAuthProviderSettings, code string) (portalOAuthTokenResponse, error) {
+	if providerKey == "wecom" {
+		return h.exchangeWeComOAuthCode(ctx, provider, code)
+	}
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("code", code)
@@ -398,7 +432,11 @@ func (h *PortalAuthHandler) exchangePortalOAuthCode(ctx context.Context, c *gin.
 	return tokenResponse, nil
 }
 
-func (h *PortalAuthHandler) fetchPortalOAuthUserInfo(ctx context.Context, providerKey string, provider settings.OAuthProviderSettings, accessToken string) (portalOAuthUserInfo, error) {
+func (h *PortalAuthHandler) fetchPortalOAuthUserInfo(ctx context.Context, providerKey string, provider settings.OAuthProviderSettings, tokenResponse portalOAuthTokenResponse) (portalOAuthUserInfo, error) {
+	accessToken := strings.TrimSpace(tokenResponse.AccessToken)
+	if providerKey == "wecom" {
+		return fetchWeComOAuthUserInfo(ctx, accessToken, tokenResponse.TokenType, tokenResponse.IDToken, provider.UserInfoURL)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSpace(provider.UserInfoURL), nil)
 	if err != nil {
 		return portalOAuthUserInfo{}, err
@@ -439,11 +477,148 @@ func (h *PortalAuthHandler) fetchPortalOAuthUserInfo(ctx context.Context, provid
 	return info, nil
 }
 
+func (h *PortalAuthHandler) exchangeWeComOAuthCode(ctx context.Context, provider settings.OAuthProviderSettings, code string) (portalOAuthTokenResponse, error) {
+	tokenURL, err := url.Parse(strings.TrimSpace(provider.TokenURL))
+	if err != nil {
+		return portalOAuthTokenResponse{}, err
+	}
+	query := tokenURL.Query()
+	query.Set("corpid", strings.TrimSpace(provider.CorpID))
+	query.Set("corpsecret", strings.TrimSpace(provider.ClientSecret))
+	tokenURL.RawQuery = query.Encode()
+
+	body, err := readPortalOAuthJSON(ctx, tokenURL.String())
+	if err != nil {
+		return portalOAuthTokenResponse{}, err
+	}
+	if err := weComAPIError(body); err != nil {
+		return portalOAuthTokenResponse{}, fmt.Errorf("wecom gettoken failed: %w", err)
+	}
+	accessToken := firstString(body, "access_token")
+	if accessToken == "" {
+		return portalOAuthTokenResponse{}, fmt.Errorf("missing access token")
+	}
+
+	userInfoURL := "https://qyapi.weixin.qq.com/cgi-bin/auth/getuserinfo"
+	userInfoQuery := url.Values{}
+	userInfoQuery.Set("access_token", accessToken)
+	userInfoQuery.Set("code", strings.TrimSpace(code))
+	userInfo, err := readPortalOAuthJSON(ctx, userInfoURL+"?"+userInfoQuery.Encode())
+	if err != nil {
+		return portalOAuthTokenResponse{}, err
+	}
+	if err := weComAPIError(userInfo); err != nil {
+		return portalOAuthTokenResponse{}, fmt.Errorf("wecom getuserinfo failed: %w", err)
+	}
+	userID := firstString(userInfo, "UserId", "userid", "OpenId", "openid")
+	if userID == "" {
+		return portalOAuthTokenResponse{}, fmt.Errorf("missing wecom user identity")
+	}
+	tokenResponse := portalOAuthTokenResponse{
+		AccessToken: userID,
+		TokenType:   firstString(userInfo, "user_ticket"),
+		IDToken:     accessToken,
+	}
+	return tokenResponse, nil
+}
+
+func fetchWeComOAuthUserInfo(ctx context.Context, userID, userTicket, corpAccessToken, userInfoURL string) (portalOAuthUserInfo, error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return portalOAuthUserInfo{}, fmt.Errorf("missing wecom user identity")
+	}
+	if strings.TrimSpace(userInfoURL) != "" && strings.TrimSpace(userTicket) != "" && strings.TrimSpace(corpAccessToken) != "" {
+		detailURL, err := url.Parse(strings.TrimSpace(userInfoURL))
+		if err != nil {
+			return portalOAuthUserInfo{}, err
+		}
+		query := detailURL.Query()
+		if query.Get("access_token") == "" {
+			query.Set("access_token", strings.TrimSpace(corpAccessToken))
+		}
+		detailURL.RawQuery = query.Encode()
+		body, err := postPortalOAuthJSON(ctx, detailURL.String(), strings.NewReader(`{"user_ticket":`+strconv.Quote(strings.TrimSpace(userTicket))+`}`))
+		if err == nil && weComAPIError(body) == nil {
+			info := parsePortalOAuthUserInfo(body)
+			info.EmailVerified = true
+			if info.ExternalID != "" && info.Email != "" {
+				return info, nil
+			}
+		}
+	}
+	emailUser := strings.NewReplacer("@", "_", "/", "_").Replace(userID)
+	return portalOAuthUserInfo{
+		ExternalID:    userID,
+		Email:         normalizePortalEmail(emailUser + "@wecom.local"),
+		EmailVerified: true,
+		Username:      emailUser,
+		DisplayName:   emailUser,
+	}, nil
+}
+
+func readPortalOAuthJSON(ctx context.Context, requestURL string) (map[string]any, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := portalOAuthHTTPClient(ctx).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("endpoint returned %d", resp.StatusCode)
+	}
+	var raw map[string]any
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&raw); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+func postPortalOAuthJSON(ctx context.Context, requestURL string, body io.Reader) (map[string]any, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := portalOAuthHTTPClient(ctx).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("endpoint returned %d", resp.StatusCode)
+	}
+	var raw map[string]any
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&raw); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+func portalOAuthHTTPClient(ctx context.Context) *http.Client {
+	if client, ok := ctx.Value(portalOAuthHTTPClientKey{}).(*http.Client); ok && client != nil {
+		return client
+	}
+	return &http.Client{Timeout: 15 * time.Second}
+}
+
+func weComAPIError(raw map[string]any) error {
+	code, ok := raw["errcode"]
+	if !ok || fmt.Sprint(code) == "0" {
+		return nil
+	}
+	return fmt.Errorf("wecom api error %v: %s", code, firstString(raw, "errmsg"))
+}
+
 func parsePortalOAuthUserInfo(raw map[string]any) portalOAuthUserInfo {
 	info := portalOAuthUserInfo{
-		ExternalID:  firstString(raw, "sub", "id", "openid", "unionid"),
+		ExternalID:  firstString(raw, "sub", "id", "userid", "UserId", "openid", "OpenId", "unionid"),
 		Email:       normalizePortalEmail(firstString(raw, "email", "mail")),
-		Username:    firstString(raw, "preferred_username", "login", "username", "nickname", "name"),
+		Username:    firstString(raw, "preferred_username", "login", "username", "userid", "UserId", "nickname", "name"),
 		DisplayName: firstString(raw, "name", "display_name", "nickname", "login", "username"),
 		AvatarURL:   firstString(raw, "picture", "avatar_url", "avatar"),
 	}

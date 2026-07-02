@@ -508,6 +508,83 @@ func TestGetAccessibleProxies_AssignsSingleNodeInsteadOfGlobalFallback(t *testin
 	}
 }
 
+func TestEnsureRuntimeProxies_ProvisionAllNodesForSubscription(t *testing.T) {
+	service, db := setupTestService(t)
+	user := createTestUser(t, db, "runtime-subscription-user")
+	expiresAt := time.Now().Add(30 * 24 * time.Hour)
+	user.ExpiresAt = &expiresAt
+	user.TrafficLimit = 100 << 30
+	if err := db.Save(user).Error; err != nil {
+		t.Fatalf("failed to activate subscription user: %v", err)
+	}
+
+	nodeOne := createTestNode(t, db, "runtime-subscription-node-one")
+	nodeOne.Protocols = `["vmess"]`
+	if err := db.Save(nodeOne).Error; err != nil {
+		t.Fatalf("failed to update node one protocols: %v", err)
+	}
+	nodeTwo := createTestNode(t, db, "runtime-subscription-node-two")
+	nodeTwo.Protocols = `["vmess"]`
+	if err := db.Save(nodeTwo).Error; err != nil {
+		t.Fatalf("failed to update node two protocols: %v", err)
+	}
+
+	proxies, state, err := service.EnsureRuntimeProxies(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("expected subscription runtime proxies, got error: %v", err)
+	}
+	if state == nil || !state.HasActiveSubscription {
+		t.Fatalf("expected active subscription state, got %+v", state)
+	}
+	if len(proxies) != 2 {
+		t.Fatalf("expected all subscription nodes, got %d", len(proxies))
+	}
+
+	nodeIDs := map[int64]bool{}
+	for _, proxyModel := range proxies {
+		if proxyModel.NodeID != nil {
+			nodeIDs[*proxyModel.NodeID] = true
+		}
+	}
+	if !nodeIDs[nodeOne.ID] || !nodeIDs[nodeTwo.ID] {
+		t.Fatalf("expected proxies on nodes %d and %d, got %+v", nodeOne.ID, nodeTwo.ID, nodeIDs)
+	}
+}
+
+func TestEnsureRuntimeProxies_KeepsTrialOnSingleNode(t *testing.T) {
+	service, db := setupTestService(t)
+	user := createTestUser(t, db, "runtime-trial-user")
+	nodeOne := createTestNode(t, db, "runtime-trial-node-one")
+	nodeOne.Protocols = `["vmess"]`
+	if err := db.Save(nodeOne).Error; err != nil {
+		t.Fatalf("failed to update node one protocols: %v", err)
+	}
+	nodeTwo := createTestNode(t, db, "runtime-trial-node-two")
+	nodeTwo.Protocols = `["vmess"]`
+	if err := db.Save(nodeTwo).Error; err != nil {
+		t.Fatalf("failed to update node two protocols: %v", err)
+	}
+
+	proxies, state, err := service.EnsureRuntimeProxies(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("expected trial runtime proxy, got error: %v", err)
+	}
+	if state == nil || !state.HasActiveTrial || state.HasActiveSubscription {
+		t.Fatalf("expected trial-only state, got %+v", state)
+	}
+	if len(proxies) != 1 {
+		t.Fatalf("expected trial to get one node, got %d", len(proxies))
+	}
+
+	var persistedCount int64
+	if err := db.Model(&repository.Proxy{}).Where("user_id = ?", user.ID).Count(&persistedCount).Error; err != nil {
+		t.Fatalf("failed to count persisted proxies: %v", err)
+	}
+	if persistedCount != 1 {
+		t.Fatalf("expected one persisted trial proxy, got %d", persistedCount)
+	}
+}
+
 func TestGetAccessibleProxies_ReassignsOfflineNode(t *testing.T) {
 	service, db := setupTestService(t)
 	user := createTestUser(t, db, "reassign-user")

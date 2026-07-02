@@ -121,7 +121,8 @@
                 type="button"
                 class="provider-nav-item"
                 :class="{ active: activeProvider === provider.key }"
-                @click="activeProvider = provider.key"
+                :aria-pressed="activeProvider === provider.key"
+                @click="selectProvider(provider.key)"
               >
                 <span class="provider-status" :class="{ enabled: providerForms[provider.key].enabled }" />
                 <span>{{ provider.label }}</span>
@@ -272,6 +273,10 @@ const oauthForm = reactive({
 
 const providerForms = reactive({})
 const activeProviderConfig = computed(() => providers.find((provider) => provider.key === activeProvider.value) || providers[0])
+
+const selectProvider = (providerKey) => {
+  activeProvider.value = providerKey
+}
 
 const emptyProviderForm = () => ({
   enabled: false,

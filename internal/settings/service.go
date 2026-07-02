@@ -258,6 +258,7 @@ func DefaultAuthSettings() AuthSettings {
 		"wecom": {
 			AuthorizeURL: "https://login.work.weixin.qq.com/wwlogin/sso/login",
 			TokenURL:     "https://qyapi.weixin.qq.com/cgi-bin/gettoken",
+			UserInfoURL:  "https://qyapi.weixin.qq.com/cgi-bin/auth/getuserdetail",
 			Scopes:       []string{"snsapi_privateinfo"},
 		},
 	}

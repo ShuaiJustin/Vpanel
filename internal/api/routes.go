@@ -275,7 +275,7 @@ func (r *Router) Setup() {
 	).WithProxyManager(r.proxyManager).WithSettingsService(r.settingsService).WithPauseRepository(r.repos.Pause)
 	authHandler.WithEntitlementService(r.entitlementService)
 	orderService.WithAfterPlanAppliedHook(func(ctx context.Context, userID int64) error {
-		_, _, err := r.entitlementService.GetAccessibleProxies(ctx, userID)
+		_, _, err := r.entitlementService.EnsureRuntimeProxies(ctx, userID)
 		return err
 	})
 	subscriptionService.WithEntitlementService(r.entitlementService)
@@ -1140,6 +1140,12 @@ func (r *Router) Setup() {
 			// the panel root so users don't get a broken-looking page at `/`.
 			if basePath != "" && p != basePath && !strings.HasPrefix(p, basePath+"/") {
 				c.Redirect(http.StatusFound, basePath+"/")
+				return
+			}
+
+			staticFilePath := filepath.Join(staticPath, strings.TrimPrefix(strings.TrimPrefix(p, basePath), "/"))
+			if info, err := os.Stat(staticFilePath); err == nil && !info.IsDir() {
+				c.File(staticFilePath)
 				return
 			}
 
