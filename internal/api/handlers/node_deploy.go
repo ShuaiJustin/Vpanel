@@ -20,6 +20,7 @@ type NodeDeployHandler struct {
 	nodeService    *node.Service
 	entitlementSvc *entitlement.Service
 	config         *config.Config
+	publicURL      func() string
 	logger         logger.Logger
 }
 
@@ -38,6 +39,12 @@ func NewNodeDeployHandler(
 	}
 }
 
+// WithPublicURLProvider sets the runtime panel URL source for agent deployment.
+func (h *NodeDeployHandler) WithPublicURLProvider(provider func() string) *NodeDeployHandler {
+	h.publicURL = provider
+	return h
+}
+
 // WithEntitlementService enables proactive proxy provisioning after successful node deployment.
 func (h *NodeDeployHandler) WithEntitlementService(svc *entitlement.Service) *NodeDeployHandler {
 	h.entitlementSvc = svc
@@ -52,6 +59,26 @@ type DeployAgentRequest struct {
 	Password   string `json:"password"`
 	PrivateKey string `json:"private_key"`
 	PanelURL   string `json:"panel_url"` // Panel 服务器地址（可选，优先使用此值）
+}
+
+func resolveDeployPanelURL(c *gin.Context, publicURL, explicitURL, savedURL string) string {
+	for _, candidate := range []string{explicitURL, publicURL, savedURL, c.Request.Header.Get("X-Panel-URL")} {
+		if panelURL := strings.TrimSuffix(strings.TrimSpace(candidate), "/"); panelURL != "" {
+			return panelURL
+		}
+	}
+
+	scheme := "http"
+	if c.Request.TLS != nil || c.Request.Header.Get("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+
+	host := c.Request.Header.Get("X-Forwarded-Host")
+	if host == "" {
+		host = c.Request.Host
+	}
+
+	return scheme + "://" + strings.TrimSpace(host)
 }
 
 // DeployAgent deploys the agent to a remote server.
@@ -131,38 +158,7 @@ func (h *NodeDeployHandler) DeployAgent(c *gin.Context) {
 			logger.F("token_prefix", nodeData.Token[:min(8, len(nodeData.Token))]))
 	}
 
-	// Get panel URL - 优先级：节点保存的 PanelURL > 请求参数 > 配置文件 > 请求头 > 自动检测
-	panelURL := nodeData.PanelURL // 优先使用节点创建时保存的 Panel URL
-	if panelURL == "" {
-		panelURL = req.PanelURL
-	}
-	if panelURL == "" {
-		panelURL = h.config.Server.PublicURL
-	}
-	if panelURL == "" {
-		panelURL = c.Request.Header.Get("X-Panel-URL")
-	}
-	if panelURL == "" {
-		// 自动从请求中获取（使用 X-Forwarded-Host 或 Host）
-		scheme := "http"
-		if c.Request.TLS != nil || c.Request.Header.Get("X-Forwarded-Proto") == "https" {
-			scheme = "https"
-		}
-
-		// 优先使用 X-Forwarded-Host（反向代理场景）
-		host := c.Request.Header.Get("X-Forwarded-Host")
-		if host == "" {
-			host = c.Request.Host
-		}
-
-		panelURL = scheme + "://" + host
-
-		h.logger.Info("Auto-detected Panel URL from request",
-			logger.F("panel_url", panelURL),
-			logger.F("request_host", c.Request.Host),
-			logger.F("x_forwarded_host", c.Request.Header.Get("X-Forwarded-Host")),
-			logger.F("x_forwarded_proto", c.Request.Header.Get("X-Forwarded-Proto")))
-	}
+	panelURL := resolveDeployPanelURL(c, h.currentPublicURL(), req.PanelURL, nodeData.PanelURL)
 
 	// 验证 Panel URL 不能是 localhost 或 127.0.0.1
 	if strings.Contains(panelURL, "localhost") || strings.Contains(panelURL, "127.0.0.1") {
@@ -285,18 +281,7 @@ func (h *NodeDeployHandler) GetDeployScript(c *gin.Context) {
 		}
 	}
 
-	// Get panel URL from config or query parameter
-	panelURL := h.config.Server.PublicURL
-	if queryURL := c.Query("panel_url"); queryURL != "" {
-		panelURL = queryURL
-	}
-	if panelURL == "" {
-		scheme := "http"
-		if c.Request.TLS != nil {
-			scheme = "https"
-		}
-		panelURL = scheme + "://" + c.Request.Host
-	}
+	panelURL := resolveDeployPanelURL(c, h.currentPublicURL(), c.Query("panel_url"), nodeData.PanelURL)
 
 	// Generate script
 	script := h.deployService.GetDeployScript(panelURL, nodeData.Token, nodeData.Port)
@@ -304,6 +289,16 @@ func (h *NodeDeployHandler) GetDeployScript(c *gin.Context) {
 	c.Header("Content-Type", "text/plain")
 	c.Header("Content-Disposition", "attachment; filename=install-agent.sh")
 	c.String(http.StatusOK, script)
+}
+
+func (h *NodeDeployHandler) currentPublicURL() string {
+	if h != nil && h.publicURL != nil {
+		return h.publicURL()
+	}
+	if h == nil || h.config == nil {
+		return ""
+	}
+	return h.config.Server.PublicURL
 }
 
 // TestConnection tests SSH connection to a remote server.

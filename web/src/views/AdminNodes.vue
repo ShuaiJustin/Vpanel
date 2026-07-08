@@ -644,15 +644,14 @@
             <el-form-item label="Panel 地址" prop="panel_url">
               <el-input
                 v-model="form.panel_url"
-                placeholder="http://your-panel-ip:8080"
+                placeholder="留空则使用系统公网地址"
               >
                 <template #prepend>
                   <el-icon><Link /></el-icon>
                 </template>
               </el-input>
               <span class="form-tip"
-                >Agent 连接到 Panel 的地址，必须是 Agent
-                服务器能访问的地址</span
+                >仅在需要覆盖系统公网地址时填写；Cloudflare 域名不要加未代理端口</span
               >
             </el-form-item>
 
@@ -1175,9 +1174,7 @@ const rules = {
   panel_url: [
     {
       validator: (rule, value, callback) => {
-        if (form.installMethod === "auto" && !value) {
-          callback(new Error("请输入 Panel 地址"));
-        } else if (value && !value.match(/^https?:\/\/.+/)) {
+        if (value && !value.match(/^https?:\/\/.+/)) {
           callback(
             new Error("Panel 地址格式不正确，应以 http:// 或 https:// 开头"),
           );
@@ -1858,8 +1855,10 @@ const submitForm = async () => {
         host: form.ssh_host,
         port: form.ssh_port,
         username: form.ssh_username,
-        panel_url: form.panel_url, // 使用用户指定的 Panel URL
       };
+      if (normalizeText(form.panel_url)) {
+        data.ssh.panel_url = normalizeText(form.panel_url);
+      }
 
       if (form.ssh_auth_method === "password") {
         data.ssh.password = form.ssh_password;

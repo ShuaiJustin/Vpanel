@@ -41,6 +41,7 @@ type NodeHandler struct {
 	httpClient      *http.Client
 	cache           cache.Cache
 	auditService    monitor.AuditService
+	publicURL       func() string
 	logger          logger.Logger
 
 	// In-progress tracking for async diagnosis
@@ -78,6 +79,18 @@ func (h *NodeHandler) WithEntitlementService(svc *entitlement.Service) *NodeHand
 // WithAuditService wires the audit emitter for state-changing node ops.
 func (h *NodeHandler) WithAuditService(audit monitor.AuditService) *NodeHandler {
 	h.auditService = audit
+	return h
+}
+
+// WithPublicURL sets the preferred externally reachable panel URL for agent deployment.
+func (h *NodeHandler) WithPublicURL(publicURL string) *NodeHandler {
+	h.publicURL = func() string { return publicURL }
+	return h
+}
+
+// WithPublicURLProvider sets the runtime panel URL source for agent deployment.
+func (h *NodeHandler) WithPublicURLProvider(provider func() string) *NodeHandler {
+	h.publicURL = provider
 	return h
 }
 
@@ -1262,25 +1275,11 @@ func (h *NodeHandler) Create(c *gin.Context) {
 	if req.SSH != nil && h.deployService != nil {
 		h.logger.Info("Starting auto-install", logger.F("node_id", n.ID), logger.F("host", req.SSH.Host))
 
-		// 获取 Panel URL - 优先使用数据库中保存的值，其次使用前端传递的，最后使用请求 Host
-		panelURL := n.PanelURL
-		if panelURL == "" && req.SSH.PanelURL != "" {
-			panelURL = req.SSH.PanelURL
+		publicURL := ""
+		if h.publicURL != nil {
+			publicURL = h.publicURL()
 		}
-		if panelURL == "" {
-			panelURL = c.Request.Header.Get("X-Panel-URL")
-		}
-		if panelURL == "" {
-			scheme := "http"
-			if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
-				scheme = "https"
-			}
-			host := c.GetHeader("X-Forwarded-Host")
-			if host == "" {
-				host = c.Request.Host
-			}
-			panelURL = scheme + "://" + host
-		}
+		panelURL := resolveDeployPanelURL(c, publicURL, req.SSH.PanelURL, n.PanelURL)
 
 		h.logger.Info("Using Panel URL for deployment",
 			logger.F("panel_url", panelURL),

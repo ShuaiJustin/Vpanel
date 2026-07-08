@@ -657,6 +657,13 @@ func TestGetAccessibleProxies_AutoProvisionsDefaultProxyOnEmptyNode(t *testing.T
 	if syncedNodeID != node.ID {
 		t.Fatalf("expected config sync for node %d, got %d", node.ID, syncedNodeID)
 	}
+	var reloadedNode repository.Node
+	if err := db.First(&reloadedNode, node.ID).Error; err != nil {
+		t.Fatalf("failed to reload node: %v", err)
+	}
+	if reloadedNode.SyncStatus != repository.NodeSyncStatusPending {
+		t.Fatalf("expected node sync status pending, got %q", reloadedNode.SyncStatus)
+	}
 
 	var persisted []*repository.Proxy
 	if err := db.Where("user_id = ?", user.ID).Find(&persisted).Error; err != nil {
@@ -1260,7 +1267,7 @@ func TestGetSubscriptionProxies_KeepsUnhealthyExistingNodeForSubscriptionFilteri
 	}
 }
 
-func TestGetSubscriptionProxies_DoesNotAutoProvisionOnPendingSyncNode(t *testing.T) {
+func TestGetSubscriptionProxies_AutoProvisionsOnPendingSyncNode(t *testing.T) {
 	service, db := setupTestService(t)
 	user := createTestUser(t, db, "subscription-synced-only-user")
 	pendingNode := createTestNode(t, db, "subscription-pending-node")
@@ -1278,11 +1285,17 @@ func TestGetSubscriptionProxies_DoesNotAutoProvisionOnPendingSyncNode(t *testing
 	if err != nil {
 		t.Fatalf("expected subscription proxies, got error: %v", err)
 	}
-	if len(proxies) != 1 {
-		t.Fatalf("expected one auto provisioned synced subscription proxy, got %d", len(proxies))
+	if len(proxies) != 2 {
+		t.Fatalf("expected pending and synced subscription proxies, got %d", len(proxies))
 	}
-	if proxies[0].NodeID == nil || *proxies[0].NodeID != goodNode.ID {
-		t.Fatalf("expected subscription proxy on node %d, got %+v", goodNode.ID, proxies[0].NodeID)
+	nodeIDs := map[int64]bool{}
+	for _, proxyModel := range proxies {
+		if proxyModel.NodeID != nil {
+			nodeIDs[*proxyModel.NodeID] = true
+		}
+	}
+	if !nodeIDs[pendingNode.ID] || !nodeIDs[goodNode.ID] {
+		t.Fatalf("expected subscription proxies on nodes %d and %d, got %+v", pendingNode.ID, goodNode.ID, nodeIDs)
 	}
 }
 

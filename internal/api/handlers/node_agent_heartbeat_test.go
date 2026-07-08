@@ -75,6 +75,53 @@ func newNodeAgentHeartbeatHandler(t *testing.T, recorder nodeAgentTrafficRecorde
 	)
 }
 
+func TestNodeAgentHeartbeat_QueuesPendingSyncCommands(t *testing.T) {
+	db := setupNodeAgentHeartbeatTestDB(t)
+	nodeRepo := repository.NewNodeRepository(db)
+	require.NoError(t, db.Create(&repository.Node{
+		ID:         1,
+		Name:       "node-1",
+		Address:    "127.0.0.1",
+		Token:      "node-token",
+		Status:     repository.NodeStatusOnline,
+		SyncStatus: repository.NodeSyncStatusPending,
+	}).Error)
+
+	handler := NewNodeAgentHandler(
+		node.NewService(nodeRepo, nil, nil, logger.NewNopLogger()),
+		nil,
+		nodeRepo,
+		nil,
+		NewNodeRecoveryTracker(logger.NewNopLogger()),
+		logger.NewNopLogger(),
+	)
+
+	router := gin.New()
+	router.POST("/api/node/heartbeat", handler.Heartbeat)
+
+	body, err := json.Marshal(HeartbeatRequest{
+		NodeID: 1,
+		Token:  "node-token",
+		Metrics: &NodeMetrics{
+			XrayRunning: true,
+		},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/node/heartbeat", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	var response HeartbeatResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Len(t, response.Commands, 2)
+	assert.Equal(t, commandTypeConfigSync, response.Commands[0].Type)
+	assert.Equal(t, commandTypeXrayRestart, response.Commands[1].Type)
+}
+
 func TestNodeAgentHeartbeat_DeduplicatesTrafficBatchID(t *testing.T) {
 	recorder := &stubNodeAgentTrafficRecorder{}
 	handler := newNodeAgentHeartbeatHandler(t, recorder)

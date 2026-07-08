@@ -1004,6 +1004,15 @@ func (s *Service) createAutoProvisionedProxy(ctx context.Context, userID, nodeID
 		return nil, err
 	}
 
+	if err := s.nodeRepo.UpdateSyncStatus(ctx, node.ID, repository.NodeSyncStatusPending, nil); err != nil {
+		s.logger.Warn("failed to mark node sync pending after auto provisioning",
+			logger.Err(err),
+			logger.UserID(userID),
+			logger.F("node_id", node.ID),
+			logger.F("proxy_id", proxyModel.ID),
+		)
+	}
+
 	if s.configSyncHook != nil {
 		s.configSyncHook(node.ID, "entitlement_auto_provision", "auto provisioned default proxy for entitled user")
 	}
@@ -1379,13 +1388,7 @@ func nodeReadyForUserTraffic(node *repository.Node) bool {
 	if node == nil || node.Status != repository.NodeStatusOnline {
 		return false
 	}
-
-	switch strings.TrimSpace(node.SyncStatus) {
-	case "", repository.NodeSyncStatusSynced:
-		return true
-	default:
-		return false
-	}
+	return strings.TrimSpace(node.SyncStatus) != repository.NodeSyncStatusFailed
 }
 
 func enabledOnly(proxies []*repository.Proxy) []*repository.Proxy {

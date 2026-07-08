@@ -18,7 +18,6 @@ import (
 	"v/internal/api/middleware"
 	"v/internal/auth"
 	"v/internal/cache"
-	"v/internal/certificate"
 	"v/internal/commercial/balance"
 	"v/internal/commercial/commission"
 	"v/internal/commercial/coupon"
@@ -68,7 +67,7 @@ type Router struct {
 	trialService              *trial.Service
 	entitlementService        *entitlement.Service
 	logService                *logservice.Service
-	certificateService        CertificateService
+	certificateService        handlers.CertificateService
 	nodeHealthChecker         *node.HealthChecker
 	nodeTrafficResetScheduler *node.TrafficResetScheduler
 	runtimeReconciler         *entitlement.RuntimeReconciler
@@ -76,16 +75,6 @@ type Router struct {
 	cache                     cache.Cache
 	notificationDispatcher    *dispatcher.Dispatcher
 	auditService              monitor.AuditService
-}
-
-// CertificateService defines the interface for certificate operations.
-type CertificateService interface {
-	Apply(ctx context.Context, req *certificate.ApplyRequest) (*repository.Certificate, error)
-	Upload(ctx context.Context, domain string, certData, keyData []byte) (*repository.Certificate, error)
-	UpdateMaterial(ctx context.Context, certID int64, certData, keyData []byte) (*repository.Certificate, error)
-	Renew(ctx context.Context, certID int64) error
-	Delete(ctx context.Context, certID int64) error
-	DeployToAssignedNodes(ctx context.Context, certID int64) error
 }
 
 // NewRouter creates a new API router.
@@ -96,7 +85,7 @@ func NewRouter(
 	proxyManager proxy.Manager,
 	repos *repository.Repositories,
 	logService *logservice.Service,
-	certService CertificateService,
+	certService handlers.CertificateService,
 ) *Router {
 	// Set Gin mode based on config
 	if cfg.Server.Mode == "release" {
@@ -381,6 +370,7 @@ func (r *Router) Setup() {
 	nodeHandler := handlers.NewNodeHandler(nodeService, nodeGroupService, nodeDeployService, r.nodeRecoveryTracker, r.logger).
 		WithEntitlementService(r.entitlementService).
 		WithAuditService(auditSvc).
+		WithPublicURLProvider(r.deployPublicURL).
 		WithCertificateAutomation(r.repos.Certificate, r.certificateService)
 
 	// Add cache support for async diagnosis if available
@@ -392,6 +382,7 @@ func (r *Router) Setup() {
 	nodeHealthHandler := handlers.NewNodeHealthHandler(r.nodeHealthChecker, r.repos.HealthCheck, r.repos.Node, r.logger)
 	nodeStatsHandler := handlers.NewNodeStatsHandler(nodeTrafficService, nodeService, nodeGroupService, r.logger)
 	nodeDeployHandler := handlers.NewNodeDeployHandler(nodeDeployService, nodeService, r.config, r.logger).
+		WithPublicURLProvider(r.deployPublicURL).
 		WithEntitlementService(r.entitlementService)
 	nodeNetworkOptimizationHandler := handlers.NewNodeNetworkOptimizationHandler(r.repos.Node, nodeDeployService, r.nodeRecoveryTracker, r.logger)
 	agentDownloadHandler := handlers.NewAgentDownloadHandler(r.logger)
@@ -1207,6 +1198,23 @@ func (r *Router) validateSystemSettings(systemSettings *settings.SystemSettings)
 		return err
 	}
 	return r.validateEmailSettings(systemSettings)
+}
+
+func (r *Router) deployPublicURL() string {
+	if r == nil {
+		return ""
+	}
+	if r.settingsService != nil {
+		if systemSettings, err := r.settingsService.GetSystemSettings(context.Background()); err == nil && systemSettings != nil {
+			if publicURL := strings.TrimSpace(systemSettings.PublicURL); publicURL != "" {
+				return publicURL
+			}
+		}
+	}
+	if r.config == nil {
+		return ""
+	}
+	return r.config.Server.PublicURL
 }
 
 func (r *Router) loadStoredNotificationSettings(ctx context.Context) {

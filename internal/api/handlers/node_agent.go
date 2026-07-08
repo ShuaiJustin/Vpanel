@@ -375,6 +375,8 @@ func (h *NodeAgentHandler) Heartbeat(c *gin.Context) {
 		}
 	}
 
+	h.queuePendingSyncCommands(c.Request.Context(), nodeData)
+
 	// Get any pending commands for this node
 	commands := h.getPendingCommands(nodeData.ID)
 
@@ -391,6 +393,18 @@ func shouldPromoteNodeOnlineFromHeartbeat(currentStatus string, metrics *NodeMet
 	}
 
 	return true
+}
+
+func (h *NodeAgentHandler) queuePendingSyncCommands(ctx context.Context, nodeData *node.Node) {
+	if h == nil || h.recoveryTracker == nil || nodeData == nil {
+		return
+	}
+	if nodeData.SyncStatus != repository.NodeSyncStatusPending && nodeData.SyncStatus != repository.NodeSyncStatusFailed {
+		return
+	}
+
+	h.recoveryTracker.QueueConfigSyncCommand(nodeData.ID, "node_heartbeat", "node has pending config sync")
+	h.recoveryTracker.QueueXrayRestartCommand(nodeData.ID, "node_heartbeat", "apply pending node config")
 }
 
 func (h *NodeAgentHandler) beginTrafficBatch(nodeID int64, batchID string) (bool, func(bool)) {

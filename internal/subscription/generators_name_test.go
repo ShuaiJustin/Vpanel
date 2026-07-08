@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"v/internal/database/repository"
+	subgenerators "v/internal/subscription/generators"
 )
 
 func TestExtractProxyInfo_AutoProvisionedUsesReadableName(t *testing.T) {
@@ -17,15 +18,15 @@ func TestExtractProxyInfo_AutoProvisionedUsesReadableName(t *testing.T) {
 		Settings: map[string]any{},
 	}
 
-	name, server, port, _ := extractProxyInfo(proxyModel)
-	if name != "VMess · 64.176.54.36:20001" {
-		t.Fatalf("unexpected proxy name: %q", name)
+	info := subgenerators.ExtractProxyInfo(proxyModel)
+	if info.Name != "VMess · 64.176.54.36:20001" {
+		t.Fatalf("unexpected proxy name: %q", info.Name)
 	}
-	if server != "64.176.54.36" {
-		t.Fatalf("unexpected server: %q", server)
+	if info.Server != "64.176.54.36" {
+		t.Fatalf("unexpected server: %q", info.Server)
 	}
-	if port != 20001 {
-		t.Fatalf("unexpected port: %d", port)
+	if info.Port != 20001 {
+		t.Fatalf("unexpected port: %d", info.Port)
 	}
 }
 
@@ -39,8 +40,8 @@ func TestExtractProxyInfo_CustomRemarkStillWins(t *testing.T) {
 		Settings: map[string]any{},
 	}
 
-	name, _, _, _ := extractProxyInfo(proxyModel)
-	if strings.TrimSpace(name) != "日本 01" {
-		t.Fatalf("expected custom remark to win, got %q", name)
+	info := subgenerators.ExtractProxyInfo(proxyModel)
+	if strings.TrimSpace(info.Name) != "日本 01" {
+		t.Fatalf("expected custom remark to win, got %q", info.Name)
 	}
 }

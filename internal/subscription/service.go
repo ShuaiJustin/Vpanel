@@ -17,6 +17,7 @@ import (
 	"v/internal/entitlement"
 	"v/internal/logger"
 	proxylib "v/internal/proxy"
+	subgenerators "v/internal/subscription/generators"
 	"v/pkg/errors"
 )
 
@@ -654,13 +655,7 @@ func nodeReadyForSubscriptionList(node *repository.Node) bool {
 	if node == nil || node.Status != repository.NodeStatusOnline {
 		return false
 	}
-
-	switch strings.TrimSpace(node.SyncStatus) {
-	case "", repository.NodeSyncStatusSynced:
-		return true
-	default:
-		return false
-	}
+	return strings.TrimSpace(node.SyncStatus) != repository.NodeSyncStatusFailed
 }
 
 func normalizeSubscriptionTLSNames(settings map[string]any) {
@@ -822,7 +817,7 @@ func (s *Service) GenerateContent(ctx context.Context, userID int64, format Clie
 	return content, contentType, fileExt, nil
 }
 
-func ensureFormatCanEmitProxy(format ClientFormat, proxies []*repository.Proxy, generator FormatGenerator) error {
+func ensureFormatCanEmitProxy(format ClientFormat, proxies []*repository.Proxy, generator subgenerators.FormatGenerator) error {
 	if len(proxies) == 0 || generator == nil {
 		return nil
 	}
@@ -888,81 +883,39 @@ func subscriptionFormatName(format ClientFormat) string {
 	}
 }
 
-func legacyClashSupportsProtocol(protocol string) bool {
-	switch protocol {
-	case "vmess", "trojan", "shadowsocks", "ss":
-		return true
-	default:
-		return false
-	}
-}
-
-func clashMetaSupportsProtocol(protocol string) bool {
-	switch protocol {
-	case "vmess", "vless", "trojan", "shadowsocks", "ss":
-		return true
-	default:
-		return false
-	}
-}
-
-// FormatGenerator defines the interface for subscription format generators.
-type FormatGenerator interface {
-	Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error)
-	ContentType() string
-	FileExtension() string
-	SupportsProtocol(protocol string) bool
-}
-
-// GeneratorOptions represents options for content generation.
-type GeneratorOptions struct {
-	SubscriptionName   string
-	ServerHost         string
-	RenameTemplate     string
-	IncludeProxyGroups bool
-	UpdateInterval     int
-}
-
 // getGenerator returns the appropriate generator for the format.
-func (s *Service) getGenerator(format ClientFormat) (FormatGenerator, string, string) {
-	// Lazy initialization of generators would be better in production
-	// For now, we create them on demand
+func (s *Service) getGenerator(format ClientFormat) (subgenerators.FormatGenerator, string, string) {
 	switch format {
 	case FormatV2rayN:
-		g := &v2rayNGenerator{}
+		g := subgenerators.NewV2rayNGenerator()
 		return g, g.ContentType(), g.FileExtension()
 	case FormatClash:
-		g := &clashGenerator{}
+		g := subgenerators.NewClashGenerator()
 		return g, g.ContentType(), g.FileExtension()
 	case FormatClashMeta:
-		g := &clashMetaGenerator{}
+		g := subgenerators.NewClashMetaGenerator()
 		return g, g.ContentType(), g.FileExtension()
 	case FormatShadowrocket:
-		g := &shadowrocketGenerator{}
+		g := subgenerators.NewShadowrocketGenerator()
 		return g, g.ContentType(), g.FileExtension()
 	case FormatSurge:
-		g := &surgeGenerator{}
+		g := subgenerators.NewSurgeGenerator()
 		return g, g.ContentType(), g.FileExtension()
 	case FormatQuantumultX:
-		g := &quantumultXGenerator{}
+		g := subgenerators.NewQuantumultXGenerator()
 		return g, g.ContentType(), g.FileExtension()
 	case FormatSingbox:
-		g := &singboxGenerator{}
+		g := subgenerators.NewSingboxGenerator()
 		return g, g.ContentType(), g.FileExtension()
 	default:
-		// Default to V2rayN
-		g := &v2rayNGenerator{}
+		g := subgenerators.NewV2rayNGenerator()
 		return g, g.ContentType(), g.FileExtension()
 	}
 }
 
 // buildGeneratorOptions builds generator options from content options.
-func (s *Service) buildGeneratorOptions(options *ContentOptions) *GeneratorOptions {
-	genOpts := &GeneratorOptions{
-		SubscriptionName:   "V Panel Subscription",
-		IncludeProxyGroups: true,
-		UpdateInterval:     24,
-	}
+func (s *Service) buildGeneratorOptions(options *ContentOptions) *subgenerators.GeneratorOptions {
+	genOpts := subgenerators.DefaultOptions()
 
 	if options != nil {
 		if options.SubscriptionName != "" {
@@ -974,84 +927,4 @@ func (s *Service) buildGeneratorOptions(options *ContentOptions) *GeneratorOptio
 	}
 
 	return genOpts
-}
-
-// Inline generator implementations that delegate to the generators package
-// These are thin wrappers to avoid circular imports
-
-type v2rayNGenerator struct{}
-
-func (g *v2rayNGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
-	return generateV2rayN(proxies, options)
-}
-func (g *v2rayNGenerator) ContentType() string   { return "text/plain; charset=utf-8" }
-func (g *v2rayNGenerator) FileExtension() string { return "txt" }
-func (g *v2rayNGenerator) SupportsProtocol(p string) bool {
-	return clashMetaSupportsProtocol(strings.ToLower(strings.TrimSpace(p)))
-}
-
-type clashGenerator struct{}
-
-func (g *clashGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
-	return generateClash(proxies, options)
-}
-func (g *clashGenerator) ContentType() string   { return "text/yaml; charset=utf-8" }
-func (g *clashGenerator) FileExtension() string { return "yaml" }
-func (g *clashGenerator) SupportsProtocol(p string) bool {
-	return legacyClashSupportsProtocol(strings.ToLower(strings.TrimSpace(p)))
-}
-
-type clashMetaGenerator struct{}
-
-func (g *clashMetaGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
-	return generateClashMeta(proxies, options)
-}
-func (g *clashMetaGenerator) ContentType() string   { return "text/yaml; charset=utf-8" }
-func (g *clashMetaGenerator) FileExtension() string { return "yaml" }
-func (g *clashMetaGenerator) SupportsProtocol(p string) bool {
-	return clashMetaSupportsProtocol(strings.ToLower(strings.TrimSpace(p)))
-}
-
-type shadowrocketGenerator struct{}
-
-func (g *shadowrocketGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
-	return generateShadowrocket(proxies, options)
-}
-func (g *shadowrocketGenerator) ContentType() string   { return "text/plain; charset=utf-8" }
-func (g *shadowrocketGenerator) FileExtension() string { return "txt" }
-func (g *shadowrocketGenerator) SupportsProtocol(p string) bool {
-	return clashMetaSupportsProtocol(strings.ToLower(strings.TrimSpace(p)))
-}
-
-type surgeGenerator struct{}
-
-func (g *surgeGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
-	return generateSurge(proxies, options)
-}
-func (g *surgeGenerator) ContentType() string   { return "text/plain; charset=utf-8" }
-func (g *surgeGenerator) FileExtension() string { return "conf" }
-func (g *surgeGenerator) SupportsProtocol(p string) bool {
-	return legacyClashSupportsProtocol(strings.ToLower(strings.TrimSpace(p)))
-}
-
-type quantumultXGenerator struct{}
-
-func (g *quantumultXGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
-	return generateQuantumultX(proxies, options)
-}
-func (g *quantumultXGenerator) ContentType() string   { return "text/plain; charset=utf-8" }
-func (g *quantumultXGenerator) FileExtension() string { return "conf" }
-func (g *quantumultXGenerator) SupportsProtocol(p string) bool {
-	return legacyClashSupportsProtocol(strings.ToLower(strings.TrimSpace(p)))
-}
-
-type singboxGenerator struct{}
-
-func (g *singboxGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
-	return generateSingbox(proxies, options)
-}
-func (g *singboxGenerator) ContentType() string   { return "application/json; charset=utf-8" }
-func (g *singboxGenerator) FileExtension() string { return "json" }
-func (g *singboxGenerator) SupportsProtocol(p string) bool {
-	return clashMetaSupportsProtocol(strings.ToLower(strings.TrimSpace(p)))
 }

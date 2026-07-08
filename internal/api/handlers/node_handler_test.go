@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -10,6 +11,27 @@ import (
 
 	"v/internal/node"
 )
+
+func TestResolveDeployPanelURLPrefersCurrentPublicURLOverSavedNodeURL(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "http://internal:13212/api/admin/nodes/1/deploy", nil)
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Forwarded-Host", "panel.shcrystal.top:13212")
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = req
+
+	got := resolveDeployPanelURL(c, "https://panel.shcrystal.top/", "", "https://panel.shcrystal.top:13212")
+
+	assert.Equal(t, "https://panel.shcrystal.top", got)
+}
+
+func TestResolveDeployPanelURLAllowsExplicitOverride(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "http://internal:13212/api/admin/nodes/1/deploy", nil)
+
+	got := resolveDeployPanelURL(c, "https://panel.shcrystal.top", "https://custom.example.com/", "https://old.example.com:13212")
+
+	assert.Equal(t, "https://custom.example.com", got)
+}
 
 func TestNormalizeNodeGroupIDs(t *testing.T) {
 	fallback := int64(5)

@@ -9,6 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"v/internal/database/repository"
+	subgenerators "v/internal/subscription/generators"
 )
 
 func TestGenerateV2rayN_UsesTLSDomainWhenHostMissing(t *testing.T) {
@@ -28,7 +29,7 @@ func TestGenerateV2rayN_UsesTLSDomainWhenHostMissing(t *testing.T) {
 		},
 	}
 
-	result, err := generateV2rayN(proxies, nil)
+	result, err := subgenerators.NewV2rayNGenerator().Generate(proxies, nil)
 	if err != nil {
 		t.Fatalf("generateV2rayN returned error: %v", err)
 	}
@@ -73,7 +74,7 @@ func TestGenerateV2rayN_KeepsIPForTLSVMessWhenSNIIsSet(t *testing.T) {
 		},
 	}
 
-	result, err := generateV2rayN(proxies, nil)
+	result, err := subgenerators.NewV2rayNGenerator().Generate(proxies, nil)
 	if err != nil {
 		t.Fatalf("generateV2rayN returned error: %v", err)
 	}
@@ -114,7 +115,7 @@ func TestGenerateClash_UsesTLSForVMessWithoutCorruptingCipher(t *testing.T) {
 		},
 	}
 
-	result, err := generateClash(proxies, nil)
+	result, err := subgenerators.NewClashGenerator().Generate(proxies, nil)
 	if err != nil {
 		t.Fatalf("generateClash returned error: %v", err)
 	}
@@ -166,7 +167,7 @@ func TestGenerateSurge_UsesVMessCipherAndTLSSettings(t *testing.T) {
 		},
 	}
 
-	result, err := generateSurge(proxies, nil)
+	result, err := subgenerators.NewSurgeGenerator().Generate(proxies, nil)
 	if err != nil {
 		t.Fatalf("generateSurge returned error: %v", err)
 	}
@@ -204,7 +205,7 @@ func TestGenerateQuantumultX_UsesVMessCipherAndTLSSettings(t *testing.T) {
 		},
 	}
 
-	result, err := generateQuantumultX(proxies, nil)
+	result, err := subgenerators.NewQuantumultXGenerator().Generate(proxies, nil)
 	if err != nil {
 		t.Fatalf("generateQuantumultX returned error: %v", err)
 	}
@@ -243,7 +244,7 @@ func TestGenerateSingbox_VMessesTLSSeparateFromCipher(t *testing.T) {
 		},
 	}
 
-	result, err := generateSingbox(proxies, nil)
+	result, err := subgenerators.NewSingboxGenerator().Generate(proxies, nil)
 	if err != nil {
 		t.Fatalf("generateSingbox returned error: %v", err)
 	}
@@ -297,7 +298,7 @@ func TestGenerateV2rayN_VLESSIncludesEncryptionNoneAndKeepsIP(t *testing.T) {
 		},
 	}
 
-	result, err := generateV2rayN(proxies, nil)
+	result, err := subgenerators.NewV2rayNGenerator().Generate(proxies, nil)
 	if err != nil {
 		t.Fatalf("generateV2rayN returned error: %v", err)
 	}
@@ -332,15 +333,15 @@ func TestExtractProxyInfo_UsesExternalPortOverride(t *testing.T) {
 		},
 	}
 
-	name, server, port, _ := extractProxyInfo(proxy)
-	if server != "180.173.123.192" {
-		t.Fatalf("expected server 180.173.123.192, got %s", server)
+	info := subgenerators.ExtractProxyInfo(proxy)
+	if info.Server != "180.173.123.192" {
+		t.Fatalf("expected server 180.173.123.192, got %s", info.Server)
 	}
-	if port != 80 {
-		t.Fatalf("expected port 80, got %d", port)
+	if info.Port != 80 {
+		t.Fatalf("expected port 80, got %d", info.Port)
 	}
-	if name != "VMess · 180.173.123.192:80" {
-		t.Fatalf("expected resolved name with external port, got %s", name)
+	if info.Name != "VMess · 180.173.123.192:80" {
+		t.Fatalf("expected resolved name with external port, got %s", info.Name)
 	}
 }
 
@@ -363,7 +364,7 @@ func TestGenerateSurge_UsesExternalPortOverride(t *testing.T) {
 		},
 	}
 
-	result, err := generateSurge(proxies, nil)
+	result, err := subgenerators.NewSurgeGenerator().Generate(proxies, nil)
 	if err != nil {
 		t.Fatalf("generateSurge returned error: %v", err)
 	}
