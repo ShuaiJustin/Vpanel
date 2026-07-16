@@ -75,17 +75,40 @@
           <span>第三方登录</span>
         </div>
         <div class="oauth-buttons">
-          <el-button
+          <button
             v-for="provider in oauthProviders"
             :key="provider.key"
+            type="button"
             class="oauth-button"
-            size="large"
-            :loading="oauthLoading === provider.key"
+            :class="{ 'oauth-button--wecom': provider.key === 'wecom' }"
+            :disabled="Boolean(oauthLoading)"
             @click="startOAuthLogin(provider.key)"
           >
-            <span class="oauth-mark">{{ provider.label.slice(0, 1) }}</span>
-            <span>{{ provider.label }}</span>
-          </el-button>
+            <img
+              v-if="provider.key === 'wecom'"
+              :src="weComLogo"
+              class="wecom-logo"
+              alt=""
+              aria-hidden="true"
+            >
+            <span
+              v-else
+              class="oauth-mark"
+            >{{ provider.label.slice(0, 1) }}</span>
+            <span class="oauth-copy">
+              <strong>{{ oauthLoading === provider.key ? provider.key === 'wecom' ? '正在打开企业微信…' : '正在跳转…' : provider.key === 'wecom' ? '企业微信扫码登录' : provider.label }}</strong>
+            </span>
+            <el-icon
+              v-if="provider.key === 'wecom'"
+              class="oauth-arrow"
+            >
+              <Loading
+                v-if="oauthLoading === provider.key"
+                class="is-loading"
+              />
+              <ArrowRight v-else />
+            </el-icon>
+          </button>
         </div>
       </div>
 
@@ -163,7 +186,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { User, Lock, Key } from '@element-plus/icons-vue'
+import { ArrowRight, Key, Loading, Lock, User } from '@element-plus/icons-vue'
 import { useUserPortalStore } from '@/stores/userPortal'
 import {
   getOAuthProviders,
@@ -171,6 +194,7 @@ import {
   verifyEmail as verifyPortalEmail
 } from '@/api/modules/portal/auth'
 import { extractErrorMessage, getErrorStatus } from '@/utils/entitlement'
+import weComLogo from '@/assets/wecom-logo.png'
 
 const router = useRouter()
 const route = useRoute()
@@ -242,8 +266,16 @@ async function loadOAuthProviders() {
 }
 
 function startOAuthLogin(providerKey) {
+  const redirect = getSafeRedirectPath()
+  if (providerKey === 'wecom') {
+    router.push({
+      name: 'UserWeComLogin',
+      query: redirect ? { redirect } : {}
+    })
+    return
+  }
   oauthLoading.value = providerKey
-  window.location.href = getOAuthStartUrl(providerKey, getSafeRedirectPath())
+  window.location.href = getOAuthStartUrl(providerKey, redirect)
 }
 
 function getPostLoginPath(user) {
@@ -385,7 +417,7 @@ onMounted(async () => {
 }
 
 .login-subtitle {
-  font-size: 15px;
+  font-size: 14px;
   color: var(--color-text-secondary);
   margin: 0;
 }
@@ -484,10 +516,51 @@ onMounted(async () => {
 }
 
 .oauth-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   width: 100%;
   height: 46px;
   justify-content: center;
+  padding: 0 16px;
   border-radius: 8px;
+  border: 1px solid var(--el-border-color);
+  background: var(--color-bg-card);
+  color: var(--color-text-primary);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.oauth-button:hover:not(:disabled) {
+  border-color: var(--el-color-primary-light-5);
+  background: var(--color-bg-elevated-hover);
+}
+
+.oauth-button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--el-color-primary) 20%, transparent);
+  outline-offset: 2px;
+}
+
+.oauth-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.oauth-button--wecom {
+  height: 52px;
+  justify-content: flex-start;
+  padding: 0 14px;
+}
+
+.oauth-button--wecom:hover:not(:disabled) {
+  border-color: color-mix(in srgb, #07c160 55%, var(--el-border-color));
+  background: color-mix(in srgb, #07c160 4%, var(--color-bg-card));
+}
+
+.oauth-button:not(.oauth-button--wecom) .oauth-copy {
+  flex: 0 1 auto;
+  align-items: center;
 }
 
 .oauth-mark {
@@ -502,6 +575,35 @@ onMounted(async () => {
   color: var(--el-color-primary);
   font-size: 13px;
   font-weight: 700;
+}
+
+.wecom-logo {
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+
+.oauth-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  text-align: left;
+}
+
+.oauth-copy strong {
+  color: var(--color-text-primary);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.oauth-arrow {
+  flex: 0 0 auto;
+  color: #07c160;
+  font-size: 16px;
 }
 
 .login-footer {

@@ -397,7 +397,7 @@ func SecureHeaders() gin.HandlerFunc {
 		c.Header("X-Frame-Options", "DENY")
 		c.Header("X-XSS-Protection", "1; mode=block")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
-		c.Header("Content-Security-Policy", "default-src 'self'")
+		c.Header("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; script-src 'self' https://wwcdn.weixin.qq.com; frame-src 'self' https://open.work.weixin.qq.com https://open.wecom.tencent.com")
 		c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		c.Next()
 	}

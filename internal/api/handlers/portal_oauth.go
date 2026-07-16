@@ -100,30 +100,62 @@ func (h *PortalAuthHandler) GetOAuthProviders(c *gin.Context) {
 // StartOAuth redirects the browser to the selected provider authorization URL.
 func (h *PortalAuthHandler) StartOAuth(c *gin.Context) {
 	providerKey := strings.ToLower(strings.TrimSpace(c.Param("provider")))
-	authSettings, provider, ok := h.resolvePortalOAuthProvider(c, providerKey)
+	_, _, authorizeURL, ok := h.initializePortalOAuth(c, providerKey)
 	if !ok {
 		return
 	}
+	c.Redirect(http.StatusFound, authorizeURL)
+}
 
-	redirectPath := safePortalOAuthRedirect(c.Query("redirect"))
+// GetOAuthEmbedConfig returns public data required by the official embedded login widget.
+func (h *PortalAuthHandler) GetOAuthEmbedConfig(c *gin.Context) {
+	providerKey := strings.ToLower(strings.TrimSpace(c.Param("provider")))
+	if providerKey != "wecom" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "该登录方式不支持嵌入式登录"})
+		return
+	}
+
+	provider, stateValue, authorizeURL, ok := h.initializePortalOAuth(c, providerKey)
+	if !ok {
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, buildPortalOAuthEmbedConfig(c, providerKey, provider, stateValue, authorizeURL))
+}
+
+func buildPortalOAuthEmbedConfig(c *gin.Context, providerKey string, provider settings.OAuthProviderSettings, stateValue, authorizeURL string) gin.H {
+	return gin.H{
+		"appid":         strings.TrimSpace(provider.CorpID),
+		"agentid":       strings.TrimSpace(provider.AgentID),
+		"redirect_uri":  portalOAuthRedirectURI(c, providerKey, provider),
+		"state":         stateValue,
+		"authorize_url": authorizeURL,
+	}
+}
+
+func (h *PortalAuthHandler) initializePortalOAuth(c *gin.Context, providerKey string) (settings.OAuthProviderSettings, string, string, bool) {
+	_, provider, ok := h.resolvePortalOAuthProvider(c, providerKey)
+	if !ok {
+		return settings.OAuthProviderSettings{}, "", "", false
+	}
+
 	stateValue, err := randomPortalOAuthState()
 	if err != nil {
 		h.logger.Error("failed to generate oauth state", logger.F("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "无法初始化第三方登录"})
-		return
+		return settings.OAuthProviderSettings{}, "", "", false
 	}
-
 	state := portalOAuthState{
 		State:    stateValue,
 		Provider: providerKey,
-		Redirect: redirectPath,
+		Redirect: safePortalOAuthRedirect(c.Query("redirect")),
 		Expires:  time.Now().Add(10 * time.Minute).Unix(),
 	}
 	encodedState, err := encodePortalOAuthState(state)
 	if err != nil {
 		h.logger.Error("failed to encode oauth state", logger.F("error", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "无法初始化第三方登录"})
-		return
+		return settings.OAuthProviderSettings{}, "", "", false
 	}
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(portalOAuthStateCookie, encodedState, 600, "/", "", isPortalSecureRequest(c), true)
@@ -132,11 +164,9 @@ func (h *PortalAuthHandler) StartOAuth(c *gin.Context) {
 	if err != nil {
 		h.logger.Warn("invalid oauth authorize url", logger.F("provider", providerKey), logger.F("error", err))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "第三方登录配置无效"})
-		return
+		return settings.OAuthProviderSettings{}, "", "", false
 	}
-
-	_ = authSettings
-	c.Redirect(http.StatusFound, authorizeURL)
+	return provider, stateValue, authorizeURL, true
 }
 
 // OAuthCallback handles an OAuth authorization code callback.

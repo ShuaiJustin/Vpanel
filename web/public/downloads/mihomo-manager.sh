@@ -511,7 +511,7 @@ configure_system_proxy() {
             print_warning "已停用旧的全局代理配置: ${SYSTEM_PROXY_FILE}.disabled"
         fi
         print_info "默认不写入全局系统代理，避免服务未运行时影响系统下载"
-        print_info "如确实需要全局代理，请使用: ENABLE_SYSTEM_PROXY=1 $0 install"
+        print_info "如确实需要全局代理，请先启动服务，再执行: $0 proxy on"
         return
     fi
 
@@ -531,6 +531,21 @@ EOF
 enable_system_proxy() {
     check_root
     check_installed
+    check_systemd
+    require_commands timeout
+
+    local http_port
+    http_port=$(get_http_proxy_port)
+    if ! systemctl is-active --quiet "$SERVICE_NAME"; then
+        print_error "Mihomo 服务未运行，拒绝启用系统环境代理"
+        print_info "请先执行: $0 start"
+        return 1
+    fi
+    if ! is_tcp_port_open 127.0.0.1 "$http_port"; then
+        print_error "本机 HTTP 代理端口未监听: 127.0.0.1:$http_port"
+        return 1
+    fi
+
     ENABLE_SYSTEM_PROXY=1
     configure_system_proxy
     print_info "重新登录终端后生效；当前终端可执行: source $SYSTEM_PROXY_FILE"
@@ -727,19 +742,27 @@ install_mihomo() {
         exit 1
     fi
 
-    print_info "解压并安装..."
+    print_info "解压并校验..."
     gunzip -f "$temp_file"
+    chmod 0755 "$output_file"
+    check_binary_runtime "$output_file" || {
+        rm -f "$output_file"
+        exit 1
+    }
     install -m 755 "$output_file" "$INSTALL_DIR/$BINARY_NAME"
     rm -f "$output_file"
     ln -sf "$INSTALL_DIR/$BINARY_NAME" "$INSTALL_DIR/clash-meta"
-
-    check_binary_runtime "$INSTALL_DIR/$BINARY_NAME" || exit 1
     [ -f "$CONFIG_DIR/config.yaml" ] || create_sample_config
     ensure_dashboard_config "$CONFIG_DIR/config.yaml"
     ensure_country_mmdb
     ensure_dashboard_ui
     create_systemd_service
-    configure_system_proxy
+    if [ "$ENABLE_SYSTEM_PROXY" = "1" ]; then
+        print_warning "安装阶段不启用系统环境代理，避免服务未启动时影响系统网络"
+        print_info "请先执行: $0 start，然后执行: $0 proxy on"
+    else
+        configure_system_proxy
+    fi
 
     print_success "Mihomo 安装完成"
     show_usage
@@ -951,7 +974,7 @@ try_proxy_access() {
 
         case "$http_code" in
             200|204|301|302|307|308)
-                print_success "代理连通性正常: $url HTTP $http_code"
+                print_success "经 Mihomo 访问正常: $url HTTP $http_code"
                 return 0
                 ;;
             *)
@@ -1065,10 +1088,13 @@ update_subscription() {
 
     chmod 0644 "$temp_config"
     mv -f "$temp_config" "$CONFIG_DIR/config.yaml"
+    show_config_summary "$CONFIG_DIR/config.yaml"
+    if ! restart_service_with_rollback "$backup_file"; then
+        print_error "订阅更新未生效，已尽力恢复原配置"
+        return 1
+    fi
     save_subscription_url
     print_success "订阅配置更新成功"
-    show_config_summary "$CONFIG_DIR/config.yaml"
-    restart_service_with_rollback "$backup_file"
 }
 
 test_config() {
@@ -1089,6 +1115,7 @@ verify_service() {
     check_systemd
 
     local failed=0
+    local missing_proxy=0
     local proxy_count
     local provider_count
     local proxy_url
@@ -1106,18 +1133,14 @@ verify_service() {
         exit 1
     fi
 
-    if validate_config_file "$CONFIG_DIR/config.yaml"; then
-        print_success "配置文件可被 Mihomo 正常加载"
-    else
-        failed=1
-    fi
+    validate_config_file "$CONFIG_DIR/config.yaml" || failed=1
 
     show_config_summary "$CONFIG_DIR/config.yaml"
     proxy_count=$(count_config_section_items "$CONFIG_DIR/config.yaml" "proxies" "^[[:space:]]*-[[:space:]]+name:")
     provider_count=$(count_config_section_items "$CONFIG_DIR/config.yaml" "proxy-providers" "^[[:space:]][[:space:]][^[:space:]#][^:]*:")
     if [ "$proxy_count" -eq 0 ] && [ "$provider_count" -eq 0 ]; then
-        print_warning "当前没有代理节点或代理提供器，连通性测试可能只能验证直连，不能代表代理节点可用"
-        failed=1
+        print_warning "当前没有代理节点或代理提供器，本次只能验证 Mihomo 直连模式"
+        missing_proxy=1
     fi
 
     if systemctl is-active --quiet "$SERVICE_NAME"; then
@@ -1146,9 +1169,16 @@ verify_service() {
         if is_tcp_port_open 127.0.0.1 "$proxy_port"; then
             print_success "本机代理端口已监听: $proxy_url"
             if try_proxy_access "$proxy_url"; then
-                print_success "Mihomo 已可正常代理访问"
-                [ "$failed" -eq 0 ] && return 0
-                print_warning "代理可用，但上面的基础检查仍有异常，请按提示处理"
+                if [ "$missing_proxy" -eq 1 ]; then
+                    print_success "Mihomo 直连模式网络访问正常"
+                    print_warning "未配置代理节点，不能判定代理节点是否可用"
+                    return 1
+                fi
+                if [ "$failed" -eq 0 ]; then
+                    print_success "Mihomo 服务与网络连通性验证通过"
+                    return 0
+                fi
+                print_warning "网络访问正常，但上面的基础检查仍有异常，请按提示处理"
                 return 1
             fi
         else
@@ -1156,7 +1186,7 @@ verify_service() {
         fi
     done
 
-    print_error "未通过代理连通性验证"
+    print_error "未通过 Mihomo 网络连通性验证"
     print_info "可查看日志定位原因: journalctl -u $SERVICE_NAME -n 100 --no-pager"
     return 1
 }
@@ -1169,8 +1199,11 @@ edit_config() {
         print_error "配置文件不存在"
         exit 1
     }
+
+    local backup_file
     mkdir -p "$BACKUP_DIR"
-    cp -p "$CONFIG_DIR/config.yaml" "$BACKUP_DIR/config.yaml.edit.$(date +%Y%m%d-%H%M%S).backup"
+    backup_file="$BACKUP_DIR/config.yaml.edit.$(date +%Y%m%d-%H%M%S).backup"
+    cp -p "$CONFIG_DIR/config.yaml" "$backup_file"
     if command -v nano >/dev/null 2>&1; then
         nano "$CONFIG_DIR/config.yaml"
     elif command -v vim >/dev/null 2>&1; then
@@ -1180,10 +1213,16 @@ edit_config() {
     else
         print_error "未找到 nano/vim/vi 编辑器"
         print_info "配置文件位置: $CONFIG_DIR/config.yaml"
-        exit 1
+        return 1
     fi
-    validate_config_file "$CONFIG_DIR/config.yaml"
+
+    if ! validate_config_file "$CONFIG_DIR/config.yaml"; then
+        cp -p "$backup_file" "$CONFIG_DIR/config.yaml"
+        print_warning "编辑后的配置无效，已恢复编辑前版本: $backup_file"
+        return 1
+    fi
     show_config_summary "$CONFIG_DIR/config.yaml"
+    print_success "配置编辑完成"
 }
 
 install_dashboard() {
@@ -1276,6 +1315,11 @@ pause_menu() {
     read -r -p "按回车键继续..." _
 }
 
+run_menu_action() {
+    ("$@") || true
+    pause_menu
+}
+
 interactive_menu() {
     local choice input_url
 
@@ -1291,72 +1335,56 @@ interactive_menu() {
 
         case "$choice" in
             1)
-                install_mihomo
-                pause_menu
+                run_menu_action install_mihomo
                 ;;
             2)
                 read -r -p "请输入订阅链接（留空使用已保存链接）: " input_url
-                update_subscription "$input_url"
-                pause_menu
+                run_menu_action update_subscription "$input_url"
                 ;;
             3)
-                start_service
-                pause_menu
+                run_menu_action start_service
                 ;;
             4)
-                stop_service
-                pause_menu
+                run_menu_action stop_service
                 ;;
             5)
-                restart_service
-                pause_menu
+                run_menu_action restart_service
                 ;;
             6)
-                show_status
-                pause_menu
+                run_menu_action show_status
                 ;;
             7)
                 show_logs
                 ;;
             8)
-                enable_service
-                pause_menu
+                run_menu_action enable_service
                 ;;
             9)
-                disable_service
-                pause_menu
+                run_menu_action disable_service
                 ;;
             10)
-                test_config
-                pause_menu
+                run_menu_action test_config
                 ;;
             11)
-                verify_service
-                pause_menu
+                run_menu_action verify_service
                 ;;
             12)
-                install_dashboard
-                pause_menu
+                run_menu_action install_dashboard
                 ;;
             13)
-                edit_config
-                pause_menu
+                run_menu_action edit_config
                 ;;
             14)
-                enable_system_proxy
-                pause_menu
+                run_menu_action enable_system_proxy
                 ;;
             15)
-                disable_system_proxy_file
-                pause_menu
+                run_menu_action disable_system_proxy_file
                 ;;
             16)
-                uninstall_mihomo
-                pause_menu
+                run_menu_action uninstall_mihomo
                 ;;
             17)
-                show_usage
-                pause_menu
+                run_menu_action show_usage
                 ;;
             0)
                 print_info "退出脚本"

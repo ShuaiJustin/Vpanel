@@ -1641,6 +1641,7 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 			portalAuth.POST("/2fa/login", middleware.AuthRateLimit("login"), portalAuthHandler.Verify2FALogin)
 			portalAuth.GET("/oauth/providers", portalAuthHandler.GetOAuthProviders)
 			portalAuth.GET("/oauth/:provider/start", portalAuthHandler.StartOAuth)
+			portalAuth.GET("/oauth/:provider/embed", portalAuthHandler.GetOAuthEmbedConfig)
 			portalAuth.GET("/oauth/:provider/callback", portalAuthHandler.OAuthCallback)
 		}
 

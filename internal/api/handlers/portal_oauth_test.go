@@ -90,3 +90,27 @@ func TestFetchWeComOAuthUserInfoRejectsMissingUserID(t *testing.T) {
 		t.Fatal("expected missing user id to be rejected")
 	}
 }
+
+func TestBuildPortalOAuthWeComEmbedConfigExcludesSecret(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	req := httptest.NewRequest(http.MethodGet, "https://panel.example.com/api/portal/auth/oauth/wecom/embed", nil)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = req
+	provider := settings.OAuthProviderSettings{
+		CorpID:       "corp-id",
+		AgentID:      "1000022",
+		ClientSecret: "must-not-leak",
+	}
+
+	config := buildPortalOAuthEmbedConfig(ctx, "wecom", provider, "state-token", "https://login.example.com")
+	if config["appid"] != "corp-id" || config["agentid"] != "1000022" {
+		t.Fatalf("unexpected public config: %#v", config)
+	}
+	if config["redirect_uri"] != "https://panel.example.com/api/portal/auth/oauth/wecom/callback" {
+		t.Fatalf("unexpected redirect uri: %q", config["redirect_uri"])
+	}
+	if _, exists := config["client_secret"]; exists {
+		t.Fatal("embed config must not expose client secret")
+	}
+}

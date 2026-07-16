@@ -9,6 +9,7 @@ const AuthLayout = () => import(/* webpackChunkName: "user-auth" */ '../layouts/
 
 // 用户认证页面
 const UserLogin = () => import(/* webpackChunkName: "user-auth" */ '../views/user/Login.vue')
+const WeComLogin = () => import(/* webpackChunkName: "user-auth" */ '../views/user/WeComLogin.vue')
 const UserRegister = () => import(/* webpackChunkName: "user-auth" */ '../views/user/Register.vue')
 const ForgotPassword = () => import(/* webpackChunkName: "user-auth" */ '../views/user/ForgotPassword.vue')
 const ResetPassword = () => import(/* webpackChunkName: "user-auth" */ '../views/user/ResetPassword.vue')
@@ -319,6 +320,22 @@ export const userRoutes = [
         meta: {
           title: '用户登录',
           guest: true
+        }
+      }
+    ]
+  },
+  {
+    path: '/user/login/wecom',
+    component: AuthLayout,
+    children: [
+      {
+        path: '',
+        name: 'UserWeComLogin',
+        component: WeComLogin,
+        meta: {
+          title: '企业微信扫码登录',
+          guest: true,
+          wideAuth: true
         }
       }
     ]

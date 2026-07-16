@@ -78,16 +78,30 @@ check_xray_installed() {
 
 # 安装 Xray
 install_xray() {
+    local installer status
     log_info "开始安装 Xray..."
-    
-    # 使用官方安装脚本
-    bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
-    
-    if [ $? -eq 0 ]; then
+
+    installer=$(mktemp /tmp/xray-install.XXXXXX.sh)
+    if ! curl -fL --retry 3 --connect-timeout 10 \
+        https://github.com/XTLS/Xray-install/raw/main/install-release.sh \
+        -o "$installer"; then
+        rm -f "$installer"
+        log_error "Xray 安装脚本下载失败"
+        exit 1
+    fi
+
+    if bash "$installer" install; then
+        status=0
+    else
+        status=$?
+    fi
+    rm -f "$installer"
+
+    if [ "$status" -eq 0 ]; then
         log_info "Xray 安装成功"
     else
         log_error "Xray 安装失败"
-        exit 1
+        exit "$status"
     fi
 }
 

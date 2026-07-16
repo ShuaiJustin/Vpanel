@@ -261,8 +261,22 @@ EOF
     sudo chmod +x /usr/local/bin/vpanel-agent
 
     if ! command -v xray >/dev/null 2>&1; then
+        local xray_installer
         log_warn "安装 Xray..."
-        bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
+        xray_installer=$(mktemp /tmp/xray-install.XXXXXX.sh)
+        if ! curl -fL --retry 3 --connect-timeout 10 \
+            https://github.com/XTLS/Xray-install/raw/main/install-release.sh \
+            -o "$xray_installer"; then
+            rm -f "$xray_installer"
+            log_error "Xray 安装脚本下载失败"
+            return 1
+        fi
+        if ! bash "$xray_installer" install; then
+            rm -f "$xray_installer"
+            log_error "Xray 安装失败"
+            return 1
+        fi
+        rm -f "$xray_installer"
     else
         log_info "Xray 已安装"
     fi

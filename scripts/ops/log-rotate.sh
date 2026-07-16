@@ -16,6 +16,18 @@ MAX_SIZE=${MAX_SIZE:-100M}
 KEEP_DAYS=${KEEP_DAYS:-30}
 COMPRESS=${COMPRESS:-true}
 
+size_to_bytes() {
+    local value="${1^^}"
+    local number
+
+    case "$value" in
+        *K) number="${value%K}"; echo $((number * 1024)) ;;
+        *M) number="${value%M}"; echo $((number * 1024 * 1024)) ;;
+        *G) number="${value%G}"; echo $((number * 1024 * 1024 * 1024)) ;;
+        *) echo "$value" ;;
+    esac
+}
+
 show_help() {
     echo "V Panel 日志轮转脚本"
     echo ""
@@ -52,7 +64,7 @@ rotate_logs() {
         
         # 检查文件大小
         file_size=$(stat -f%z "$log_file" 2>/dev/null || stat -c%s "$log_file" 2>/dev/null || echo "0")
-        max_size_bytes=$(echo "$MAX_SIZE" | sed 's/M/*1024*1024/;s/K/*1024/;s/G/*1024*1024*1024/' | bc)
+        max_size_bytes=$(size_to_bytes "$MAX_SIZE")
         
         if [ "$file_size" -gt "$max_size_bytes" ]; then
             base_name=$(basename "$log_file" .log)
@@ -70,7 +82,7 @@ rotate_logs() {
                 echo "  已压缩: ${rotated_file}.gz"
             fi
             
-            ((rotated_count++))
+            rotated_count=$((rotated_count + 1))
         fi
     done
     
@@ -100,7 +112,7 @@ clean_old_logs() {
         
         echo "删除: $file"
         rm -f "$file"
-        ((deleted_count++))
+        deleted_count=$((deleted_count + 1))
     done < <(find "$LOG_DIR" -type f \( -name "*.log.*" -o -name "*.log.gz" \) -mtime +$KEEP_DAYS -print0)
     
     if [ $deleted_count -eq 0 ]; then
@@ -129,7 +141,7 @@ analyze_logs() {
         if [ -f "$log_file" ]; then
             file_size=$(stat -f%z "$log_file" 2>/dev/null || stat -c%s "$log_file" 2>/dev/null || echo "0")
             total_size=$((total_size + file_size))
-            ((file_count++))
+            file_count=$((file_count + 1))
         fi
     done
     
@@ -145,8 +157,8 @@ analyze_logs() {
             continue
         fi
         
-        error_count=$(tail -1000 "$log_file" 2>/dev/null | grep -c "ERROR" || echo "0")
-        warn_count=$(tail -1000 "$log_file" 2>/dev/null | grep -c "WARN" || echo "0")
+        error_count=$(tail -1000 "$log_file" 2>/dev/null | grep -c "ERROR" || true)
+        warn_count=$(tail -1000 "$log_file" 2>/dev/null | grep -c "WARN" || true)
         
         if [ "$error_count" -gt 0 ] || [ "$warn_count" -gt 0 ]; then
             echo "  $(basename "$log_file"):"

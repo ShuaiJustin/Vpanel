@@ -535,3 +535,25 @@ func TestRequestContextExtraction(t *testing.T) {
 
 	properties.TestingRun(t)
 }
+
+func TestSecureHeadersAllowsOfficialWeComLoginEmbed(t *testing.T) {
+	router := gin.New()
+	router.Use(SecureHeaders())
+	router.GET("/", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	policy := response.Header().Get("Content-Security-Policy")
+	for _, required := range []string{
+		"default-src 'self'",
+		"img-src 'self' data:",
+		"script-src 'self' https://wwcdn.weixin.qq.com",
+		"frame-src 'self' https://open.work.weixin.qq.com https://open.wecom.tencent.com",
+	} {
+		if !strings.Contains(policy, required) {
+			t.Fatalf("CSP missing %q: %q", required, policy)
+		}
+	}
+}

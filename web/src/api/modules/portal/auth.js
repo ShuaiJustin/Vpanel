@@ -34,6 +34,12 @@ export function getOAuthProviders() {
   return api.get(`${BASE_URL}/oauth/providers`)
 }
 
+export function getOAuthEmbedConfig(provider, redirect = '') {
+  return api.get(`${BASE_URL}/oauth/${encodeURIComponent(provider)}/embed`, {
+    params: redirect ? { redirect } : {}
+  })
+}
+
 export function getOAuthStartUrl(provider, redirect = '') {
   const baseURL = api.defaults.baseURL || '/api'
   const params = new URLSearchParams()

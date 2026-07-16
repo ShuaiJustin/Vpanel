@@ -125,6 +125,18 @@ ensure_unzip() {
     fi
 }
 
+ensure_python3() {
+    if command -v python3 >/dev/null 2>&1; then
+        return
+    fi
+
+    print_warning "未找到 python3，尝试自动安装..."
+    if ! install_package_if_possible python3; then
+        print_error "无法自动安装 python3，请手动安装后重试"
+        exit 1
+    fi
+}
+
 detect_arch() {
     local arch
     arch=$(uname -m)
@@ -224,6 +236,27 @@ is_tcp_port_open() {
     timeout 1 bash -c "</dev/tcp/$host/$port" >/dev/null 2>&1
 }
 
+get_proxy_inbound_port() {
+    local protocol="$1"
+    python3 - "$CONFIG_FILE" "$protocol" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as fh:
+    data = json.load(fh)
+
+protocol = sys.argv[2]
+for inbound in data.get("inbounds", []) or []:
+    if not isinstance(inbound, dict) or inbound.get("protocol") != protocol:
+        continue
+    port = inbound.get("port")
+    if isinstance(port, int) and 0 < port <= 65535:
+        print(port)
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
 extract_inbound_ports() {
     local config_file="${1:-$CONFIG_FILE}"
 
@@ -259,7 +292,7 @@ try_proxy_access() {
 
         case "$http_code" in
             200|204|301|302|307|308)
-                print_success "代理连通性正常: $url HTTP $http_code"
+                print_success "经 Xray 本地入口访问正常: $url HTTP $http_code"
                 return 0
                 ;;
             *)
@@ -435,6 +468,8 @@ EOF
 }
 
 configure_system_proxy() {
+    local http_port socks_port
+
     if [ "$ENABLE_SYSTEM_PROXY" != "1" ]; then
         if [ -f "$SYSTEM_PROXY_FILE" ] && grep -q "Xray 代理配置" "$SYSTEM_PROXY_FILE"; then
             mv "$SYSTEM_PROXY_FILE" "${SYSTEM_PROXY_FILE}.disabled"
@@ -442,24 +477,48 @@ configure_system_proxy() {
         fi
 
         print_info "默认不写入全局系统代理，避免服务未运行时 127.0.0.1 代理导致下载失败"
-        print_info "如确实需要全局代理，请使用: ENABLE_SYSTEM_PROXY=1 $0 install"
+        print_info "如确实需要全局代理，请先启动服务，再执行: $0 proxy on"
         return
     fi
 
-    cat > "$SYSTEM_PROXY_FILE" <<'EOF'
+    if ! http_port=$(get_proxy_inbound_port http) || ! socks_port=$(get_proxy_inbound_port socks); then
+        print_error "配置中需要同时存在 HTTP 和 SOCKS 入站才能启用系统环境代理"
+        return 1
+    fi
+
+    cat > "$SYSTEM_PROXY_FILE" <<EOF
 # Xray 代理配置
-export http_proxy=http://127.0.0.1:10809
-export https_proxy=http://127.0.0.1:10809
-export all_proxy=socks5h://127.0.0.1:10808
+export http_proxy=http://127.0.0.1:$http_port
+export https_proxy=http://127.0.0.1:$http_port
+export all_proxy=socks5h://127.0.0.1:$socks_port
 export no_proxy=localhost,127.0.0.1,::1
 EOF
-
-    print_success "系统代理配置已添加: HTTP 10809, SOCKS 10808"
+    chmod 0644 "$SYSTEM_PROXY_FILE"
+    print_success "系统代理配置已添加: HTTP $http_port, SOCKS $socks_port"
 }
 
 enable_system_proxy() {
     check_root
     check_installed
+    check_systemd
+    require_commands timeout
+    ensure_python3
+
+    local http_port socks_port
+    if ! systemctl is-active --quiet "$SERVICE_NAME"; then
+        print_error "Xray 服务未运行，拒绝启用系统环境代理"
+        print_info "请先执行: $0 start"
+        return 1
+    fi
+    if ! http_port=$(get_proxy_inbound_port http) || ! socks_port=$(get_proxy_inbound_port socks); then
+        print_error "配置中需要同时存在 HTTP 和 SOCKS 入站才能启用系统环境代理"
+        return 1
+    fi
+    if ! is_tcp_port_open 127.0.0.1 "$http_port" || ! is_tcp_port_open 127.0.0.1 "$socks_port"; then
+        print_error "本机代理端口未全部监听: HTTP $http_port, SOCKS $socks_port"
+        return 1
+    fi
+
     ENABLE_SYSTEM_PROXY=1
     configure_system_proxy
     print_info "重新登录终端后生效；当前终端可执行: source $SYSTEM_PROXY_FILE"
@@ -631,7 +690,13 @@ install_xray() {
         exit 1
     fi
 
-    print_info "安装到系统..."
+    print_info "校验并安装..."
+    chmod 0755 "$temp_dir/xray"
+    if ! check_binary_runtime "$temp_dir/xray"; then
+        rm -rf "$temp_dir" "$temp_file"
+        exit 1
+    fi
+
     mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$ASSET_DIR"
     install -m 0755 "$temp_dir/xray" "$INSTALL_DIR/$BINARY_NAME"
 
@@ -645,14 +710,15 @@ install_xray() {
 
     rm -rf "$temp_dir" "$temp_file"
 
-    if ! check_binary_runtime "$INSTALL_DIR/$BINARY_NAME"; then
-        exit 1
-    fi
-
     create_sample_config
     validate_config_file "$CONFIG_FILE"
     create_systemd_service
-    configure_system_proxy
+    if [ "$ENABLE_SYSTEM_PROXY" = "1" ]; then
+        print_warning "安装阶段不启用系统环境代理，避免服务未启动时影响系统网络"
+        print_info "请先执行: $0 start，然后执行: $0 proxy on"
+    else
+        configure_system_proxy
+    fi
 
     print_success "安装完成！"
     show_usage
@@ -793,10 +859,12 @@ update_config() {
 
     chmod 0644 "$temp_config"
     mv -f "$temp_config" "$CONFIG_FILE"
+    if ! restart_service_with_rollback "$backup_file"; then
+        print_error "配置更新未生效，已尽力恢复原配置"
+        return 1
+    fi
     save_config_url
     print_success "配置更新成功"
-
-    restart_service_with_rollback "$backup_file"
 }
 
 test_config() {
@@ -862,9 +930,9 @@ verify_service() {
     for port in $ports; do
         proxy_url="http://127.0.0.1:$port"
         if try_proxy_access "$proxy_url"; then
-            print_success "Xray HTTP 代理入口可正常使用: $proxy_url"
+            print_success "Xray HTTP 本地入口与网络访问正常: $proxy_url"
             [ "$failed" -eq 0 ] && return 0
-            print_warning "代理可用，但上面的基础检查仍有异常，请按提示处理"
+            print_warning "网络访问正常，但上面的基础检查仍有异常，请按提示处理"
             return 1
         fi
     done
@@ -872,9 +940,9 @@ verify_service() {
     for port in $ports; do
         proxy_url="socks5h://127.0.0.1:$port"
         if try_proxy_access "$proxy_url"; then
-            print_success "Xray SOCKS 代理入口可正常使用: $proxy_url"
+            print_success "Xray SOCKS 本地入口与网络访问正常: $proxy_url"
             [ "$failed" -eq 0 ] && return 0
-            print_warning "代理可用，但上面的基础检查仍有异常，请按提示处理"
+            print_warning "网络访问正常，但上面的基础检查仍有异常，请按提示处理"
             return 1
         fi
     done
@@ -914,12 +982,12 @@ edit_config() {
         exit 1
     fi
 
-    print_success "配置已保存"
-
     if ! validate_config_file "$CONFIG_FILE"; then
-        print_warning "配置未通过校验，已跳过自动重启"
+        cp -p "$backup_file" "$CONFIG_FILE"
+        print_warning "编辑后的配置无效，已恢复编辑前版本: $backup_file"
         return 1
     fi
+    print_success "配置编辑完成"
 
     check_systemd
     if systemctl is-active --quiet "$SERVICE_NAME"; then
@@ -1128,6 +1196,11 @@ pause_menu() {
     read -r -p "按回车键继续..." _
 }
 
+run_menu_action() {
+    ("$@") || true
+    pause_menu
+}
+
 interactive_menu() {
     local choice input_url
 
@@ -1143,68 +1216,53 @@ interactive_menu() {
 
         case "$choice" in
             1)
-                install_xray
-                pause_menu
+                run_menu_action install_xray
                 ;;
             2)
                 read -r -p "请输入完整 Xray JSON 配置链接（不是 Clash/V2Ray 订阅，留空使用已保存链接）: " input_url
-                update_config "$input_url"
-                pause_menu
+                run_menu_action update_config "$input_url"
                 ;;
             3)
-                start_service
-                pause_menu
+                run_menu_action start_service
                 ;;
             4)
-                stop_service
-                pause_menu
+                run_menu_action stop_service
                 ;;
             5)
-                restart_service
-                pause_menu
+                run_menu_action restart_service
                 ;;
             6)
-                show_status
-                pause_menu
+                run_menu_action show_status
                 ;;
             7)
                 show_logs
                 ;;
             8)
-                enable_service
-                pause_menu
+                run_menu_action enable_service
                 ;;
             9)
-                disable_service
-                pause_menu
+                run_menu_action disable_service
                 ;;
             10)
-                test_config
-                pause_menu
+                run_menu_action test_config
                 ;;
             11)
-                verify_service
-                pause_menu
+                run_menu_action verify_service
                 ;;
             12)
-                edit_config
-                pause_menu
+                run_menu_action edit_config
                 ;;
             13)
-                enable_system_proxy
-                pause_menu
+                run_menu_action enable_system_proxy
                 ;;
             14)
-                disable_system_proxy_file
-                pause_menu
+                run_menu_action disable_system_proxy_file
                 ;;
             15)
-                uninstall_xray
-                pause_menu
+                run_menu_action uninstall_xray
                 ;;
             16)
-                show_usage
-                pause_menu
+                run_menu_action show_usage
                 ;;
             0)
                 print_info "退出脚本"
@@ -1252,7 +1310,7 @@ show_usage() {
     echo "  GITHUB_PROXY_LIST='https://.../'       高级: 覆盖自动加速地址列表"
     echo "  XRAY_DOWNLOAD_URL=https://...zip       直接指定完整二进制下载地址"
     echo "  XRAY_CONFIG_URL=https://...json        非交互传入 Xray JSON 配置链接"
-    echo "  ENABLE_SYSTEM_PROXY=1                  安装后写入 /etc/profile.d 全局代理"
+    echo "  $0 proxy on                            服务启动后启用 /etc/profile.d 系统代理"
     echo "  CURL_RETRY=3                           下载失败重试次数"
     echo "  CURL_METADATA_MAX_TIME=20              版本查询超时时间(秒)"
     echo "  CURL_LOW_SPEED_LIMIT=10240             低于该速度视为慢速下载并切换地址"

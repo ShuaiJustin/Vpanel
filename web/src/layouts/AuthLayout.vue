@@ -11,7 +11,10 @@
     </div>
     
     <!-- 主内容 -->
-    <div class="auth-container">
+    <div
+      class="auth-container"
+      :class="{ 'auth-container--wide': isWideAuth }"
+    >
       <!-- Logo 和标题 -->
       <div class="auth-header">
         <router-link
@@ -27,7 +30,10 @@
       </div>
       
       <!-- 表单区域 -->
-      <div class="auth-card">
+      <div
+        class="auth-card"
+        :class="{ 'auth-card--wide': isWideAuth }"
+      >
         <router-view v-slot="{ Component }">
           <transition
             name="slide-fade"
@@ -72,12 +78,15 @@
 
 <script setup>
 import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { Sunny, Moon } from '@element-plus/icons-vue'
 import { useTheme } from '@/composables/useTheme'
 
+const route = useRoute()
 const { isDark, toggleDarkMode } = useTheme()
 const isDarkMode = isDark
 const currentYear = computed(() => new Date().getFullYear())
+const isWideAuth = computed(() => Boolean(route.meta.wideAuth))
 
 const toggleTheme = () => {
   toggleDarkMode()
@@ -153,6 +162,10 @@ const toggleTheme = () => {
   z-index: 1;
 }
 
+.auth-container--wide {
+  max-width: 460px;
+}
+
 /* 头部 */
 .auth-header {
   text-align: center;
@@ -205,6 +218,11 @@ const toggleTheme = () => {
   border-radius: 16px;
   padding: 40px 36px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+}
+
+.auth-card--wide {
+  padding: 0;
+  border-radius: 24px;
 }
 
 .dark-mode .auth-card {
@@ -290,6 +308,11 @@ const toggleTheme = () => {
   .auth-card {
     padding: 28px 24px;
     border-radius: 12px;
+  }
+
+  .auth-card--wide {
+    padding: 0;
+    border-radius: 16px;
   }
 
   .auth-header {

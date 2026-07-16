@@ -408,10 +408,23 @@ for inbound in data.get("inbounds", []) or []:
 PY
 }
 
-get_first_inbound_port() {
-    local port
-    port=$(extract_inbound_ports "$CONFIG_FILE" | sed -n '1p')
-    echo "${port:-$DEFAULT_MIXED_PORT}"
+get_mixed_inbound_port() {
+    python3 - "$CONFIG_FILE" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as fh:
+    data = json.load(fh)
+
+for inbound in data.get("inbounds", []) or []:
+    if not isinstance(inbound, dict) or inbound.get("type") != "mixed":
+        continue
+    port = inbound.get("listen_port")
+    if isinstance(port, int) and 0 < port <= 65535:
+        print(port)
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
 }
 
 configure_system_proxy() {
@@ -424,11 +437,14 @@ configure_system_proxy() {
         fi
 
         print_info "默认不写入全局系统代理，避免服务未运行时 127.0.0.1 代理导致下载失败"
-        print_info "如确实需要全局代理，请使用: ENABLE_SYSTEM_PROXY=1 $0 install"
+        print_info "如确实需要全局代理，请先启动服务，再执行: $0 proxy on"
         return
     fi
 
-    port=$(get_first_inbound_port)
+    if ! port=$(get_mixed_inbound_port); then
+        print_error "配置中没有可用于系统代理的 mixed 入站"
+        return 1
+    fi
     cat > "$SYSTEM_PROXY_FILE" <<EOF
 # sing-box 代理配置
 export http_proxy=http://127.0.0.1:$port
@@ -443,6 +459,25 @@ EOF
 enable_system_proxy() {
     check_root
     check_installed
+    check_systemd
+    require_commands timeout
+    ensure_python3
+
+    local port
+    if ! systemctl is-active --quiet "$SERVICE_NAME"; then
+        print_error "sing-box 服务未运行，拒绝启用系统环境代理"
+        print_info "请先执行: $0 start"
+        return 1
+    fi
+    if ! port=$(get_mixed_inbound_port); then
+        print_error "配置中没有可用于系统代理的 mixed 入站"
+        return 1
+    fi
+    if ! is_tcp_port_open 127.0.0.1 "$port"; then
+        print_error "本机 mixed 代理端口未监听: 127.0.0.1:$port"
+        return 1
+    fi
+
     ENABLE_SYSTEM_PROXY=1
     configure_system_proxy
     print_info "重新登录终端后生效；当前终端可执行: source $SYSTEM_PROXY_FILE"
@@ -684,19 +719,26 @@ install_sing_box() {
         exit 1
     fi
 
-    print_info "安装到系统..."
+    print_info "校验并安装..."
+    chmod 0755 "$binary_path"
+    if ! check_binary_runtime "$binary_path"; then
+        rm -rf "$temp_dir" "$temp_file"
+        exit 1
+    fi
+
     mkdir -p "$INSTALL_DIR" "$CONFIG_DIR"
     install -m 0755 "$binary_path" "$INSTALL_DIR/$BINARY_NAME"
     rm -rf "$temp_dir" "$temp_file"
 
-    if ! check_binary_runtime "$INSTALL_DIR/$BINARY_NAME"; then
-        exit 1
-    fi
-
     create_sample_config
     validate_config_file "$CONFIG_FILE"
     create_systemd_service
-    configure_system_proxy
+    if [ "$ENABLE_SYSTEM_PROXY" = "1" ]; then
+        print_warning "安装阶段不启用系统环境代理，避免服务未启动时影响系统网络"
+        print_info "请先执行: $0 start，然后执行: $0 proxy on"
+    else
+        configure_system_proxy
+    fi
 
     print_success "sing-box 安装完成"
     show_usage
@@ -890,10 +932,12 @@ update_subscription() {
 
     chmod 0644 "$temp_config"
     mv -f "$temp_config" "$CONFIG_FILE"
+    if ! restart_service_with_rollback "$backup_file"; then
+        print_error "订阅更新未生效，已尽力恢复原配置"
+        return 1
+    fi
     save_subscription_url
     print_success "订阅配置更新成功"
-
-    restart_service_with_rollback "$backup_file"
 }
 
 test_config() {
@@ -922,7 +966,7 @@ try_proxy_access() {
 
         case "$http_code" in
             200|204|301|302|307|308)
-                print_success "代理连通性正常: $url HTTP $http_code"
+                print_success "经 sing-box 本地入口访问正常: $url HTTP $http_code"
                 return 0
                 ;;
             *)
@@ -994,14 +1038,14 @@ verify_service() {
         is_tcp_port_open 127.0.0.1 "$proxy_port" || continue
 
         if try_proxy_access "$proxy_url"; then
-            print_success "sing-box 已可正常代理访问: $proxy_url"
+            print_success "sing-box 本地代理入口与网络访问正常: $proxy_url"
             [ "$failed" -eq 0 ] && return 0
-            print_warning "代理可用，但上面的基础检查仍有异常，请按提示处理"
+            print_warning "网络访问正常，但上面的基础检查仍有异常，请按提示处理"
             return 1
         fi
     done
 
-    print_error "未通过代理连通性验证"
+    print_error "未通过 sing-box 本地入口网络验证"
     print_info "可查看日志定位原因: journalctl -u $SERVICE_NAME -n 100 --no-pager"
     return 1
 }
@@ -1035,7 +1079,12 @@ edit_config() {
         exit 1
     fi
 
-    validate_config_file "$CONFIG_FILE"
+    if ! validate_config_file "$CONFIG_FILE"; then
+        cp -p "$backup_file" "$CONFIG_FILE"
+        print_warning "编辑后的配置无效，已恢复编辑前版本: $backup_file"
+        return 1
+    fi
+    print_success "配置编辑完成"
 }
 
 start_service() {
@@ -1235,6 +1284,11 @@ pause_menu() {
     read -r -p "按回车键继续..." _
 }
 
+run_menu_action() {
+    ("$@") || true
+    pause_menu
+}
+
 interactive_menu() {
     local choice input_url
 
@@ -1250,68 +1304,53 @@ interactive_menu() {
 
         case "$choice" in
             1)
-                install_sing_box
-                pause_menu
+                run_menu_action install_sing_box
                 ;;
             2)
                 read -r -p "请输入 Sing-box 订阅链接（留空使用已保存链接）: " input_url
-                update_subscription "$input_url"
-                pause_menu
+                run_menu_action update_subscription "$input_url"
                 ;;
             3)
-                start_service
-                pause_menu
+                run_menu_action start_service
                 ;;
             4)
-                stop_service
-                pause_menu
+                run_menu_action stop_service
                 ;;
             5)
-                restart_service
-                pause_menu
+                run_menu_action restart_service
                 ;;
             6)
-                show_status
-                pause_menu
+                run_menu_action show_status
                 ;;
             7)
                 show_logs
                 ;;
             8)
-                enable_service
-                pause_menu
+                run_menu_action enable_service
                 ;;
             9)
-                disable_service
-                pause_menu
+                run_menu_action disable_service
                 ;;
             10)
-                test_config
-                pause_menu
+                run_menu_action test_config
                 ;;
             11)
-                verify_service
-                pause_menu
+                run_menu_action verify_service
                 ;;
             12)
-                edit_config
-                pause_menu
+                run_menu_action edit_config
                 ;;
             13)
-                enable_system_proxy
-                pause_menu
+                run_menu_action enable_system_proxy
                 ;;
             14)
-                disable_system_proxy_file
-                pause_menu
+                run_menu_action disable_system_proxy_file
                 ;;
             15)
-                uninstall_sing_box
-                pause_menu
+                run_menu_action uninstall_sing_box
                 ;;
             16)
-                show_usage
-                pause_menu
+                run_menu_action show_usage
                 ;;
             0)
                 print_info "退出脚本"
