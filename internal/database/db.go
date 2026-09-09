@@ -253,6 +253,10 @@ func (d *Database) AutoMigrate() error {
 		return err
 	}
 
+	if err := d.reconcileLegacyRefundedOrders(context.Background()); err != nil {
+		return err
+	}
+
 	if err := d.normalizeUserEmails(context.Background()); err != nil {
 		return err
 	}
@@ -265,6 +269,41 @@ func (d *Database) AutoMigrate() error {
 		return err
 	}
 
+	return nil
+}
+
+// Older refund code could credit the wallet and then accidentally restore the
+// order's old paid/completed status. The ledger is the durable proof that the
+// refund happened; normalize those rows during the additive startup migration
+// so reports and API eligibility are correct immediately after upgrade.
+func (d *Database) reconcileLegacyRefundedOrders(ctx context.Context) error {
+	const ledgerPrefix = "Refund for order #%"
+	result := d.db.WithContext(ctx).Exec(`
+		UPDATE orders
+		SET status = ?,
+			refunded_amount = (
+				SELECT COALESCE(SUM(bt.amount), 0)
+				FROM balance_transactions bt
+				WHERE bt.order_id = orders.id AND bt.type = ? AND bt.description LIKE ?
+			),
+			fulfillment_pending = ?
+		WHERE status IN (?, ?)
+		  AND (
+			SELECT COALESCE(SUM(bt.amount), 0) FROM balance_transactions bt
+			WHERE bt.order_id = orders.id AND bt.type = ? AND bt.description LIKE ?
+		  ) > 0`,
+		repository.OrderStatusRefunded,
+		repository.BalanceTxTypeRefund,
+		ledgerPrefix,
+		false,
+		repository.OrderStatusPaid,
+		repository.OrderStatusCompleted,
+		repository.BalanceTxTypeRefund,
+		ledgerPrefix,
+	)
+	if result.Error != nil {
+		return fmt.Errorf("reconcile legacy refunded orders: %w", result.Error)
+	}
 	return nil
 }
 
@@ -305,6 +344,15 @@ func (d *Database) ensurePerformanceIndexes(ctx context.Context) error {
 		return nil
 	}
 
+	if d.db.Dialector.Name() == "sqlite" || d.db.Dialector.Name() == "sqlite3" {
+		statements = append(statements,
+			`CREATE INDEX IF NOT EXISTS idx_node_traffic_utc_range ON node_traffic(datetime(recorded_at), node_id, upload, download)`,
+			`CREATE INDEX IF NOT EXISTS idx_node_traffic_user_utc ON node_traffic(user_id, datetime(recorded_at))`,
+			`CREATE INDEX IF NOT EXISTS idx_node_traffic_node_utc ON node_traffic(node_id, datetime(recorded_at))`,
+			`CREATE INDEX IF NOT EXISTS idx_traffic_utc_range ON traffic(datetime(recorded_at))`,
+			`CREATE INDEX IF NOT EXISTS idx_traffic_user_utc ON traffic(user_id, datetime(recorded_at))`,
+		)
+	}
 	for _, stmt := range statements {
 		if err := d.db.WithContext(ctx).Exec(stmt).Error; err != nil {
 			return fmt.Errorf("create performance index (%s): %w", stmt, err)

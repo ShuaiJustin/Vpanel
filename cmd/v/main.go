@@ -27,6 +27,7 @@ import (
 	"v/internal/proxy/protocols/vmess"
 	"v/internal/server"
 	"v/internal/settings"
+	pkgerrors "v/pkg/errors"
 )
 
 var (
@@ -40,6 +41,10 @@ func main() {
 	configPath := flag.String("config", "configs/config.yaml", "path to config file")
 	showVersion := flag.Bool("version", false, "show version information")
 	flag.Parse()
+	if err := validateStartupArguments(flag.Args()); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
 
 	// Show version and exit
 	if *showVersion {
@@ -105,27 +110,9 @@ func main() {
 		FlushInterval:   cfg.Log.FlushInterval,
 	})
 
-	// Start cleanup scheduler
+	// Prepare background-worker context, but do not start any worker until the
+	// HTTP listener is bound successfully.
 	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
-	logService.StartCleanupScheduler(cleanupCtx)
-
-	// Daily DB snapshot scheduler. Gated by VPANEL_BACKUP_ENABLED so ops
-	// can opt out if they're running their own backup tooling (Litestream,
-	// volume snapshots, etc.).
-	if os.Getenv("VPANEL_BACKUP_ENABLED") != "0" {
-		retention := 14
-		if v := strings.TrimSpace(os.Getenv("VPANEL_BACKUP_RETENTION_DAYS")); v != "" {
-			if n, err := strconv.Atoi(v); err == nil && n > 0 {
-				retention = n
-			}
-		}
-		dbPath := os.Getenv("V_DB_PATH")
-		if dbPath == "" {
-			dbPath = cfg.Database.DSN
-		}
-		backupSvc := backup.New(dbPath, retention, 3, log)
-		backupSvc.Start(cleanupCtx)
-	}
 
 	log.Info("log service initialized",
 		logger.F("database_enabled", cfg.Log.DatabaseEnabled),
@@ -138,7 +125,13 @@ func main() {
 		JWTSecret:          cfg.Auth.JWTSecret,
 		TokenExpiry:        cfg.Auth.TokenExpiry,
 		RefreshTokenExpiry: cfg.Auth.RefreshTokenExpiry,
-	})
+	}).WithUserRepository(repos.User)
+	sessionStore, err := auth.NewDatabaseSessionStore(repos.DB())
+	if err != nil {
+		log.Error("failed to initialize authentication sessions", logger.F("error", err))
+		os.Exit(1)
+	}
+	authService.WithSessionStore(sessionStore)
 
 	// Ensure system roles exist
 	if err := repos.Role.EnsureSystemRoles(context.Background()); err != nil {
@@ -165,8 +158,28 @@ func main() {
 	srv := server.New(cfg, log, authService, proxyManager, repos, logService)
 
 	if err := srv.Start(); err != nil {
+		cleanupCancel()
 		log.Error("failed to start server", logger.F("error", err))
 		os.Exit(1)
+	}
+
+	logService.StartCleanupScheduler(cleanupCtx)
+
+	// Daily DB snapshot scheduler. Gated by VPANEL_BACKUP_ENABLED so ops
+	// can opt out if they're running their own backup tooling (Litestream,
+	// volume snapshots, etc.).
+	if os.Getenv("VPANEL_BACKUP_ENABLED") != "0" {
+		retention := 14
+		if v := strings.TrimSpace(os.Getenv("VPANEL_BACKUP_RETENTION_DAYS")); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				retention = n
+			}
+		}
+		dbPath := os.Getenv("V_DB_PATH")
+		if dbPath == "" {
+			dbPath = cfg.Database.DSN
+		}
+		backup.New(dbPath, retention, 3, log).Start(cleanupCtx)
 	}
 
 	log.Info("server started",
@@ -198,6 +211,13 @@ func main() {
 	}
 
 	log.Info("server stopped gracefully")
+}
+
+func validateStartupArguments(args []string) error {
+	if len(args) != 0 {
+		return fmt.Errorf("unexpected positional argument; use -version to display version information")
+	}
+	return nil
 }
 
 // applyStartupOverridesFromSettings reads system settings persisted in the
@@ -430,43 +450,22 @@ func normalizeStartupCORSOrigins(value string) ([]string, bool) {
 }
 
 // ensureAdminUser creates the default admin user if it doesn't exist.
-// If the user exists, it updates the password to match the configuration.
+// Existing credentials are owned by the user, not by bootstrap configuration.
 func ensureAdminUser(userRepo repository.UserRepository, authService *auth.Service, cfg *config.Config, log logger.Logger) error {
 	ctx := context.Background()
 
-	// Hash the password from config
+	// Check if admin user exists
+	_, err := userRepo.GetByUsername(ctx, cfg.Auth.AdminUsername)
+	if err == nil {
+		log.Info("admin user already exists", logger.F("username", cfg.Auth.AdminUsername))
+		return nil
+	}
+	if !pkgerrors.IsNotFound(err) {
+		return fmt.Errorf("lookup admin user: %w", err)
+	}
 	passwordHash, err := authService.HashPassword(cfg.Auth.AdminPassword)
 	if err != nil {
 		return fmt.Errorf("failed to hash admin password: %w", err)
-	}
-
-	// Check if admin user exists
-	existingUser, err := userRepo.GetByUsername(ctx, cfg.Auth.AdminUsername)
-	if err == nil {
-		// Admin user already exists
-		updated := false
-
-		// Update password if different
-		if existingUser.PasswordHash != passwordHash {
-			existingUser.PasswordHash = passwordHash
-			updated = true
-		}
-
-		// Set default display name if empty
-		if existingUser.DisplayName == "" {
-			existingUser.DisplayName = "系统管理员"
-			updated = true
-		}
-
-		if updated {
-			if err := userRepo.Update(ctx, existingUser); err != nil {
-				return fmt.Errorf("failed to update admin user: %w", err)
-			}
-			log.Info("admin user updated", logger.F("username", cfg.Auth.AdminUsername))
-		} else {
-			log.Info("admin user already exists", logger.F("username", cfg.Auth.AdminUsername))
-		}
-		return nil
 	}
 
 	// Create admin user

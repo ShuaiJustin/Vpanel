@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,32 @@ import (
 	"v/internal/logger"
 	"v/internal/node"
 )
+
+func TestRealtimeStatsTotalsEqualGroupedNodes(t *testing.T) {
+	h, repos := newNodeStatsTestHandler(t)
+	for _, r := range []*repository.NodeTraffic{{NodeID: 1, UserID: 0, Upload: 10, Download: 20, RecordedAt: time.Now()}, {NodeID: 2, UserID: 0, Upload: 3, Download: 7, RecordedAt: time.Now()}} {
+		if err := repos.NodeTraffic.Create(context.Background(), r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	router := gin.New()
+	router.GET("/realtime", h.GetRealTimeStats)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/realtime", nil))
+	if w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+	var got struct {
+		Traffic struct{ Upload, Download, Total int64 }
+		Nodes   []NodeTrafficStatsResponse `json:"traffic_by_node"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Traffic.Upload != 13 || got.Traffic.Download != 27 || got.Traffic.Total != 40 || len(got.Nodes) != 2 {
+		t.Fatalf("unexpected totals %+v", got)
+	}
+}
 
 func newNodeStatsTestHandler(t *testing.T) (*NodeStatsHandler, *repository.Repositories) {
 	t.Helper()

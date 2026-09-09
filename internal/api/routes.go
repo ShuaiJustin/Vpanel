@@ -75,6 +75,7 @@ type Router struct {
 	nodeRecoveryTracker       *handlers.NodeRecoveryTracker
 	cache                     cache.Cache
 	notificationDispatcher    *dispatcher.Dispatcher
+	commercialScheduler       *planchange.Scheduler
 	auditService              monitor.AuditService
 }
 
@@ -222,10 +223,10 @@ func (r *Router) Setup() {
 	r.loadStoredPaymentSettings(context.Background(), paymentService)
 	r.loadStoredNotificationSettings(context.Background())
 
-	// Start the notification dispatcher after SMTP/Telegram config is loaded,
-	// so the first sweep can actually deliver if needed.
+	// The server starts notification workers after the durable outbox has been
+	// configured. Setup only constructs them so startup failures cannot leave
+	// orphaned background goroutines behind.
 	r.notificationDispatcher = dispatcher.New(r.notificationService, r.repos.User, r.logger)
-	r.notificationDispatcher.Start(context.Background())
 	settingsHandler.
 		WithValidateHook(func(ctx context.Context, systemSettings *settings.SystemSettings) error {
 			return r.validateSystemSettings(systemSettings)
@@ -270,6 +271,7 @@ func (r *Router) Setup() {
 	})
 	subscriptionService.WithEntitlementService(r.entitlementService)
 	planChangeService := planchange.NewService(r.repos.PlanChange, r.repos.Plan, r.repos.User, orderService, balanceService, r.logger)
+	r.commercialScheduler = planchange.NewScheduler(planChangeService, time.Minute, r.logger)
 
 	// Create pause service
 	pauseService := pause.NewService(r.repos.Pause, r.repos.User, r.logger, nil)
@@ -748,6 +750,7 @@ func (r *Router) Setup() {
 			// Plan change routes (user)
 			planChanges := protected.Group("/plan-change")
 			{
+				planChanges.GET("/current", planChangeHandler.GetCurrentPlan)
 				planChanges.POST("/calculate", planChangeHandler.CalculatePlanChange)
 				planChanges.POST("/upgrade", planChangeHandler.UpgradePlan)
 				planChanges.POST("/downgrade", planChangeHandler.DowngradePlan)
@@ -799,6 +802,11 @@ func (r *Router) Setup() {
 				adminOrders.GET("/:id", authMiddleware.RequirePermission("system:write"), orderHandler.GetOrder)
 				adminOrders.PUT("/:id/status", authMiddleware.RequirePermission("system:write"), orderHandler.UpdateOrderStatus)
 				adminOrders.POST("/:id/refund", authMiddleware.RequirePermission("system:write"), orderHandler.RefundOrder)
+			}
+
+			adminPlanChanges := protected.Group("/admin/plan-changes")
+			{
+				adminPlanChanges.GET("/downgrades", authMiddleware.RequirePermission("system:write"), planChangeHandler.AdminListPendingDowngrades)
 			}
 
 			// Admin balance routes
@@ -1600,6 +1608,35 @@ func (r *Router) Engine() *gin.Engine {
 	return r.engine
 }
 
+// ConfigureNotificationOutbox configures durable notification delivery before
+// any notification producer or dispatcher starts.
+func (r *Router) ConfigureNotificationOutbox(dir string) error {
+	return r.notificationService.ConfigureOutbox(dir)
+}
+
+// StartNotificationServices starts both durable delivery and periodic alert
+// dispatching with the server lifecycle context.
+func (r *Router) StartNotificationServices(ctx context.Context) {
+	r.notificationService.StartOutbox(ctx, r.logger)
+	if r.notificationDispatcher != nil {
+		r.notificationDispatcher.Start(ctx)
+	}
+}
+
+// StartCommercialScheduler starts durable downgrade and fulfillment recovery.
+func (r *Router) StartCommercialScheduler() {
+	if r.commercialScheduler != nil {
+		r.commercialScheduler.Start()
+	}
+}
+
+// StopCommercialScheduler stops commercial reconciliation.
+func (r *Router) StopCommercialScheduler() {
+	if r.commercialScheduler != nil {
+		r.commercialScheduler.Stop()
+	}
+}
+
 // setupPortalRoutes configures the user portal API routes.
 func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 	// Create portal services
@@ -1636,6 +1673,8 @@ func (r *Router) setupPortalRoutes(api *gin.RouterGroup) {
 
 	// Portal auth middleware
 	portalAuthMiddleware := middleware.NewPortalAuthMiddleware(r.authService, r.repos.User, r.logger)
+	// Both password entrypoints finish through the same one-time 2FA challenge verifier.
+	api.POST("/auth/2fa/login", middleware.AuthRateLimit("login"), portalAuthHandler.Verify2FALogin)
 
 	// Portal routes group
 	portal := api.Group("/portal")

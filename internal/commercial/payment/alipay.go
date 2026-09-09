@@ -84,7 +84,7 @@ func (g *AlipayGateway) CreatePayment(order *PaymentOrder) (*PaymentRequest, err
 	// Build biz content
 	bizContent := map[string]interface{}{
 		"out_trade_no": order.OrderNo,
-		"total_amount": fmt.Sprintf("%.2f", float64(order.Amount)/100),
+		"total_amount": formatCents(order.Amount),
 		"subject":      order.Subject,
 		"product_code": "FAST_INSTANT_TRADE_PAY",
 	}
@@ -181,11 +181,9 @@ func (g *AlipayGateway) VerifyCallback(data []byte, signature string) (*PaymentR
 	}
 
 	// Parse amount
-	var amount int64
-	if amountStr := values.Get("total_amount"); amountStr != "" {
-		var amountFloat float64
-		fmt.Sscanf(amountStr, "%f", &amountFloat)
-		amount = int64(amountFloat * 100)
+	amount, err := parseCents(values.Get("total_amount"))
+	if err != nil || amount <= 0 {
+		return nil, errors.New("invalid callback payment amount")
 	}
 
 	// Parse paid time
@@ -281,11 +279,9 @@ func (g *AlipayGateway) QueryPayment(paymentNo string) (*PaymentResult, error) {
 
 	success := queryResp.TradeStatus == "TRADE_SUCCESS" || queryResp.TradeStatus == "TRADE_FINISHED"
 
-	var amount int64
-	if queryResp.TotalAmount != "" {
-		var amountFloat float64
-		fmt.Sscanf(queryResp.TotalAmount, "%f", &amountFloat)
-		amount = int64(amountFloat * 100)
+	amount, err := parseCents(queryResp.TotalAmount)
+	if err != nil {
+		return nil, err
 	}
 
 	return &PaymentResult{
@@ -303,7 +299,7 @@ func (g *AlipayGateway) Refund(paymentNo string, amount int64, reason string) (*
 
 	bizContent := map[string]interface{}{
 		"trade_no":       paymentNo,
-		"refund_amount":  fmt.Sprintf("%.2f", float64(amount)/100),
+		"refund_amount":  formatCents(amount),
 		"refund_reason":  reason,
 		"out_request_no": refundNo,
 	}
@@ -373,11 +369,9 @@ func (g *AlipayGateway) Refund(paymentNo string, amount int64, reason string) (*
 		}, nil
 	}
 
-	var refundAmount int64
-	if refundResp.RefundFee != "" {
-		var amountFloat float64
-		fmt.Sscanf(refundResp.RefundFee, "%f", &amountFloat)
-		refundAmount = int64(amountFloat * 100)
+	refundAmount, err := parseCents(refundResp.RefundFee)
+	if err != nil {
+		return nil, err
 	}
 
 	return &RefundResult{

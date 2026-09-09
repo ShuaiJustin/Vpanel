@@ -209,6 +209,7 @@ const loading = ref(false)
 const show2FA = ref(false)
 const useBackupCode = ref(false)
 const pendingUserId = ref(null)
+const pendingChallengeToken = ref('')
 const oauthProviders = ref([])
 const oauthLoading = ref('')
 
@@ -304,6 +305,7 @@ async function handleLogin() {
     // 检查是否需要 2FA 验证
     if (response.requires_2fa) {
       pendingUserId.value = response.user_id
+      pendingChallengeToken.value = response.challenge_token
       twoFAForm.code = ''
       show2FA.value = true
       ElMessage.info('请完成两步验证')
@@ -341,6 +343,7 @@ async function handle2FAVerify() {
     const response = await userStore.completeTwoFactorLogin(
       {
         user_id: pendingUserId.value,
+        challenge_token: pendingChallengeToken.value,
         code: twoFAForm.code.trim()
       },
       loginForm.remember
@@ -359,11 +362,19 @@ async function handle2FAVerify() {
 function cancelTwoFA() {
   show2FA.value = false
   pendingUserId.value = null
+  pendingChallengeToken.value = ''
   twoFAForm.code = ''
   useBackupCode.value = false
 }
 
 onMounted(async () => {
+  const challenge = new URLSearchParams(route.hash.replace(/^#/, ''))
+  if (challenge.get('challenge_token') && Number(challenge.get('user_id')) > 0) {
+    pendingChallengeToken.value = challenge.get('challenge_token')
+    pendingUserId.value = Number(challenge.get('user_id'))
+    show2FA.value = true
+    await router.replace({ path: route.path, query: route.query, hash: '' })
+  }
   await loadOAuthProviders()
   const oauthError = route.query.oauth_error
   if (typeof oauthError === 'string' && oauthError) {

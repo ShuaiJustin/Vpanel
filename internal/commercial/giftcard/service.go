@@ -19,14 +19,14 @@ import (
 
 // Common errors
 var (
-	ErrGiftCardNotFound     = errors.New("gift card not found")
-	ErrGiftCardAlreadyUsed  = errors.New("gift card has already been redeemed")
-	ErrGiftCardExpired      = errors.New("gift card has expired")
-	ErrGiftCardDisabled     = errors.New("gift card is disabled")
-	ErrGiftCardInvalid      = errors.New("invalid gift card")
-	ErrInvalidAmount        = errors.New("invalid amount")
-	ErrInvalidCount         = errors.New("invalid count")
-	ErrSelfRedeem           = errors.New("cannot redeem your own gift card")
+	ErrGiftCardNotFound    = errors.New("gift card not found")
+	ErrGiftCardAlreadyUsed = errors.New("gift card has already been redeemed")
+	ErrGiftCardExpired     = errors.New("gift card has expired")
+	ErrGiftCardDisabled    = errors.New("gift card is disabled")
+	ErrGiftCardInvalid     = errors.New("invalid gift card")
+	ErrInvalidAmount       = errors.New("invalid amount")
+	ErrInvalidCount        = errors.New("invalid count")
+	ErrSelfRedeem          = errors.New("cannot redeem your own gift card")
 )
 
 // Status constants
@@ -81,13 +81,13 @@ type BatchStats struct {
 
 // Stats represents overall gift card statistics.
 type Stats struct {
-	TotalCards      int64 `json:"total_cards"`
-	ActiveCards     int64 `json:"active_cards"`
-	RedeemedCards   int64 `json:"redeemed_cards"`
-	ExpiredCards    int64 `json:"expired_cards"`
-	TotalValue      int64 `json:"total_value"`
-	ActiveValue     int64 `json:"active_value"`
-	RedeemedValue   int64 `json:"redeemed_value"`
+	TotalCards    int64 `json:"total_cards"`
+	ActiveCards   int64 `json:"active_cards"`
+	RedeemedCards int64 `json:"redeemed_cards"`
+	ExpiredCards  int64 `json:"expired_cards"`
+	TotalValue    int64 `json:"total_value"`
+	ActiveValue   int64 `json:"active_value"`
+	RedeemedValue int64 `json:"redeemed_value"`
 }
 
 // Service provides gift card management operations.
@@ -105,7 +105,6 @@ func NewService(giftCardRepo repository.GiftCardRepository, balanceService *bala
 		logger:         log,
 	}
 }
-
 
 // CreateBatch creates a batch of gift cards.
 func (s *Service) CreateBatch(ctx context.Context, req *CreateBatchRequest, createdBy int64) ([]*GiftCard, string, error) {
@@ -181,11 +180,7 @@ func (s *Service) GetByCode(ctx context.Context, code string) (*GiftCard, error)
 }
 
 // Redeem redeems a gift card and credits the value to user's balance.
-// Flips the card status BEFORE crediting balance so a concurrent redemption
-// attempt loses the status guard and cannot double-credit. If the balance
-// credit fails after the flip, the card is locked in "redeemed" state with no
-// corresponding credit — preferable to the double-credit failure mode and
-// recoverable by admin adjustment.
+// The status change, wallet credit, and audit entry share one transaction.
 func (s *Service) Redeem(ctx context.Context, code string, userID int64) (*GiftCard, error) {
 	// Get gift card
 	repoGC, err := s.giftCardRepo.GetByCode(ctx, strings.ToUpper(code))
@@ -216,9 +211,12 @@ func (s *Service) Redeem(ctx context.Context, code string, userID int64) (*GiftC
 		return nil, ErrSelfRedeem
 	}
 
-	// Atomically flip status to redeemed. Race losers get ErrRecordNotFound
-	// (they see the new status via the WHERE guard) and fail here cleanly.
-	if err := s.giftCardRepo.MarkRedeemed(ctx, repoGC.ID, userID); err != nil {
+	atomicRepo, ok := s.giftCardRepo.(repository.AtomicGiftCardRepository)
+	if !ok {
+		return nil, errors.New("atomic gift card repository is required")
+	}
+	redeemed, err := atomicRepo.RedeemAndCredit(ctx, repoGC.ID, userID)
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrGiftCardAlreadyUsed
 		}
@@ -227,27 +225,12 @@ func (s *Service) Redeem(ctx context.Context, code string, userID int64) (*GiftC
 		return nil, err
 	}
 
-	// Credit balance. If this fails the card is already marked redeemed
-	// (prevents double-credit); surface the error and let admin reconcile.
-	description := fmt.Sprintf("Gift card redemption: %s", repoGC.Code)
-	if err := s.balanceService.Recharge(ctx, userID, repoGC.Value, nil, description); err != nil {
-		s.logger.Error("Gift card redeemed but balance credit failed — admin must reconcile",
-			logger.Err(err),
-			logger.F("code", repoGC.Code),
-			logger.F("userID", userID),
-			logger.F("giftcard_id", repoGC.ID),
-			logger.F("value", repoGC.Value))
-		return nil, err
-	}
-
 	s.logger.Info("Gift card redeemed",
-		logger.F("code", repoGC.Code),
+		logger.F("giftcard_id", repoGC.ID),
 		logger.F("value", repoGC.Value),
 		logger.F("userID", userID))
 
-	// Refresh and return
-	repoGC, _ = s.giftCardRepo.GetByID(ctx, repoGC.ID)
-	return s.toGiftCard(repoGC), nil
+	return s.toGiftCard(redeemed), nil
 }
 
 // Purchase marks a gift card as purchased by a user.

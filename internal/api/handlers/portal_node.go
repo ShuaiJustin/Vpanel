@@ -2,7 +2,6 @@
 package handlers
 
 import (
-	"fmt"
 	"net"
 	"net/http"
 	"strconv"
@@ -151,7 +150,7 @@ func (h *PortalNodeHandler) TestLatency(c *gin.Context) {
 		return
 	}
 
-	target := fmt.Sprintf("%s:%d", nodeInfo.Host, nodeInfo.Port)
+	target := net.JoinHostPort(nodeInfo.Host, strconv.Itoa(nodeInfo.Port))
 	start := time.Now()
 	conn, dialErr := net.DialTimeout("tcp", target, 3*time.Second)
 	if dialErr != nil {

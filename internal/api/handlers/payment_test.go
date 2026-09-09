@@ -18,7 +18,6 @@ import (
 	"v/internal/commercial/balance"
 	"v/internal/commercial/order"
 	"v/internal/commercial/payment"
-	"v/internal/database"
 	"v/internal/database/repository"
 	"v/internal/logger"
 )
@@ -30,7 +29,7 @@ func setupPaymentTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("Failed to open database: %v", err)
 	}
 
-	err = db.AutoMigrate(&database.CommercialPlan{}, &database.Order{}, &database.User{})
+	err = db.AutoMigrate(&repository.CommercialPlan{}, &repository.Order{}, &repository.User{})
 	if err != nil {
 		t.Fatalf("Failed to migrate: %v", err)
 	}

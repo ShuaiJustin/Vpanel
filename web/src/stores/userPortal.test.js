@@ -37,6 +37,32 @@ describe('userPortal store admin bridge', () => {
     setActivePinia(createPinia())
   })
 
+  it('keeps a password challenge unauthenticated and sends it to the second factor endpoint', async () => {
+    const store = useUserPortalStore()
+    const challenge = { requires_2fa: true, user_id: 1, challenge_token: 'one-time-challenge' }
+    portalAuthMocks.login.mockResolvedValueOnce(challenge)
+    expect(await store.login({ username: 'admin', password: 'secret' })).toEqual(challenge)
+    expect(sessionStorage.getItem('userToken')).toBeNull()
+    expect(sessionStorage.getItem('token')).toBeNull()
+    portalAuthMocks.verify2FALogin.mockResolvedValueOnce({ token: 'verified-token', user: { id: 1, role: 'admin', permissions: ['*'] } })
+    const secondStep = { user_id: 1, challenge_token: challenge.challenge_token, code: '123456' }
+    await store.completeTwoFactorLogin(secondStep)
+    expect(portalAuthMocks.verify2FALogin).toHaveBeenCalledWith(secondStep)
+    expect(sessionStorage.getItem('userToken')).toBe('verified-token')
+    expect(sessionStorage.getItem('token')).toBe('verified-token')
+  })
+
+  it('clears the portal and shared administrator session after a password change', async () => {
+    const store = useUserPortalStore()
+    store.completeOAuthLogin({ token: 'shared-session', user: { id: 1, role: 'admin' } })
+    portalAuthMocks.changePassword.mockResolvedValueOnce({})
+    await store.changePassword({ current_password: 'old-password', new_password: 'new-password' })
+    expect(store.isAuthenticated).toBe(false)
+    expect(sessionStorage.getItem('userToken')).toBeNull()
+    expect(sessionStorage.getItem('token')).toBeNull()
+    expect(sessionStorage.getItem('adminUserInfo')).toBeNull()
+  })
+
   it('syncs admin profile refresh into the admin session bridge', async () => {
     sessionStorage.setItem('userToken', 'portal-admin-token')
     const store = useUserPortalStore()

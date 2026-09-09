@@ -748,11 +748,9 @@ async function changePassword() {
       new_password: passwordForm.newPassword
     })
     
-    ElMessage.success('密码已修改')
+    ElMessage.success('密码已修改，请重新登录')
     passwordFormRef.value.resetFields()
-    if (route.query.forced === '1' || route.query.tab === 'security') {
-      router.replace({ path: '/user/settings', query: { tab: 'security' } })
-    }
+    await router.replace('/user/login')
   } catch (error) {
     if (error !== false) {
       ElMessage.error(extractErrorMessage(error) || '修改失败')

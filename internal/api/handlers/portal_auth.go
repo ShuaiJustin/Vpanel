@@ -81,6 +81,8 @@ func NewPortalAuthHandler(
 	proxyRepo repository.ProxyRepository,
 	log logger.Logger,
 ) *PortalAuthHandler {
+	authService.WithUserRepository(userRepo)
+	portalAuthService.WithAuthService(authService)
 	return &PortalAuthHandler{
 		portalAuthService: portalAuthService,
 		authService:       authService,
@@ -136,6 +138,15 @@ func (h *PortalAuthHandler) WithAuditService(audit monitor.AuditService) *Portal
 func (h *PortalAuthHandler) WithSettingsService(settingsService *settings.Service) *PortalAuthHandler {
 	h.settingsService = settingsService
 	return h
+}
+
+func (h *PortalAuthHandler) loginTokenExpiry(c *gin.Context) time.Duration {
+	if h.settingsService != nil {
+		if policy, err := h.settingsService.GetSystemSettings(c.Request.Context()); err == nil && policy.SessionTimeout > 0 {
+			return time.Duration(policy.SessionTimeout) * time.Minute
+		}
+	}
+	return h.authService.TokenExpiry()
 }
 
 // getRolePermissions resolves the permission list for a role name. Admins get "*".
@@ -384,6 +395,7 @@ func (h *PortalAuthHandler) Login(c *gin.Context) {
 		h.rateLimitConfig,
 		h.authService.VerifyPassword,
 		h.authService.GenerateToken,
+		h.loginTokenExpiry(c),
 	)
 	if err != nil {
 		h.handleLoginError(c, err)
@@ -393,8 +405,9 @@ func (h *PortalAuthHandler) Login(c *gin.Context) {
 	// Check if 2FA is required
 	if result.Requires2FA {
 		c.JSON(http.StatusOK, gin.H{
-			"requires_2fa": true,
-			"user_id":      result.UserID,
+			"requires_2fa":    true,
+			"user_id":         result.UserID,
+			"challenge_token": result.ChallengeToken,
 		})
 		return
 	}
@@ -453,7 +466,15 @@ func (h *PortalAuthHandler) handleLoginError(c *gin.Context, err error) {
 
 // Logout handles user logout.
 func (h *PortalAuthHandler) Logout(c *gin.Context) {
-	// In a stateless JWT system, logout is handled client-side
+	parts := strings.Fields(c.GetHeader("Authorization"))
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "会话无效"})
+		return
+	}
+	if err := h.authService.RevokeToken(c.Request.Context(), parts[1], time.Time{}); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "会话无效或已退出"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "登出成功"})
 }
 
@@ -1223,8 +1244,9 @@ func (h *PortalAuthHandler) Verify2FA(c *gin.Context) {
 
 // Portal2FALoginRequest represents a 2FA login verification request.
 type Portal2FALoginRequest struct {
-	UserID int64  `json:"user_id" binding:"required"`
-	Code   string `json:"code" binding:"required"`
+	ChallengeToken string `json:"challenge_token" binding:"required"`
+	UserID         int64  `json:"user_id" binding:"required"`
+	Code           string `json:"code" binding:"required"`
 }
 
 // Verify2FALogin verifies 2FA code during login.
@@ -1236,8 +1258,9 @@ func (h *PortalAuthHandler) Verify2FALogin(c *gin.Context) {
 	}
 
 	twoFactorReq := &portalauth.TwoFactorRequest{
-		UserID: req.UserID,
-		Code:   req.Code,
+		ChallengeToken: req.ChallengeToken,
+		UserID:         req.UserID,
+		Code:           req.Code,
 	}
 
 	result, err := h.portalAuthService.Verify2FA(
@@ -1245,6 +1268,7 @@ func (h *PortalAuthHandler) Verify2FALogin(c *gin.Context) {
 		twoFactorReq,
 		h.authService.VerifyTOTP,
 		h.authService.GenerateToken,
+		h.loginTokenExpiry(c),
 	)
 	if err != nil {
 		h.handleError(c, err)
@@ -1254,7 +1278,9 @@ func (h *PortalAuthHandler) Verify2FALogin(c *gin.Context) {
 	h.updateLastLogin(c, result.UserID)
 
 	c.JSON(http.StatusOK, gin.H{
-		"token": result.Token,
+		"token":         result.Token,
+		"refresh_token": result.RefreshToken,
+		"expires_in":    int64(h.loginTokenExpiry(c).Seconds()),
 		"user": gin.H{
 			"id":                    result.UserID,
 			"username":              result.Username,

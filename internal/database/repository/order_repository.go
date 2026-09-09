@@ -12,23 +12,26 @@ import (
 
 // Order represents an order in the database.
 type Order struct {
-	ID             int64  `gorm:"primaryKey;autoIncrement"`
-	OrderNo        string `gorm:"uniqueIndex;size:64;not null"`
-	UserID         int64  `gorm:"index;not null"`
-	PlanID         int64  `gorm:"index;not null"`
-	CouponID       *int64 `gorm:"index"`
-	OriginalAmount int64  `gorm:"not null"`
-	DiscountAmount int64  `gorm:"default:0"`
-	BalanceUsed    int64  `gorm:"default:0"`
-	PayAmount      int64  `gorm:"not null"`
-	Status         string `gorm:"size:32;default:pending;index"`
-	PaymentMethod  string `gorm:"size:32"`
-	PaymentNo      string `gorm:"size:128;index"`
-	PaidAt         *time.Time
-	ExpiredAt      time.Time `gorm:"index;not null"`
-	Notes          string    `gorm:"type:text"`
-	CreatedAt      time.Time `gorm:"autoCreateTime"`
-	UpdatedAt      time.Time `gorm:"autoUpdateTime"`
+	ID                 int64  `gorm:"primaryKey;autoIncrement"`
+	OrderNo            string `gorm:"uniqueIndex;size:64;not null"`
+	UserID             int64  `gorm:"index;not null"`
+	PlanID             int64  `gorm:"index;not null"`
+	CouponID           *int64 `gorm:"index"`
+	OriginalAmount     int64  `gorm:"not null"`
+	DiscountAmount     int64  `gorm:"default:0"`
+	BalanceUsed        int64  `gorm:"default:0"`
+	PayAmount          int64  `gorm:"not null"`
+	Status             string `gorm:"size:32;default:pending;index"`
+	PaymentMethod      string `gorm:"size:32"`
+	PaymentNo          string `gorm:"size:128;index"`
+	PaidAt             *time.Time
+	FulfilledAt        *time.Time
+	FulfillmentPending bool      `gorm:"default:false;index"`
+	RefundedAmount     int64     `gorm:"default:0"`
+	ExpiredAt          time.Time `gorm:"index;not null"`
+	Notes              string    `gorm:"type:text"`
+	CreatedAt          time.Time `gorm:"autoCreateTime"`
+	UpdatedAt          time.Time `gorm:"autoUpdateTime"`
 
 	User   *User           `gorm:"foreignKey:UserID"`
 	Plan   *CommercialPlan `gorm:"foreignKey:PlanID"`
@@ -203,10 +206,27 @@ func (r *orderRepository) ListByUser(ctx context.Context, userID int64, limit, o
 
 // UpdateStatus updates the status of an order.
 func (r *orderRepository) UpdateStatus(ctx context.Context, id int64, status string) error {
-	return r.db.WithContext(ctx).
+	allowed := map[string][]string{
+		OrderStatusCancelled: {OrderStatusPending},
+		OrderStatusPaid:      {OrderStatusPending},
+		OrderStatusCompleted: {OrderStatusPaid},
+		OrderStatusRefunded:  {OrderStatusPaid, OrderStatusCompleted},
+	}
+	from, ok := allowed[status]
+	if !ok {
+		return ErrCommercialState
+	}
+	result := r.db.WithContext(ctx).
 		Model(&Order{}).
-		Where("id = ?", id).
-		Update("status", status).Error
+		Where("id = ? AND status IN ?", id, from).
+		Update("status", status)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ErrCommercialState
+	}
+	return nil
 }
 
 // MarkPaid marks an order as paid.

@@ -19,7 +19,6 @@ import (
 	"gorm.io/gorm"
 
 	"v/internal/commercial/order"
-	"v/internal/database"
 	"v/internal/database/repository"
 	"v/internal/logger"
 )
@@ -36,7 +35,7 @@ func setupOrderTestDB(t *testing.T) *gorm.DB {
 	}
 
 	// Auto-migrate models
-	err = db.AutoMigrate(&database.CommercialPlan{}, &database.Order{}, &database.User{})
+	err = db.AutoMigrate(&repository.CommercialPlan{}, &repository.Order{}, &repository.User{})
 	if err != nil {
 		t.Fatalf("Failed to migrate: %v", err)
 	}
@@ -45,8 +44,8 @@ func setupOrderTestDB(t *testing.T) *gorm.DB {
 }
 
 // createOrderTestPlan creates a test plan in the database.
-func createOrderTestPlan(db *gorm.DB, name string, price int64, duration int) *database.CommercialPlan {
-	p := &database.CommercialPlan{
+func createOrderTestPlan(db *gorm.DB, name string, price int64, duration int) *repository.CommercialPlan {
+	p := &repository.CommercialPlan{
 		Name:     name,
 		Price:    price,
 		Duration: duration,
@@ -57,13 +56,13 @@ func createOrderTestPlan(db *gorm.DB, name string, price int64, duration int) *d
 }
 
 // createOrderTestUser creates a test user in the database.
-func createOrderTestUser(db *gorm.DB, username string) *database.User {
-	u := &database.User{
-		Username: username,
-		Email:    username + "@test.com",
-		Password: "hashed_password",
-		Role:     "user",
-		Enabled:  true,
+func createOrderTestUser(db *gorm.DB, username string) *repository.User {
+	u := &repository.User{
+		Username:     username,
+		Email:        username + "@test.com",
+		PasswordHash: "hashed_password",
+		Role:         "user",
+		Enabled:      true,
 	}
 	db.Create(u)
 	return u
@@ -331,10 +330,10 @@ func TestListAllOrders_DateOnlyEndDateIncludesWholeDay(t *testing.T) {
 	firstCreatedAt := time.Date(2026, 3, 23, 10, 30, 0, 0, loc)
 	secondCreatedAt := time.Date(2026, 3, 24, 9, 0, 0, 0, loc)
 
-	if err := db.Model(&database.Order{}).Where("id = ?", firstOrder.ID).Update("created_at", firstCreatedAt).Error; err != nil {
+	if err := db.Model(&repository.Order{}).Where("id = ?", firstOrder.ID).Update("created_at", firstCreatedAt).Error; err != nil {
 		t.Fatalf("Failed to update first order created_at: %v", err)
 	}
-	if err := db.Model(&database.Order{}).Where("id = ?", secondOrder.ID).Update("created_at", secondCreatedAt).Error; err != nil {
+	if err := db.Model(&repository.Order{}).Where("id = ?", secondOrder.ID).Update("created_at", secondCreatedAt).Error; err != nil {
 		t.Fatalf("Failed to update second order created_at: %v", err)
 	}
 
@@ -444,10 +443,9 @@ func TestOrderStatusTransitions_Property(t *testing.T) {
 		"cancelled": true,
 	}
 
-	// Valid transitions from paid
+	// The status-only endpoint must not bypass the atomic refund workflow.
 	validFromPaid := map[string]bool{
 		"completed": true,
-		"refunded":  true,
 	}
 
 	properties.Property("pending orders can only transition to paid or cancelled", prop.ForAll(
@@ -477,7 +475,7 @@ func TestOrderStatusTransitions_Property(t *testing.T) {
 		gen.OneConstOf("paid", "cancelled", "completed", "refunded"),
 	))
 
-	properties.Property("paid orders can only transition to completed or refunded", prop.ForAll(
+	properties.Property("paid orders can only complete through the status-only endpoint", prop.ForAll(
 		func(targetStatus string) bool {
 			db := setupOrderTestDB(t)
 			log := logger.NewNopLogger()

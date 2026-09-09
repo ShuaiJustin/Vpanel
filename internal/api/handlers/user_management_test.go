@@ -277,6 +277,7 @@ func TestUpdateUser_RejectsUnknownRole(t *testing.T) {
 
 	router := gin.New()
 	router.PUT("/users/:id", func(c *gin.Context) {
+		c.Set("role", "admin")
 		c.Set("user_id", int64(999))
 		handler.UpdateUser(c)
 	})
@@ -352,6 +353,7 @@ func TestUpdateUser_PreventsDemotingLastEnabledAdmin(t *testing.T) {
 
 	router := gin.New()
 	router.PUT("/users/:id", func(c *gin.Context) {
+		c.Set("role", "admin")
 		c.Set("user_id", int64(999))
 		handler.UpdateUser(c)
 	})
@@ -391,6 +393,7 @@ func TestDeleteUser_PreventsDeletingLastEnabledAdmin(t *testing.T) {
 
 	router := gin.New()
 	router.DELETE("/users/:id", func(c *gin.Context) {
+		c.Set("role", "admin")
 		c.Set("user_id", int64(999))
 		handler.DeleteUser(c)
 	})
@@ -636,6 +639,7 @@ func TestUpdateUser_PreventsChangingOwnRole(t *testing.T) {
 
 	router := gin.New()
 	router.PUT("/users/:id", func(c *gin.Context) {
+		c.Set("role", "admin")
 		c.Set("user_id", admin.ID)
 		handler.UpdateUser(c)
 	})
@@ -740,8 +744,8 @@ func TestRefreshToken_RejectsDisabledUser(t *testing.T) {
 
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("expected status 403, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected disabled account session to be revoked with status 401, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

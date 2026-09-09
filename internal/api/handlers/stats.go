@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -19,9 +20,13 @@ import (
 
 // StatsHandler handles statistics-related requests.
 type StatsHandler struct {
-	logger logger.Logger
-	repos  *repository.Repositories
-	cache  cache.Cache
+	logger          logger.Logger
+	repos           *repository.Repositories
+	cache           cache.Cache
+	trafficMu       sync.Mutex
+	trafficUpload   int64
+	trafficDownload int64
+	trafficCachedAt time.Time
 }
 
 // Cache keys and TTLs for statistics
@@ -143,7 +148,7 @@ func (h *StatsHandler) GetDashboardStats(c *gin.Context) {
 	}
 
 	// Get total traffic
-	upload, download, err := h.repos.Traffic.GetTotalTraffic(ctx)
+	upload, download, err := h.dashboardTraffic(ctx)
 	if err != nil {
 		h.logger.Error("failed to get total traffic", logger.F("error", err))
 	} else {
@@ -175,6 +180,23 @@ func (h *StatsHandler) GetDashboardStats(c *gin.Context) {
 		"message": "success",
 		"data":    stats,
 	})
+}
+
+// Global historical totals change much less visibly than online counts. Keep
+// the exact aggregate for five minutes and serialize misses to avoid repeatedly
+// scanning history when several dashboards refresh together.
+func (h *StatsHandler) dashboardTraffic(ctx context.Context) (int64, int64, error) {
+	h.trafficMu.Lock()
+	defer h.trafficMu.Unlock()
+	if !h.trafficCachedAt.IsZero() && time.Since(h.trafficCachedAt) < 5*time.Minute {
+		return h.trafficUpload, h.trafficDownload, nil
+	}
+	upload, download, err := h.repos.Traffic.GetTotalTraffic(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	h.trafficUpload, h.trafficDownload, h.trafficCachedAt = upload, download, time.Now()
+	return upload, download, nil
 }
 
 // ProtocolStats represents protocol statistics.

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -78,6 +80,9 @@ type HealthChecker struct {
 	consecutiveFailures  map[int64]int
 	consecutiveSuccesses map[int64]int
 	stateMu              sync.RWMutex
+	pendingSince         map[int64]time.Time
+	probeCursor          map[int64]int
+	probeFailures        map[int64]map[int64]bool
 
 	// Control
 	ctx       context.Context
@@ -113,6 +118,9 @@ func NewHealthChecker(
 		httpClient:           &http.Client{Timeout: config.Timeout},
 		consecutiveFailures:  make(map[int64]int),
 		consecutiveSuccesses: make(map[int64]int),
+		pendingSince:         make(map[int64]time.Time),
+		probeCursor:          make(map[int64]int),
+		probeFailures:        make(map[int64]map[int64]bool),
 	}
 }
 
@@ -316,6 +324,7 @@ func (hc *HealthChecker) performCheck(node *repository.Node) *HealthCheckResult 
 	certHealth := hc.checkCertificateExpiration(node)
 	heartbeatHealthy := shouldTrustRecentHeartbeat(node, hc.config.Interval, time.Now())
 	proxyHealth := hc.checkReachableProxyEndpoint(node)
+	pendingGrace := hc.pendingSyncWithinGrace(node, time.Now())
 
 	if nodeTrafficLimitExceeded(node) {
 		result.Status = repository.HealthCheckStatusFailed
@@ -323,7 +332,7 @@ func (hc *HealthChecker) performCheck(node *repository.Node) *HealthCheckResult 
 	} else if sampledProxyEndpointHasTLSFailure(proxyHealth) {
 		result.Status = repository.HealthCheckStatusFailed
 		result.Message = sampledProxyEndpointTLSFailureMessage(proxyHealth)
-	} else if result.TCPOk && result.APIOk && result.XrayOk && shouldDeferProxyEndpointFailureForConfigSync(node, proxyHealth) {
+	} else if result.TCPOk && result.APIOk && result.XrayOk && pendingGrace && shouldDeferProxyEndpointFailureForConfigSync(node, proxyHealth) {
 		// Determine overall status
 		result.Status = repository.HealthCheckStatusSuccess
 		result.Message = sampledProxyEndpointConfigPendingMessage(proxyHealth)
@@ -332,13 +341,13 @@ func (hc *HealthChecker) performCheck(node *repository.Node) *HealthCheckResult 
 		result.Message = "All checks passed"
 	} else if result.TCPOk && result.APIOk && result.XrayOk && proxyHealth.HasSampled && !proxyHealth.AllReachable {
 		if proxyHealth.AnyReachable {
-			result.Status = repository.HealthCheckStatusSuccess
+			result.Status = repository.HealthCheckStatusFailed
 			result.Message = sampledProxyEndpointWarningMessage(proxyHealth)
 		} else {
 			result.Status = repository.HealthCheckStatusFailed
 			result.Message = sampledProxyEndpointFailureMessage(proxyHealth)
 		}
-	} else if shouldAcceptHeartbeatFallback(heartbeatHealthy, proxyHealth.HasSampled, proxyHealth.AnyReachable) {
+	} else if shouldAcceptHeartbeatFallback(heartbeatHealthy, proxyHealth.HasSampled, proxyHealth.AllReachable) {
 		result.Status = repository.HealthCheckStatusSuccess
 		result.Message = heartbeatFallbackMessage(proxyHealth.HasSampled)
 	} else {
@@ -353,6 +362,22 @@ func (hc *HealthChecker) performCheck(node *repository.Node) *HealthCheckResult 
 	applyCertificateHealth(result, certHealth)
 
 	return result
+}
+
+// Heartbeats update Node.UpdatedAt, so track the beginning of pending separately.
+func (hc *HealthChecker) pendingSyncWithinGrace(node *repository.Node, now time.Time) bool {
+	hc.stateMu.Lock()
+	defer hc.stateMu.Unlock()
+	if node.SyncStatus != repository.NodeSyncStatusPending {
+		delete(hc.pendingSince, node.ID)
+		return false
+	}
+	since, exists := hc.pendingSince[node.ID]
+	if !exists {
+		hc.pendingSince[node.ID] = now
+		return true
+	}
+	return now.Sub(since) < 2*time.Minute
 }
 
 func applyCertificateHealth(result *HealthCheckResult, health certificateHealth) {
@@ -449,7 +474,7 @@ func formatSampledProxyEndpointFailure(format string, health sampledProxyEndpoin
 
 // checkTCP checks TCP connectivity to the node.
 func (hc *HealthChecker) checkTCP(address string, port int) bool {
-	addr := fmt.Sprintf("%s:%d", address, port)
+	addr := net.JoinHostPort(address, strconv.Itoa(port))
 	conn, err := net.DialTimeout("tcp", addr, hc.config.Timeout)
 	if err != nil {
 		return false
@@ -460,7 +485,7 @@ func (hc *HealthChecker) checkTCP(address string, port int) bool {
 
 // checkAPI checks the node agent API responsiveness.
 func (hc *HealthChecker) checkAPI(address string, port int) bool {
-	url := fmt.Sprintf("http://%s:%d/health", address, port)
+	url := "http://" + net.JoinHostPort(address, strconv.Itoa(port)) + "/health"
 	resp, err := hc.httpClient.Get(url)
 	if err != nil {
 		return false
@@ -531,6 +556,11 @@ func (hc *HealthChecker) checkReachableProxyEndpoint(node *repository.Node) samp
 		return sampledProxyEndpointHealth{}
 	}
 
+	// Rotate healthy targets and keep failures in the sample until they recover,
+	// so an intermittent sampling window cannot reset consecutive failures.
+	hc.stateMu.Lock()
+	proxies, hc.probeCursor[node.ID] = selectProxySample(proxies, hc.probeFailures[node.ID], hc.probeCursor[node.ID])
+	hc.stateMu.Unlock()
 	checkedTargets := map[string]struct{}{}
 	health := sampledProxyEndpointHealth{AllReachable: true}
 	const maxSampledProxyTargets = 3
@@ -550,6 +580,16 @@ func (hc *HealthChecker) checkReachableProxyEndpoint(node *repository.Node) samp
 		checkedTargets[target] = struct{}{}
 		health.CheckedCount++
 		endpointHealth := hc.checkProxyEndpoint(node, proxyModel, host)
+		hc.stateMu.Lock()
+		if hc.probeFailures[node.ID] == nil {
+			hc.probeFailures[node.ID] = make(map[int64]bool)
+		}
+		if endpointHealth.Reachable {
+			delete(hc.probeFailures[node.ID], proxyModel.ID)
+		} else {
+			hc.probeFailures[node.ID][proxyModel.ID] = true
+		}
+		hc.stateMu.Unlock()
 		if endpointHealth.Reachable {
 			health.AnyReachable = true
 		} else {
@@ -574,6 +614,36 @@ func (hc *HealthChecker) checkReachableProxyEndpoint(node *repository.Node) samp
 	return health
 }
 
+func selectProxySample(proxies []*repository.Proxy, failed map[int64]bool, cursor int) ([]*repository.Proxy, int) {
+	valid := make([]*repository.Proxy, 0, len(proxies))
+	for _, p := range proxies {
+		if p != nil && p.Port > 0 {
+			valid = append(valid, p)
+		}
+	}
+	sort.Slice(valid, func(i, j int) bool { return valid[i].ID < valid[j].ID })
+	if len(valid) == 0 {
+		return nil, 0
+	}
+	result := make([]*repository.Proxy, 0, 3)
+	selected := make(map[int64]bool)
+	for _, p := range valid {
+		if failed[p.ID] && len(result) < 3 {
+			result = append(result, p)
+			selected[p.ID] = true
+		}
+	}
+	for visited := 0; visited < len(valid) && len(result) < 3; visited++ {
+		p := valid[cursor%len(valid)]
+		cursor = (cursor + 1) % len(valid)
+		if !selected[p.ID] {
+			result = append(result, p)
+			selected[p.ID] = true
+		}
+	}
+	return result, cursor
+}
+
 type proxyEndpointHealth struct {
 	Reachable  bool
 	TLSFailure bool
@@ -589,7 +659,7 @@ func (hc *HealthChecker) checkProxyEndpoint(node *repository.Node, proxyModel *r
 	}
 
 	serverName := resolveProxyTLSServerName(node, proxyModel, host)
-	address := fmt.Sprintf("%s:%d", host, proxyModel.Port)
+	address := net.JoinHostPort(host, strconv.Itoa(proxyModel.Port))
 	rawConn, err := net.DialTimeout("tcp", address, hc.config.Timeout)
 	if err != nil {
 		return proxyEndpointHealth{Reason: fmt.Sprintf("TCP connection failed: %v", err)}

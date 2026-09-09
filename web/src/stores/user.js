@@ -76,12 +76,17 @@ export const useUserStore = defineStore('user', () => {
   }
 
   const clearAuth = () => {
+    const previousToken = token.value || getStoredToken()
     token.value = ''
     user.value = null
     loading.value = false
     error.value = null
-    // 只清除管理后台的认证信息，不影响用户门户的 userToken
+    // A bridged portal token is the same revoked server session; independent logins remain.
     for (const storage of [localStorage, sessionStorage]) {
+      if (previousToken && storage.getItem('userToken') === previousToken) {
+        storage.removeItem('userToken')
+        storage.removeItem('userInfo')
+      }
       storage.removeItem('token')
       storage.removeItem(ADMIN_ROLE_KEY)
       storage.removeItem(ADMIN_USER_INFO_KEY)
@@ -95,6 +100,8 @@ export const useUserStore = defineStore('user', () => {
     
     try {
       const response = await authApi.login(credentials)
+
+      if (response.requires_2fa) return response
 
       if (!response.token || !response.user) {
         error.value = '服务器返回的数据格式不正确'

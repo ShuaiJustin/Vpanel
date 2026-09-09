@@ -4,6 +4,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"math"
 	"time"
 
 	"gorm.io/gorm"
@@ -162,10 +163,14 @@ func (r *balanceRepository) CreditAtomic(ctx context.Context, userID int64, amou
 
 	var newBalance int64
 	err := r.db.WithContext(ctx).Transaction(func(dbTx *gorm.DB) error {
-		if err := dbTx.Model(&User{}).
-			Where("id = ?", userID).
-			Update("balance", gorm.Expr("balance + ?", amount)).Error; err != nil {
-			return err
+		result := dbTx.Model(&User{}).
+			Where("id = ? AND balance <= ?", userID, math.MaxInt64-amount).
+			Update("balance", gorm.Expr("balance + ?", amount))
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return gorm.ErrRecordNotFound
 		}
 
 		if err := dbTx.Model(&User{}).

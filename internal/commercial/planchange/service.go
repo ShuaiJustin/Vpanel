@@ -24,6 +24,7 @@ var (
 	ErrPendingDowngrade     = errors.New("user already has a pending downgrade")
 	ErrNoPendingDowngrade   = errors.New("user has no pending downgrade")
 	ErrInsufficientBalance  = errors.New("insufficient balance for upgrade")
+	ErrCurrentPlanUnknown   = repository.ErrCurrentPlanUnknown
 )
 
 // PlanChangeRequest represents a request to change plans.
@@ -95,6 +96,25 @@ func NewService(
 	}
 }
 
+// GetCurrentPlan resolves the server-owned plan, including legacy paid orders.
+func (s *Service) GetCurrentPlan(ctx context.Context, userID int64) (*PlanInfo, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, ErrUserNotFound
+	}
+	if user.ExpiresAt == nil || !user.ExpiresAt.After(time.Now()) {
+		return nil, ErrNoActiveSubscription
+	}
+	repo, ok := s.planChangeRepo.(repository.AtomicPlanChangeRepository)
+	if !ok {
+		return nil, errors.New("atomic plan change repository is required")
+	}
+	plan, err := repo.CurrentPlan(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return s.toPlanInfo(plan), nil
+}
 
 // CalculateChange calculates the price difference and details for a plan change.
 // Formula for upgrade: (new_price - old_price) * (remaining_days / total_days)
@@ -102,9 +122,6 @@ func (s *Service) CalculateChange(ctx context.Context, req *PlanChangeRequest) (
 	// Validate request
 	if req.UserID <= 0 {
 		return nil, ErrUserNotFound
-	}
-	if req.CurrentPlanID == req.NewPlanID {
-		return nil, ErrSamePlan
 	}
 
 	// Get user
@@ -119,9 +136,19 @@ func (s *Service) CalculateChange(ctx context.Context, req *PlanChangeRequest) (
 	}
 
 	// Get current plan
-	currentPlan, err := s.planRepo.GetByID(ctx, req.CurrentPlanID)
+	atomicRepo, ok := s.planChangeRepo.(repository.AtomicPlanChangeRepository)
+	if !ok {
+		return nil, errors.New("atomic plan change repository is required")
+	}
+	currentPlan, err := atomicRepo.CurrentPlan(ctx, req.UserID)
 	if err != nil {
-		return nil, ErrPlanNotFound
+		return nil, err
+	}
+	if currentPlan.ID == req.NewPlanID {
+		return nil, ErrSamePlan
+	}
+	if req.CurrentPlanID > 0 && req.CurrentPlanID != currentPlan.ID {
+		return nil, ErrCurrentPlanUnknown
 	}
 
 	// Get new plan
@@ -144,7 +171,10 @@ func (s *Service) CalculateChange(ctx context.Context, req *PlanChangeRequest) (
 
 	// Calculate price difference using proration formula
 	// Formula: (new_price - old_price) * (remaining_days / total_days)
-	priceDifference := s.CalculateProration(currentPlan.Price, newPlan.Price, remainingDays, currentPlan.Duration)
+	priceDifference, err := repository.PlanProration(currentPlan.Price, newPlan.Price, remainingDays, currentPlan.Duration)
+	if err != nil {
+		return nil, err
+	}
 
 	// Calculate new expiration date
 	// For upgrade: keep the same expiration date
@@ -164,13 +194,8 @@ func (s *Service) CalculateChange(ctx context.Context, req *PlanChangeRequest) (
 // CalculateProration calculates the prorated price difference.
 // Formula: (new_price - old_price) * (remaining_days / total_days)
 func (s *Service) CalculateProration(oldPrice, newPrice int64, remainingDays, totalDays int) int64 {
-	if totalDays <= 0 {
-		return 0
-	}
-	priceDiff := newPrice - oldPrice
-	// Use integer arithmetic to avoid floating point issues
-	// Multiply first, then divide to maintain precision
-	return (priceDiff * int64(remainingDays)) / int64(totalDays)
+	amount, _ := repository.PlanProration(oldPrice, newPrice, remainingDays, totalDays)
+	return amount
 }
 
 // ExecuteUpgrade executes an immediate plan upgrade.
@@ -186,48 +211,12 @@ func (s *Service) ExecuteUpgrade(ctx context.Context, req *PlanChangeRequest) (*
 		return nil, ErrUpgradeNotAllowed
 	}
 
-	// If there's a price difference to pay, check balance or create order
-	if result.PriceDifference > 0 {
-		// Check if user has sufficient balance
-		userBalance, err := s.balanceService.GetBalance(ctx, req.UserID)
-		if err != nil {
-			s.logger.Error("Failed to get user balance", logger.Err(err), logger.F("userID", req.UserID))
-			return nil, err
-		}
-
-		if userBalance < result.PriceDifference {
+	if err := s.planChangeRepo.(repository.AtomicPlanChangeRepository).UpgradeAndDebit(ctx, req.UserID, result.CurrentPlan.ID, req.NewPlanID); err != nil {
+		if errors.Is(err, repository.ErrInsufficientBalance) {
 			return nil, ErrInsufficientBalance
 		}
-
-		// Deduct from balance
-		orderID := int64(0) // No order for balance deduction
-		err = s.balanceService.Deduct(ctx, req.UserID, result.PriceDifference, &orderID, "Plan upgrade payment")
-		if err != nil {
-			s.logger.Error("Failed to deduct balance for upgrade", logger.Err(err), logger.F("userID", req.UserID))
-			return nil, err
-		}
-	}
-
-	// Update user's plan (traffic limit, etc.)
-	user, err := s.userRepo.GetByID(ctx, req.UserID)
-	if err != nil {
-		return nil, ErrUserNotFound
-	}
-
-	newPlan, _ := s.planRepo.GetByID(ctx, req.NewPlanID)
-
-	// Preserve remaining traffic if new plan has more
-	if newPlan.TrafficLimit > user.TrafficLimit {
-		user.TrafficLimit = newPlan.TrafficLimit
-	}
-
-	if err := s.userRepo.Update(ctx, user); err != nil {
-		s.logger.Error("Failed to update user for upgrade", logger.Err(err), logger.F("userID", req.UserID))
 		return nil, err
 	}
-
-	// Cancel any pending downgrade
-	_ = s.planChangeRepo.DeletePendingDowngradeByUserID(ctx, req.UserID)
 
 	s.logger.Info("Plan upgrade executed",
 		logger.F("userID", req.UserID),
@@ -266,7 +255,7 @@ func (s *Service) ScheduleDowngrade(ctx context.Context, req *PlanChangeRequest)
 	// Create pending downgrade
 	downgrade := &repository.PendingDowngrade{
 		UserID:        req.UserID,
-		CurrentPlanID: req.CurrentPlanID,
+		CurrentPlanID: result.CurrentPlan.ID,
 		NewPlanID:     req.NewPlanID,
 		EffectiveAt:   *user.ExpiresAt, // Effective at subscription expiration
 	}
@@ -286,6 +275,24 @@ func (s *Service) ScheduleDowngrade(ctx context.Context, req *PlanChangeRequest)
 }
 
 // GetPendingDowngrade retrieves a user's pending downgrade.
+func (s *Service) ListPendingDowngrades(ctx context.Context, page, pageSize int) ([]*PendingDowngrade, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	items, total, err := s.planChangeRepo.ListAllPendingDowngrades(ctx, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+	result := make([]*PendingDowngrade, 0, len(items))
+	for _, item := range items {
+		result = append(result, s.toPendingDowngrade(item))
+	}
+	return result, total, nil
+}
+
 func (s *Service) GetPendingDowngrade(ctx context.Context, userID int64) (*PendingDowngrade, error) {
 	repoDowngrade, err := s.planChangeRepo.GetPendingDowngradeByUserID(ctx, userID)
 	if err != nil {
@@ -316,12 +323,14 @@ func (s *Service) ProcessDueDowngrades(ctx context.Context) (int, error) {
 	}
 
 	processed := 0
+	var failures []error
 	for _, downgrade := range downgrades {
 		if err := s.executeDueDowngrade(ctx, downgrade); err != nil {
 			s.logger.Error("Failed to execute downgrade",
 				logger.Err(err),
 				logger.F("userID", downgrade.UserID),
 				logger.F("downgradeID", downgrade.ID))
+			failures = append(failures, err)
 			continue
 		}
 		processed++
@@ -331,40 +340,16 @@ func (s *Service) ProcessDueDowngrades(ctx context.Context) (int, error) {
 		s.logger.Info("Processed due downgrades", logger.F("count", processed))
 	}
 
-	return processed, nil
+	return processed, errors.Join(failures...)
 }
 
 // executeDueDowngrade executes a single due downgrade.
 func (s *Service) executeDueDowngrade(ctx context.Context, downgrade *repository.PendingDowngrade) error {
-	// Get user
-	user, err := s.userRepo.GetByID(ctx, downgrade.UserID)
-	if err != nil {
-		return err
+	atomicRepo, ok := s.planChangeRepo.(repository.AtomicPlanChangeRepository)
+	if !ok {
+		return errors.New("atomic plan change repository is required")
 	}
-
-	// Get new plan
-	newPlan, err := s.planRepo.GetByID(ctx, downgrade.NewPlanID)
-	if err != nil {
-		return err
-	}
-
-	// Update user's traffic limit to new plan's limit
-	user.TrafficLimit = newPlan.TrafficLimit
-
-	if err := s.userRepo.Update(ctx, user); err != nil {
-		return err
-	}
-
-	// Delete the pending downgrade
-	if err := s.planChangeRepo.DeletePendingDowngrade(ctx, downgrade.ID); err != nil {
-		return err
-	}
-
-	s.logger.Info("Downgrade executed",
-		logger.F("userID", downgrade.UserID),
-		logger.F("newPlanID", downgrade.NewPlanID))
-
-	return nil
+	return atomicRepo.ApplyDueDowngrade(ctx, downgrade.ID)
 }
 
 // toPlanInfo converts a repository plan to PlanInfo.

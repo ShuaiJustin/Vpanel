@@ -38,24 +38,25 @@ const (
 
 // Order represents an order.
 type Order struct {
-	ID             int64      `json:"id"`
-	OrderNo        string     `json:"order_no"`
-	UserID         int64      `json:"user_id"`
-	PlanID         int64      `json:"plan_id"`
-	PlanName       string     `json:"plan_name"`
-	CouponID       *int64     `json:"coupon_id"`
-	OriginalAmount int64      `json:"original_amount"`
-	DiscountAmount int64      `json:"discount_amount"`
-	BalanceUsed    int64      `json:"balance_used"`
-	PayAmount      int64      `json:"pay_amount"`
-	Status         string     `json:"status"`
-	PaymentMethod  string     `json:"payment_method"`
-	PaymentNo      string     `json:"payment_no"`
-	PaidAt         *time.Time `json:"paid_at"`
-	ExpiredAt      time.Time  `json:"expired_at"`
-	Notes          string     `json:"notes"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	ID                 int64      `json:"id"`
+	OrderNo            string     `json:"order_no"`
+	UserID             int64      `json:"user_id"`
+	PlanID             int64      `json:"plan_id"`
+	PlanName           string     `json:"plan_name"`
+	CouponID           *int64     `json:"coupon_id"`
+	OriginalAmount     int64      `json:"original_amount"`
+	DiscountAmount     int64      `json:"discount_amount"`
+	BalanceUsed        int64      `json:"balance_used"`
+	PayAmount          int64      `json:"pay_amount"`
+	Status             string     `json:"status"`
+	PaymentMethod      string     `json:"payment_method"`
+	PaymentNo          string     `json:"payment_no"`
+	PaidAt             *time.Time `json:"paid_at"`
+	ExpiredAt          time.Time  `json:"expired_at"`
+	Notes              string     `json:"notes"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+	FulfillmentPending bool       `json:"fulfillment_pending"`
 }
 
 // CreateOrderRequest represents a request to create an order.
@@ -349,40 +350,68 @@ func (s *Service) refundCancelledBalance(ctx context.Context, ord *repository.Or
 }
 
 // MarkPaid marks an order as paid.
-// Safe against concurrent payment callbacks: the underlying repo update uses a
-// status guard, so only the first caller flips "pending" → "paid" and runs the
-// post-payment side effects. Race losers see ErrOrderAlreadyPaid.
+// Replays return the existing payment and retry pending runtime work without
+// applying the plan duration or debiting the wallet a second time.
 func (s *Service) MarkPaid(ctx context.Context, orderNo string, paymentNo string) error {
-	order, err := s.orderRepo.GetByOrderNo(ctx, orderNo)
-	if err != nil {
+	return s.Pay(ctx, orderNo, paymentNo, "", false)
+}
+
+// Pay commits payment, optional wallet debit, and plan activation atomically.
+// External runtime work is persisted as pending and can be retried safely.
+func (s *Service) Pay(ctx context.Context, orderNo, paymentNo, method string, useBalance bool) error {
+	repo, ok := s.orderRepo.(repository.AtomicOrderRepository)
+	if !ok {
+		return errors.New("atomic order repository is required")
+	}
+	ord, err := repo.PayAndApplyPlan(ctx, orderNo, paymentNo, method, useBalance, s.userRepo != nil)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrOrderNotFound
 	}
-
-	if order.Status != StatusPending {
+	if errors.Is(err, repository.ErrCommercialState) {
 		return ErrOrderAlreadyPaid
 	}
-
-	if time.Now().After(order.ExpiredAt) {
+	if errors.Is(err, repository.ErrCommercialExpired) {
 		return ErrOrderExpired
 	}
+	if err != nil {
+		return err
+	}
+	return s.syncFulfillment(ctx, ord)
+}
 
-	if err := s.orderRepo.MarkPaid(ctx, order.ID, paymentNo, time.Now()); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// Lost the concurrent race — another callback has already paid
-			// the order. Treat as idempotent success for the caller so the
-			// payment gateway does not keep retrying.
-			return ErrOrderAlreadyPaid
+func (s *Service) syncFulfillment(ctx context.Context, ord *repository.Order) error {
+	if !ord.FulfillmentPending {
+		return nil
+	}
+	if s.trialRepo != nil {
+		if err := s.trialRepo.MarkConverted(ctx, ord.UserID); err != nil && !errors.Is(err, trialsvc.ErrTrialNotFound) {
+			return err
 		}
-		s.logger.Error("Failed to mark order as paid", logger.Err(err), logger.F("orderNo", orderNo))
+	}
+	if s.afterPlanApplied != nil {
+		if err := s.afterPlanApplied(ctx, ord.UserID); err != nil {
+			return err
+		}
+	}
+	return s.orderRepo.(repository.AtomicOrderRepository).MarkFulfillmentSynced(ctx, ord.ID)
+}
+
+func (s *Service) RetryPendingFulfillments(ctx context.Context) error {
+	repo, ok := s.orderRepo.(repository.AtomicOrderRepository)
+	if !ok {
+		return errors.New("atomic order repository is required")
+	}
+	orders, err := repo.ListPendingFulfillments(ctx, 100)
+	if err != nil {
 		return err
 	}
-
-	if err := s.applyPlanToUser(ctx, order); err != nil {
-		s.logger.Error("Failed to apply plan after payment", logger.Err(err), logger.F("orderNo", orderNo), logger.F("user_id", order.UserID))
-		return err
+	var failures []error
+	for _, ord := range orders {
+		if err := s.syncFulfillment(ctx, ord); err != nil {
+			failures = append(failures, fmt.Errorf("order %d: %w", ord.ID, err))
+		}
 	}
-
-	return nil
+	return errors.Join(failures...)
 }
 
 // Complete marks an order as completed.
@@ -448,6 +477,15 @@ func (s *Service) UpdateStatus(ctx context.Context, id int64, status string) err
 	if !s.isValidStatusTransition(order.Status, status) {
 		return fmt.Errorf("invalid status transition from %s to %s", order.Status, status)
 	}
+	if status == StatusPaid {
+		return s.Pay(ctx, order.OrderNo, fmt.Sprintf("ADMIN-%d", id), "manual", false)
+	}
+	if status == StatusCancelled {
+		return s.Cancel(ctx, id)
+	}
+	if status == StatusRefunded {
+		return errors.New("use the refund endpoint to refund an order")
+	}
 
 	if err := s.orderRepo.UpdateStatus(ctx, id, status); err != nil {
 		s.logger.Error("Failed to update order status", logger.Err(err), logger.F("id", id), logger.F("status", status))
@@ -507,24 +545,25 @@ func (s *Service) GetOrderCountByStatus(ctx context.Context, status string) (int
 // toOrder converts a repository order to a service order.
 func (s *Service) toOrder(ro *repository.Order) *Order {
 	return &Order{
-		ID:             ro.ID,
-		OrderNo:        ro.OrderNo,
-		UserID:         ro.UserID,
-		PlanID:         ro.PlanID,
-		PlanName:       planName(ro),
-		CouponID:       ro.CouponID,
-		OriginalAmount: ro.OriginalAmount,
-		DiscountAmount: ro.DiscountAmount,
-		BalanceUsed:    ro.BalanceUsed,
-		PayAmount:      ro.PayAmount,
-		Status:         ro.Status,
-		PaymentMethod:  ro.PaymentMethod,
-		PaymentNo:      ro.PaymentNo,
-		PaidAt:         ro.PaidAt,
-		ExpiredAt:      ro.ExpiredAt,
-		Notes:          ro.Notes,
-		CreatedAt:      ro.CreatedAt,
-		UpdatedAt:      ro.UpdatedAt,
+		ID:                 ro.ID,
+		OrderNo:            ro.OrderNo,
+		UserID:             ro.UserID,
+		PlanID:             ro.PlanID,
+		PlanName:           planName(ro),
+		CouponID:           ro.CouponID,
+		OriginalAmount:     ro.OriginalAmount,
+		DiscountAmount:     ro.DiscountAmount,
+		BalanceUsed:        ro.BalanceUsed,
+		PayAmount:          ro.PayAmount,
+		Status:             ro.Status,
+		PaymentMethod:      ro.PaymentMethod,
+		PaymentNo:          ro.PaymentNo,
+		PaidAt:             ro.PaidAt,
+		ExpiredAt:          ro.ExpiredAt,
+		Notes:              ro.Notes,
+		CreatedAt:          ro.CreatedAt,
+		UpdatedAt:          ro.UpdatedAt,
+		FulfillmentPending: ro.FulfillmentPending,
 	}
 }
 
@@ -534,57 +573,4 @@ func planName(ro *repository.Order) string {
 	}
 
 	return ro.Plan.Name
-}
-
-func (s *Service) applyPlanToUser(ctx context.Context, ord *repository.Order) error {
-	if s.userRepo == nil {
-		return nil
-	}
-
-	plan, err := s.planRepo.GetByID(ctx, ord.PlanID)
-	if err != nil {
-		return err
-	}
-
-	user, err := s.userRepo.GetByID(ctx, ord.UserID)
-	if err != nil {
-		return err
-	}
-
-	now := time.Now()
-	baseExpireAt := now
-	if user.ExpiresAt != nil && user.ExpiresAt.After(now) {
-		baseExpireAt = *user.ExpiresAt
-	}
-	newExpireAt := baseExpireAt.AddDate(0, 0, plan.Duration)
-
-	user.Enabled = true
-	user.TrafficUsed = 0
-	user.TrafficLimit = plan.TrafficLimit
-	user.ExpiresAt = &newExpireAt
-
-	if err := s.userRepo.Update(ctx, user); err != nil {
-		return err
-	}
-	if s.trialRepo != nil {
-		if err := s.trialRepo.MarkConverted(ctx, ord.UserID); err != nil {
-			if !errors.Is(err, trialsvc.ErrTrialNotFound) {
-				s.logger.Warn("failed to mark trial converted after plan activation",
-					logger.Err(err),
-					logger.UserID(ord.UserID),
-					logger.F("order_id", ord.ID),
-				)
-			}
-		}
-	}
-	if s.afterPlanApplied != nil {
-		if err := s.afterPlanApplied(ctx, ord.UserID); err != nil {
-			s.logger.Warn("failed to run after plan applied hook",
-				logger.Err(err),
-				logger.UserID(ord.UserID),
-				logger.F("order_id", ord.ID),
-			)
-		}
-	}
-	return nil
 }

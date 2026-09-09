@@ -3,17 +3,12 @@
 // the manual "备份数据库" button, which is fine for ad-hoc snapshots but
 // won't help when an admin forgets to click it before disaster strikes.
 //
-// The implementation matches the manual handler in handlers/settings.go:
-// it copies the database file byte-for-byte. With SQLite in WAL mode (the
-// default), this is safe enough for the kind of workloads V Panel handles
-// (single-host, modest write concurrency). For higher durability requirements
-// users should layer Litestream or the SQLite backup API on top.
+// It uses SQLite's snapshot mechanism so committed WAL data is included.
 package backup
 
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -99,28 +94,15 @@ func (s *Scheduler) RunOnce(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("stat db file: %w", err)
 	}
 	backupDir := filepath.Join(filepath.Dir(s.dbPath), "backups")
-	if err := os.MkdirAll(backupDir, 0o755); err != nil {
+	if err := os.MkdirAll(backupDir, 0o700); err != nil {
 		return "", fmt.Errorf("create backup dir: %w", err)
 	}
 
 	stamp := time.Now().Format("20060102_150405")
 	out := filepath.Join(backupDir, fmt.Sprintf("vpanel_db_%s.db", stamp))
 
-	src, err := os.Open(s.dbPath)
-	if err != nil {
-		return "", fmt.Errorf("open source: %w", err)
-	}
-	defer src.Close()
-
-	dst, err := os.Create(out)
-	if err != nil {
-		return "", fmt.Errorf("create dest: %w", err)
-	}
-	defer dst.Close()
-
-	if _, err := io.Copy(dst, src); err != nil {
-		_ = os.Remove(out)
-		return "", fmt.Errorf("copy: %w", err)
+	if err := CreateSQLiteSnapshot(ctx, s.dbPath, out); err != nil {
+		return "", err
 	}
 	return out, nil
 }

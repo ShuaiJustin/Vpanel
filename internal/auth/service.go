@@ -17,20 +17,23 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 
+	"v/internal/database/repository"
 	"v/pkg/errors"
 )
 
 // Claims represents JWT claims.
 type Claims struct {
-	UserID   int64  `json:"user_id"`
-	Username string `json:"username"`
-	Role     string `json:"role"`
+	TokenType string `json:"token_type"`
+	UserID    int64  `json:"user_id"`
+	Username  string `json:"username"`
+	Role      string `json:"role"`
 	jwt.RegisteredClaims
 }
 
 // RefreshClaims represents refresh token claims.
 type RefreshClaims struct {
-	UserID int64 `json:"user_id"`
+	TokenType string `json:"token_type"`
+	UserID    int64  `json:"user_id"`
 	jwt.RegisteredClaims
 }
 
@@ -45,6 +48,8 @@ type Config struct {
 type Service struct {
 	config         Config
 	tokenBlacklist TokenBlacklistInterface
+	sessions       SessionStore
+	users          repository.UserRepository
 }
 
 // TokenBlacklistInterface defines the interface for token blacklist operations.
@@ -61,7 +66,7 @@ func NewService(cfg Config) *Service {
 	if cfg.RefreshTokenExpiry == 0 {
 		cfg.RefreshTokenExpiry = 7 * 24 * time.Hour
 	}
-	return &Service{config: cfg}
+	return &Service{config: cfg, sessions: &memorySessionStore{sessions: make(map[string]Session)}}
 }
 
 // WithTokenBlacklist adds token blacklist support to the service.
@@ -78,12 +83,13 @@ func (s *Service) IsTokenBlacklisted(ctx context.Context, token string) bool {
 	return s.tokenBlacklist.IsRevoked(ctx, token)
 }
 
-// RevokeToken adds a token to the blacklist.
+// RevokeToken removes the durable session shared by its access/refresh tokens.
 func (s *Service) RevokeToken(ctx context.Context, token string, expiresAt time.Time) error {
-	if s.tokenBlacklist == nil {
-		return fmt.Errorf("token blacklist not configured")
+	claims, err := s.ValidateToken(token)
+	if err != nil {
+		return err
 	}
-	return s.tokenBlacklist.RevokeToken(ctx, token, expiresAt)
+	return s.consumeSession(ctx, claims.ID)
 }
 
 // GenerateToken generates a JWT token for a user.
@@ -92,16 +98,27 @@ func (s *Service) GenerateToken(userID int64, username, role string) (string, er
 }
 
 // GenerateTokenWithExpiry generates a JWT token for a user with a custom expiry.
-func (s *Service) GenerateTokenWithExpiry(userID int64, username, role string, expiry time.Duration) (string, error) {
+func (s *Service) GenerateTokenWithExpiry(userID int64, username, role string, expiry time.Duration, expectedPassword ...string) (string, error) {
 	if expiry <= 0 {
 		expiry = s.config.TokenExpiry
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	session, err := s.newSession(ctx, userID, "login", expiry, expectedPassword...)
+	if err != nil {
+		return "", err
+	}
+	return s.signAccessToken(session.ID, userID, username, role, expiry, "access")
+}
 
+func (s *Service) signAccessToken(sessionID string, userID int64, username, role string, expiry time.Duration, tokenType string) (string, error) {
 	claims := &Claims{
-		UserID:   userID,
-		Username: username,
-		Role:     role,
+		TokenType: tokenType,
+		UserID:    userID,
+		Username:  username,
+		Role:      role,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        sessionID,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(expiry)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			Subject:   username,
@@ -119,9 +136,21 @@ func (s *Service) TokenExpiry() time.Duration {
 
 // GenerateRefreshToken generates a refresh token for a user.
 func (s *Service) GenerateRefreshToken(userID int64) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	session, err := s.newSession(ctx, userID, "login", s.config.RefreshTokenExpiry)
+	if err != nil {
+		return "", err
+	}
+	return s.signRefreshToken(session.ID, userID)
+}
+
+func (s *Service) signRefreshToken(sessionID string, userID int64) (string, error) {
 	claims := &RefreshClaims{
-		UserID: userID,
+		TokenType: "refresh",
+		UserID:    userID,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        sessionID,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(s.config.RefreshTokenExpiry)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
@@ -133,44 +162,129 @@ func (s *Service) GenerateRefreshToken(userID int64) (string, error) {
 
 // ValidateToken validates a JWT token and returns the claims.
 func (s *Service) ValidateToken(tokenString string) (*Claims, error) {
+	return s.validateClaims(tokenString, "access", "login")
+}
+
+func (s *Service) validateClaims(tokenString, tokenType, sessionKind string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+		if token.Method != jwt.SigningMethodHS256 {
 			return nil, errors.NewUnauthorizedError("invalid token signing method")
 		}
 		return []byte(s.config.JWTSecret), nil
-	})
+	}, jwt.WithExpirationRequired())
 
 	if err != nil {
 		return nil, errors.NewUnauthorizedError("invalid token")
 	}
 
 	claims, ok := token.Claims.(*Claims)
-	if !ok || !token.Valid {
+	if !ok || !token.Valid || claims.TokenType != tokenType {
 		return nil, errors.NewUnauthorizedError("invalid token claims")
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if s.IsTokenBlacklisted(ctx, tokenString) {
+		return nil, errors.NewUnauthorizedError("token revoked")
+	}
+	if err := s.validateSession(ctx, claims.ID, claims.UserID, sessionKind); err != nil {
+		return nil, errors.NewUnauthorizedError("invalid or revoked session")
+	}
 	return claims, nil
 }
 
 // ValidateRefreshToken validates a refresh token and returns the claims.
 func (s *Service) ValidateRefreshToken(tokenString string) (*RefreshClaims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &RefreshClaims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+		if token.Method != jwt.SigningMethodHS256 {
 			return nil, errors.NewUnauthorizedError("invalid token signing method")
 		}
 		return []byte(s.config.JWTSecret), nil
-	})
+	}, jwt.WithExpirationRequired())
 
 	if err != nil {
 		return nil, errors.NewUnauthorizedError("invalid refresh token")
 	}
 
 	claims, ok := token.Claims.(*RefreshClaims)
-	if !ok || !token.Valid {
+	if !ok || !token.Valid || claims.TokenType != "refresh" {
 		return nil, errors.NewUnauthorizedError("invalid refresh token claims")
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if s.IsTokenBlacklisted(ctx, tokenString) {
+		return nil, errors.NewUnauthorizedError("token revoked")
+	}
+	if err := s.validateSession(ctx, claims.ID, claims.UserID, "login"); err != nil {
+		return nil, errors.NewUnauthorizedError("invalid or revoked session")
+	}
 	return claims, nil
+}
+
+// GenerateTokenPair gives access and refresh tokens one revocable session.
+func (s *Service) GenerateTokenPair(userID int64, username, role string, expiry time.Duration, expectedPassword ...string) (string, string, error) {
+	if expiry <= 0 {
+		expiry = s.config.TokenExpiry
+	}
+	lifetime := s.config.RefreshTokenExpiry
+	if expiry > lifetime {
+		lifetime = expiry
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	session, err := s.newSession(ctx, userID, "login", lifetime, expectedPassword...)
+	if err != nil {
+		return "", "", err
+	}
+	access, err := s.signAccessToken(session.ID, userID, username, role, expiry, "access")
+	if err != nil {
+		return "", "", err
+	}
+	refresh, err := s.signRefreshToken(session.ID, userID)
+	return access, refresh, err
+}
+
+// ConsumeRefreshToken must succeed before issuing replacement tokens. Its delete
+// is atomic across requests and processes, so a refresh cannot be replayed.
+func (s *Service) ConsumeRefreshToken(ctx context.Context, token string) error {
+	claims, err := s.ValidateRefreshToken(token)
+	if err != nil {
+		return err
+	}
+	return s.consumeSession(ctx, claims.ID)
+}
+
+func (s *Service) GenerateLoginChallenge(userID int64, expectedPassword string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	session, err := s.newSession(ctx, userID, "2fa", 5*time.Minute, expectedPassword)
+	if err != nil {
+		return "", err
+	}
+	return s.signAccessToken(session.ID, userID, "", "", 5*time.Minute, "2fa")
+}
+
+func (s *Service) ValidateLoginChallenge(token string, userID int64) error {
+	claims, err := s.validateClaims(token, "2fa", "2fa")
+	if err != nil {
+		return err
+	}
+	if claims.UserID != userID {
+		return errors.NewUnauthorizedError("challenge user mismatch")
+	}
+	return nil
+}
+
+func (s *Service) ConsumeLoginChallenge(ctx context.Context, token string, userID int64) error {
+	claims, err := s.validateClaims(token, "2fa", "2fa")
+	if err != nil {
+		return err
+	}
+	if claims.UserID != userID {
+		return errors.NewUnauthorizedError("challenge user mismatch")
+	}
+	return s.consumeSession(ctx, claims.ID)
 }
 
 // HashPassword hashes a password using bcrypt.

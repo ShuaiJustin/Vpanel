@@ -556,6 +556,9 @@ func TestSubscriptionRepository_CascadeDelete(t *testing.T) {
 		language VARCHAR(8) DEFAULT 'zh-CN',
 		telegram_id VARCHAR(50),
 		balance INTEGER DEFAULT 0,
+		current_plan_id INTEGER DEFAULT 0,
+		current_plan_price INTEGER DEFAULT 0,
+		current_plan_duration INTEGER DEFAULT 0,
 		created_at DATETIME,
 		updated_at DATETIME
 	)`)

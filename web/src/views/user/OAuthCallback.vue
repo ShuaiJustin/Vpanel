@@ -50,6 +50,14 @@ onMounted(() => {
     const token = params.get('token')
     const userPayload = params.get('user')
     const redirect = params.get('redirect') || ''
+    if (params.get('challenge_token') && params.get('user_id')) {
+      const challenge = new URLSearchParams({
+        challenge_token: params.get('challenge_token'),
+        user_id: params.get('user_id')
+      })
+      router.replace({ path: '/user/login', query: { redirect: safeRedirect(redirect) }, hash: `#${challenge}` })
+      return
+    }
     if (!token || !userPayload) {
       throw new Error('missing oauth payload')
     }

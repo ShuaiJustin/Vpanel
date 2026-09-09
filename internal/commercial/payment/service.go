@@ -179,13 +179,8 @@ func (s *Service) createBalancePayment(ctx context.Context, ord *order.Order) (*
 		return nil, ErrGatewayNotFound
 	}
 
-	if err := s.balanceSvc.Deduct(ctx, ord.UserID, ord.PayAmount, &ord.ID, fmt.Sprintf("Balance payment for order %s", ord.OrderNo)); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrPaymentFailed, err)
-	}
-
 	paymentNo := fmt.Sprintf("BALANCE-%d", time.Now().UnixNano())
-	if err := s.orderService.MarkPaid(ctx, ord.OrderNo, paymentNo); err != nil {
-		_ = s.balanceSvc.Refund(ctx, ord.UserID, ord.PayAmount, &ord.ID, "Rollback failed balance payment")
+	if err := s.orderService.Pay(ctx, ord.OrderNo, paymentNo, "balance", true); err != nil {
 		return nil, err
 	}
 
@@ -247,14 +242,14 @@ func (s *Service) HandleCallback(ctx context.Context, method string, data []byte
 		}
 
 		// Check if already processed in database
-		if ord.PaymentNo == paymentNo && (ord.Status == order.StatusPaid || ord.Status == order.StatusCompleted) {
+		if ord.PaymentNo == paymentNo && !ord.FulfillmentPending && (ord.Status == order.StatusPaid || ord.Status == order.StatusCompleted) {
 			s.logger.Info("Duplicate callback ignored (already processed in database)",
 				logger.F("orderNo", orderNo),
 				logger.F("paymentNo", paymentNo))
 			return nil
 		}
 
-		if err := s.orderService.MarkPaid(ctx, orderNo, paymentNo); err != nil {
+		if err := s.orderService.Pay(ctx, orderNo, paymentNo, method, false); err != nil {
 			s.logger.Error("Failed to mark order as paid",
 				logger.Err(err),
 				logger.F("orderNo", orderNo))

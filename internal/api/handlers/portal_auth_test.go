@@ -1268,11 +1268,16 @@ func TestPortalAuthHandler_Verify2FALoginRejectsInvalidCode(t *testing.T) {
 		Secret:  "JBSWY3DPEHPK3PXP",
 		Enabled: true,
 	}
-	handler.portalAuthService = portalauth.NewService(userRepo, authTokenRepo)
+	handler.portalAuthService = portalauth.NewService(userRepo, authTokenRepo).WithAuthService(handler.authService)
+	challenge, err := handler.authService.GenerateLoginChallenge(user.ID, user.PasswordHash)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	body, _ := json.Marshal(map[string]interface{}{
-		"user_id": user.ID,
-		"code":    "ABCDEF",
+		"challenge_token": challenge,
+		"user_id":         user.ID,
+		"code":            "ABCDEF",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/portal/auth/2fa/login", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")

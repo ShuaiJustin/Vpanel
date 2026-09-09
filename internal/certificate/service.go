@@ -401,6 +401,7 @@ type Service struct {
 	certRepo       repository.CertificateRepository
 	nodeRepo       repository.NodeRepository
 	deploymentRepo repository.CertificateDeploymentRepository
+	proxyRepo      repository.ProxyRepository
 	logger         logger.Logger
 	certDir        string // 证书存储目录
 	checkInterval  time.Duration
@@ -409,9 +410,10 @@ type Service struct {
 	notifierMu     sync.RWMutex
 
 	// 自动续期控制
-	renewCtx    context.Context
-	renewCancel context.CancelFunc
-	renewWg     sync.WaitGroup
+	renewCtx         context.Context
+	renewCancel      context.CancelFunc
+	renewWg          sync.WaitGroup
+	automaticRenewal bool
 
 	// acme.sh 安装锁
 	installMu sync.Mutex
@@ -459,7 +461,15 @@ func (s *Service) SetNotificationService(notifier AlertNotifier) {
 	s.notifier = notifier
 }
 
+// SetProxyRepository enables verification of the certificate actually served by
+// each active TLS inbound before a deployment is marked successful.
+func (s *Service) SetProxyRepository(repo repository.ProxyRepository) { s.proxyRepo = repo }
+
 func (s *Service) notifyCertificateAlert(cert *repository.Certificate, level, reason string) {
+	s.notifyCertificateAlertWithKey(cert, level, reason, "")
+}
+
+func (s *Service) notifyCertificateAlertWithKey(cert *repository.Certificate, level, reason, key string) {
 	if cert == nil {
 		return
 	}
@@ -479,6 +489,7 @@ func (s *Service) notifyCertificateAlert(cert *repository.Certificate, level, re
 		daysLeft = int(time.Until(expiresAt).Hours() / 24)
 	}
 	if err := notifier.NotifyCertificateAlert(notification.CertificateAlertData{
+		DedupKey:      key,
 		CertificateID: cert.ID,
 		Domain:        cert.Domain,
 		Level:         level,
@@ -1768,6 +1779,12 @@ func (s *Service) GenerateSelfSigned(ctx context.Context, domain string) (*repos
 
 // StartAutoRenew 启动自动续期定时任务
 func (s *Service) StartAutoRenew(ctx context.Context) error {
+	return s.StartMonitoring(ctx, true)
+}
+
+// StartMonitoring runs expiry/deployment checks even when ACME renewal is disabled.
+func (s *Service) StartMonitoring(ctx context.Context, autoRenew bool) error {
+	s.automaticRenewal = autoRenew
 	s.renewCtx, s.renewCancel = context.WithCancel(ctx)
 
 	s.renewWg.Add(1)
@@ -1807,16 +1824,30 @@ func (s *Service) autoRenewLoop() {
 
 	ticker := time.NewTicker(s.checkInterval)
 	defer ticker.Stop()
+	reconcileTicker := time.NewTicker(time.Minute)
+	defer reconcileTicker.Stop()
+	alertTicker := time.NewTicker(time.Hour)
+	defer alertTicker.Stop()
 
 	// 启动时立即检查一次
-	s.checkAndRenewCertificates()
+	s.scanCertificateAlerts(s.renewCtx, time.Now())
+	s.reconcileCertificateDeployments(s.renewCtx)
+	if s.automaticRenewal {
+		s.checkAndRenewCertificates()
+	}
 
 	for {
 		select {
 		case <-s.renewCtx.Done():
 			return
 		case <-ticker.C:
-			s.checkAndRenewCertificates()
+			if s.automaticRenewal {
+				s.checkAndRenewCertificates()
+			}
+		case <-reconcileTicker.C:
+			s.reconcileCertificateDeployments(s.renewCtx)
+		case <-alertTicker.C:
+			s.scanCertificateAlerts(s.renewCtx, time.Now())
 		}
 	}
 }
@@ -1827,7 +1858,10 @@ func certificateNeedsRenewal(expireDate *time.Time, now time.Time, renewThreshol
 
 // checkAndRenewCertificates 检查并续期证书
 func (s *Service) checkAndRenewCertificates() {
-	ctx := context.Background()
+	ctx := s.renewCtx
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	certs, err := s.certRepo.GetAutoRenew(ctx)
 	if err != nil {
@@ -1837,11 +1871,12 @@ func (s *Service) checkAndRenewCertificates() {
 
 	now := time.Now()
 	for _, cert := range certs {
-		if !certificateNeedsRenewal(cert.ExpireDate, now, s.renewThreshold) {
+		expiry := certificateExpiry(cert)
+		if !certificateNeedsRenewal(&expiry, now, s.renewThreshold) || expiry.IsZero() || cert.Provider == "manual" {
 			continue
 		}
 
-		timeUntilExpiry := cert.ExpireDate.Sub(now)
+		timeUntilExpiry := expiry.Sub(now)
 		daysLeft := int(timeUntilExpiry.Hours() / 24)
 		message := "证书即将过期，开始自动续期"
 		if timeUntilExpiry <= 0 {
@@ -1851,7 +1886,10 @@ func (s *Service) checkAndRenewCertificates() {
 			logger.F("domain", cert.Domain),
 			logger.F("days_left", daysLeft))
 
-		if err := s.Renew(ctx, cert.ID); err != nil {
+		renewCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+		renewErr := s.Renew(renewCtx, cert.ID)
+		cancel()
+		if err := renewErr; err != nil {
 			s.logger.Error("自动续期失败",
 				logger.F("domain", cert.Domain),
 				logger.F("error", err.Error()))
@@ -1935,14 +1973,15 @@ func (s *Service) DeployToNode(ctx context.Context, certID int64, nodeID int64) 
 		return fmt.Errorf("SSH 部署失败: %w", err)
 	}
 
-	// 更新部署记录为成功
-	now := time.Now()
-	deployment.Status = "success"
-	deployment.Message = "部署成功"
-	deployment.DeployedAt = &now
-	s.deploymentRepo.Update(ctx, deployment)
+	// Upload/restart is not proof that an embedded certificate was refreshed.
+	// The reconciliation loop waits for the agent and verifies served TLS bytes.
+	deployment.Status = "pending"
+	deployment.Message = "证书已上传，等待节点应用及 TLS 验证"
+	if err := s.deploymentRepo.Update(ctx, deployment); err != nil {
+		return fmt.Errorf("更新证书部署状态失败: %w", err)
+	}
 
-	s.logger.Info("证书部署成功",
+	s.logger.Info("证书已上传，等待应用确认",
 		logger.F("domain", cert.Domain),
 		logger.F("node", node.Name))
 
@@ -2131,8 +2170,7 @@ func (s *Service) deployViaSSH(node *repository.Node, domain string, certData, k
 	// 重启 Xray 服务以应用新证书
 	s.logger.Info("重启 Xray 服务")
 	if err := s.executeSSHCommand(client, "systemctl restart xray || service xray restart"); err != nil {
-		s.logger.Warn("重启 Xray 服务失败", logger.Err(err))
-		// 不返回错误，因为证书已经部署成功
+		return fmt.Errorf("重启 Xray 服务失败: %w", err)
 	}
 
 	s.logger.Info("证书部署完成",
@@ -2150,12 +2188,21 @@ func (s *Service) executeSSHCommand(client *ssh.Client, command string) error {
 	}
 	defer session.Close()
 
-	output, err := session.CombinedOutput(command)
-	if err != nil {
-		return fmt.Errorf("命令执行失败: %w, output: %s", err, string(output))
+	type result struct {
+		output []byte
+		err    error
 	}
-
-	return nil
+	done := make(chan result, 1)
+	go func() { output, err := session.CombinedOutput(command); done <- result{output, err} }()
+	select {
+	case res := <-done:
+		if res.err != nil {
+			return fmt.Errorf("命令执行失败: %w, output: %s", res.err, string(res.output))
+		}
+		return nil
+	case <-time.After(45 * time.Second):
+		return fmt.Errorf("SSH 命令执行超时")
+	}
 }
 
 // uploadFileSSH 通过 SSH 上传文件

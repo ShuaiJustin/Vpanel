@@ -27,23 +27,37 @@ func NewPlanChangeHandler(planChangeService *planchange.Service, log logger.Logg
 
 // CalculatePlanChangeRequest represents the request body for calculating plan change.
 type CalculatePlanChangeRequest struct {
-	CurrentPlanID int64 `json:"current_plan_id" binding:"required"`
+	CurrentPlanID int64 `json:"current_plan_id"`
 	NewPlanID     int64 `json:"new_plan_id" binding:"required"`
 }
 
 // UpgradePlanRequest represents the request body for upgrading a plan.
 type UpgradePlanRequest struct {
-	CurrentPlanID int64 `json:"current_plan_id" binding:"required"`
+	CurrentPlanID int64 `json:"current_plan_id"`
 	NewPlanID     int64 `json:"new_plan_id" binding:"required"`
 }
 
 // DowngradePlanRequest represents the request body for downgrading a plan.
 type DowngradePlanRequest struct {
-	CurrentPlanID int64 `json:"current_plan_id" binding:"required"`
+	CurrentPlanID int64 `json:"current_plan_id"`
 	NewPlanID     int64 `json:"new_plan_id" binding:"required"`
 }
 
 // CalculatePlanChange calculates the price difference for a plan change.
+func (h *PlanChangeHandler) GetCurrentPlan(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": "UNAUTHORIZED", "message": "User not authenticated"})
+		return
+	}
+	result, err := h.planChangeService.GetCurrentPlan(c.Request.Context(), userID.(int64))
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
 // POST /api/plan-change/calculate
 func (h *PlanChangeHandler) CalculatePlanChange(c *gin.Context) {
 	var req CalculatePlanChangeRequest
@@ -230,11 +244,14 @@ func (h *PlanChangeHandler) AdminListPendingDowngrades(c *gin.Context) {
 		pageSize = 20
 	}
 
-	// This would need to be implemented in the service
-	// For now, return empty list
+	items, total, err := h.planChangeService.ListPendingDowngrades(c.Request.Context(), page, pageSize)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
-		"data":  []interface{}{},
-		"total": 0,
+		"data":  items,
+		"total": total,
 		"page":  page,
 		"size":  pageSize,
 	})
@@ -243,6 +260,8 @@ func (h *PlanChangeHandler) AdminListPendingDowngrades(c *gin.Context) {
 // handleError handles errors and returns appropriate HTTP responses.
 func (h *PlanChangeHandler) handleError(c *gin.Context, err error) {
 	switch err {
+	case planchange.ErrCurrentPlanUnknown:
+		c.JSON(http.StatusConflict, gin.H{"code": "CURRENT_PLAN_UNKNOWN", "message": "无法从已支付订单确认当前套餐，请联系管理员核对套餐归属"})
 	case planchange.ErrPlanNotFound:
 		c.JSON(http.StatusNotFound, gin.H{
 			"code":    "PLAN_NOT_FOUND",

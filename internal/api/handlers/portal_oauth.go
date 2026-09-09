@@ -222,6 +222,19 @@ func (h *PortalAuthHandler) OAuthCallback(c *gin.Context) {
 		c.Redirect(http.StatusFound, portalOAuthLoginErrorURL("账号已过期，请续费"))
 		return
 	}
+	if user.TwoFactorEnabled {
+		challenge, err := h.authService.GenerateLoginChallenge(user.ID, user.PasswordHash)
+		if err != nil {
+			c.Redirect(http.StatusFound, portalOAuthLoginErrorURL("创建两步验证失败"))
+			return
+		}
+		fragment := url.Values{}
+		fragment.Set("challenge_token", challenge)
+		fragment.Set("user_id", strconv.FormatInt(user.ID, 10))
+		fragment.Set("redirect", safePortalOAuthRedirect(state.Redirect))
+		c.Redirect(http.StatusFound, "/user/oauth/callback#"+fragment.Encode())
+		return
+	}
 	if h.entitlement != nil {
 		if _, _, entitlementErr := h.entitlement.EnsureRuntimeProxies(c.Request.Context(), user.ID); entitlementErr != nil && !pkgerrors.IsForbidden(entitlementErr) {
 			h.logger.Warn("failed to initialize portal oauth entitlement",
@@ -231,7 +244,7 @@ func (h *PortalAuthHandler) OAuthCallback(c *gin.Context) {
 		}
 	}
 
-	token, err := h.authService.GenerateToken(user.ID, user.Username, user.Role)
+	token, err := h.authService.GenerateTokenWithExpiry(user.ID, user.Username, user.Role, h.loginTokenExpiry(c), user.PasswordHash)
 	if err != nil {
 		h.logger.Error("oauth token generation failed", logger.F("user_id", user.ID), logger.F("error", err))
 		c.Redirect(http.StatusFound, portalOAuthLoginErrorURL("登录令牌生成失败"))

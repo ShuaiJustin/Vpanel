@@ -88,6 +88,8 @@ func (m *PortalAuthMiddleware) Authenticate() gin.HandlerFunc {
 		}
 
 		// Store claims and user info in context
+		claims.Username = user.Username
+		claims.Role = user.Role
 		c.Set(string(UserClaimsKey), claims)
 		c.Set("user_id", claims.UserID)
 		c.Set("username", claims.Username)

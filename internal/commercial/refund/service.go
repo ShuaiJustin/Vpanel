@@ -4,8 +4,7 @@ package refund
 import (
 	"context"
 	"errors"
-	"fmt"
-	"time"
+	"gorm.io/gorm"
 
 	"v/internal/commercial/balance"
 	"v/internal/commercial/commission"
@@ -70,103 +69,27 @@ func NewService(
 
 // ProcessRefund processes a refund for an order.
 func (s *Service) ProcessRefund(ctx context.Context, req *RefundRequest) (*RefundResult, error) {
-	// Get order
-	order, err := s.orderRepo.GetByID(ctx, req.OrderID)
-	if err != nil {
-		return nil, ErrOrderNotFound
-	}
-
-	// Check if order is refundable
-	if !s.isRefundable(order.Status) {
-		return nil, ErrOrderNotRefundable
-	}
-
-	// Determine refund amount
-	refundAmount := req.Amount
-	if refundAmount == 0 {
-		// Full refund
-		refundAmount = order.PayAmount + order.BalanceUsed
-	}
-
-	// Validate refund amount
-	if refundAmount < 0 {
+	if req == nil || req.OrderID <= 0 || req.Amount < 0 {
 		return nil, ErrInvalidRefundAmount
 	}
-
-	totalPaid := order.PayAmount + order.BalanceUsed
-	if refundAmount > totalPaid {
-		return nil, ErrRefundExceedsAmount
+	repo, ok := s.orderRepo.(repository.AtomicOrderRepository)
+	if !ok {
+		return nil, errors.New("atomic order repository is required")
 	}
-
-	result := &RefundResult{
-		OrderID:      req.OrderID,
-		RefundAmount: refundAmount,
+	ord, err := repo.RefundToBalance(ctx, req.OrderID, req.Amount, req.Reason)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrOrderNotFound
 	}
-
-	// Restore balance
-	if s.balanceService != nil {
-		// Calculate how much to restore to balance
-		// Priority: restore balance used first, then payment amount
-		balanceToRestore := refundAmount
-		if balanceToRestore > totalPaid {
-			balanceToRestore = totalPaid
-		}
-
-		if balanceToRestore > 0 {
-			desc := fmt.Sprintf("Refund for order #%d", order.ID)
-			if req.Reason != "" {
-				desc = fmt.Sprintf("%s: %s", desc, req.Reason)
-			}
-
-			orderIDPtr := &order.ID
-			if err := s.balanceService.Refund(ctx, order.UserID, balanceToRestore, orderIDPtr, desc); err != nil {
-				s.logger.Error("Failed to restore balance for refund",
-					logger.Err(err),
-					logger.F("orderID", req.OrderID),
-					logger.F("amount", balanceToRestore))
-				// Continue with refund even if balance restoration fails
-			} else {
-				result.BalanceRestored = balanceToRestore
-			}
-		}
+	if errors.Is(err, repository.ErrCommercialState) {
+		return nil, ErrOrderNotRefundable
 	}
-
-	// Cancel commissions
-	if s.commissionService != nil {
-		if err := s.commissionService.CancelByOrder(ctx, req.OrderID); err != nil {
-			s.logger.Error("Failed to cancel commissions for refund",
-				logger.Err(err),
-				logger.F("orderID", req.OrderID))
-			// Continue with refund even if commission cancellation fails
-		}
+	if errors.Is(err, gorm.ErrInvalidData) {
+		return nil, ErrInvalidRefundAmount
 	}
-
-	// Update order status
-	if err := s.orderRepo.UpdateStatus(ctx, req.OrderID, StatusRefunded); err != nil {
-		s.logger.Error("Failed to update order status to refunded",
-			logger.Err(err),
-			logger.F("orderID", req.OrderID))
+	if err != nil {
 		return nil, err
 	}
-
-	// Update order notes
-	notes := fmt.Sprintf("Refunded %d cents at %s", refundAmount, time.Now().Format("2006-01-02 15:04:05"))
-	if req.Reason != "" {
-		notes = fmt.Sprintf("%s. Reason: %s", notes, req.Reason)
-	}
-	order.Notes = notes
-	if err := s.orderRepo.Update(ctx, order); err != nil {
-		s.logger.Warn("Failed to update order notes", logger.Err(err))
-	}
-
-	result.Status = StatusRefunded
-
-	s.logger.Info("Refund processed",
-		logger.F("orderID", req.OrderID),
-		logger.F("refundAmount", refundAmount),
-		logger.F("balanceRestored", result.BalanceRestored))
-
-	return result, nil
+	return &RefundResult{OrderID: ord.ID, RefundAmount: ord.RefundedAmount, BalanceRestored: ord.RefundedAmount, Status: ord.Status}, nil
 }
 
 // ProcessPartialRefund processes a partial refund for an order.

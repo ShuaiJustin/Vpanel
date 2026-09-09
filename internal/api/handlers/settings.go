@@ -18,6 +18,7 @@ import (
 	"gorm.io/gorm"
 
 	"v/internal/api/middleware"
+	"v/internal/backup"
 	"v/internal/database"
 	"v/internal/database/migrator"
 	"v/internal/database/repository"
@@ -1051,7 +1052,7 @@ func (h *SettingsHandler) BackupDatabase(c *gin.Context) {
 	}
 
 	backupDir := filepath.Join(filepath.Dir(sourcePath), "backups")
-	if err := os.MkdirAll(backupDir, 0o755); err != nil {
+	if err := os.MkdirAll(backupDir, 0o700); err != nil {
 		middleware.RespondWithError(c, errors.NewInternalError("create backup directory", err))
 		return
 	}
@@ -1059,22 +1060,8 @@ func (h *SettingsHandler) BackupDatabase(c *gin.Context) {
 	backupName := fmt.Sprintf("vpanel_db_%s.db", time.Now().Format("20060102_150405"))
 	backupPath := filepath.Join(backupDir, backupName)
 
-	sourceFile, err := os.Open(sourcePath)
-	if err != nil {
-		middleware.RespondWithError(c, errors.NewInternalError("open source database", err))
-		return
-	}
-	defer sourceFile.Close()
-
-	backupFile, err := os.Create(backupPath)
-	if err != nil {
-		middleware.RespondWithError(c, errors.NewInternalError("create backup file", err))
-		return
-	}
-	defer backupFile.Close()
-
-	if _, err := io.Copy(backupFile, sourceFile); err != nil {
-		middleware.RespondWithError(c, errors.NewInternalError("copy database backup", err))
+	if err := backup.CreateSQLiteSnapshot(c.Request.Context(), sourcePath, backupPath); err != nil {
+		middleware.RespondWithError(c, errors.NewInternalError("create consistent database backup", err))
 		return
 	}
 

@@ -13,6 +13,7 @@ export const authApi = {
    * @returns {Promise<Object>} 登录结果，包含 token
    */
   login: (data) => api.post('/auth/login', data),
+  verify2FALogin: (data) => api.post('/auth/2fa/login', data),
 
   /**
    * 用户登出
@@ -24,7 +25,7 @@ export const authApi = {
    * 刷新 Token
    * @returns {Promise<Object>} 新的 token
    */
-  refresh: () => api.post('/auth/refresh'),
+  refresh: (refreshToken) => api.post('/auth/refresh', { refresh_token: refreshToken }),
 
   /**
    * 获取当前用户信息

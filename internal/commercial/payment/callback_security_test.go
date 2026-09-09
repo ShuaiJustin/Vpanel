@@ -120,7 +120,7 @@ func newPaymentServiceForCallbackTest(t *testing.T, db *gorm.DB) *Service {
 	log := logger.NewNopLogger()
 	orderRepo := repository.NewOrderRepository(db)
 	planRepo := repository.NewPlanRepository(db)
-	orderService := order.NewService(orderRepo, planRepo, log, nil)
+	orderService := order.NewService(orderRepo, planRepo, log, nil).WithUserRepository(repository.NewUserRepository(db))
 	return NewService(orderService, log)
 }
 

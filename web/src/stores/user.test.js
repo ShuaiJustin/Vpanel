@@ -55,6 +55,31 @@ describe('admin user store permissions', () => {
     })
   })
 
+  it('returns the password challenge without establishing an administrator session', async () => {
+    const challenge = { requires_2fa: true, user_id: 1, challenge_token: 'one-time-challenge' }
+    authApiMocks.login.mockResolvedValueOnce(challenge)
+
+    const store = useUserStore()
+    expect(await store.login({ username: 'admin', password: 'password123' })).toEqual(challenge)
+    expect(localStorage.getItem('token')).toBeNull()
+    expect(sessionStorage.getItem('token')).toBeNull()
+    expect(store.isLoggedIn).toBe(false)
+  })
+
+  it('clears a shared portal token on administrator logout without clearing an independent login', async () => {
+    localStorage.setItem('token', 'shared-session')
+    localStorage.setItem('userToken', 'shared-session')
+    localStorage.setItem('userInfo', '{"id":1}')
+    sessionStorage.setItem('userToken', 'independent-session')
+    const store = useUserStore()
+    authApiMocks.logout.mockResolvedValueOnce({})
+    await store.logout()
+    expect(localStorage.getItem('token')).toBeNull()
+    expect(localStorage.getItem('userToken')).toBeNull()
+    expect(localStorage.getItem('userInfo')).toBeNull()
+    expect(sessionStorage.getItem('userToken')).toBe('independent-session')
+  })
+
   it('normalizes admin profile responses that omit permissions', async () => {
     localStorage.setItem('token', 'admin-token')
     authApiMocks.getProfile.mockResolvedValueOnce({

@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode"
 
+	coreauth "v/internal/auth"
 	"v/internal/database/repository"
 	"v/pkg/errors"
 )
@@ -19,6 +20,12 @@ import (
 type Service struct {
 	userRepo      repository.UserRepository
 	authTokenRepo repository.AuthTokenRepository
+	authService   *coreauth.Service
+}
+
+func (s *Service) WithAuthService(service *coreauth.Service) *Service {
+	s.authService = service
+	return s
 }
 
 // NewService creates a new portal auth service.
@@ -373,6 +380,7 @@ type LoginResult struct {
 	Token               string `json:"token"`
 	RefreshToken        string `json:"refresh_token,omitempty"`
 	Requires2FA         bool   `json:"requires_2fa,omitempty"`
+	ChallengeToken      string `json:"challenge_token,omitempty"`
 	ForcePasswordChange bool   `json:"force_password_change,omitempty"`
 }
 
@@ -480,7 +488,7 @@ func (r *RateLimiter) ResetAttempts(ip string) {
 }
 
 // Login authenticates a user and returns a token.
-func (s *Service) Login(ctx context.Context, req *LoginRequest, ip string, rateLimiter *RateLimiter, config RateLimitConfig, verifyPassword func(password, hash string) bool, generateToken func(userID int64, username, role string) (string, error)) (*LoginResult, error) {
+func (s *Service) Login(ctx context.Context, req *LoginRequest, ip string, rateLimiter *RateLimiter, config RateLimitConfig, verifyPassword func(password, hash string) bool, generateToken func(userID int64, username, role string) (string, error), tokenExpiry ...time.Duration) (*LoginResult, error) {
 	// Validate request
 	if errs := req.Validate(); len(errs) > 0 {
 		return nil, errors.NewValidationError("validation failed", errs[0].Message)
@@ -542,7 +550,15 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest, ip string, rateL
 
 	// Check if 2FA is enabled
 	if user.TwoFactorEnabled {
+		if s.authService == nil {
+			return nil, errors.NewInternalError("2FA challenge service unavailable", nil)
+		}
+		challenge, err := s.authService.GenerateLoginChallenge(user.ID, user.PasswordHash)
+		if err != nil {
+			return nil, err
+		}
 		return &LoginResult{
+			ChallengeToken:      challenge,
 			UserID:              user.ID,
 			Username:            user.Username,
 			Email:               user.Email,
@@ -553,7 +569,16 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest, ip string, rateL
 	}
 
 	// Generate token
-	token, err := generateToken(user.ID, user.Username, user.Role)
+	var token string
+	if s.authService != nil {
+		expiry := s.authService.TokenExpiry()
+		if len(tokenExpiry) > 0 && tokenExpiry[0] > 0 {
+			expiry = tokenExpiry[0]
+		}
+		token, err = s.authService.GenerateTokenWithExpiry(user.ID, user.Username, user.Role, expiry, user.PasswordHash)
+	} else {
+		token, err = generateToken(user.ID, user.Username, user.Role)
+	}
 	if err != nil {
 		return nil, errors.NewInternalError("failed to generate token", err)
 	}
@@ -575,8 +600,9 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest, ip string, rateL
 
 // TwoFactorRequest represents a 2FA verification request.
 type TwoFactorRequest struct {
-	UserID int64  `json:"user_id"`
-	Code   string `json:"code"`
+	ChallengeToken string `json:"challenge_token"`
+	UserID         int64  `json:"user_id"`
+	Code           string `json:"code"`
 }
 
 // Validate validates the 2FA request.
@@ -598,10 +624,16 @@ func (r *TwoFactorRequest) Validate() []ValidationError {
 }
 
 // Verify2FA verifies a 2FA code and completes login.
-func (s *Service) Verify2FA(ctx context.Context, req *TwoFactorRequest, verifyTOTP func(secret, code string) bool, generateToken func(userID int64, username, role string) (string, error)) (*LoginResult, error) {
+func (s *Service) Verify2FA(ctx context.Context, req *TwoFactorRequest, verifyTOTP func(secret, code string) bool, generateToken func(userID int64, username, role string) (string, error), tokenExpiry ...time.Duration) (*LoginResult, error) {
 	// Validate request
 	if errs := req.Validate(); len(errs) > 0 {
 		return nil, errors.NewValidationError("validation failed", errs[0].Message)
+	}
+	if s.authService == nil {
+		return nil, errors.NewUnauthorizedError("需要重新验证密码")
+	}
+	if err := s.authService.ValidateLoginChallenge(req.ChallengeToken, req.UserID); err != nil {
+		return nil, errors.NewUnauthorizedError("登录验证已失效，请重新登录")
 	}
 
 	// Get user
@@ -613,6 +645,9 @@ func (s *Service) Verify2FA(ctx context.Context, req *TwoFactorRequest, verifyTO
 	// Check if 2FA is enabled
 	if !user.TwoFactorEnabled {
 		return nil, errors.NewValidationError("2fa", "两步验证未启用")
+	}
+	if !user.Enabled {
+		return nil, errors.NewForbiddenError("账户已被禁用")
 	}
 
 	// Get 2FA secret
@@ -637,8 +672,15 @@ func (s *Service) Verify2FA(ctx context.Context, req *TwoFactorRequest, verifyTO
 		}
 	}
 
-	// Generate token
-	token, err := generateToken(user.ID, user.Username, user.Role)
+	if err := s.authService.ConsumeLoginChallenge(ctx, req.ChallengeToken, req.UserID); err != nil {
+		return nil, errors.NewUnauthorizedError("登录验证已使用，请重新登录")
+	}
+	// The challenge's password fingerprint prevents a password reset racing this step.
+	expiry := s.authService.TokenExpiry()
+	if len(tokenExpiry) > 0 && tokenExpiry[0] > 0 {
+		expiry = tokenExpiry[0]
+	}
+	token, refreshToken, err := s.authService.GenerateTokenPair(user.ID, user.Username, user.Role, expiry, user.PasswordHash)
 	if err != nil {
 		return nil, errors.NewInternalError("failed to generate token", err)
 	}
@@ -649,6 +691,7 @@ func (s *Service) Verify2FA(ctx context.Context, req *TwoFactorRequest, verifyTO
 		Email:               user.Email,
 		Role:                user.Role,
 		Token:               token,
+		RefreshToken:        refreshToken,
 		ForcePasswordChange: user.ForcePasswordChange,
 	}, nil
 }

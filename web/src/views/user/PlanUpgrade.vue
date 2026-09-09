@@ -22,6 +22,17 @@
     </div>
 
     <template v-else>
+      <el-alert
+        v-if="loadError"
+        type="error"
+        :closable="false"
+        :title="loadError"
+      >
+        <el-button @click="fetchData">
+          重新加载
+        </el-button>
+      </el-alert>
+
       <!-- 当前套餐信息 -->
       <el-card
         v-if="hasCurrentPlan"
@@ -49,7 +60,7 @@
       </el-card>
 
       <el-card
-        v-else
+        v-else-if="!loadError"
         class="empty-state-card"
         shadow="never"
       >
@@ -69,6 +80,12 @@
       </el-card>
 
       <!-- 待执行的降级提示 -->
+      <el-alert
+        v-if="pendingError"
+        :title="pendingError"
+        type="error"
+        :closable="false"
+      />
       <el-alert
         v-if="hasCurrentPlan && pendingDowngrade"
         type="warning"
@@ -244,7 +261,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Check } from '@element-plus/icons-vue'
 import { planChangeApi, plansApi } from '@/api'
 import { useUserPortalStore } from '@/stores/userPortal'
-import { extractErrorMessage } from '@/utils/entitlement'
+import { extractErrorMessage, getErrorCode } from '@/utils/entitlement'
 import { formatTrafficLimit } from '@/utils/traffic'
 
 const router = useRouter()
@@ -259,6 +276,8 @@ const selectedPlan = ref(null)
 const changeResult = ref(null)
 const pendingDowngrade = ref(null)
 const expiresAt = ref(null)
+const loadError = ref('')
+const pendingError = ref('')
 
 // 计算属性
 const remainingDays = computed(() => {
@@ -326,7 +345,9 @@ const selectPlan = async (plan) => {
       current_plan_id: currentPlan.value.id,
       new_plan_id: plan.id
     })
-    changeResult.value = response?.data || response
+    if (selectedPlan.value?.id === plan.id) {
+      changeResult.value = response?.data || response
+    }
   } catch (error) {
     ElMessage.error(extractErrorMessage(error) || '计算价格失败')
     selectedPlan.value = null
@@ -411,11 +432,13 @@ const cancelDowngrade = async () => {
 }
 
 const fetchPendingDowngrade = async () => {
+  pendingError.value = ''
   try {
     const response = await planChangeApi.getPendingDowngrade()
-    pendingDowngrade.value = response?.data || response || null
-  } catch {
+    pendingDowngrade.value = response && Object.hasOwn(response, 'data') ? response.data : response || null
+  } catch (error) {
     pendingDowngrade.value = null
+    pendingError.value = extractErrorMessage(error) || '暂时无法确认预约降级状态，请稍后重新加载'
   }
 }
 
@@ -425,10 +448,19 @@ const fetchData = async () => {
   selectedPlan.value = null
   changeResult.value = null
   pendingDowngrade.value = null
+  loadError.value = ''
+  pendingError.value = ''
 
   try {
-    const plansResponse = await plansApi.list()
+    const [plansResponse, currentResponse] = await Promise.all([
+      plansApi.list(),
+      planChangeApi.getCurrentPlan().catch(error => {
+        if (getErrorCode(error) === 'NO_ACTIVE_SUBSCRIPTION') return { data: null }
+        throw error
+      })
+    ])
     plans.value = Array.isArray(plansResponse.plans) ? plansResponse.plans : []
+    currentPlan.value = currentResponse && Object.hasOwn(currentResponse, 'data') ? currentResponse.data : currentResponse
 
     let userInfo = userStore.user
     if (!userInfo) {
@@ -441,13 +473,9 @@ const fetchData = async () => {
 
     expiresAt.value = userInfo?.expires_at || null
 
-    if (userInfo?.plan_id) {
-      currentPlan.value = plans.value.find(p => p.id === userInfo.plan_id) || null
-    }
-
     await fetchPendingDowngrade()
   } catch (error) {
-    ElMessage.error(extractErrorMessage(error) || '加载数据失败')
+    loadError.value = extractErrorMessage(error) || '加载数据失败，请重试'
   } finally {
     loading.value = false
   }

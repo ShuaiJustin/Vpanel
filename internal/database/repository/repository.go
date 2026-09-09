@@ -44,9 +44,12 @@ type User struct {
 	Language             string     `gorm:"size:8;default:zh-CN"`
 	TelegramID           string     `gorm:"size:50;index"`
 	// Commercial fields
-	Balance   int64     `gorm:"default:0"` // User balance in cents
-	CreatedAt time.Time `gorm:"autoCreateTime"`
-	UpdatedAt time.Time `gorm:"autoUpdateTime"`
+	CurrentPlanID       int64     `gorm:"default:0"`
+	CurrentPlanPrice    int64     `gorm:"default:0"`
+	CurrentPlanDuration int       `gorm:"default:0"`
+	Balance             int64     `gorm:"default:0"` // User balance in cents
+	CreatedAt           time.Time `gorm:"autoCreateTime"`
+	UpdatedAt           time.Time `gorm:"autoUpdateTime"`
 }
 
 // IsExpired checks if the user account has expired.

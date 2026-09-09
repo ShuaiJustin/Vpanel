@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/mail"
 	"net/smtp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -98,6 +99,7 @@ type NodeTrafficAlertData struct {
 
 // CertificateAlertData contains administrator-facing certificate alert details.
 type CertificateAlertData struct {
+	DedupKey      string
 	CertificateID int64
 	Domain        string
 	Level         string // expiring, expired, renewal_failed, deployment_failed, renewed
@@ -110,9 +112,12 @@ type CertificateAlertData struct {
 
 // Service handles sending notifications
 type Service struct {
-	config *NotificationConfig
-	mu     sync.RWMutex
-	client *http.Client
+	config     *NotificationConfig
+	mu         sync.RWMutex
+	client     *http.Client
+	outboxDir  string
+	outboxMu   sync.Mutex
+	outboxOnce sync.Once
 }
 
 // NewService creates a new notification service
@@ -355,6 +360,9 @@ func (s *Service) NotifyCertificateAlert(data CertificateAlertData) error {
 		return nil
 	}
 	subject, message := buildCertificateAlertContent(data)
+	if s.outboxDir != "" {
+		return s.enqueueAdmin(data.DedupKey, subject, message)
+	}
 	return s.sendToAdmin(subject, message)
 }
 
@@ -447,6 +455,9 @@ func (s *Service) send(email, subject, message string) error {
 
 // sendToAdmin sends notification to admin only
 func (s *Service) sendToAdmin(subject, message string) error {
+	if s.outboxDir != "" {
+		return s.enqueueAdmin("", subject, message)
+	}
 	s.mu.RLock()
 	config := s.config
 	s.mu.RUnlock()
@@ -621,7 +632,7 @@ func emailDomain(address string) string {
 }
 
 func newSMTPClient(config *NotificationConfig) (*smtp.Client, func(), error) {
-	addr := fmt.Sprintf("%s:%d", config.SMTPHost, config.SMTPPort)
+	addr := net.JoinHostPort(config.SMTPHost, strconv.Itoa(config.SMTPPort))
 	dialer := &net.Dialer{Timeout: 15 * time.Second}
 
 	if config.SMTPPort == 465 {

@@ -48,6 +48,7 @@ type AuthHandler struct {
 
 // NewAuthHandler creates a new AuthHandler.
 func NewAuthHandler(authService *auth.Service, userRepo repository.UserRepository, loginHistoryRepo repository.LoginHistoryRepository, log logger.Logger) *AuthHandler {
+	authService.WithUserRepository(userRepo)
 	return &AuthHandler{
 		authService:      authService,
 		userRepo:         userRepo,
@@ -495,17 +496,21 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// Generate tokens
-	token, expiresIn, err := h.issueAccessToken(user, policy.tokenExpiry)
-	if err != nil {
-		h.logger.Error("failed to generate token", logger.F("error", err))
-		middleware.HandleInternalError(c, "登录失败，请稍后重试", err)
+	if user.TwoFactorEnabled {
+		challenge, err := h.authService.GenerateLoginChallenge(user.ID, user.PasswordHash)
+		if err != nil {
+			middleware.HandleInternalError(c, "创建两步验证失败", err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"requires_2fa": true, "user_id": user.ID, "challenge_token": challenge})
 		return
 	}
 
-	refreshToken, err := h.authService.GenerateRefreshToken(user.ID)
+	// Generate tokens in the same revocable session.
+	token, refreshToken, err := h.authService.GenerateTokenPair(user.ID, user.Username, user.Role, policy.tokenExpiry, user.PasswordHash)
+	expiresIn := int64(policy.tokenExpiry.Seconds())
 	if err != nil {
-		h.logger.Error("failed to generate refresh token", logger.F("error", err))
+		h.logger.Error("failed to generate token", logger.F("error", err))
 		middleware.HandleInternalError(c, "登录失败，请稍后重试", err)
 		return
 	}
@@ -573,14 +578,13 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	// Generate new tokens
-	token, expiresIn, err := h.issueAccessToken(user, policy.tokenExpiry)
-	if err != nil {
-		middleware.HandleInternalError(c, "刷新令牌失败，请重新登录", err)
+	if err := h.authService.ConsumeRefreshToken(c.Request.Context(), req.RefreshToken); err != nil {
+		middleware.HandleUnauthorized(c, errors.MsgRefreshTokenExpired)
 		return
 	}
-
-	refreshToken, err := h.authService.GenerateRefreshToken(user.ID)
+	// Rotate both tokens; the old refresh session has been atomically consumed.
+	token, refreshToken, err := h.authService.GenerateTokenPair(user.ID, user.Username, user.Role, policy.tokenExpiry, user.PasswordHash)
+	expiresIn := int64(policy.tokenExpiry.Seconds())
 	if err != nil {
 		middleware.HandleInternalError(c, "刷新令牌失败，请重新登录", err)
 		return
@@ -606,8 +610,15 @@ func maxDuration(values ...time.Duration) time.Duration {
 
 // Logout handles user logout.
 func (h *AuthHandler) Logout(c *gin.Context) {
-	// In a stateless JWT system, logout is handled client-side
-	// For stateful sessions, we would invalidate the token here
+	parts := strings.Fields(c.GetHeader("Authorization"))
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		middleware.HandleUnauthorized(c, "会话无效")
+		return
+	}
+	if err := h.authService.RevokeToken(c.Request.Context(), parts[1], time.Time{}); err != nil {
+		middleware.HandleUnauthorized(c, "会话无效或已退出")
+		return
+	}
 	if uid, ok := currentUserIDFromContext(c); ok {
 		userID := uid
 		username := c.GetString("username")
@@ -946,6 +957,18 @@ type CreateUserRequest struct {
 	Role     string `json:"role"`
 }
 
+// User maintenance does not confer permission to grant or take over privileged roles.
+func authorizeUserMutation(c *gin.Context, target *repository.User, nextRole string) bool {
+	if c.GetString("role") == "admin" {
+		return true
+	}
+	if (target != nil && target.Role != "user") || (nextRole != "" && nextRole != "user") {
+		middleware.HandleForbidden(c, "仅管理员可以管理高权限账号或授予角色")
+		return false
+	}
+	return true
+}
+
 // CreateUser creates a new user (admin only).
 func (h *AuthHandler) CreateUser(c *gin.Context) {
 	var req CreateUserRequest
@@ -1014,6 +1037,9 @@ func (h *AuthHandler) CreateUser(c *gin.Context) {
 	}
 	if !roleFound {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Role does not exist"})
+		return
+	}
+	if !authorizeUserMutation(c, nil, role) {
 		return
 	}
 
@@ -1099,6 +1125,13 @@ func (h *AuthHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
+	nextRole := ""
+	if req.Role != nil {
+		nextRole = strings.TrimSpace(*req.Role)
+	}
+	if !authorizeUserMutation(c, user, nextRole) {
+		return
+	}
 	// Update fields
 	if req.Username != nil {
 		username := normalizeUsername(*req.Username)
@@ -1231,6 +1264,9 @@ func (h *AuthHandler) DeleteUser(c *gin.Context) {
 		return
 	}
 
+	if !authorizeUserMutation(c, user, "") {
+		return
+	}
 	if !h.ensureEnabledAdminRemains(c, user, user.Role, false, "delete") {
 		return
 	}
@@ -1276,6 +1312,9 @@ func (h *AuthHandler) EnableUser(c *gin.Context) {
 		return
 	}
 
+	if !authorizeUserMutation(c, user, "") {
+		return
+	}
 	if user.Enabled {
 		c.JSON(http.StatusOK, gin.H{"message": "User is already enabled"})
 		return
@@ -1327,6 +1366,9 @@ func (h *AuthHandler) DisableUser(c *gin.Context) {
 		return
 	}
 
+	if !authorizeUserMutation(c, user, "") {
+		return
+	}
 	if !user.Enabled {
 		c.JSON(http.StatusOK, gin.H{"message": "User is already disabled"})
 		return
@@ -1366,6 +1408,18 @@ func (h *AuthHandler) RebuildAutoProxies(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, errors.NewValidationError("Invalid user ID", nil).ToResponse(""))
+		return
+	}
+	user, err := h.userRepo.GetByID(c.Request.Context(), id)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, errors.NewNotFoundError("user", id).ToResponse(""))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, errors.NewDatabaseError("Failed to get user", err).ToResponse(""))
+		return
+	}
+	if !authorizeUserMutation(c, user, "") {
 		return
 	}
 	if h.entitlementService == nil {
@@ -1436,6 +1490,9 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 		return
 	}
 
+	if !authorizeUserMutation(c, user, "") {
+		return
+	}
 	// Generate temporary password
 	tempPassword := h.authService.GenerateTemporaryPassword()
 
@@ -1613,14 +1670,18 @@ func (h *AuthHandler) ClearLoginHistory(c *gin.Context) {
 		return
 	}
 
-	// Check if user exists
-	_, err = h.userRepo.GetByID(c.Request.Context(), id)
+	// Check if user exists and keep delegated user-maintenance roles scoped to
+	// ordinary accounts.
+	user, err := h.userRepo.GetByID(c.Request.Context(), id)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			c.JSON(http.StatusNotFound, errors.NewNotFoundError("user", id).ToResponse(""))
 			return
 		}
 		c.JSON(http.StatusInternalServerError, errors.NewDatabaseError("Failed to get user", err).ToResponse(""))
+		return
+	}
+	if !authorizeUserMutation(c, user, "") {
 		return
 	}
 

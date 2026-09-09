@@ -574,15 +574,7 @@ func (h *NodeStatsHandler) GetRealTimeStats(c *gin.Context) {
 	end := time.Now()
 	start := end.Add(-5 * time.Minute)
 
-	// Get total traffic
-	totalStats, err := h.trafficService.GetTotalTraffic(c.Request.Context(), start, end)
-	if err != nil {
-		h.logger.Error("Failed to get real-time total traffic", logger.Err(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get real-time stats"})
-		return
-	}
-
-	// Get traffic by node
+	// A single grouped query supplies both the totals and the per-node view.
 	nodeStats, err := h.trafficService.GetTrafficStatsByNode(c.Request.Context(), start, end)
 	if err != nil {
 		h.logger.Error("Failed to get real-time node traffic", logger.Err(err))
@@ -611,7 +603,10 @@ func (h *NodeStatsHandler) GetRealTimeStats(c *gin.Context) {
 
 	// Convert node stats
 	nodeTrafficResponse := make([]*NodeTrafficStatsResponse, len(nodeStats))
+	var upload, download int64
 	for i, s := range nodeStats {
+		upload += s.Upload
+		download += s.Download
 		nodeTrafficResponse[i] = &NodeTrafficStatsResponse{
 			NodeID:   s.NodeID,
 			Upload:   s.Upload,
@@ -624,9 +619,9 @@ func (h *NodeStatsHandler) GetRealTimeStats(c *gin.Context) {
 		"timestamp": formatAPITime(end),
 		"window":    "5m",
 		"traffic": gin.H{
-			"upload":   totalStats.Upload,
-			"download": totalStats.Download,
-			"total":    totalStats.Total,
+			"upload":   upload,
+			"download": download,
+			"total":    upload + download,
 		},
 		"nodes": gin.H{
 			"by_status":   nodeStatusStats,
