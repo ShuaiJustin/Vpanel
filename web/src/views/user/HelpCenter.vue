@@ -27,6 +27,29 @@
       </div>
     </div>
 
+    <el-alert
+      v-if="loadError"
+      class="help-error"
+      type="error"
+      title="帮助内容加载失败"
+      :closable="false"
+      show-icon
+    >
+      <template #default>
+        <p class="help-error__description">
+          {{ loadError }}
+        </p>
+        <el-button
+          type="danger"
+          plain
+          size="small"
+          @click="loadInitialData"
+        >
+          重新加载
+        </el-button>
+      </template>
+    </el-alert>
+
     <!-- 搜索结果 -->
     <div
       v-if="isSearching"
@@ -61,9 +84,10 @@
         v-else
         class="articles-list"
       >
-        <div 
+        <button
           v-for="article in searchResults" 
           :key="article.id"
+          type="button"
           class="article-item"
           @click="viewArticle(article)"
         >
@@ -85,7 +109,7 @@
               {{ article.view_count }}
             </span>
           </div>
-        </div>
+        </button>
       </div>
     </div>
 
@@ -104,9 +128,10 @@
           精选文章
         </h2>
         <div class="featured-grid">
-          <div 
+          <button
             v-for="article in featuredArticles" 
             :key="article.id"
+            type="button"
             class="featured-card"
             @click="viewArticle(article)"
           >
@@ -116,7 +141,7 @@
             <p class="card-summary">
               {{ article.summary }}
             </p>
-          </div>
+          </button>
         </div>
       </div>
 
@@ -125,10 +150,13 @@
         按分类浏览
       </h2>
       <div class="categories-grid">
-        <div 
+        <button
           v-for="category in categories" 
           :key="category.key"
+          type="button"
           class="category-card"
+          :disabled="category.count === 0"
+          :title="category.count === 0 ? `${category.name}暂无文章` : `浏览${category.name}`"
           @click="selectCategory(category.key)"
         >
           <div class="category-icon">
@@ -143,7 +171,7 @@
           <el-icon class="category-arrow">
             <ArrowRight />
           </el-icon>
-        </div>
+        </button>
       </div>
 
       <!-- 分类文章列表 -->
@@ -170,13 +198,19 @@
           </el-icon>
         </div>
 
+        <el-empty
+          v-else-if="categoryArticles.length === 0"
+          :description="`${getCategoryName(selectedCategory)}暂无文章`"
+        />
+
         <div
           v-else
           class="articles-list"
         >
-          <div 
+          <button
             v-for="article in categoryArticles" 
             :key="article.id"
+            type="button"
             class="article-item"
             @click="viewArticle(article)"
           >
@@ -192,27 +226,31 @@
                 {{ article.view_count }}
               </span>
             </div>
-          </div>
+          </button>
         </div>
       </div>
 
       <!-- 热门文章 -->
-      <div class="popular-section">
+      <div
+        v-if="popularArticles.length > 0"
+        class="popular-section"
+      >
         <h2 class="section-title">
           <el-icon><TrendCharts /></el-icon>
           热门文章
         </h2>
         <div class="popular-list">
-          <div 
+          <button
             v-for="(article, index) in popularArticles" 
             :key="article.id"
+            type="button"
             class="popular-item"
             @click="viewArticle(article)"
           >
             <span class="popular-rank">{{ index + 1 }}</span>
             <span class="popular-title">{{ article.title }}</span>
             <span class="popular-views">{{ article.view_count }} 次浏览</span>
-          </div>
+          </button>
         </div>
       </div>
     </div>
@@ -242,7 +280,6 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
 import { 
   Search, Loading, View, Star, ArrowRight, TrendCharts, ChatDotRound,
   QuestionFilled, Setting, Connection, Document, CreditCard, Monitor
@@ -256,6 +293,7 @@ const loading = ref(false)
 const searchQuery = ref('')
 const isSearching = ref(false)
 const selectedCategory = ref(null)
+const loadError = ref('')
 
 // 数据
 const searchResults = ref([])
@@ -287,12 +325,14 @@ async function handleSearch() {
 
   isSearching.value = true
   loading.value = true
+  loadError.value = ''
 
   try {
-    const response = await helpApi.searchArticles({ q: searchQuery.value })
+    const response = await helpApi.searchArticles({ q: searchQuery.value }, { silent: true })
     searchResults.value = response.results || response.articles || []
   } catch (error) {
-    ElMessage.error('搜索失败')
+    console.error('Failed to search help articles:', error)
+    loadError.value = '搜索服务暂时不可用，请稍后重试。'
   } finally {
     loading.value = false
   }
@@ -307,12 +347,14 @@ function clearSearch() {
 async function selectCategory(key) {
   selectedCategory.value = key
   loading.value = true
+  loadError.value = ''
 
   try {
-    const response = await helpApi.getArticles({ category: key })
+    const response = await helpApi.getArticles({ category: key }, { silent: true })
     categoryArticles.value = response.articles || []
   } catch (error) {
-    ElMessage.error('加载文章失败')
+    console.error('Failed to load help category:', error)
+    loadError.value = '分类文章加载失败，请稍后重试。'
   } finally {
     loading.value = false
   }
@@ -328,25 +370,37 @@ function createTicket() {
 
 async function loadInitialData() {
   loading.value = true
+  loadError.value = ''
   try {
-    // 加载精选文章
-    const featuredResponse = await helpApi.getFeaturedArticles(4)
-    featuredArticles.value = featuredResponse.articles || []
+    const [featuredResult, popularResult, categoriesResult] = await Promise.allSettled([
+      helpApi.getFeaturedArticles(4, { silent: true }),
+      helpApi.getArticles({ limit: 5 }, { silent: true }),
+      helpApi.getCategories({ silent: true })
+    ])
 
-    // 暂时使用最新文章填充热门区域，避免调用不存在的排序接口
-    const popularResponse = await helpApi.getArticles({ limit: 5 })
-    popularArticles.value = popularResponse.articles || []
-
-    // 加载分类统计
-    const categoriesResponse = await helpApi.getCategories()
-    if (categoriesResponse.categories) {
+    if (featuredResult.status === 'fulfilled') {
+      featuredArticles.value = featuredResult.value.articles || []
+    }
+    if (popularResult.status === 'fulfilled') {
+      popularArticles.value = popularResult.value.articles || []
+    }
+    if (categoriesResult.status === 'fulfilled' && categoriesResult.value.categories) {
       categories.value = categories.value.map(cat => ({
         ...cat,
-        count: categoriesResponse.categories[cat.key] || 0
+        count: categoriesResult.value.categories[cat.key] || 0
       }))
+    }
+
+    const failures = [featuredResult, popularResult, categoriesResult]
+      .filter(result => result.status === 'rejected')
+    if (failures.length > 0) {
+      loadError.value = failures.length === 3
+        ? '帮助中心暂时不可用，请稍后重试。'
+        : '部分帮助内容加载失败，您可以重试获取完整内容。'
     }
   } catch (error) {
     console.error('Failed to load help center data:', error)
+    loadError.value = '帮助中心暂时不可用，请稍后重试。'
   } finally {
     loading.value = false
   }
@@ -399,6 +453,14 @@ onMounted(() => {
   flex: 1;
 }
 
+.help-error {
+  margin-bottom: 24px;
+}
+
+.help-error__description {
+  margin: 0 0 10px;
+}
+
 /* 搜索结果 */
 .search-results {
   margin-bottom: 32px;
@@ -443,6 +505,10 @@ onMounted(() => {
 }
 
 .article-item {
+  width: 100%;
+  appearance: none;
+  text-align: left;
+  font: inherit;
   padding: 16px 20px;
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
@@ -452,7 +518,8 @@ onMounted(() => {
   transition: all 0.3s;
 }
 
-.article-item:hover {
+.article-item:hover,
+.article-item:focus-visible {
   box-shadow: var(--shadow-md);
   transform: translateX(4px);
 }
@@ -523,9 +590,14 @@ onMounted(() => {
   box-shadow: var(--shadow-sm);
   cursor: pointer;
   transition: all 0.3s;
+  width: 100%;
+  appearance: none;
+  text-align: left;
+  font: inherit;
 }
 
-.featured-card:hover {
+.featured-card:hover,
+.featured-card:focus-visible {
   box-shadow: var(--shadow-md);
   transform: translateY(-2px);
 }
@@ -569,11 +641,22 @@ onMounted(() => {
   box-shadow: var(--shadow-sm);
   cursor: pointer;
   transition: all 0.3s;
+  width: 100%;
+  appearance: none;
+  text-align: left;
+  font: inherit;
 }
 
-.category-card:hover {
+.category-card:hover:not(:disabled),
+.category-card:focus-visible {
   box-shadow: var(--shadow-md);
   transform: translateX(4px);
+}
+
+.category-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+  box-shadow: none;
 }
 
 .category-icon {
@@ -649,14 +732,28 @@ onMounted(() => {
   border-bottom: 1px solid var(--color-border);
   cursor: pointer;
   transition: background 0.3s;
+  width: 100%;
+  appearance: none;
+  text-align: left;
+  font: inherit;
+  background: var(--color-bg-card);
 }
 
 .popular-item:last-child {
   border-bottom: none;
 }
 
-.popular-item:hover {
+.popular-item:hover,
+.popular-item:focus-visible {
   background: var(--color-border-light);
+}
+
+.article-item:focus-visible,
+.featured-card:focus-visible,
+.category-card:focus-visible,
+.popular-item:focus-visible {
+  outline: 3px solid rgba(64, 158, 255, 0.35);
+  outline-offset: 2px;
 }
 
 .popular-rank {

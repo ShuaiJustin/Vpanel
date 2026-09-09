@@ -1485,6 +1485,12 @@
   .app-container .content .operation-btns {
     justify-content: flex-start;
   }
+
+  .app-container .content .operation-btns .el-button {
+    min-height: 44px;
+    padding-left: 14px;
+    padding-right: 14px;
+  }
 }
 
 @keyframes admin-fade-up {

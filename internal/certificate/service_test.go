@@ -143,6 +143,17 @@ func TestWithAutoRenewConfig(t *testing.T) {
 	require.Equal(t, 14*24*time.Hour, svc.renewThreshold)
 }
 
+func TestRenewalLockPreventsConcurrentWorkForSameCertificate(t *testing.T) {
+	svc, _, _ := newTestCertificateService(t)
+
+	require.True(t, svc.beginRenewal(9))
+	require.False(t, svc.beginRenewal(9))
+	require.True(t, svc.beginRenewal(10), "different certificates may renew concurrently")
+
+	svc.finishRenewal(9)
+	require.True(t, svc.beginRenewal(9))
+}
+
 func TestNotifyCertificateAlertUsesFriendlyCertificateDetails(t *testing.T) {
 	svc, _, _ := newTestCertificateService(t)
 	notifier := &recordingAlertNotifier{}

@@ -30,6 +30,8 @@
           <!-- 主题切换 -->
           <el-button
             circle
+            :aria-label="isDarkMode ? '切换到浅色模式' : '切换到深色模式'"
+            :title="isDarkMode ? '切换到浅色模式' : '切换到深色模式'"
             @click="toggleTheme"
           >
             <el-icon><Sunny v-if="isDarkMode" /><Moon v-else /></el-icon>
@@ -44,6 +46,8 @@
             >
               <el-button
                 circle
+                aria-label="查看公告通知"
+                title="查看公告通知"
                 @click="goToAnnouncements"
               >
                 <el-icon><Bell /></el-icon>

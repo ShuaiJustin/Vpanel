@@ -69,6 +69,8 @@
     <el-button 
       class="theme-toggle" 
       circle 
+      :aria-label="isDarkMode ? '切换到浅色模式' : '切换到深色模式'"
+      :title="isDarkMode ? '切换到浅色模式' : '切换到深色模式'"
       @click="toggleTheme"
     >
       <el-icon><Sunny v-if="isDarkMode" /><Moon v-else /></el-icon>
@@ -270,6 +272,8 @@ const toggleTheme = () => {
   background: rgba(255, 255, 255, 0.2) !important;
   border: none !important;
   color: #fff !important;
+  width: 44px;
+  height: 44px;
 }
 
 .theme-toggle:hover {

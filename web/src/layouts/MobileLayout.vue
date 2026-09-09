@@ -10,80 +10,89 @@
           v-if="showBackButton" 
           link 
           class="back-btn"
+          aria-label="返回上一页"
           @click="goBack"
         >
           <el-icon><ArrowLeft /></el-icon>
         </el-button>
         <span class="header-title">{{ pageTitle }}</span>
       </div>
-      <div
-        v-if="showPortalActions"
-        class="header-right"
-      >
-        <el-badge
-          :value="unreadCount"
-          :hidden="unreadCount === 0"
-          :max="99"
-        >
+      <div class="header-right">
+        <template v-if="showPortalActions">
+          <el-badge
+            :value="unreadCount"
+            :hidden="unreadCount === 0"
+            :max="99"
+          >
+            <el-button
+              link
+              class="header-btn"
+              aria-label="查看公告通知"
+              @click="goToAnnouncements"
+            >
+              <el-icon><Bell /></el-icon>
+            </el-button>
+          </el-badge>
           <el-button
             link
             class="header-btn"
-            @click="goToAnnouncements"
+            aria-label="切换主题"
+            @click="toggleTheme"
           >
-            <el-icon><Bell /></el-icon>
+            <el-icon><Sunny v-if="isDarkMode" /><Moon v-else /></el-icon>
           </el-button>
-        </el-badge>
+          <el-dropdown
+            trigger="click"
+            placement="bottom-end"
+            @command="handleAction"
+          >
+            <el-button
+              link
+              class="header-btn"
+              aria-label="更多操作"
+            >
+              <el-icon><MoreFilled /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item
+                  v-if="userStore.isAdmin"
+                  command="admin"
+                >
+                  <el-icon><Monitor /></el-icon>
+                  管理后台
+                </el-dropdown-item>
+                <el-dropdown-item command="balance">
+                  <el-icon><Coin /></el-icon>
+                  我的余额
+                </el-dropdown-item>
+                <el-dropdown-item command="settings">
+                  <el-icon><Setting /></el-icon>
+                  个人设置
+                </el-dropdown-item>
+                <el-dropdown-item command="help">
+                  <el-icon><QuestionFilled /></el-icon>
+                  帮助中心
+                </el-dropdown-item>
+                <el-dropdown-item
+                  divided
+                  command="logout"
+                >
+                  <el-icon><SwitchButton /></el-icon>
+                  退出登录
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </template>
         <el-button
-          link
-          class="header-btn"
-          aria-label="切换主题"
-          @click="toggleTheme"
+          v-else
+          type="primary"
+          class="guest-login-btn"
+          @click="router.push('/user/login')"
         >
-          <el-icon><Sunny v-if="isDarkMode" /><Moon v-else /></el-icon>
+          登录
         </el-button>
-        <el-dropdown
-          trigger="click"
-          placement="bottom-end"
-          @command="handleAction"
-        >
-          <el-button
-            link
-            class="header-btn"
-            aria-label="更多操作"
-          >
-            <el-icon><MoreFilled /></el-icon>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item
-                v-if="userStore.isAdmin"
-                command="admin"
-              >
-                <el-icon><Monitor /></el-icon>
-                管理后台
-              </el-dropdown-item>
-              <el-dropdown-item command="balance">
-                <el-icon><Coin /></el-icon>
-                我的余额
-              </el-dropdown-item>
-              <el-dropdown-item command="settings">
-                <el-icon><Setting /></el-icon>
-                个人设置
-              </el-dropdown-item>
-              <el-dropdown-item command="help">
-                <el-icon><QuestionFilled /></el-icon>
-                帮助中心
-              </el-dropdown-item>
-              <el-dropdown-item
-                divided
-                command="logout"
-              >
-                <el-icon><SwitchButton /></el-icon>
-                退出登录
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
       </div>
     </header>
 
@@ -106,19 +115,21 @@
     <nav
       v-if="showTabbar"
       class="mobile-tabbar"
+      aria-label="用户门户主导航"
     >
-      <div 
+      <router-link
         v-for="item in tabItems" 
         :key="item.path"
+        :to="item.path"
         class="tab-item"
         :class="{ active: isActive(item.path) }"
-        @click="navigateTo(item.path)"
+        :aria-current="isActive(item.path) ? 'page' : undefined"
       >
         <el-icon class="tab-icon">
           <component :is="item.icon" />
         </el-icon>
         <span class="tab-label">{{ item.label }}</span>
-      </div>
+      </router-link>
     </nav>
   </div>
 </template>
@@ -181,10 +192,6 @@ const unreadCount = computed(() => {
 // 方法
 function isActive(path) {
   return route.path === path || route.path.startsWith(path + '/')
-}
-
-function navigateTo(path) {
-  router.push(path)
 }
 
 function goBack() {
@@ -319,9 +326,16 @@ onMounted(() => {
 }
 
 .header-btn {
+  width: 44px;
+  height: 44px;
   padding: 8px;
   font-size: 20px;
   color: var(--color-text-regular);
+}
+
+.guest-login-btn {
+  min-width: 64px;
+  min-height: 40px;
 }
 
 /* 主内容区 */
@@ -364,6 +378,12 @@ onMounted(() => {
   transition: color 0.3s;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  text-decoration: none;
+}
+
+.tab-item:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -3px;
 }
 
 .tab-item.active {

@@ -151,25 +151,6 @@
           </el-form-item>
 
           <el-form-item>
-            <el-upload
-              v-model:file-list="replyForm.attachments"
-              :auto-upload="false"
-              :limit="3"
-              accept=".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx"
-            >
-              <el-button size="small">
-                <el-icon><Upload /></el-icon>
-                添加附件
-              </el-button>
-              <template #tip>
-                <div class="upload-tip">
-                  支持 jpg/png/gif/pdf/doc 格式，最多 3 个文件
-                </div>
-              </template>
-            </el-upload>
-          </el-form-item>
-
-          <el-form-item>
             <el-button
               type="primary"
               :loading="submitting"
@@ -200,7 +181,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
-  ArrowLeft, Loading, Calendar, Clock, Document, Upload 
+  ArrowLeft, Loading, Calendar, Clock, Document
 } from '@element-plus/icons-vue'
 import { usePortalTicketsStore } from '@/stores/portalTickets'
 import { extractErrorMessage } from '@/utils/entitlement'
@@ -219,8 +200,7 @@ const ticket = ref(null)
 
 // 回复表单
 const replyForm = reactive({
-  content: '',
-  attachments: []
+  content: ''
 })
 
 const replyRules = {
@@ -327,7 +307,6 @@ async function submitReply() {
 
     ElMessage.success('回复已提交')
     replyForm.content = ''
-    replyForm.attachments = []
     
     // 重新加载工单
     await loadTicket()

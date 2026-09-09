@@ -417,6 +417,11 @@ type Service struct {
 
 	// acme.sh 安装锁
 	installMu sync.Mutex
+
+	// A certificate must never be renewed concurrently. The scheduler and a
+	// manual request can otherwise invoke acme.sh against the same files.
+	renewingMu sync.Mutex
+	renewing   map[int64]struct{}
 }
 
 // AlertNotifier delivers administrator-facing certificate alerts.
@@ -440,7 +445,24 @@ func NewService(
 		certDir:        certDir,
 		checkInterval:  24 * time.Hour,
 		renewThreshold: 30 * 24 * time.Hour,
+		renewing:       make(map[int64]struct{}),
 	}
+}
+
+func (s *Service) beginRenewal(id int64) bool {
+	s.renewingMu.Lock()
+	defer s.renewingMu.Unlock()
+	if _, exists := s.renewing[id]; exists {
+		return false
+	}
+	s.renewing[id] = struct{}{}
+	return true
+}
+
+func (s *Service) finishRenewal(id int64) {
+	s.renewingMu.Lock()
+	delete(s.renewing, id)
+	s.renewingMu.Unlock()
 }
 
 // WithAutoRenewConfig applies the configured scheduler interval and renewal window.
@@ -1450,6 +1472,12 @@ func (s *Service) UpdateMaterial(ctx context.Context, id int64, certData, keyDat
 
 // Renew renews a certificate.
 func (s *Service) Renew(ctx context.Context, id int64) (renewErr error) {
+	if !s.beginRenewal(id) {
+		return apperrors.NewConflictError("certificate", "renewal", id).
+			WithSuggestion("该证书正在续期中，请等待当前任务完成")
+	}
+	defer s.finishRenewal(id)
+
 	cert, err := s.certRepo.GetByID(ctx, id)
 	if err != nil {
 		return fmt.Errorf("获取证书失败: %w", err)

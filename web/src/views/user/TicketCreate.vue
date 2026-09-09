@@ -16,9 +16,12 @@
       shadow="never"
     >
       <template #header>
-        <h2 class="card-title">
-          创建工单
-        </h2>
+        <div class="card-heading">
+          <h2 class="card-title">
+            创建工单
+          </h2>
+          <span class="draft-hint">内容会自动保存为本机草稿</span>
+        </div>
       </template>
 
       <el-form
@@ -113,23 +116,6 @@
           />
         </el-form-item>
 
-        <el-form-item label="附件">
-          <el-upload
-            v-model:file-list="form.attachments"
-            :auto-upload="false"
-            :limit="3"
-            accept=".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx"
-            list-type="picture-card"
-          >
-            <el-icon><Plus /></el-icon>
-            <template #tip>
-              <div class="upload-tip">
-                支持 jpg/png/gif/pdf/doc 格式，单个文件不超过 5MB，最多 3 个文件
-              </div>
-            </template>
-          </el-upload>
-        </el-form-item>
-
         <el-form-item>
           <el-button
             type="primary"
@@ -182,15 +168,18 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Plus, InfoFilled } from '@element-plus/icons-vue'
+import { ArrowLeft, InfoFilled } from '@element-plus/icons-vue'
 import { usePortalTicketsStore } from '@/stores/portalTickets'
+import { useUserPortalStore } from '@/stores/userPortal'
 import { extractErrorMessage } from '@/utils/entitlement'
 
 const router = useRouter()
 const ticketsStore = usePortalTicketsStore()
+const userStore = useUserPortalStore()
+const getDraftKey = () => userStore.user?.id ? `portal-ticket-create-draft:${userStore.user.id}` : ''
 
 // 表单引用
 const formRef = ref(null)
@@ -203,8 +192,7 @@ const form = reactive({
   subject: '',
   category: '',
   priority: 'normal',
-  content: '',
-  attachments: []
+  content: ''
 })
 
 // 验证规则
@@ -241,6 +229,8 @@ async function submitTicket() {
       content: form.content
     })
 
+    const draftKey = getDraftKey()
+    if (draftKey) sessionStorage.removeItem(draftKey)
     ElMessage.success('工单已提交')
     router.push(`/user/tickets/${ticket.id}`)
   } catch (error) {
@@ -251,6 +241,33 @@ async function submitTicket() {
     submitting.value = false
   }
 }
+
+watch(form, (value) => {
+  const draftKey = getDraftKey()
+  if (!draftKey) return
+  const hasContent = value.subject.trim() || value.category || value.content.trim() || value.priority !== 'normal'
+  if (!hasContent) {
+    sessionStorage.removeItem(draftKey)
+    return
+  }
+  sessionStorage.setItem(draftKey, JSON.stringify(value))
+}, { deep: true })
+
+onMounted(() => {
+  try {
+    const draftKey = getDraftKey()
+    if (!draftKey) return
+    const saved = JSON.parse(sessionStorage.getItem(draftKey) || 'null')
+    if (!saved || typeof saved !== 'object') return
+    form.subject = typeof saved.subject === 'string' ? saved.subject : ''
+    form.category = typeof saved.category === 'string' ? saved.category : ''
+    form.priority = ['low', 'normal', 'high', 'urgent'].includes(saved.priority) ? saved.priority : 'normal'
+    form.content = typeof saved.content === 'string' ? saved.content : ''
+  } catch {
+    const draftKey = getDraftKey()
+    if (draftKey) sessionStorage.removeItem(draftKey)
+  }
+})
 </script>
 
 <style scoped>
@@ -258,6 +275,18 @@ async function submitTicket() {
   padding: 20px;
   max-width: 800px;
   margin: 0 auto;
+}
+
+.card-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.draft-hint {
+  color: var(--color-text-secondary);
+  font-size: 12px;
 }
 
 .back-bar {

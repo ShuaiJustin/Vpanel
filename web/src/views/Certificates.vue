@@ -99,6 +99,30 @@
     </AdminStickyChrome>
     <div class="admin-page-body">
 
+    <el-alert
+      v-if="listError"
+      class="list-error-alert"
+      type="error"
+      title="证书列表加载失败"
+      :closable="false"
+      show-icon
+    >
+      <template #default>
+        <p class="alert-description">
+          {{ listError }}
+        </p>
+        <el-button
+          type="danger"
+          plain
+          size="small"
+          :loading="loading"
+          @click="fetchCertificates()"
+        >
+          重新加载
+        </el-button>
+      </template>
+    </el-alert>
+
     <el-card class="box-card">
       <template #header>
         <div class="card-header">
@@ -203,6 +227,7 @@
                   <span class="stack-label">自动续期</span>
                   <el-switch
                     v-model="row.autoRenew"
+                    :disabled="isCertificateRenewing(row)"
                     @change="handleAutoRenewChange(row)"
                   />
                 </div>
@@ -224,19 +249,24 @@
                 <el-button
                   size="small"
                   class="row-action row-action--primary"
+                  :loading="isCertificateRenewing(row)"
+                  :disabled="row.provider === 'manual' || isCertificateRenewing(row)"
+                  :title="row.provider === 'manual' ? '手动上传的证书需上传新证书进行替换' : '续期证书'"
                   @click="handleRenew(row)"
                 >
-                  续期
+                  {{ isCertificateRenewing(row) ? '续期中' : '续期' }}
                 </el-button>
                 <el-button
                   size="small"
                   class="row-action row-action--success"
+                  :disabled="isCertificateRenewing(row)"
                   @click="handleValidate(row)"
                 >
                   验证
                 </el-button>
                 <el-dropdown
                   trigger="click"
+                  :disabled="isCertificateRenewing(row)"
                   @command="(command) => handleRowCommand(command, row)"
                 >
                   <el-button
@@ -265,6 +295,93 @@
             </template>
           </el-table-column>
         </el-table>
+
+        <div
+          v-loading="loading"
+          class="certificate-mobile-list"
+        >
+          <el-empty
+            v-if="paginatedCertificates.length === 0"
+            :description="displayCertificateTotal ? '当前页暂无数据' : (hasCertificateFilters ? '暂无匹配的证书' : '暂无证书记录')"
+          />
+          <template v-else>
+            <article
+              v-for="row in paginatedCertificates"
+              :key="row.id"
+              class="certificate-mobile-card"
+            >
+              <div class="certificate-mobile-card__header">
+                <div class="entity-cell">
+                  <strong class="entity-cell__title">{{ row.domain }}</strong>
+                  <span class="entity-cell__meta">ID：{{ row.id }}</span>
+                </div>
+                <span :class="['metric-pill', getStatusPillClass(row.status)]">
+                  {{ getStatusText(row.status) }}
+                </span>
+              </div>
+              <dl class="certificate-mobile-card__details">
+                <div>
+                  <dt>提供商</dt>
+                  <dd>{{ formatProviderLabel(row.provider) }}</dd>
+                </div>
+                <div>
+                  <dt>过期日期</dt>
+                  <dd :class="getExpireValueClass(row)">{{ row.expireDate }}</dd>
+                </div>
+                <div>
+                  <dt>自动续期</dt>
+                  <dd>
+                    <el-switch
+                    v-model="row.autoRenew"
+                    :aria-label="`${row.domain} 自动续期`"
+                    :disabled="isCertificateRenewing(row)"
+                    @change="handleAutoRenewChange(row)"
+                    />
+                  </dd>
+                </div>
+              </dl>
+              <p :class="['certificate-mobile-card__hint', row.errorMessage ? 'is-danger' : '']">
+                {{ row.errorMessage || getRenewHint(row) }}
+              </p>
+              <div class="certificate-mobile-card__actions">
+                <el-button
+                  class="row-action row-action--primary"
+                  :loading="isCertificateRenewing(row)"
+                  :disabled="row.provider === 'manual' || isCertificateRenewing(row)"
+                  @click="handleRenew(row)"
+                >
+                  {{ isCertificateRenewing(row) ? '续期中' : '续期' }}
+                </el-button>
+                <el-button
+                class="row-action row-action--success"
+                :disabled="isCertificateRenewing(row)"
+                @click="handleValidate(row)"
+                >
+                  验证
+                </el-button>
+              <el-dropdown
+                :disabled="isCertificateRenewing(row)"
+                @command="(command) => handleRowCommand(command, row)"
+              >
+                  <el-button aria-label="更多证书操作">
+                    更多
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="backup">备份证书</el-dropdown-item>
+                      <el-dropdown-item
+                        command="delete"
+                        divided
+                      >
+                        删除证书
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+              </div>
+            </article>
+          </template>
+        </div>
       </div>
     </el-card>
 
@@ -955,6 +1072,9 @@ const router = useRouter()
 // 证书列表
 const certificates = ref([])
 const loading = ref(false)
+const listError = ref('')
+const renewalJobs = new Map()
+let renewalPollTimer = null
 const nodes = ref([])
 const nodesLoading = ref(false)
 const searchQuery = ref('')
@@ -1064,6 +1184,7 @@ const normalizeCertificatesResponse = (response) => {
 const providerOptions = computed(() => [...new Set(certificates.value.map((item) => item.provider).filter(Boolean))])
 const statusOptions = [
   { label: '申请中', value: 'pending' },
+  { label: '续期中', value: 'renewing' },
   { label: '有效', value: 'active' },
   { label: '即将过期', value: 'expiring' },
   { label: '已过期', value: 'expired' },
@@ -1159,6 +1280,10 @@ onMounted(async () => {
 
 onUnmounted(() => {
   stopApplyProgressTracking()
+  if (renewalPollTimer) {
+    clearTimeout(renewalPollTimer)
+    renewalPollTimer = null
+  }
 })
 
 // 获取证书列表
@@ -1167,21 +1292,59 @@ const fetchCertificates = async ({ silent = false } = {}) => {
     loading.value = true
   }
   try {
-    const response = await certificatesApi.list()
+    const response = await certificatesApi.list({ silent: true })
     const data = normalizeCertificatesResponse(response)
     certificates.value = data.map(mapCertificate)
+    listError.value = ''
     syncCurrentPage()
+    return true
   } catch (error) {
     console.error('Failed to fetch certificates:', error)
-    if (!silent) {
-      ElMessage.error('获取证书列表失败')
-      certificates.value = []
-    }
+    listError.value = extractErrorMessage(error) || '无法连接证书服务，请检查服务状态后重试。'
+    return false
   } finally {
     if (!silent) {
       loading.value = false
     }
   }
+}
+
+const isCertificateRenewing = (row) => row?.status === 'renewing' || renewalJobs.has(row?.id)
+
+const scheduleRenewalPolling = (delay = 2500) => {
+  if (renewalPollTimer || renewalJobs.size === 0) return
+
+  renewalPollTimer = setTimeout(async () => {
+    renewalPollTimer = null
+    const loaded = await fetchCertificates({ silent: true })
+
+    for (const [certID, job] of renewalJobs.entries()) {
+      job.checks += 1
+
+      if (loaded) {
+        const certificate = certificates.value.find((item) => item.id === certID)
+
+        if (certificate && certificate.status !== 'renewing') {
+          renewalJobs.delete(certID)
+          if (certificate.errorMessage) {
+            ElMessage.error(`${certificate.domain} 续期失败：${certificate.errorMessage}`)
+          } else {
+            ElMessage.success(`${certificate.domain} 续期完成，关联节点已进入部署检查`)
+          }
+          continue
+        }
+      }
+
+      if (job.checks >= 120) {
+        renewalJobs.delete(certID)
+        ElMessage.warning(`${job.domain} 续期仍在后台处理中，请稍后刷新查看`)
+      }
+    }
+
+    if (renewalJobs.size > 0) {
+      scheduleRenewalPolling(2500)
+    }
+  }, delay)
 }
 
 const fetchNodes = async () => {
@@ -1621,6 +1784,7 @@ const handleAutoRenewChange = async (row) => {
 
 // 处理续期证书
 const handleRenew = async (row) => {
+  const previousStatus = row.status
   try {
     await ElMessageBox.confirm(`确定要为域名 ${row.domain} 续期证书吗？`, '续期证书', {
       confirmButtonText: '确定',
@@ -1628,14 +1792,19 @@ const handleRenew = async (row) => {
       type: 'warning'
     })
 
-    await certificatesApi.renew(row.id)
-    ElMessage.success('证书续期已提交，请等待处理结果')
-    await fetchCertificates()
+    renewalJobs.set(row.id, { domain: row.domain, checks: 0 })
+    row.status = 'renewing'
+    row.errorMessage = ''
+    const response = await certificatesApi.renew(row.id, { silent: true })
+    ElMessage.success(response?.message || '证书续期已提交，请等待处理结果')
+    scheduleRenewalPolling()
   } catch (error) {
     if (error === 'cancel' || error === 'close') return
+    renewalJobs.delete(row.id)
+    row.status = previousStatus
     console.error('Failed to renew certificate:', error)
     ElMessage.error(extractErrorMessage(error) || row.errorMessage || '续期证书失败，请查看证书状态中的错误详情')
-    await fetchCertificates()
+    await fetchCertificates({ silent: true })
   }
 }
 
@@ -1752,6 +1921,7 @@ const getProviderPillClass = (provider) => {
 const getStatusPillClass = (status) => {
   const classes = {
     pending: 'is-primary',
+    renewing: 'is-primary',
     failed: 'is-danger',
     expired: 'is-danger',
     expiring: 'is-warning',
@@ -1795,6 +1965,10 @@ const getExpireHint = (row) => {
 }
 
 const getRenewHint = (row) => {
+  if (row.status === 'renewing') {
+    return '续期任务正在后台执行，完成后会自动部署到关联节点。'
+  }
+
   if (!row.autoRenew) {
     return '当前关闭自动续期，需要人工关注到期时间。'
   }
@@ -1809,6 +1983,7 @@ const getRenewHint = (row) => {
 const getStatusText = (status) => {
   const labels = {
     pending: '申请中',
+    renewing: '续期中',
     failed: '失败',
     expired: '已过期',
     expiring: '即将过期',
@@ -1873,6 +2048,18 @@ const getExpireStatusType = (row) => {
   margin-bottom: 16px;
 }
 
+.list-error-alert {
+  margin-bottom: 16px;
+}
+
+.alert-description {
+  margin: 0 0 10px;
+}
+
+.certificate-mobile-list {
+  display: none;
+}
+
 .apply-progress-actions {
   margin: -4px 0 16px;
   display: flex;
@@ -1931,7 +2118,82 @@ const getExpireStatusType = (row) => {
   }
 
   .certificates-table {
-    min-width: 760px;
+    display: none;
+  }
+
+  .certificate-mobile-list {
+    display: grid;
+    gap: 12px;
+    min-height: 120px;
+  }
+
+  .certificate-mobile-card {
+    padding: 16px;
+    border: 1px solid var(--el-border-color-lighter);
+    border-radius: 14px;
+    background: var(--el-bg-color);
+  }
+
+  .certificate-mobile-card__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .certificate-mobile-card__details {
+    display: grid;
+    gap: 10px;
+    margin: 16px 0 0;
+  }
+
+  .certificate-mobile-card__details > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .certificate-mobile-card__details dt {
+    color: var(--el-text-color-secondary);
+    font-size: 13px;
+  }
+
+  .certificate-mobile-card__details dd {
+    margin: 0;
+    text-align: right;
+  }
+
+  .certificate-mobile-card__hint {
+    margin: 14px 0;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--el-fill-color-light);
+    color: var(--el-text-color-secondary);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .certificate-mobile-card__hint.is-danger {
+    color: var(--el-color-danger);
+    background: var(--el-color-danger-light-9);
+  }
+
+  .certificate-mobile-card__actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .certificate-mobile-card__actions .el-button,
+  .certificate-mobile-card__actions .el-dropdown {
+    width: 100%;
+    min-height: 44px;
+    margin: 0;
+  }
+
+  .certificate-mobile-card__actions .el-dropdown .el-button {
+    width: 100%;
   }
 }
 </style> 

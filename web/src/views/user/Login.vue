@@ -16,10 +16,14 @@
         ref="loginFormRef"
         :model="loginForm"
         :rules="loginRules"
+        label-position="top"
         class="login-form"
         @submit.prevent="handleLogin"
       >
-        <el-form-item prop="username">
+        <el-form-item
+          label="账号"
+          prop="username"
+        >
           <el-input
             v-model="loginForm.username"
             placeholder="用户名或邮箱"
@@ -29,7 +33,10 @@
           />
         </el-form-item>
 
-        <el-form-item prop="password">
+        <el-form-item
+          label="密码"
+          prop="password"
+        >
           <el-input
             v-model="loginForm.password"
             type="password"
@@ -118,6 +125,7 @@
         ref="twoFAFormRef"
         :model="twoFAForm"
         :rules="twoFARules"
+        label-position="top"
         class="login-form"
         @submit.prevent="handle2FAVerify"
       >
@@ -129,7 +137,10 @@
           <p>请输入您的验证器应用中的验证码</p>
         </div>
 
-        <el-form-item prop="code">
+        <el-form-item
+          label="验证码或备份码"
+          prop="code"
+        >
           <el-input
             v-model="twoFAForm.code"
             placeholder="6位验证码"
@@ -682,6 +693,10 @@ onMounted(async () => {
 
   .form-options {
     align-items: flex-start;
+  }
+
+  .login-form :deep(.el-input__inner) {
+    font-size: 16px;
   }
 }
 </style>

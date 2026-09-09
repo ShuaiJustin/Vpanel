@@ -9,7 +9,7 @@ export const certificatesApi = {
    * 获取证书列表
    * @returns {Promise<Array>} 证书列表
    */
-  list: () => api.get('/certificates'),
+  list: (config = {}) => api.get('/certificates', config),
 
   /**
    * 申请证书
@@ -62,7 +62,7 @@ export const certificatesApi = {
    * @param {number|string} id - 证书 ID
    * @returns {Promise<Object>} 续期结果
    */
-  renew: (id) => api.post(`/certificates/${id}/renew`),
+  renew: (id, config = {}) => api.post(`/certificates/${id}/renew`, null, config),
 
   /**
    * 验证证书

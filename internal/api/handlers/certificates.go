@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -31,6 +32,8 @@ type CertificateHandler struct {
 	certSvc      CertificateService
 	auditService monitor.AuditService
 	logger       logger.Logger
+	renewMu      sync.RWMutex
+	renewing     map[int64]struct{}
 }
 
 // CertificateService defines the interface for certificate operations.
@@ -50,7 +53,40 @@ func NewCertificateHandler(certRepo repository.CertificateRepository, nodeRepo r
 		nodeRepo: nodeRepo,
 		certSvc:  certSvc,
 		logger:   log,
+		renewing: make(map[int64]struct{}),
 	}
+}
+
+func (h *CertificateHandler) beginRenewal(certID int64) bool {
+	h.renewMu.Lock()
+	defer h.renewMu.Unlock()
+	if _, exists := h.renewing[certID]; exists {
+		return false
+	}
+	h.renewing[certID] = struct{}{}
+	return true
+}
+
+func (h *CertificateHandler) finishRenewal(certID int64) {
+	h.renewMu.Lock()
+	delete(h.renewing, certID)
+	h.renewMu.Unlock()
+}
+
+func (h *CertificateHandler) isRenewing(certID int64) bool {
+	h.renewMu.RLock()
+	_, exists := h.renewing[certID]
+	h.renewMu.RUnlock()
+	return exists
+}
+
+func (h *CertificateHandler) certificateResponse(cert *repository.Certificate) *CertificateResponse {
+	response := toCertificateResponse(cert)
+	if h.isRenewing(cert.ID) {
+		response.Status = "renewing"
+		response.ErrorMessage = ""
+	}
+	return response
 }
 
 // WithAuditService wires the audit emitter for state-changing certificate ops.
@@ -67,7 +103,7 @@ type CertificateResponse struct {
 	AutoRenew    bool   `json:"auto_renew"`
 	ExpiresAt    string `json:"expires_at"`
 	DaysLeft     int    `json:"days_left"`
-	Status       string `json:"status"` // pending, failed, valid, expiring, expired
+	Status       string `json:"status"` // pending, renewing, failed, valid, expiring, expired
 	ErrorMessage string `json:"error_message,omitempty"`
 	CreatedAt    string `json:"created_at"`
 	UpdatedAt    string `json:"updated_at"`
@@ -273,7 +309,7 @@ func (h *CertificateHandler) List(c *gin.Context) {
 
 	response := make([]*CertificateResponse, len(certs))
 	for i, cert := range certs {
-		response[i] = toCertificateResponse(cert)
+		response[i] = h.certificateResponse(cert)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -489,6 +525,10 @@ func (h *CertificateHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的证书 ID"})
 		return
 	}
+	if h.isRenewing(id) {
+		c.JSON(http.StatusConflict, gin.H{"error": "证书正在续期中，暂时无法删除"})
+		return
+	}
 
 	cert, err := h.certRepo.GetByID(c.Request.Context(), id)
 	if err != nil {
@@ -658,19 +698,14 @@ func (h *CertificateHandler) Renew(c *gin.Context) {
 		return
 	}
 
-	if err := h.certSvc.Renew(c.Request.Context(), id); err != nil {
-		h.logger.Error("Failed to renew certificate", logger.Err(err), logger.F("id", id), logger.F("domain", cert.Domain))
-		clientMessage := certificateClientErrorMessage(err)
-		if failedCert, fetchErr := h.certRepo.GetByID(c.Request.Context(), id); fetchErr == nil && strings.TrimSpace(failedCert.ErrorMessage) != "" {
-			clientMessage = failedCert.ErrorMessage
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": clientMessage})
+	if strings.EqualFold(strings.TrimSpace(cert.Provider), "manual") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "手动上传的证书不支持自动续期，请上传新证书进行替换"})
 		return
 	}
 
-	refreshed, refreshErr := h.certRepo.GetByID(c.Request.Context(), id)
-	if refreshErr == nil && refreshed != nil {
-		cert = refreshed
+	if !h.beginRenewal(id) {
+		c.JSON(http.StatusConflict, gin.H{"error": "该证书正在续期中，请勿重复提交"})
+		return
 	}
 
 	h.logger.Info("Certificate renewal requested",
@@ -684,13 +719,31 @@ func (h *CertificateHandler) Renew(c *gin.Context) {
 		Details:      map[string]any{"domain": cert.Domain},
 	})
 
-	h.deployAssignedNodesAsync(cert)
-
-	c.JSON(http.StatusOK, gin.H{
-		"message":     "证书续期成功",
-		"domain":      cert.Domain,
-		"expire_date": cert.ExpiresAt,
+	c.JSON(http.StatusAccepted, gin.H{
+		"message": "证书续期已提交，完成后会自动部署到关联节点",
+		"domain":  cert.Domain,
+		"cert_id": cert.ID,
+		"status":  "renewing",
 	})
+
+	go func(certID int64, domain string) {
+		defer h.finishRenewal(certID)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		defer cancel()
+
+		if err := h.certSvc.Renew(ctx, certID); err != nil {
+			h.logger.Error("Failed to renew certificate", logger.Err(err), logger.F("id", certID), logger.F("domain", domain))
+			return
+		}
+
+		refreshed, err := h.certRepo.GetByID(ctx, certID)
+		if err != nil {
+			h.logger.Warn("Failed to reload renewed certificate", logger.Err(err), logger.F("id", certID), logger.F("domain", domain))
+			return
+		}
+		h.deployAssignedNodesAsync(refreshed)
+	}(cert.ID, cert.Domain)
 }
 
 // Validate validates a certificate and returns detailed metadata.

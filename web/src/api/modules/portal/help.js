@@ -14,8 +14,8 @@ const BASE_URL = '/portal/help'
  * @param {number} [params.offset] - 偏移量
  * @returns {Promise}
  */
-export function getArticles(params = {}) {
-  return api.get(`${BASE_URL}/articles`, { params })
+export function getArticles(params = {}, config = {}) {
+  return api.get(`${BASE_URL}/articles`, { ...config, params })
 }
 
 /**
@@ -35,16 +35,25 @@ export function getArticle(slug) {
  * @param {number} [params.limit] - 每页数量
  * @returns {Promise}
  */
-export function searchArticles(params) {
-  return api.get(`${BASE_URL}/search`, { params })
+export function searchArticles(params, config = {}) {
+  return api.get(`${BASE_URL}/search`, { ...config, params })
 }
 
 /**
  * 获取文章分类列表
  * @returns {Promise}
  */
-export function getCategories() {
-  return api.get(`${BASE_URL}/categories`)
+export function getCategories(config = {}) {
+  return api.get(`${BASE_URL}/categories`, config)
+}
+
+/**
+ * 获取精选文章
+ * @param {number} limit - 返回数量
+ * @returns {Promise}
+ */
+export function getFeaturedArticles(limit = 5, config = {}) {
+  return api.get(`${BASE_URL}/featured`, { ...config, params: { limit } })
 }
 
 /**
@@ -62,6 +71,7 @@ export default {
   getArticles,
   getArticle,
   searchArticles,
+  getFeaturedArticles,
   getCategories,
   rateArticle
 }
