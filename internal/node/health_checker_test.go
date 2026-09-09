@@ -3,10 +3,12 @@ package node
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"net"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"v/internal/database/repository"
 )
@@ -124,6 +126,24 @@ func TestProxyUsesTLS(t *testing.T) {
 		Protocol: "vmess",
 		Settings: map[string]any{"security": "none"},
 	}))
+}
+
+func TestCheckProxyEndpointDoesNotClassifyTCPRefusalAsTLSFailure(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	port := listener.Addr().(*net.TCPAddr).Port
+	require.NoError(t, listener.Close())
+
+	checker := NewHealthChecker(&HealthCheckConfig{Timeout: time.Second}, nil, nil, nil, nil, nil)
+	health := checker.checkProxyEndpoint(
+		&repository.Node{},
+		&repository.Proxy{Port: port, Settings: map[string]any{"security": "tls"}},
+		"127.0.0.1",
+	)
+
+	assert.False(t, health.Reachable)
+	assert.False(t, health.TLSFailure)
+	assert.Contains(t, health.Reason, "TCP connection failed")
 }
 
 func TestSampledProxyEndpointTLSFailureIsCriticalWhenAnotherEndpointIsReachable(t *testing.T) {

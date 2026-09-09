@@ -549,18 +549,17 @@ func (hc *HealthChecker) checkReachableProxyEndpoint(node *repository.Node) samp
 		}
 		checkedTargets[target] = struct{}{}
 		health.CheckedCount++
-		usesTLS := proxyUsesTLS(proxyModel)
-		reachable, reason := hc.checkProxyEndpoint(node, proxyModel, host)
-		if reachable {
+		endpointHealth := hc.checkProxyEndpoint(node, proxyModel, host)
+		if endpointHealth.Reachable {
 			health.AnyReachable = true
 		} else {
 			health.AllReachable = false
-			if usesTLS {
+			if endpointHealth.TLSFailure {
 				health.TLSFailure = true
 			}
 			if health.FirstUnreachableTarget == "" {
 				health.FirstUnreachableTarget = target
-				health.FirstFailureReason = reason
+				health.FirstFailureReason = endpointHealth.Reason
 			}
 		}
 		if health.CheckedCount >= maxSampledProxyTargets {
@@ -575,19 +574,25 @@ func (hc *HealthChecker) checkReachableProxyEndpoint(node *repository.Node) samp
 	return health
 }
 
-func (hc *HealthChecker) checkProxyEndpoint(node *repository.Node, proxyModel *repository.Proxy, host string) (bool, string) {
+type proxyEndpointHealth struct {
+	Reachable  bool
+	TLSFailure bool
+	Reason     string
+}
+
+func (hc *HealthChecker) checkProxyEndpoint(node *repository.Node, proxyModel *repository.Proxy, host string) proxyEndpointHealth {
 	if !proxyUsesTLS(proxyModel) {
 		if hc.checkTCP(host, proxyModel.Port) {
-			return true, ""
+			return proxyEndpointHealth{Reachable: true}
 		}
-		return false, "TCP connection failed"
+		return proxyEndpointHealth{Reason: "TCP connection failed"}
 	}
 
 	serverName := resolveProxyTLSServerName(node, proxyModel, host)
 	address := fmt.Sprintf("%s:%d", host, proxyModel.Port)
 	rawConn, err := net.DialTimeout("tcp", address, hc.config.Timeout)
 	if err != nil {
-		return false, fmt.Sprintf("TCP connection failed: %v", err)
+		return proxyEndpointHealth{Reason: fmt.Sprintf("TCP connection failed: %v", err)}
 	}
 	defer rawConn.Close()
 
@@ -604,12 +609,12 @@ func (hc *HealthChecker) checkProxyEndpoint(node *repository.Node, proxyModel *r
 	handshakeCtx, cancel := context.WithTimeout(ctx, hc.config.Timeout)
 	defer cancel()
 	if err := tlsConn.HandshakeContext(handshakeCtx); err != nil {
-		return false, fmt.Sprintf("TLS handshake failed: %v", err)
+		return proxyEndpointHealth{TLSFailure: true, Reason: fmt.Sprintf("TLS handshake failed: %v", err)}
 	}
 	if err := verifyServedTLSCertificate(tlsConn.ConnectionState(), serverName, time.Now(), nil); err != nil {
-		return false, err.Error()
+		return proxyEndpointHealth{TLSFailure: true, Reason: err.Error()}
 	}
-	return true, ""
+	return proxyEndpointHealth{Reachable: true}
 }
 
 func proxyUsesTLS(proxyModel *repository.Proxy) bool {

@@ -83,6 +83,30 @@ func TestNodeRecoveryTracker_ExpiresStalePendingCommand(t *testing.T) {
 	}
 }
 
+func TestNodeRecoveryTracker_QueuesFollowUpConfigSyncWhileInflight(t *testing.T) {
+	tracker := NewNodeRecoveryTracker(logger.NewNopLogger())
+
+	first, queued := tracker.QueueConfigSyncCommandDetailed(23, "node_heartbeat", "initial sync")
+	if !queued {
+		t.Fatal("expected initial config sync to be queued")
+	}
+	dispatched := tracker.GetPendingCommands(23)
+	if len(dispatched) != 1 || dispatched[0].ID != first.ID {
+		t.Fatalf("expected initial config sync to be dispatched, got %#v", dispatched)
+	}
+
+	followUp, queued := tracker.QueueConfigSyncCommandDetailed(23, "entitlement_auto_provision", "proxy created during sync")
+	if !queued {
+		t.Fatal("expected a follow-up config sync to be queued while the first is inflight")
+	}
+	if followUp.ID == first.ID {
+		t.Fatal("expected follow-up config sync to have a new id")
+	}
+	if _, queuedAgain := tracker.QueueConfigSyncCommandDetailed(23, "entitlement_auto_provision", "another proxy created during sync"); queuedAgain {
+		t.Fatal("expected additional config changes to coalesce into the pending follow-up sync")
+	}
+}
+
 func TestNodeRecoveryTracker_ExpiresStaleInflightCommand(t *testing.T) {
 	tracker := NewNodeRecoveryTracker(logger.NewNopLogger())
 

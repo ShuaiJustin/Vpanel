@@ -127,7 +127,9 @@ func (t *NodeRecoveryTracker) queueCommand(nodeID int64, commandType, source, re
 	defer t.mu.Unlock()
 
 	t.pruneStaleCommandsLocked(nodeID)
-	if t.hasPendingOrInflightCommandLocked(nodeID, commandType) {
+	hasInflight := t.hasInflightCommandLocked(nodeID, commandType)
+	if t.hasPendingCommandLocked(nodeID, commandType) ||
+		(hasInflight && commandType != commandTypeConfigSync) {
 		return Command{}, false
 	}
 
@@ -136,7 +138,7 @@ func (t *NodeRecoveryTracker) queueCommand(nodeID int64, commandType, source, re
 		nodeCooldowns = make(map[string]time.Time)
 		t.lastQueuedCommands[nodeID] = nodeCooldowns
 	}
-	if queuedAt, ok := nodeCooldowns[commandType]; ok && time.Since(queuedAt) < xrayRecoveryCommandCooldown {
+	if queuedAt, ok := nodeCooldowns[commandType]; ok && time.Since(queuedAt) < xrayRecoveryCommandCooldown && !hasInflight {
 		return Command{}, false
 	}
 
@@ -277,12 +279,16 @@ func (t *NodeRecoveryTracker) GetRecentRecoveryEvents(nodeID int64) []NodeRecove
 	return copied
 }
 
-func (t *NodeRecoveryTracker) hasPendingOrInflightCommandLocked(nodeID int64, commandType string) bool {
+func (t *NodeRecoveryTracker) hasPendingCommandLocked(nodeID int64, commandType string) bool {
 	for _, cmd := range t.pendingCommands[nodeID] {
 		if cmd.Type == commandType {
 			return true
 		}
 	}
+	return false
+}
+
+func (t *NodeRecoveryTracker) hasInflightCommandLocked(nodeID int64, commandType string) bool {
 	for _, entry := range t.inflightCommands {
 		if entry.NodeID == nodeID && entry.Command.Type == commandType {
 			return true
