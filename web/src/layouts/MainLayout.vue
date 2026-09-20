@@ -286,6 +286,9 @@
                 <el-dropdown-item command="password">
                   修改密码
                 </el-dropdown-item>
+                <el-dropdown-item command="portal">
+                  进入用户门户
+                </el-dropdown-item>
                 <el-dropdown-item
                   command="logout"
                   divided
@@ -321,6 +324,14 @@
               @click="goToChangePassword"
             >
               修改密码
+            </el-button>
+            <el-button
+              link
+              size="small"
+              class="user-action-btn"
+              @click="goToUserPortal"
+            >
+              进入用户门户
             </el-button>
             <el-button
               link
@@ -468,6 +479,10 @@ const goToChangePassword = () => {
   router.push('/admin/change-password')
 }
 
+const goToUserPortal = () => {
+  router.push('/user/dashboard')
+}
+
 const handleMobileUserCommand = (command) => {
   if (command === 'profile') {
     goToProfile()
@@ -476,6 +491,11 @@ const handleMobileUserCommand = (command) => {
 
   if (command === 'password') {
     goToChangePassword()
+    return
+  }
+
+  if (command === 'portal') {
+    goToUserPortal()
     return
   }
 
@@ -494,8 +514,7 @@ const confirmLogout = () => {
   }).then(async () => {
     await userStore.logout()
     closeMobileMenu()
-    // 退出管理后台后跳转到用户门户
-    router.replace('/user/dashboard')
+    router.replace('/user/login')
   }).catch(() => {})
 }
 
