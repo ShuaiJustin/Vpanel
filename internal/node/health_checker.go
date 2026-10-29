@@ -450,7 +450,7 @@ func (hc *HealthChecker) applyNetworkQuality(node *repository.Node, result *Heal
 			}
 			hc.stateMu.Unlock()
 			if alert {
-				hc.sendStatusChangeNotification(node, node.Status, node.Status, "线路丢包告警："+result.Message)
+				hc.sendStatusChangeNotification(node, node.Status, "degraded", "线路丢包告警："+result.Message)
 			}
 		}
 		// ICMP can be rate limited; require TCP corroboration before failover.

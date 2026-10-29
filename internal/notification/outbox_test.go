@@ -6,11 +6,30 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestNetworkLossAlertIsNotReportedAsRecovery(t *testing.T) {
+	svc := NewService(&NotificationConfig{AdminEmail: "admin@example.com", EnabledChannels: map[NotificationChannel]bool{ChannelEmail: true}, EnabledTypes: map[NotificationType]bool{NotificationNodeStatusChange: true}})
+	dir := filepath.Join(t.TempDir(), "outbox")
+	require.NoError(t, svc.ConfigureOutbox(dir))
+	require.NoError(t, svc.NotifyNodeStatusChange(NodeStatusChangeData{NodeID: 1, NodeName: "test-node", OldStatus: "online", NewStatus: "degraded", Reason: "ICMP丢包率 40%", Timestamp: time.Now()}))
+	files, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	data, err := os.ReadFile(filepath.Join(dir, files[0].Name()))
+	require.NoError(t, err)
+	var job deliveryJob
+	require.NoError(t, json.Unmarshal(data, &job))
+	require.Contains(t, job.Subject, "节点线路告警")
+	require.Contains(t, job.Body, "线路质量异常")
+	require.Contains(t, job.Body, "40%")
+	require.False(t, strings.Contains(job.Subject+job.Body, "恢复正常"))
+}
 
 func TestOutboxRetainsFailuresAcrossRestartAndDeduplicatesChannels(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "outbox")

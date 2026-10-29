@@ -604,6 +604,10 @@ func (s *Service) proxyReachableEnoughForSubscription(ctx context.Context, proxy
 	if nodeReadyForSubscriptionList(nodeModel) {
 		return true
 	}
+	// A single successful dial cannot override consecutive health failures.
+	if nodeModel.Status == repository.NodeStatusUnhealthy {
+		return false
+	}
 
 	port := proxylib.ResolveServerPort(proxy.Port, proxy.Settings)
 	if port <= 0 {

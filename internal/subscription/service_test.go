@@ -951,11 +951,8 @@ func TestGetUserEnabledProxies_FiltersUnreachableProxyOnUnhealthyNode(t *testing
 	if err != nil {
 		t.Fatalf("GetUserEnabledProxies returned error: %v", err)
 	}
-	if len(proxies) != 1 {
-		t.Fatalf("expected one reachable proxy, got %d", len(proxies))
-	}
-	if proxies[0].ID != reachableProxy.ID {
-		t.Fatalf("expected reachable proxy %d, got %d", reachableProxy.ID, proxies[0].ID)
+	if len(proxies) != 0 {
+		t.Fatalf("unhealthy node must remain excluded even with a reachable port, got %d proxies", len(proxies))
 	}
 }
 
@@ -971,7 +968,7 @@ func TestProxyReachableEnoughForSubscription_RetriesTimeout(t *testing.T) {
 		Name:       "pending-node",
 		Address:    "127.0.0.1",
 		Token:      "pending-node-token",
-		Status:     repository.NodeStatusUnhealthy,
+		Status:     repository.NodeStatusOffline,
 		SyncStatus: repository.NodeSyncStatusPending,
 	}
 	if err := db.Create(node).Error; err != nil {

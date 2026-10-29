@@ -290,6 +290,9 @@ func (s *Service) NotifyNodeStatusChange(data NodeStatusChangeData) error {
 	var emoji string
 	var statusText string
 	switch data.NewStatus {
+	case "degraded":
+		emoji = "⚠️"
+		statusText = "线路质量异常"
 	case "online":
 		emoji = "✅"
 		statusText = "恢复正常"
@@ -305,6 +308,9 @@ func (s *Service) NotifyNodeStatusChange(data NodeStatusChangeData) error {
 	}
 
 	subject := fmt.Sprintf("%s 节点状态变更: %s", emoji, data.NodeName)
+	if data.NewStatus == "degraded" {
+		subject = fmt.Sprintf("⚠️ 节点线路告警: %s", data.NodeName)
+	}
 	message := fmt.Sprintf(
 		"节点状态已变更\n\n节点ID: %d\n节点名称: %s\n原状态: %s\n新状态: %s\n原因: %s\n时间: %s",
 		data.NodeID,
