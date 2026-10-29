@@ -183,10 +183,12 @@ func (h *NodeAgentHandler) Register(c *gin.Context) {
 	}
 
 	// Update node status to online
-	if err := h.nodeService.UpdateStatus(c.Request.Context(), nodeData.ID, repository.NodeStatusOnline); err != nil {
-		h.logger.Error("Failed to update node status",
-			logger.F("node_id", nodeData.ID),
-			logger.F("error", err.Error()))
+	if nodeData.Status != repository.NodeStatusUnhealthy {
+		if err := h.nodeService.UpdateStatus(c.Request.Context(), nodeData.ID, repository.NodeStatusOnline); err != nil {
+			h.logger.Error("Failed to update node status",
+				logger.F("node_id", nodeData.ID),
+				logger.F("error", err.Error()))
+		}
 	}
 
 	// Update last seen

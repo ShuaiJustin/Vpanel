@@ -796,7 +796,7 @@ const basicInfoItems = computed(() => {
     { label: '权重', value: node.value.weight },
     { label: '最大用户数', value: node.value.max_users || '无限制' },
     { label: '当前用户数', value: node.value.current_users },
-    { label: '延迟', value: `${node.value.latency || 0}ms`, valueClass: getLatencyClass(node.value.latency) },
+    { label: '延迟', value: node.value.latency > 0 ? `${node.value.latency}ms` : node.value.latency < 0 ? '探测失败' : '未测得', valueClass: getLatencyClass(node.value.latency) },
     {
       label: '同步状态',
       value: getSyncStatusText(node.value.sync_status),

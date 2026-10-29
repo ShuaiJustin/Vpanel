@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os/exec"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -83,6 +85,7 @@ type HealthChecker struct {
 	pendingSince         map[int64]time.Time
 	probeCursor          map[int64]int
 	probeFailures        map[int64]map[int64]bool
+	lastQualityAlert     map[int64]time.Time
 
 	// Control
 	ctx       context.Context
@@ -121,6 +124,7 @@ func NewHealthChecker(
 		pendingSince:         make(map[int64]time.Time),
 		probeCursor:          make(map[int64]int),
 		probeFailures:        make(map[int64]map[int64]bool),
+		lastQualityAlert:     make(map[int64]time.Time),
 	}
 }
 
@@ -360,9 +364,108 @@ func (hc *HealthChecker) performCheck(node *repository.Node) *HealthCheckResult 
 	}
 
 	applyCertificateHealth(result, certHealth)
+	hc.applyNetworkQuality(node, result)
 
 	return result
 }
+
+// Probe actual proxy TCP handshakes, not the agent's self-reported latency.
+// This measures connection failure/slow rate, not ICMP packet loss.
+func (hc *HealthChecker) applyNetworkQuality(node *repository.Node, result *HealthCheckResult) {
+	if hc.proxyRepo == nil {
+		return
+	}
+	ctx := hc.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	proxies, err := hc.proxyRepo.GetByNodeID(ctx, node.ID)
+	if err != nil {
+		return
+	}
+	var target *repository.Proxy
+	for _, p := range proxies {
+		if p != nil && p.Enabled && p.Port > 0 {
+			target = p
+			break
+		}
+	}
+	if target == nil {
+		return
+	}
+	host := resolveHealthCheckProxyHost(node, target)
+	if host == "" {
+		return
+	}
+	const samples = 5
+	durations := make(chan int, samples)
+	for i := 0; i < samples; i++ {
+		go func() {
+			start := time.Now()
+			probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			defer cancel()
+			conn, err := (&net.Dialer{}).DialContext(probeCtx, "tcp", net.JoinHostPort(host, strconv.Itoa(target.Port)))
+			if err != nil {
+				durations <- -1
+				return
+			}
+			conn.Close()
+			ms := int(time.Since(start).Milliseconds())
+			if ms < 1 {
+				ms = 1
+			}
+			durations <- ms
+		}()
+	}
+	values := make([]int, 0, samples)
+	failed, slow := 0, 0
+	for i := 0; i < samples; i++ {
+		ms := <-durations
+		if ms < 0 {
+			failed++
+			continue
+		}
+		values = append(values, ms)
+		if ms >= 1000 {
+			slow++
+		}
+	}
+	result.Latency = -1
+	if len(values) > 0 {
+		sort.Ints(values)
+		result.Latency = values[len(values)/2]
+	}
+	result.Message += fmt.Sprintf("; 线路探测 %s:%d：TCP失败率 %d%%，慢连接率 %d%%，样本 %d，延迟 %dms（面板视角，非ICMP丢包率）", host, target.Port, failed*100/samples, slow*100/samples, samples, result.Latency)
+	pingCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	output, _ := exec.CommandContext(pingCtx, "ping", "-n", "-c", "10", "-i", "0.2", "-W", "1", node.Address).CombinedOutput()
+	if match := packetLossPattern.FindSubmatch(output); len(match) == 2 {
+		loss, _ := strconv.ParseFloat(string(match[1]), 64)
+		result.Message += fmt.Sprintf("; ICMP丢包率 %.0f%%（10包）", loss)
+		if loss >= 20 {
+			hc.stateMu.Lock()
+			alert := time.Since(hc.lastQualityAlert[node.ID]) >= 30*time.Minute
+			if alert {
+				hc.lastQualityAlert[node.ID] = time.Now()
+			}
+			hc.stateMu.Unlock()
+			if alert {
+				hc.sendStatusChangeNotification(node, node.Status, node.Status, "线路丢包告警："+result.Message)
+			}
+		}
+		// ICMP can be rate limited; require TCP corroboration before failover.
+		if loss >= 30 && (failed > 0 || slow > 0) {
+			result.Status = repository.HealthCheckStatusFailed
+		}
+	} else {
+		result.Message += "; ICMP丢包率未测得"
+	}
+	if failed >= 2 || slow >= 3 {
+		result.Status = repository.HealthCheckStatusFailed
+	}
+}
+
+var packetLossPattern = regexp.MustCompile(`([0-9.]+)% packet loss`)
 
 // Heartbeats update Node.UpdatedAt, so track the beginning of pending separately.
 func (hc *HealthChecker) pendingSyncWithinGrace(node *repository.Node, now time.Time) bool {

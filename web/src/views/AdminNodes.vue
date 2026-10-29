@@ -347,7 +347,7 @@
                   <span class="stack-label">节点延迟</span>
                   <span
                     :class="['stack-value', getLatencyValueClass(row.latency)]"
-                    >{{ row.latency }}ms</span
+                    >{{ row.latency > 0 ? row.latency + 'ms' : row.latency < 0 ? '探测失败' : '未测得' }}</span
                   >
                 </div>
                 <div class="stack-item">
@@ -1031,7 +1031,7 @@
             }}
           </el-descriptions-item>
           <el-descriptions-item label="延迟">
-            {{ currentNode.latency }}ms
+            {{ currentNode.latency > 0 ? currentNode.latency + 'ms' : currentNode.latency < 0 ? '探测失败' : '未测得' }}
           </el-descriptions-item>
           <el-descriptions-item label="同步状态">
             <el-tag :type="getSyncStatusType(currentNode.sync_status)">

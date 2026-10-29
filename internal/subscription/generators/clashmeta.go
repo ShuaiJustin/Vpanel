@@ -358,14 +358,14 @@ func (g *ClashMetaGenerator) generateProxyGroups(proxyNames []string, options *G
 			Type:     "url-test",
 			Proxies:  autoProxies,
 			URL:      "https://www.gstatic.com/generate_204",
-			Interval: 300,
+			Interval: 30,
 		},
 		ClashProxyGroup{
 			Name:     clashFallbackGroupName(options),
 			Type:     "fallback",
 			Proxies:  autoProxies,
 			URL:      "https://www.gstatic.com/generate_204",
-			Interval: 300,
+			Interval: 30,
 		},
 	)
 }

@@ -176,7 +176,7 @@ type NodeRepository interface {
 	GetHealthy(ctx context.Context) ([]*Node, error)
 	GetOnline(ctx context.Context) ([]*Node, error)
 	GetAvailable(ctx context.Context) ([]*Node, error) // online and not at capacity
-	
+
 	// Duplicate checking
 	CountByName(ctx context.Context, name string, excludeID int64) (int64, error)
 	CountByAddressPort(ctx context.Context, address string, port int, excludeID int64) (int64, error)
@@ -231,7 +231,7 @@ func (r *nodeRepository) GetByIDs(ctx context.Context, ids []int64) ([]*Node, er
 	if len(ids) == 0 {
 		return []*Node{}, nil
 	}
-	
+
 	var nodes []*Node
 	result := r.db.WithContext(ctx).Preload("Groups").Where("id IN ?", ids).Find(&nodes)
 	if result.Error != nil {
@@ -731,9 +731,9 @@ func (r *nodeRepository) getDB(ctx context.Context) *gorm.DB {
 // UpdateHeartbeatBatch atomically updates all heartbeat-related fields in a single query.
 func (r *nodeRepository) UpdateHeartbeatBatch(ctx context.Context, id int64, status string, lastSeen time.Time, latency int, currentUsers int, cpuUsage, memoryUsage, diskUsage float64, xrayRunning bool, xrayVersion string) error {
 	updates := map[string]interface{}{
-		"status":        status,
+		// Agent reachability must not erase a health-check failure.
+		"status":        gorm.Expr("CASE WHEN status = ? AND ? = ? THEN status ELSE ? END", NodeStatusUnhealthy, status, NodeStatusOnline, status),
 		"last_seen_at":  lastSeen,
-		"latency":       latency,
 		"current_users": currentUsers,
 		"cpu_usage":     cpuUsage,
 		"memory_usage":  memoryUsage,

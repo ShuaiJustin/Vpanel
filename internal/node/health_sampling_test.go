@@ -27,6 +27,20 @@ func TestPendingGraceExpiresDespiteHeartbeatUpdates(t *testing.T) {
 	require.True(t, hc.pendingSyncWithinGrace(node, now.Add(4*time.Minute)))
 }
 
+func TestNetworkQualityRecordsTCPFailure(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	port := listener.Addr().(*net.TCPAddr).Port
+	require.NoError(t, listener.Close())
+	repo := samplingProxyRepo{proxies: []*repository.Proxy{{ID: 1, Enabled: true, Port: port}}}
+	hc := NewHealthChecker(nil, nil, repo, nil, nil, logger.NewNopLogger())
+	result := &HealthCheckResult{Status: repository.HealthCheckStatusSuccess}
+	hc.applyNetworkQuality(&repository.Node{ID: 1, Address: "127.0.0.1"}, result)
+	require.Equal(t, -1, result.Latency)
+	require.Equal(t, repository.HealthCheckStatusFailed, result.Status)
+	require.Contains(t, result.Message, "TCP失败率 100%")
+}
+
 type samplingProxyRepo struct {
 	repository.ProxyRepository
 	proxies []*repository.Proxy

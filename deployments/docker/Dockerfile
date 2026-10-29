@@ -115,6 +115,7 @@ RUN sed -i "s/dl-cdn.alpinelinux.org/${ALPINE_MIRROR}/g" /etc/apk/repositories &
       bash \
       ca-certificates \
       curl \
+      iputils-ping \
       openssl \
       socat \
       sqlite \

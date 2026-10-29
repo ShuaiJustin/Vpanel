@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -24,6 +25,26 @@ func setupNodeRepositoryTestDB(t *testing.T) *gorm.DB {
 	}
 
 	return db
+}
+
+func TestHeartbeatPreservesMeasuredLatencyAndUnhealthyStatus(t *testing.T) {
+	db := setupNodeRepositoryTestDB(t)
+	repo := NewNodeRepository(db)
+	ctx := context.Background()
+	node := &Node{Name: "lossy", Address: "127.0.0.1", Token: "lossy-token", Status: NodeStatusUnhealthy, Latency: 1234}
+	if err := repo.Create(ctx, node); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpdateHeartbeatBatch(ctx, node.ID, NodeStatusOnline, time.Now(), 0, 2, 1, 2, 3, true, "test"); err != nil {
+		t.Fatal(err)
+	}
+	var got Node
+	if err := db.First(&got, node.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.Latency != 1234 || got.Status != NodeStatusUnhealthy || got.CurrentUsers != 2 || !got.XrayRunning {
+		t.Fatalf("heartbeat corrupted measured health: latency=%d status=%s users=%d xray=%v", got.Latency, got.Status, got.CurrentUsers, got.XrayRunning)
+	}
 }
 
 func TestNodeRepository_GetAvailable_ExcludesNodesPastTrafficThreshold(t *testing.T) {
