@@ -44,7 +44,7 @@ func DefaultHealthCheckConfig() *HealthCheckConfig {
 		Interval:            30 * time.Second,
 		Timeout:             10 * time.Second,
 		UnhealthyThreshold:  3,
-		HealthyThreshold:    2,
+		HealthyThreshold:    5,
 		RetentionDays:       7,
 		MaxConcurrentChecks: 10,
 	}

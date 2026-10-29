@@ -395,7 +395,15 @@ func (r *Router) Setup() {
 			defer cancel()
 
 			if newStatus == repository.NodeStatusOnline {
-				r.nodeRecoveryTracker.QueueConfigSyncCommand(nodeID, "health_checker", "node recovered to online; refresh node config")
+				nodeData, err := r.repos.Node.GetByID(ctx, nodeID)
+				if err != nil {
+					r.logger.Warn("获取恢复节点状态失败", logger.Err(err), logger.F("node_id", nodeID))
+					return
+				}
+				// Network recovery alone must not restart a running, synced proxy.
+				if nodeData.SyncStatus != repository.NodeSyncStatusSynced || !nodeData.XrayRunning {
+					r.nodeRecoveryTracker.QueueConfigSyncCommand(nodeID, "health_checker", "node recovered with pending config or stopped xray")
+				}
 				return
 			}
 			if newStatus != repository.NodeStatusUnhealthy {

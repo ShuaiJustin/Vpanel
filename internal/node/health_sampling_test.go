@@ -46,6 +46,34 @@ type samplingProxyRepo struct {
 	proxies []*repository.Proxy
 }
 
+type recoveryNodeRepository struct {
+	repository.NodeRepository
+	node *repository.Node
+}
+
+func (r recoveryNodeRepository) UpdateMetrics(context.Context, int64, int, int) error { return nil }
+func (r recoveryNodeRepository) UpdateStatus(_ context.Context, _ int64, status string) error {
+	r.node.Status = status
+	return nil
+}
+
+func TestRecoveryRequiresStableWindowAfterTransientSuccess(t *testing.T) {
+	n := &repository.Node{ID: 1, Status: repository.NodeStatusUnhealthy}
+	hc := NewHealthChecker(nil, recoveryNodeRepository{node: n}, nil, nil, nil, logger.NewNopLogger())
+	success := &HealthCheckResult{Status: repository.HealthCheckStatusSuccess, Latency: 150}
+	for i := 0; i < 2; i++ {
+		hc.handleCheckResult(n, success)
+	}
+	require.Equal(t, repository.NodeStatusUnhealthy, n.Status)
+	hc.handleCheckResult(n, &HealthCheckResult{Status: repository.HealthCheckStatusFailed})
+	for i := 0; i < hc.config.HealthyThreshold-1; i++ {
+		hc.handleCheckResult(n, success)
+	}
+	require.Equal(t, repository.NodeStatusUnhealthy, n.Status)
+	hc.handleCheckResult(n, success)
+	require.Equal(t, repository.NodeStatusOnline, n.Status)
+}
+
 func (r samplingProxyRepo) GetByNodeID(context.Context, int64) ([]*repository.Proxy, error) {
 	return r.proxies, nil
 }
