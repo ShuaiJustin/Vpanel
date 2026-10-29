@@ -235,7 +235,7 @@ func TestSettingsService_AutoProxySettingsPersistence(t *testing.T) {
 
 	defaults, err := service.GetAutoProxySettings(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"trojan", "vmess", "vless", "shadowsocks"}, defaults.ProtocolPriority)
+	assert.Equal(t, []string{"vless", "trojan", "vmess", "shadowsocks"}, defaults.ProtocolPriority)
 
 	updated, err := service.UpdateAutoProxySettings(ctx, &AutoProxySettings{
 		ProtocolPriority: []string{" VMess ", "trojan", "vmess"},

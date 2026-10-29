@@ -48,13 +48,6 @@ func (s NetworkOptimizationSettings) Normalize() NetworkOptimizationSettings {
 		return normalized
 	}
 
-	if normalized.XrayTCPCongestion == "" && normalized.EnableBBR {
-		normalized.XrayTCPCongestion = "bbr"
-	}
-	if normalized.EnableTCPFastOpen && !normalized.XrayTCPFastOpen {
-		normalized.XrayTCPFastOpen = true
-	}
-
 	return normalized
 }
 
@@ -302,6 +295,9 @@ func adjustAppliedNetworkOptimizationSettings(settings NetworkOptimizationSettin
 	applied := settings
 	if strings.Contains(logOutput, "已跳过 BBR") {
 		applied.EnableBBR = false
+		if applied.XrayTCPCongestion == "bbr" {
+			applied.XrayTCPCongestion = ""
+		}
 	}
 	return applied
 }

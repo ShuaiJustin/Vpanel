@@ -193,7 +193,8 @@ func (g *ClashMetaGenerator) generateVLESSProxy(info *ProxyInfo) (map[string]int
 	if security == "reality" {
 		// Reality settings (Clash Meta specific)
 		proxy["tls"] = true
-		realityOpts := map[string]interface{}{}
+		// Preserve the hybrid key share required by current Xray REALITY servers.
+		realityOpts := map[string]interface{}{"support-x25519mlkem768": true}
 
 		if pbk := GetSettingString(info.Settings, "publicKey", ""); pbk != "" {
 			realityOpts["public-key"] = pbk
@@ -332,10 +333,11 @@ func (g *ClashMetaGenerator) generateShadowsocksProxy(info *ProxyInfo) (map[stri
 
 // generateProxyGroups generates default proxy groups for Clash Meta.
 func (g *ClashMetaGenerator) generateProxyGroups(proxyNames []string, options *GeneratorOptions) []ClashProxyGroup {
-	selectProxies := append([]string{}, proxyNames...)
-	if len(proxyNames) > 1 {
+	selectProxies := make([]string, 0, len(proxyNames)+3)
+	if len(proxyNames) > 0 {
 		selectProxies = append(selectProxies, clashAutoGroupName(options), clashFallbackGroupName(options))
 	}
+	selectProxies = append(selectProxies, proxyNames...)
 	selectProxies = append(selectProxies, "DIRECT")
 	autoProxies := proxyNames
 
@@ -346,7 +348,7 @@ func (g *ClashMetaGenerator) generateProxyGroups(proxyNames []string, options *G
 			Proxies: selectProxies,
 		},
 	}
-	if len(proxyNames) <= 1 {
+	if len(proxyNames) == 0 {
 		return groups
 	}
 

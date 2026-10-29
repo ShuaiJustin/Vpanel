@@ -2,10 +2,15 @@ package entitlement
 
 import (
 	"context"
+	"crypto/ecdh"
+	"encoding/base64"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/glebarez/sqlite"
+	"gopkg.in/yaml.v3"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 
@@ -18,6 +23,8 @@ import (
 	"v/internal/proxy/protocols/vless"
 	"v/internal/proxy/protocols/vmess"
 	settingssvc "v/internal/settings"
+	"v/internal/subscription/generators"
+	"v/internal/xray"
 	pkgerrors "v/pkg/errors"
 )
 
@@ -715,7 +722,7 @@ func TestGetAccessibleProxies_DoesNotShareAutoProvisionedUserProxy(t *testing.T)
 	}
 }
 
-func TestGetAccessibleProxies_AutoProvisionedTLSDefaultsToTrojanWhenNodeProtocolsEmpty(t *testing.T) {
+func TestGetAccessibleProxies_AutoProvisionedTLSDefaultsToRealityVisionWhenNodeProtocolsEmpty(t *testing.T) {
 	service, db := setupTestService(t)
 	user := createTestUser(t, db, "tls-default-trojan-user")
 	node := createTestNode(t, db, "tls-default-trojan-node")
@@ -733,14 +740,14 @@ func TestGetAccessibleProxies_AutoProvisionedTLSDefaultsToTrojanWhenNodeProtocol
 	if len(proxies) != 1 {
 		t.Fatalf("expected one tls auto provisioned proxy, got %d", len(proxies))
 	}
-	if proxies[0].Protocol != "trojan" {
-		t.Fatalf("expected trojan proxy for tls-enabled node without explicit protocol preference, got %s", proxies[0].Protocol)
+	if proxies[0].Protocol != "vless" {
+		t.Fatalf("expected vless proxy for tls-enabled node without explicit protocol preference, got %s", proxies[0].Protocol)
 	}
-	if got := proxies[0].Settings["security"]; got != "tls" {
-		t.Fatalf("expected tls security, got %#v", got)
+	if got := proxies[0].Settings["security"]; got != "reality" {
+		t.Fatalf("expected reality security, got %#v", got)
 	}
-	if got := proxies[0].Settings["server_name"]; got != "panel.example.com" {
-		t.Fatalf("expected server_name to inherit tls domain, got %#v", got)
+	if got := proxies[0].Settings["server_name"]; got != "www.cloudflare.com" {
+		t.Fatalf("expected REALITY server_name, got %#v", got)
 	}
 }
 
@@ -794,11 +801,11 @@ func TestGetAccessibleProxies_AutoProvisionedTLSChoosesBestConfiguredProtocol(t 
 	if len(proxies) != 1 {
 		t.Fatalf("expected one tls auto provisioned proxy, got %d", len(proxies))
 	}
-	if proxies[0].Protocol != "trojan" {
-		t.Fatalf("expected best configured protocol trojan, got %s", proxies[0].Protocol)
+	if proxies[0].Protocol != "vless" {
+		t.Fatalf("expected best configured protocol vless, got %s", proxies[0].Protocol)
 	}
-	if got := proxies[0].Settings["security"]; got != "tls" {
-		t.Fatalf("expected tls security, got %#v", got)
+	if got := proxies[0].Settings["security"]; got != "reality" {
+		t.Fatalf("expected reality security, got %#v", got)
 	}
 }
 
@@ -842,12 +849,12 @@ func TestPreferredAutoProvisionProtocols_SortsConfiguredProtocolsByBestDefault(t
 		{
 			name: "empty uses global best default",
 			raw:  "[]",
-			want: []string{"trojan", "vmess", "vless", "shadowsocks"},
+			want: []string{"vless", "trojan", "vmess", "shadowsocks"},
 		},
 		{
 			name: "multiple configured are ranked by best default",
 			raw:  `["vless","trojan","vmess"]`,
-			want: []string{"trojan", "vmess", "vless"},
+			want: []string{"vless", "trojan", "vmess"},
 		},
 		{
 			name: "single configured protocol is respected",
@@ -1028,14 +1035,14 @@ func TestRebuildAutoProvisionedProxies_ReplacesOnlyAutoProxiesWithCurrentDefault
 	if err := db.First(&rebuilt, result.CreatedProxyIDs[0]).Error; err != nil {
 		t.Fatalf("failed to load rebuilt proxy: %v", err)
 	}
-	if rebuilt.Protocol != "trojan" {
-		t.Fatalf("expected rebuilt proxy to use trojan, got %s", rebuilt.Protocol)
+	if rebuilt.Protocol != "vless" {
+		t.Fatalf("expected rebuilt proxy to use vless, got %s", rebuilt.Protocol)
 	}
-	if got := rebuilt.Settings["security"]; got != "tls" {
-		t.Fatalf("expected rebuilt proxy security tls, got %#v", got)
+	if got := rebuilt.Settings["security"]; got != "reality" {
+		t.Fatalf("expected rebuilt proxy security reality, got %#v", got)
 	}
-	if got := rebuilt.Settings["sni"]; got != "panel.example.com" {
-		t.Fatalf("expected rebuilt proxy sni panel.example.com, got %#v", got)
+	if got := rebuilt.Settings["sni"]; got != "www.cloudflare.com" {
+		t.Fatalf("expected rebuilt proxy REALITY sni www.cloudflare.com, got %#v", got)
 	}
 	if syncedNodeID != node.ID {
 		t.Fatalf("expected config sync for node %d, got %d", node.ID, syncedNodeID)
@@ -1416,5 +1423,130 @@ func TestGetAccessibleProxies_PrefersLowerTrafficPressureWhenAssignmentCountsTie
 	}
 	if proxies[0].ID != preferredProxy.ID {
 		t.Fatalf("expected proxy %d from lower traffic node, got %d", preferredProxy.ID, proxies[0].ID)
+	}
+}
+
+func TestAutoProvisionCreatesRealityVisionByDefault(t *testing.T) {
+	service, db := setupTestService(t)
+	user := createTestUser(t, db, "reality-default-user")
+	n := createTestNode(t, db, "reality-default-node")
+	n.Protocols = "[]"
+	n.TLSEnabled = true
+	n.TLSDomain = "legacy.example.com"
+	if err := db.Save(n).Error; err != nil {
+		t.Fatal(err)
+	}
+	first, err := service.createAutoProvisionedProxy(context.Background(), user.ID, n.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Protocol != "vless" || first.Settings["security"] != "reality" || first.Settings["flow"] != "xtls-rprx-vision" {
+		t.Fatalf("expected VLESS REALITY Vision default, got %s / %v / %v", first.Protocol, first.Settings["security"], first.Settings["flow"])
+	}
+	normalized, err := proxy.NormalizeSettings("vless", first.Settings)
+	if err != nil {
+		t.Fatalf("invalid generated REALITY settings: %v", err)
+	}
+	if normalized["publicKey"] == "" || normalized["privateKey"] == "" || normalized["sid"] == "" {
+		t.Fatal("missing per-proxy REALITY credentials")
+	}
+	old := cloneSettings(first.Settings)
+	reloaded, err := service.reconcileUserAutoProvisionedProxy(context.Background(), first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(old, reloaded.Settings) {
+		t.Fatal("reconciliation must preserve REALITY settings and credentials")
+	}
+	second, err := service.createAutoProvisionedProxy(context.Background(), user.ID, n.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Settings["publicKey"] == first.Settings["publicKey"] || second.Settings["sid"] == first.Settings["sid"] {
+		t.Fatal("each proxy must get distinct REALITY credentials")
+	}
+}
+
+func TestAutoProvisionRealityVisionClashSubscriptionRoundTrip(t *testing.T) {
+	for _, tlsEnabled := range []bool{false, true} {
+		name := "without-node-certificate"
+		if tlsEnabled {
+			name = "with-node-certificate"
+		}
+		t.Run(name, func(t *testing.T) {
+			service, db := setupTestService(t)
+			user := createTestUser(t, db, "roundtrip-user")
+			n := createTestNode(t, db, "roundtrip-node")
+			n.Protocols = "[]"
+			n.TLSEnabled = tlsEnabled
+			n.TLSDomain = "legacy.example.com"
+			if err := db.Save(n).Error; err != nil {
+				t.Fatal(err)
+			}
+			created, err := service.createAutoProvisionedProxy(context.Background(), user.ID, n.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Reload through persistence before generating either side of the connection.
+			stored, err := service.proxyRepo.GetByID(context.Background(), created.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			server, err := xray.NewConfigGenerator(service.proxyRepo, nil, service.nodeRepo, logger.NewNopLogger()).GenerateForNode(context.Background(), n.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var inbound *xray.InboundConfig
+			for idx := range server.Inbounds {
+				if server.Inbounds[idx].Port == stored.Port {
+					inbound = &server.Inbounds[idx]
+				}
+			}
+			if inbound == nil || inbound.Protocol != "vless" || inbound.StreamSettings == nil || inbound.StreamSettings.Security != "reality" {
+				t.Fatal("default REALITY inbound missing")
+			}
+			clients := inbound.Settings["clients"].([]map[string]any)
+			if len(clients) != 1 || clients[0]["id"] != stored.Settings["uuid"] || clients[0]["flow"] != "xtls-rprx-vision" {
+				t.Fatal("server UUID or Vision flow mismatch")
+			}
+			reality := inbound.StreamSettings.RealitySettings
+			keyBytes, err := base64.RawURLEncoding.DecodeString(reality["privateKey"].(string))
+			if err != nil {
+				t.Fatal(err)
+			}
+			key, err := ecdh.X25519().NewPrivateKey(keyBytes)
+			if err != nil {
+				t.Fatal(err)
+			}
+			publicKey := base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes())
+			content, err := generators.NewClashMetaGenerator().Generate([]*repository.Proxy{stored}, &generators.GeneratorOptions{IncludeProxyGroups: true, SubscriptionName: "default"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var c generators.ClashMetaConfig
+			if err := yaml.Unmarshal(content, &c); err != nil {
+				t.Fatal(err)
+			}
+			if len(c.Proxies) != 1 {
+				t.Fatal("default node missing from subscription")
+			}
+			p := c.Proxies[0]
+			opts := p["reality-opts"].(map[string]interface{})
+			if p["uuid"] != clients[0]["id"] || p["flow"] != "xtls-rprx-vision" || p["tls"] != true || p["network"] != "tcp" || p["client-fingerprint"] != "chrome" {
+				t.Fatal("client identity/transport mismatch")
+			}
+			if p["servername"] != "www.cloudflare.com" || reality["dest"] != "www.cloudflare.com:443" {
+				t.Fatal("REALITY target mismatch")
+			}
+			if opts["public-key"] != publicKey || opts["short-id"] != stored.Settings["shortId"] || opts["support-x25519mlkem768"] != true {
+				t.Fatal("REALITY credentials or MLKEM mismatch")
+			}
+			if strings.Contains(string(content), reality["privateKey"].(string)) {
+				t.Fatal("private key leaked into subscription")
+			}
+			if len(c.ProxyGroups) != 3 || c.ProxyGroups[1].Name != "default Auto" || c.ProxyGroups[2].Name != "default Fallback" {
+				t.Fatal("default policy groups missing")
+			}
+		})
 	}
 }

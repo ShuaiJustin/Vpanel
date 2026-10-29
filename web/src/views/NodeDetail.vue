@@ -984,7 +984,7 @@ const editNode = () => {
 
 const deleteNode = async () => {
   await ElMessageBox.confirm(
-    `确定要删除节点 "${node.value.name}" 吗？该节点上的用户将被重新分配到其他节点。`,
+    `确定要删除节点 "${node.value.name}" 吗？该节点及其代理将被删除，用户优先迁移到其他可用节点；无可用节点时解除分配，保留用户账号。`,
     '删除确认',
     { type: 'warning' }
   )

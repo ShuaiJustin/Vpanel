@@ -1371,7 +1371,7 @@ const protocolSettings = reactive({
   enableHTTP: false
 })
 
-const defaultAutoProxyPriority = ['trojan', 'vmess', 'vless', 'shadowsocks']
+const defaultAutoProxyPriority = ['vless', 'trojan', 'vmess', 'shadowsocks']
 const autoProxyProtocolOptions = [
   { label: 'Trojan', value: 'trojan' },
   { label: 'VMess', value: 'vmess' },

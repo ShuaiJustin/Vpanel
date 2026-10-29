@@ -363,3 +363,21 @@ func TestNormalizeTLSDomain(t *testing.T) {
 	assert.Equal(t, "api.example.com", normalizeTLSDomain("API.EXAMPLE.COM"))
 	assert.False(t, time.Now().IsZero())
 }
+
+func TestGenerateVLESSSettingsPreservesVisionFlow(t *testing.T) {
+	g := &ConfigGenerator{}
+	for _, flow := range []string{"", "xtls-rprx-vision"} {
+		t.Run(flow, func(t *testing.T) {
+			settings := map[string]any{"uuid": "5783a3e7-e373-51cd-8642-c83782b807c5", "flow": flow}
+			got := g.generateVLESSSettings(&repository.Proxy{ID: 99, UserID: 1}, settings)
+			clients := got["clients"].([]map[string]any)
+			require.Len(t, clients, 1)
+			assert.Equal(t, settings["uuid"], clients[0]["id"])
+			if flow == "" {
+				assert.NotContains(t, clients[0], "flow")
+			} else {
+				assert.Equal(t, flow, clients[0]["flow"])
+			}
+		})
+	}
+}

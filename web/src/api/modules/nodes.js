@@ -218,6 +218,8 @@ export const nodesApi = {
   inspectNetworkOptimization: (id, data) =>
     api.post(`/admin/nodes/${id}/network-optimization/inspect`, data, {
       silent: true,
+      // Allow SSH dial (30s), command execution (30s), and response overhead.
+      timeout: 90000,
     }),
 
   /**

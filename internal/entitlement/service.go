@@ -3,6 +3,10 @@ package entitlement
 
 import (
 	"context"
+	"crypto/ecdh"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -24,7 +28,7 @@ const (
 	autoProvisionPortMax = 60000
 )
 
-var defaultAutoProvisionProtocolPreference = []string{"trojan", "vmess", "vless", "shadowsocks"}
+var defaultAutoProvisionProtocolPreference = []string{"vless", "trojan", "vmess", "shadowsocks"}
 
 // AccessState describes the effective access state for a portal user.
 type AccessState struct {
@@ -969,7 +973,14 @@ func (s *Service) createAutoProvisionedProxy(ctx context.Context, userID, nodeID
 	}
 
 	settings := protocol.DefaultSettings()
-	settings = applyAutoProvisionNodeSecurity(node, protocolName, settings)
+	if protocolName == "vless" {
+		settings, err = newAutoProvisionRealitySettings(settings)
+		if err != nil {
+			return nil, errors.NewInternalError("failed to generate REALITY credentials", err)
+		}
+	} else {
+		settings = applyAutoProvisionNodeSecurity(node, protocolName, settings)
+	}
 	normalizedSettings, err := proxylib.NormalizeSettings(protocolName, settings)
 	if err != nil {
 		return nil, errors.NewInternalError("failed to normalize auto provisioned proxy settings", err)
@@ -1277,9 +1288,37 @@ func cloneSettings(settings map[string]any) map[string]any {
 	return cloned
 }
 
+// newAutoProvisionRealitySettings is only used for new proxies; existing credentials are never regenerated.
+func newAutoProvisionRealitySettings(settings map[string]any) (map[string]any, error) {
+	privateKey, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	shortID := make([]byte, 8)
+	if _, err := rand.Read(shortID); err != nil {
+		return nil, err
+	}
+	settings["network"] = "tcp"
+	settings["security"] = "reality"
+	settings["flow"] = "xtls-rprx-vision"
+	settings["fp"] = "chrome"
+	settings["sni"] = "www.cloudflare.com"
+	settings["reality_settings"] = map[string]any{
+		"dest":        "www.cloudflare.com:443",
+		"serverNames": []string{"www.cloudflare.com"},
+		"privateKey":  base64.RawURLEncoding.EncodeToString(privateKey.Bytes()),
+		"shortIds":    []string{hex.EncodeToString(shortID)},
+	}
+	return settings, nil
+}
+
 func applyAutoProvisionNodeSecurity(node *repository.Node, protocolName string, settings map[string]any) map[string]any {
 	if settings == nil {
 		settings = map[string]any{}
+	}
+
+	if security, _ := settings["security"].(string); security == "reality" {
+		return settings
 	}
 
 	if !nodeSupportsAutoProvisionTLS(node) || !protocolSupportsAutoProvisionTLS(protocolName) {

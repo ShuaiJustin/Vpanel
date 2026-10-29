@@ -756,6 +756,7 @@ import {
   getRecoveryStatusText,
   getRecoveryStatusType
 } from '@/composables/useNodePresentation'
+import { getTCPFastOpenStatus } from '@/composables/useNodePresentation'
 import { useViewport } from '@/composables/useViewport'
 import { useNodeStore } from '@/stores/node'
 import { extractErrorMessage } from '@/utils/entitlement'
@@ -1001,12 +1002,8 @@ const optimizationOptionStatus = computed(() => {
   const currentCC = state?.current_congestion_control || '-'
   const bbrOn = /^bbr/i.test(String(currentCC))
   const fqOn = Boolean(state?.fq_enabled) || state?.default_qdisc === 'fq'
-  const tfoRaw = String(state?.tcp_fastopen ?? '')
-  const tfoOn = tfoRaw !== '' && tfoRaw !== '0'
+  const tfoStatus = getTCPFastOpenStatus(state?.tcp_fastopen)
   const desiredCongestion = String(networkOptimizationForm.xray_tcp_congestion || '').trim().toLowerCase()
-  const congestionMatched = desiredCongestion
-    ? String(currentCC).toLowerCase() === desiredCongestion
-    : true
 
   return {
     bbr: buildOptionStatus(
@@ -1016,7 +1013,7 @@ const optimizationOptionStatus = computed(() => {
       isBbrUnavailable.value ? '内核不可用，已禁用' : ''
     ),
     fq: buildOptionStatus(networkOptimizationForm.enable_fq, fqOn, state?.default_qdisc || '-'),
-    tfo: buildOptionStatus(networkOptimizationForm.enable_tcp_fastopen, tfoOn, tfoRaw || '-'),
+    tfo: buildOptionStatus(networkOptimizationForm.enable_tcp_fastopen, tfoStatus.enabled, tfoStatus.label),
     sockopt: state
       ? {
           text: networkOptimizationForm.enable_xray_sockopt
@@ -1039,7 +1036,7 @@ const optimizationOptionStatus = computed(() => {
             ? { text: '需先启用 Xray Sockopt', tone: 'muted' }
             : !desiredCongestion
               ? { text: `不设置 · 系统当前 ${currentCC}`, tone: 'muted' }
-              : buildOptionStatus(true, congestionMatched, currentCC)
+              : { text: `待同步验证 · 目标 ${desiredCongestion}，系统当前 ${currentCC}`, tone: 'muted' }
         )
       : pendingInspectStatus.value
   }

@@ -6,20 +6,11 @@ import (
 	"testing"
 )
 
-func TestNetworkOptimizationSettingsNormalizeDefaultsSockoptFields(t *testing.T) {
-	input := NetworkOptimizationSettings{
-		EnableBBR:         true,
-		EnableTCPFastOpen: true,
-		EnableXraySockopt: true,
-	}
-
+func TestNetworkOptimizationSettingsNormalizePreservesExplicitSockoptChoices(t *testing.T) {
+	input := NetworkOptimizationSettings{EnableBBR: true, EnableTCPFastOpen: true, EnableXraySockopt: true}
 	got := input.Normalize()
-
-	if got.XrayTCPCongestion != "bbr" {
-		t.Fatalf("expected congestion control to default to bbr, got %q", got.XrayTCPCongestion)
-	}
-	if !got.XrayTCPFastOpen {
-		t.Fatal("expected xray tcp fast open to be enabled when tcp fast open is enabled")
+	if got.XrayTCPCongestion != "" || got.XrayTCPFastOpen {
+		t.Fatalf("normalization must preserve disabled Xray TFO and unset congestion, got %+v", got)
 	}
 }
 
@@ -79,5 +70,15 @@ func TestApplyNetworkOptimizationScriptDegradesMissingBBR(t *testing.T) {
 	}
 	if strings.Contains(script, "请升级内核或加载 tcp_bbr 模块") {
 		t.Fatal("expected hard-fail BBR message to be removed")
+	}
+}
+
+func TestAdjustAppliedNetworkOptimizationSettingsSkipsUnsupportedXrayBBR(t *testing.T) {
+	got := adjustAppliedNetworkOptimizationSettings(RecommendedNetworkOptimizationSettings(), "当前内核不支持 BBR，已跳过 BBR，继续应用其他优化项")
+	if got.XrayTCPCongestion != "" {
+		t.Fatalf("unsupported bbr must not be sent to Xray: %+v", got)
+	}
+	if got.Normalize().XrayTCPCongestion != "" {
+		t.Fatal("normalization must not restore unsupported bbr")
 	}
 }

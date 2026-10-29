@@ -957,11 +957,11 @@ func (s *Service) reassignUsersFromNodeInTx(ctx context.Context, excludeNodeID i
 	}
 
 	if len(availableNodes) == 0 {
-		// 严重问题：没有可用节点，用户将失去服务
-		s.logger.Error("No healthy nodes available for reassignment",
+		// Keep users unassigned when no replacement exists; do not block explicit node deletion.
+		s.logger.Warn("No healthy nodes available; removing assignments for deleted node",
 			logger.F("node_id", excludeNodeID),
 			logger.F("user_count", len(userIDs)))
-		return fmt.Errorf("没有可用的健康节点来重分配 %d 个用户", len(userIDs))
+		return s.assignmentRepo.DeleteByNodeID(ctx, excludeNodeID)
 	}
 
 	// Distribute users across available nodes using round-robin

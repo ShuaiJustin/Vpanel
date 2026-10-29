@@ -15,7 +15,7 @@ import (
 const AutoProxySettingsKey = "auto_proxy_settings"
 const AuthSettingsKey = "auth_settings"
 
-var defaultAutoProxyProtocolPriority = []string{"trojan", "vmess", "vless", "shadowsocks"}
+var defaultAutoProxyProtocolPriority = []string{"vless", "trojan", "vmess", "shadowsocks"}
 
 var defaultOAuthProviderOrder = []string{"custom", "github", "discord", "oidc", "telegram", "linuxdo", "wechat", "wecom"}
 

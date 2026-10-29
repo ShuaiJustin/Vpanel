@@ -489,11 +489,15 @@ func (g *ConfigGenerator) generateVLESSSettings(proxy *repository.Proxy, setting
 
 	// Extract UUID from settings
 	if uuid, ok := settings["uuid"].(string); ok && uuid != "" {
-		clients = append(clients, map[string]any{
+		client := map[string]any{
 			"id":    uuid,
 			"email": fmt.Sprintf("user-%d-proxy-%d", proxy.UserID, proxy.ID),
 			"level": 0,
-		})
+		}
+		if flow := getStringSetting(settings, "flow"); flow != "" {
+			client["flow"] = flow
+		}
+		clients = append(clients, client)
 	}
 
 	return map[string]any{

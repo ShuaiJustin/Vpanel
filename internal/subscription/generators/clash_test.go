@@ -63,8 +63,8 @@ func TestClashGenerator_Generate(t *testing.T) {
 	if config.Mode != "rule" {
 		t.Errorf("Expected mode 'rule', got '%s'", config.Mode)
 	}
-	if len(config.ProxyGroups) == 0 || len(config.ProxyGroups[0].Proxies) == 0 || config.ProxyGroups[0].Proxies[0] != "VMess Server" {
-		t.Fatalf("expected first select option to be the first generated node, got %#v", config.ProxyGroups)
+	if len(config.ProxyGroups) == 0 || len(config.ProxyGroups[0].Proxies) == 0 || config.ProxyGroups[0].Proxies[0] != "Proxy Auto" {
+		t.Fatalf("expected automatic selection as the default, got %#v", config.ProxyGroups)
 	}
 }
 
@@ -333,5 +333,25 @@ func TestClashGenerator_FileExtension(t *testing.T) {
 	expected := "yaml"
 	if generator.FileExtension() != expected {
 		t.Errorf("FileExtension() = %s, want %s", generator.FileExtension(), expected)
+	}
+}
+
+func TestClashGeneratorSingleProxyKeepsStablePolicyGroups(t *testing.T) {
+	groups := NewClashGenerator().generateProxyGroups([]string{"one"}, &GeneratorOptions{SubscriptionName: "panel"})
+	if len(groups) != 3 {
+		t.Fatalf("expected three stable groups, got %+v", groups)
+	}
+	for i, name := range []string{"panel", "panel Auto", "panel Fallback"} {
+		if groups[i].Name != name {
+			t.Fatalf("missing stable group %s", name)
+		}
+	}
+	if groups[0].Proxies[0] != "panel Auto" {
+		t.Fatal("main group must start with automatic selection")
+	}
+	for _, g := range groups[1:] {
+		if len(g.Proxies) != 1 || g.Proxies[0] != "one" {
+			t.Fatalf("unexpected policy group %+v", g)
+		}
 	}
 }

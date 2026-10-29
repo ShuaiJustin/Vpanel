@@ -120,3 +120,15 @@ describe('formatApiError', () => {
     expect(formatted.message).toBe('创建支付失败，请稍后重试。')
   })
 })
+
+
+describe('transport error classification', () => {
+ it.each(['ECONNABORTED', 'ETIMEDOUT'])("recognizes %s as timeout", (code) => {
+  const formatted = formatApiError({ code, request: {}, message: 'timeout' });
+  expect(formatted.code).toBe('TIMEOUT_ERROR');
+  expect(formatted.message).toBe('请求超时');
+ });
+ it('keeps connection failures distinct from timeouts', () => {
+  expect(formatApiError({ code: 'ERR_NETWORK', request: {} }).code).toBe('NETWORK_ERROR');
+ });
+});

@@ -425,3 +425,15 @@ export const formatNodeTrafficRemaining = (node) =>
   hasNodeTrafficLimit(node)
     ? formatNodeTrafficAmount(getNodeTrafficRemaining(node))
     : "∞";
+
+export function getTCPFastOpenStatus(value) {
+  const raw = String(value ?? "").trim();
+  const parsed = /^\d+$/.test(raw) ? Number(raw) : NaN;
+  const valid = Number.isSafeInteger(parsed) && parsed >= 0 && parsed <= 0x7fffffff;
+  const mode = valid ? parsed & 3 : 0;
+  const descriptions = ["未启用", "仅客户端", "仅服务端", "客户端和服务端"];
+  return {
+    enabled: mode === 3,
+    label: valid ? `${raw}（${descriptions[mode]}）` : "未检测",
+  };
+}

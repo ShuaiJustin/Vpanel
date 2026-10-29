@@ -157,7 +157,6 @@ func (r *userNodeAssignmentRepository) CountByNodeID(ctx context.Context, nodeID
 	return count, nil
 }
 
-
 // Assign assigns a user to a node (creates or updates assignment).
 func (r *userNodeAssignmentRepository) Assign(ctx context.Context, userID, nodeID int64) error {
 	now := time.Now()
@@ -235,7 +234,7 @@ func (r *userNodeAssignmentRepository) BulkReassign(ctx context.Context, userIDs
 
 // DeleteByNodeID deletes all assignments for a node.
 func (r *userNodeAssignmentRepository) DeleteByNodeID(ctx context.Context, nodeID int64) error {
-	result := r.db.WithContext(ctx).
+	result := r.getDB(ctx).
 		Where("node_id = ?", nodeID).
 		Delete(&UserNodeAssignment{})
 	if result.Error != nil {

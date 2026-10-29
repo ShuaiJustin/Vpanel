@@ -107,6 +107,17 @@ export function formatApiError(error) {
     }
   }
   
+  if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+    return {
+      errorId,
+      code: 'TIMEOUT_ERROR',
+      message: getErrorMessage('TIMEOUT_ERROR'),
+      details: {},
+      status: 0,
+      timestamp: new Date().toISOString()
+    }
+  }
+
   if (error.request) {
     return {
       errorId,

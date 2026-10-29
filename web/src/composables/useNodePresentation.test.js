@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  getTCPFastOpenStatus,
   formatCoreVersionCompact,
   formatNodeTrafficAmount,
   formatNodeTrafficRemaining,
@@ -117,4 +118,18 @@ describe("useNodePresentation helpers", () => {
     );
     expect(formatNodeTrafficRemaining(healthyNode)).toBe("512 GiB");
   });
+});
+
+describe("TCP Fast Open runtime status", () => {
+ it("requires both client and server bits for bidirectional support", () => {
+  expect(getTCPFastOpenStatus("1")).toEqual({ enabled: false, label: "1（仅客户端）" });
+  expect(getTCPFastOpenStatus("2")).toEqual({ enabled: false, label: "2（仅服务端）" });
+  expect(getTCPFastOpenStatus("3")).toEqual({ enabled: true, label: "3（客户端和服务端）" });
+  expect(getTCPFastOpenStatus("1027").enabled).toBe(true);
+ });
+ it("does not treat missing or invalid observations as enabled", () => {
+  for (const value of [undefined, "", "invalid", "-1", "1.5", "0"]) {
+   expect(getTCPFastOpenStatus(value).enabled).toBe(false);
+  }
+ });
 });

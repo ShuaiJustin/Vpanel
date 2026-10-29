@@ -2,6 +2,8 @@ package node
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -207,5 +209,66 @@ func TestServiceUpdateSSHConfigPersistsFields(t *testing.T) {
 	}
 	if rawNode.SSHPassword == "secret-password" {
 		t.Fatal("expected raw SSHPassword to be encrypted at rest")
+	}
+}
+
+func TestServiceDelete_NoAvailableNodes(t *testing.T) {
+	for _, status := range []string{repository.NodeStatusUnhealthy, repository.NodeStatusOffline, repository.NodeStatusOnline} {
+		for _, failDelete := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/rollback=%t", status, failDelete), func(t *testing.T) {
+				db := setupNodeServiceDeleteTestDB(t)
+				ctx := context.Background()
+				nodeRepo := repository.NewNodeRepository(db)
+				assignments := repository.NewUserNodeAssignmentRepository(db)
+				service := NewService(nodeRepo, assignments, repository.NewProxyRepository(db), logger.NewNopLogger())
+				n := &repository.Node{Name: "unavailable", Address: "192.0.2.1", Token: "unavailable-token", Status: status}
+				user := &repository.User{Username: "preserved-user", PasswordHash: "hash", Enabled: true}
+				for _, model := range []any{n, user} {
+					if err := db.Create(model).Error; err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := assignments.Assign(ctx, user.ID, n.ID); err != nil {
+					t.Fatal(err)
+				}
+				proxy := &repository.Proxy{UserID: user.ID, NodeID: &n.ID, Name: "bound-proxy", Protocol: "vmess", Port: 22001, Host: "127.0.0.1", Enabled: true}
+				if err := db.Create(proxy).Error; err != nil {
+					t.Fatal(err)
+				}
+				if failDelete {
+					if err := db.Exec("CREATE TRIGGER reject_node_delete BEFORE DELETE ON nodes BEGIN SELECT RAISE(ABORT, 'forced node delete failure'); END").Error; err != nil {
+						t.Fatal(err)
+					}
+				}
+				err := service.Delete(ctx, n.ID)
+				if failDelete {
+					if err == nil || !strings.Contains(err.Error(), "forced node delete failure") {
+						t.Fatalf("expected node delete failure, got %v", err)
+					}
+				} else if err != nil {
+					t.Fatalf("expected delete without replacement to succeed, got %v", err)
+				}
+				expected := int64(0)
+				if failDelete {
+					expected = 1
+				}
+				for _, model := range []any{&repository.Node{}, &repository.UserNodeAssignment{}, &repository.Proxy{}} {
+					var count int64
+					if err := db.Model(model).Count(&count).Error; err != nil {
+						t.Fatal(err)
+					}
+					if count != expected {
+						t.Fatalf("%T count = %d, want %d", model, count, expected)
+					}
+				}
+				var count int64
+				if err := db.Model(&repository.User{}).Where("id = ?", user.ID).Count(&count).Error; err != nil {
+					t.Fatal(err)
+				}
+				if count != 1 {
+					t.Fatal("node deletion must preserve user account")
+				}
+			})
+		}
 	}
 }
