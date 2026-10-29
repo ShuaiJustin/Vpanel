@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -18,11 +20,11 @@ import (
 
 // ConfigSync errors
 var (
-	ErrInvalidConfig     = errors.New("invalid configuration")
-	ErrSyncFailed        = errors.New("sync failed")
-	ErrNodeNotOnline     = errors.New("node is not online")
-	ErrNoNodesToSync     = errors.New("no nodes to sync")
-	ErrConfigValidation  = errors.New("configuration validation failed")
+	ErrInvalidConfig    = errors.New("invalid configuration")
+	ErrSyncFailed       = errors.New("sync failed")
+	ErrNodeNotOnline    = errors.New("node is not online")
+	ErrNoNodesToSync    = errors.New("no nodes to sync")
+	ErrConfigValidation = errors.New("configuration validation failed")
 )
 
 // SyncStatus represents the sync status of a node.
@@ -37,11 +39,11 @@ type SyncStatus struct {
 
 // SyncResult represents the result of a sync operation.
 type SyncResult struct {
-	NodeID    int64     `json:"node_id"`
-	Success   bool      `json:"success"`
-	Error     string    `json:"error,omitempty"`
-	SyncedAt  time.Time `json:"synced_at"`
-	Duration  int64     `json:"duration_ms"`
+	NodeID   int64     `json:"node_id"`
+	Success  bool      `json:"success"`
+	Error    string    `json:"error,omitempty"`
+	SyncedAt time.Time `json:"synced_at"`
+	Duration int64     `json:"duration_ms"`
 }
 
 // ProxyConfig represents a proxy configuration to sync.
@@ -104,13 +106,13 @@ type ConfigSyncer interface {
 
 // configSync implements ConfigSyncer.
 type configSync struct {
-	mu             sync.RWMutex
-	config         ConfigSyncConfig
-	nodeRepo       repository.NodeRepository
-	nodeGroupRepo  repository.NodeGroupRepository
-	proxyRepo      repository.ProxyRepository
-	logger         logger.Logger
-	retryTracker   map[int64]int // nodeID -> retry count
+	mu            sync.RWMutex
+	config        ConfigSyncConfig
+	nodeRepo      repository.NodeRepository
+	nodeGroupRepo repository.NodeGroupRepository
+	proxyRepo     repository.ProxyRepository
+	logger        logger.Logger
+	retryTracker  map[int64]int // nodeID -> retry count
 }
 
 // NewConfigSync creates a new ConfigSync service.
@@ -130,7 +132,6 @@ func NewConfigSync(
 		retryTracker:  make(map[int64]int),
 	}
 }
-
 
 // SyncToNode syncs configuration to a single node.
 func (s *configSync) SyncToNode(ctx context.Context, nodeID int64) (*SyncResult, error) {
@@ -362,7 +363,6 @@ func (s *configSync) GetPendingSyncNodes(ctx context.Context) ([]*SyncStatus, er
 	return statuses, nil
 }
 
-
 // ValidateConfig validates a configuration before syncing.
 // Property 18: Config Validation Before Sync
 // For any configuration sync attempt, invalid configurations SHALL be rejected before being sent to nodes.
@@ -587,7 +587,7 @@ func (s *configSync) performSync(ctx context.Context, node *repository.Node, con
 	}
 
 	// 构建 Node Agent 的配置同步 API 地址
-	url := fmt.Sprintf("http://%s:%d/config/sync", node.Address, node.Port)
+	url := "http://" + net.JoinHostPort(node.Address, strconv.Itoa(node.Port)) + "/config/sync"
 
 	s.logger.Debug("向节点同步配置",
 		logger.F("node_id", node.ID),

@@ -599,7 +599,7 @@ func (hc *HealthChecker) checkAPI(address string, port int) bool {
 
 // checkXray checks the Xray process status via the node agent.
 func (hc *HealthChecker) checkXray(address string, port int) bool {
-	url := fmt.Sprintf("http://%s:%d/xray/status", address, port)
+	url := "http://" + net.JoinHostPort(address, strconv.Itoa(port)) + "/xray/status"
 	resp, err := hc.httpClient.Get(url)
 	if err != nil {
 		return false

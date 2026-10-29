@@ -675,6 +675,7 @@ import {
 import { copyText } from "@/utils/clipboard";
 import { debounce } from "@/utils/debounce";
 import { extractErrorMessage } from "@/utils/entitlement";
+import { isValidIPv4Address, isValidIPv6Address } from "@/utils/validators";
 
 const route = useRoute();
 const router = useRouter();
@@ -1002,13 +1003,6 @@ const clearFieldValidation = (fields) => {
     formRef.value?.clearValidate(fields);
   });
 };
-
-const isValidIPv4Address = (value) => /^(\d{1,3}\.){3}\d{1,3}$/.test(value);
-
-const isValidIPv6Address = (value) =>
-  /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::$|^([0-9a-fA-F]{1,4}:)*::([0-9a-fA-F]{1,4}:)*[0-9a-fA-F]{1,4}$/.test(
-    value,
-  );
 
 const isValidDomain = (value) =>
   /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/.test(

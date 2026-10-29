@@ -178,9 +178,25 @@ export const port = (message = '请输入有效的端口号 (1-65535)') => ({
  * @param {string} message 错误消息
  * @returns {Object} 验证规则
  */
+export const isValidIPv4Address = (value) =>
+  typeof value === 'string' && /^(?:0|[1-9]\d{0,2})(?:\.(?:0|[1-9]\d{0,2})){3}$/.test(value) &&
+  value.split('.').every(part => Number(part) <= 255)
+
+export const isValidIPv6Address = (value) => {
+  if (typeof value !== 'string' || !value.includes(':') || !/^[0-9a-f:.]+$/i.test(value)) return false
+  try {
+    // The browser's IPv6 parser handles compression and embedded IPv4 consistently.
+    return new URL(`http://[${value}]/`).hostname.startsWith('[')
+  } catch {
+    return false
+  }
+}
+
 export const ipAddress = (message = '请输入有效的 IP 地址') => ({
-  pattern: /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/,
-  message,
+  validator: (rule, value, callback) => {
+    if (!value || isValidIPv4Address(value) || isValidIPv6Address(value)) callback()
+    else callback(new Error(message))
+  },
   trigger: ['blur', 'change']
 })
 

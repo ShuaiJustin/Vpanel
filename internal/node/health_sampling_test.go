@@ -41,6 +41,40 @@ func TestNetworkQualityRecordsTCPFailure(t *testing.T) {
 	require.Contains(t, result.Message, "TCP失败率 100%")
 }
 
+func TestXrayStatusUsesBracketedIPv6URL(t *testing.T) {
+	listener, err := net.Listen("tcp6", "[::1]:0")
+	if err != nil {
+		t.Skip("IPv6 loopback unavailable")
+	}
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/xray/status", r.URL.Path)
+		w.WriteHeader(http.StatusOK)
+	}))
+	server.Listener = listener
+	server.Start()
+	defer server.Close()
+	hc := NewHealthChecker(nil, nil, nil, nil, nil, logger.NewNopLogger())
+	require.True(t, hc.checkXray("::1", listener.Addr().(*net.TCPAddr).Port))
+}
+
+func TestConfigSyncUsesBracketedIPv6URL(t *testing.T) {
+	listener, err := net.Listen("tcp6", "[::1]:0")
+	if err != nil {
+		t.Skip("IPv6 loopback unavailable")
+	}
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/config/sync", r.URL.Path)
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	server.Listener = listener
+	server.Start()
+	defer server.Close()
+	svc := &configSync{config: ConfigSyncConfig{SyncTimeout: time.Second}, logger: logger.NewNopLogger()}
+	require.NoError(t, svc.performSync(context.Background(), &repository.Node{Address: "::1", Port: listener.Addr().(*net.TCPAddr).Port, Token: "test-token"}, &NodeConfig{}))
+}
+
 type samplingProxyRepo struct {
 	repository.ProxyRepository
 	proxies []*repository.Proxy
