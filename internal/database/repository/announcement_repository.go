@@ -53,14 +53,13 @@ func (AnnouncementRead) TableName() string {
 	return "announcement_reads"
 }
 
-
 // AnnouncementFilter represents filter options for listing announcements.
 type AnnouncementFilter struct {
-	Category      *string
-	IsPublished   *bool
-	IsPinned      *bool
-	Limit         int
-	Offset        int
+	Category    *string
+	IsPublished *bool
+	IsPinned    *bool
+	Limit       int
+	Offset      int
 }
 
 // AnnouncementWithReadStatus represents an announcement with user read status.
@@ -103,6 +102,7 @@ type AnnouncementRepository interface {
 
 	// IsRead checks if an announcement is read by a user.
 	IsRead(ctx context.Context, userID, announcementID int64) (bool, error)
+	GetReadIDs(ctx context.Context, userID int64, announcementIDs []int64) ([]int64, error)
 
 	// GetUnreadCount gets the count of unread announcements for a user.
 	GetUnreadCount(ctx context.Context, userID int64) (int64, error)
@@ -335,4 +335,16 @@ func (r *announcementRepository) GetRecent(ctx context.Context, limit int) ([]*A
 		return nil, errors.NewDatabaseError("failed to get recent announcements", result.Error)
 	}
 	return announcements, nil
+}
+
+// GetReadIDs loads this user's read markers for one page in a single indexed query.
+func (r *announcementRepository) GetReadIDs(ctx context.Context, userID int64, announcementIDs []int64) ([]int64, error) {
+	if len(announcementIDs) == 0 {
+		return []int64{}, nil
+	}
+	var ids []int64
+	err := r.db.WithContext(ctx).Model(&AnnouncementRead{}).
+		Where("user_id = ? AND announcement_id IN ?", userID, announcementIDs).
+		Pluck("announcement_id", &ids).Error
+	return ids, err
 }

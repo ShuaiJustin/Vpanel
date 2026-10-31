@@ -12,6 +12,8 @@ import (
 // mockAnnouncementRepository is a mock implementation for testing
 type mockAnnouncementRepository struct {
 	listWithReadStatusCalls int
+	readBatchCalls          int
+	readIDs                 map[int64][]int64
 	announcements           []*repository.AnnouncementWithReadStatus
 	total                   int64
 	err                     error
@@ -345,4 +347,40 @@ func TestCacheKeyDifferentPages(t *testing.T) {
 	if mockRepo.listWithReadStatusCalls != 2 {
 		t.Errorf("Expected 2 database calls (cache hit), got %d", mockRepo.listWithReadStatusCalls)
 	}
+}
+
+func (m *mockAnnouncementRepository) GetReadIDs(ctx context.Context, userID int64, ids []int64) ([]int64, error) {
+	m.readBatchCalls++
+	return m.readIDs[userID], m.err
+}
+
+func TestCachedAnnouncementReadStatusIsBatchedAndUserScoped(t *testing.T) {
+	r := &mockAnnouncementRepository{announcements: []*repository.AnnouncementWithReadStatus{
+		{Announcement: repository.Announcement{ID: 1}}, {Announcement: repository.Announcement{ID: 2}},
+	}, total: 2, readIDs: map[int64][]int64{1: {1}, 2: {2}}}
+	c := cache.NewMemoryCache(cache.DefaultConfig())
+	defer c.Close()
+	s := NewService(r).WithCache(c)
+	ctx := context.Background()
+	if _, _, err := s.ListAnnouncements(ctx, 1, 20, 0); err != nil {
+		t.Fatal(err)
+	}
+	for _, userID := range []int64{1, 2} {
+		rows, _, err := s.ListAnnouncements(ctx, userID, 20, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rows[0].IsRead != (userID == 1) || rows[1].IsRead != (userID == 2) {
+			t.Fatal("read status crossed users")
+		}
+	}
+	if r.listWithReadStatusCalls != 1 || r.readBatchCalls != 2 {
+		t.Fatalf("unexpected queries: list=%d batch=%d", r.listWithReadStatusCalls, r.readBatchCalls)
+	}
+	r.err = context.DeadlineExceeded
+	rows, total, err := s.ListAnnouncements(ctx, 1, 20, 0)
+	if err != nil || len(rows) != 2 || total != 2 || rows[0].IsRead || rows[1].IsRead {
+		t.Fatalf("cached public announcements unavailable after marker failure: rows=%v total=%d err=%v", rows, total, err)
+	}
+
 }

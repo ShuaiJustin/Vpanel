@@ -10,7 +10,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -452,7 +454,7 @@ func (s *RemoteDeployService) connectSSH(config *DeployConfig) (*ssh.Client, err
 		},
 	}
 
-	addr := fmt.Sprintf("%s:%d", config.Host, port)
+	addr := net.JoinHostPort(config.Host, strconv.Itoa(port))
 
 	s.logger.Info("尝试连接 SSH",
 		logger.F("address", addr),

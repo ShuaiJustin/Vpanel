@@ -877,6 +877,7 @@ sudo ./mihomo-manager.sh</code></pre>
         </li>
         <li>脚本会保存订阅链接、校验配置，并自动备份旧配置</li>
         <li>以后更新可直接执行：<code>sudo ./mihomo-manager.sh update</code></li>
+        <li>启用每 24 小时自动更新：<code>sudo ./mihomo-manager.sh auto-update enable 24</code></li>
       </ol>
       <div class="tip-box">
         <strong>提示：</strong>订阅链接需要用引号包裹，避免特殊字符导致命令错误。
@@ -933,6 +934,7 @@ sudo ./sing-box-manager.sh</code></pre>
         </li>
         <li>脚本会保存订阅链接、校验配置、自动补齐本机 mixed 入站，并备份旧配置</li>
         <li>以后更新可直接执行：<code>sudo ./sing-box-manager.sh update</code></li>
+        <li>启用每 24 小时自动更新：<code>sudo ./sing-box-manager.sh auto-update enable 24</code></li>
       </ol>
       <div class="tip-box">
         <strong>提示：</strong>订阅链接需要用引号包裹，避免特殊字符导致命令错误。

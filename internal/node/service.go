@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1498,7 +1499,7 @@ func (s *Service) TestNodeConnectivity(ctx context.Context, address string, port
 		port = 18443
 	}
 
-	addr := fmt.Sprintf("%s:%d", address, port)
+	addr := net.JoinHostPort(address, strconv.Itoa(port))
 
 	// 使用 context-aware 连接，尊重上下文超时
 	dialer := &net.Dialer{

@@ -587,7 +587,7 @@ func (h *PortalAuthHandler) GetProfile(c *gin.Context) {
 			hasActiveTrial = accessState.HasActiveTrial
 		}
 		if accessErr == nil {
-			if proxies, _, proxyErr := h.entitlement.GetAccessibleProxies(c.Request.Context(), userID.(int64)); proxyErr == nil {
+			if proxies, _, proxyErr := h.entitlement.GetAccessibleProxiesForState(c.Request.Context(), accessState); proxyErr == nil {
 				nodeIDs := make(map[int64]struct{}, len(proxies))
 				for _, proxy := range proxies {
 					nodeKey := proxy.ID

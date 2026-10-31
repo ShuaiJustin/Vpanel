@@ -178,18 +178,13 @@ func (s *Service) GetTrafficStats(ctx context.Context, userID int64, period stri
 
 // GetTrafficStatsInRange retrieves traffic statistics within an explicit time range.
 func (s *Service) GetTrafficStatsInRange(ctx context.Context, userID int64, period string, start, end time.Time) (*TrafficStats, error) {
-	summary, err := s.GetTrafficSummaryInRange(ctx, userID, start, end)
-	if err != nil {
-		return nil, err
-	}
-
 	daily, err := s.GetDailyTrafficInRange(ctx, userID, start, end)
 	if err != nil {
 		return nil, err
 	}
 
 	return &TrafficStats{
-		Summary:   summary,
+		Summary:   AggregateDaily(daily),
 		Daily:     daily,
 		StartDate: start.Format("2006-01-02"),
 		EndDate:   end.Format("2006-01-02"),
@@ -204,17 +199,29 @@ func (s *Service) GetUsageStats(ctx context.Context, userID int64, period, start
 		return nil, nil, nil, err
 	}
 
-	summary, err := s.GetTrafficSummaryInRange(ctx, userID, start, end)
+	byProtocol, err := s.getProtocolUsage(ctx, userID, start, end, 0)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-
+	var upload, download int64
+	for _, item := range byProtocol {
+		upload += item.Upload
+		download += item.Download
+	}
+	// Protocol groups include unknown/deleted proxies, so their sum is the exact total.
+	summary := newTrafficSummary(upload, download)
+	if s.db == nil {
+		summary, err = s.GetTrafficSummaryInRange(ctx, userID, start, end)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+	}
+	for _, item := range byProtocol {
+		if summary.Total > 0 {
+			item.Percentage = float64(item.Traffic) / float64(summary.Total) * 100
+		}
+	}
 	byNode, err := s.getNodeUsage(ctx, userID, start, end, summary.Total)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	byProtocol, err := s.getProtocolUsage(ctx, userID, start, end, summary.Total)
 	if err != nil {
 		return nil, nil, nil, err
 	}

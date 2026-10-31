@@ -4,6 +4,7 @@ package announcement
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 
 	"v/internal/cache"
 	"v/internal/database/repository"
@@ -40,15 +41,21 @@ type AnnouncementResult struct {
 // Uses cache with 2-minute TTL for public announcement data shared across users.
 func (s *Service) ListAnnouncements(ctx context.Context, userID int64, limit, offset int) ([]*AnnouncementResult, int64, error) {
 	// Calculate page number for cache key
-	page := offset / limit
-	if limit == 0 {
-		page = 0
+	if limit <= 0 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	cacheKey := s.cacheKeyBuilder.AnnouncementListKey(offset/limit, limit)
+	if offset%limit != 0 {
+		cacheKey += ":offset:" + strconv.Itoa(offset)
 	}
 
 	// Try to get from cache if cache is available
 	if s.cache != nil {
-		cacheKey := s.cacheKeyBuilder.AnnouncementListKey(page, limit)
-		
+
 		// Try to get cached data
 		cachedData, err := s.cache.Get(ctx, cacheKey)
 		if err == nil {
@@ -58,15 +65,22 @@ func (s *Service) ListAnnouncements(ctx context.Context, userID int64, limit, of
 				Total         int64
 			}
 			if err := json.Unmarshal(cachedData, &cached); err == nil {
-				// Build results with read status for this specific user
+				ids := make([]int64, 0, len(cached.Announcements))
+				for _, a := range cached.Announcements {
+					ids = append(ids, a.ID)
+				}
+				// Read markers are best effort, as before: their failure must not hide announcements.
+				readIDs, readErr := s.announcementRepo.GetReadIDs(ctx, userID, ids)
+				if readErr != nil {
+					readIDs = nil
+				}
+				read := make(map[int64]bool, len(readIDs))
+				for _, id := range readIDs {
+					read[id] = true
+				}
 				results := make([]*AnnouncementResult, len(cached.Announcements))
 				for i, a := range cached.Announcements {
-					// Check read status for this user (not cached, user-specific)
-					isRead, _ := s.announcementRepo.IsRead(ctx, userID, a.ID)
-					results[i] = &AnnouncementResult{
-						Announcement: a,
-						IsRead:       isRead,
-					}
+					results[i] = &AnnouncementResult{Announcement: a, IsRead: read[a.ID]}
 				}
 				return results, cached.Total, nil
 			}
@@ -89,14 +103,13 @@ func (s *Service) ListAnnouncements(ctx context.Context, userID int64, limit, of
 
 	// Cache the announcement list (without user-specific read status) if cache is available
 	if s.cache != nil {
-		cacheKey := s.cacheKeyBuilder.AnnouncementListKey(page, limit)
-		
+
 		// Extract just the announcements for caching (public data)
 		announcementsOnly := make([]*repository.Announcement, len(announcements))
 		for i, a := range announcements {
 			announcementsOnly[i] = &a.Announcement
 		}
-		
+
 		cacheData := struct {
 			Announcements []*repository.Announcement
 			Total         int64
@@ -104,7 +117,7 @@ func (s *Service) ListAnnouncements(ctx context.Context, userID int64, limit, of
 			Announcements: announcementsOnly,
 			Total:         total,
 		}
-		
+
 		if data, err := json.Marshal(cacheData); err == nil {
 			// Use 2-minute TTL for announcement lists (public data)
 			ttl := cache.GetTTL("announcements")
@@ -167,7 +180,7 @@ func (s *Service) InvalidateCache(ctx context.Context) error {
 	if s.cache == nil {
 		return nil
 	}
-	
+
 	invalidator := cache.NewInvalidator(s.cache)
 	return invalidator.InvalidateAnnouncementList(ctx)
 }

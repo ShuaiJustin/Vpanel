@@ -205,9 +205,33 @@ func (h *ProxyHandler) List(c *gin.Context) {
 		return
 	}
 
+	ctx := c.Request.Context()
+	listData := &proxyListData{nodes: make(map[int64]*repository.Node), users: make(map[int64]*repository.User), trials: make(map[int64]*repository.Trial), metadata: make(map[int64]proxyAccessMetadata)}
+	nodeIDs := make([]int64, 0)
+	seen := make(map[int64]bool)
+	for _, p := range proxies {
+		if p.User != nil {
+			listData.users[p.UserID] = p.User
+			listData.trials[p.UserID] = p.Trial
+		}
+		if p.NodeID != nil && !seen[*p.NodeID] {
+			seen[*p.NodeID] = true
+			nodeIDs = append(nodeIDs, *p.NodeID)
+		}
+	}
+	if h.nodeRepo != nil && len(nodeIDs) > 0 {
+		nodes, nodeErr := h.nodeRepo.GetByIDs(ctx, nodeIDs)
+		if nodeErr != nil && h.logger != nil {
+			h.logger.Warn("Failed to load proxy nodes; retaining proxy hosts", logger.F("error", nodeErr))
+		}
+		for _, n := range nodes {
+			listData.nodes[n.ID] = n
+		}
+	}
+	ctx = context.WithValue(ctx, proxyListDataKey{}, listData)
 	response := make([]ProxyResponse, len(proxies))
 	for i, p := range proxies {
-		response[i] = h.buildProxyResponse(c.Request.Context(), p)
+		response[i] = h.buildProxyResponse(ctx, p)
 	}
 
 	c.JSON(http.StatusOK, response)
@@ -463,6 +487,9 @@ func (h *ProxyHandler) loadProxyNode(ctx context.Context, p *repository.Proxy) *
 		return nil
 	}
 
+	if data, ok := ctx.Value(proxyListDataKey{}).(*proxyListData); ok {
+		return data.nodes[*p.NodeID]
+	}
 	nodeModel, err := h.nodeRepo.GetByID(ctx, *p.NodeID)
 	if err != nil {
 		return nil
@@ -527,12 +554,48 @@ func (h *ProxyHandler) buildProxyResponse(ctx context.Context, p *repository.Pro
 	return response
 }
 
+type proxyListDataKey struct{}
+type proxyAccessMetadata struct {
+	expiresAt     *time.Time
+	expirySource  string
+	trafficLimit  int64
+	trafficSource string
+}
+type proxyListData struct {
+	nodes    map[int64]*repository.Node
+	users    map[int64]*repository.User
+	trials   map[int64]*repository.Trial
+	metadata map[int64]proxyAccessMetadata
+}
+
 func (h *ProxyHandler) resolveProxyAccessMetadata(ctx context.Context, userID int64) (*time.Time, string, int64, string) {
+	data, _ := ctx.Value(proxyListDataKey{}).(*proxyListData)
+	if data != nil {
+		if m, ok := data.metadata[userID]; ok {
+			return m.expiresAt, m.expirySource, m.trafficLimit, m.trafficSource
+		}
+	}
+	expires, source, limit, trafficSource := h.loadProxyAccessMetadata(ctx, userID)
+	if data != nil {
+		data.metadata[userID] = proxyAccessMetadata{expires, source, limit, trafficSource}
+	}
+	return expires, source, limit, trafficSource
+}
+
+func (h *ProxyHandler) loadProxyAccessMetadata(ctx context.Context, userID int64) (*time.Time, string, int64, string) {
 	if h == nil || userID <= 0 || h.userRepo == nil {
 		return nil, "", 0, ""
 	}
 
-	user, err := h.userRepo.GetByID(ctx, userID)
+	var user *repository.User
+	var err error
+	data, _ := ctx.Value(proxyListDataKey{}).(*proxyListData)
+	if data != nil {
+		user = data.users[userID]
+	}
+	if user == nil {
+		user, err = h.userRepo.GetByID(ctx, userID)
+	}
 	if err != nil || user == nil {
 		return nil, "", 0, ""
 	}
@@ -547,7 +610,13 @@ func (h *ProxyHandler) resolveProxyAccessMetadata(ctx context.Context, userID in
 	}
 
 	if h.trialRepo != nil {
-		trial, trialErr := h.trialRepo.GetByUserID(ctx, userID)
+		var trial *repository.Trial
+		var trialErr error
+		if data != nil && data.users[userID] != nil {
+			trial = data.trials[userID]
+		} else {
+			trial, trialErr = h.trialRepo.GetByUserID(ctx, userID)
+		}
 		if trialErr == nil && trial != nil && trial.Status == "active" && trial.ConvertedAt == nil && !now.After(trial.ExpireAt) {
 			expiresAt := trial.ExpireAt.UTC()
 			return &expiresAt, "trial", h.trialTrafficLimit(), "trial"

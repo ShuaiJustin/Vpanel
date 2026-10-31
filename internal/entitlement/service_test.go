@@ -1550,3 +1550,35 @@ func TestAutoProvisionRealityVisionClashSubscriptionRoundTrip(t *testing.T) {
 		})
 	}
 }
+
+func TestProxyFilteringBatchesNodesAndRejectsUnevaluatedState(t *testing.T) {
+	s, db := setupTestService(t)
+	if _, _, err := s.GetAccessibleProxiesForState(context.Background(), &AccessState{User: &repository.User{ID: 1, Enabled: true}}); err == nil {
+		t.Fatal("unevaluated state allowed")
+	}
+	node := &repository.Node{ID: 1, Name: "batch", Address: "example.com", Token: "batch-token", Status: repository.NodeStatusOnline}
+	if err := db.Create(node).Error; err != nil {
+		t.Fatal(err)
+	}
+	queries := 0
+	if err := db.Callback().Query().Before("gorm:query").Register("count_node_queries", func(tx *gorm.DB) {
+		if tx.Statement.Table == "nodes" {
+			queries++
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	defer db.Callback().Query().Remove("count_node_queries")
+	id := int64(1)
+	proxies := make([]*repository.Proxy, 100)
+	for i := range proxies {
+		proxies[i] = &repository.Proxy{NodeID: &id, Enabled: true}
+	}
+	usable, err := s.filterUsableUserProxies(context.Background(), proxies, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(usable) != 100 || queries != 1 {
+		t.Fatalf("usable=%d queries=%d", len(usable), queries)
+	}
+}

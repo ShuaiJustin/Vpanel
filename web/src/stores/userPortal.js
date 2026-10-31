@@ -255,6 +255,9 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     }
   }
 
+  let profileRequest = null
+  let profileRequestToken = null
+
   async function fetchProfile(options = {}) {
     if (!token.value) return
 
@@ -264,7 +267,15 @@ export const useUserPortalStore = defineStore('userPortal', () => {
     }
     error.value = null
     try {
-      const response = await authApi.getProfile()
+      const requestToken = token.value
+      if (!profileRequest || profileRequestToken !== requestToken) {
+        profileRequestToken = requestToken
+        const pending = authApi.getProfile()
+        profileRequest = pending
+        pending.then(() => { if (profileRequest === pending) profileRequest = null }, () => { if (profileRequest === pending) profileRequest = null })
+      }
+      const response = await profileRequest
+      if (token.value !== requestToken) return
       user.value = response
       syncUserInfoStorage(response)
       return response

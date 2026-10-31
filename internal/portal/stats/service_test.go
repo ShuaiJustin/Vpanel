@@ -571,3 +571,49 @@ func TestTrafficSummary_StringFormatting(t *testing.T) {
 		t.Errorf("Expected '3.00 GB', got '%s'", summary.TotalStr)
 	}
 }
+
+func TestTrafficStatsUsesDailyAggregateWithoutSummaryQuery(t *testing.T) {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := time.Local
+	t.Setenv("TZ", "Asia/Shanghai")
+	time.Local = loc
+	t.Cleanup(func() { time.Local = previous })
+	db := setupPortalStatsServiceTestDB(t)
+	s := NewService(db, repository.NewTrafficRepository(db), repository.NewNodeTrafficRepository(db), repository.NewUserRepository(db))
+	start := time.Date(2026, 3, 21, 0, 0, 0, 0, time.UTC)
+	for _, r := range []*repository.Traffic{
+		{UserID: 1, Upload: 12, Download: 34, RecordedAt: start.Add(time.Hour)},
+		{UserID: 2, Upload: 100, Download: 100, RecordedAt: start.Add(time.Hour)},
+		{UserID: 1, Upload: 100, Download: 100, RecordedAt: start.Add(-time.Hour)},
+	} {
+		if err := db.Create(r).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	queries := 0
+	if err := db.Callback().Query().Before("gorm:query").Register("count_stats_queries", func(tx *gorm.DB) {
+		if tx.Statement.Table == "traffic" {
+			queries++
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Scan uses Row rather than Query; also count that callback.
+	if err := db.Callback().Row().Before("gorm:row").Register("count_stats_rows", func(tx *gorm.DB) {
+		if tx.Statement.Table == "traffic" {
+			queries++
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	stats, err := s.GetTrafficStatsInRange(context.Background(), 1, "custom", start, start.Add(24*time.Hour-time.Nanosecond))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Summary.Total != 46 || stats.Summary.Upload != 12 || stats.Summary.Download != 34 || queries != 1 {
+		t.Fatalf("summary=%+v queries=%d", stats.Summary, queries)
+	}
+}

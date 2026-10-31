@@ -24,6 +24,7 @@ type StatsHandler struct {
 	repos           *repository.Repositories
 	cache           cache.Cache
 	trafficMu       sync.Mutex
+	detailedMu      sync.Mutex
 	trafficUpload   int64
 	trafficDownload int64
 	trafficCachedAt time.Time
@@ -597,21 +598,40 @@ func (h *StatsHandler) GetDetailedStats(c *gin.Context) {
 		return
 	}
 
+	dashboardOnly := c.Query("view") == "dashboard"
+	cacheTTL := 2 * time.Minute
 	cacheKey := ""
 	if cacheable {
-		cacheKey = fmt.Sprintf("%s%s", detailedStatsCachePrefix, period)
+		cacheKey = fmt.Sprintf("%s%s:%s", detailedStatsCachePrefix, period, end.Format("2006-01-02"))
+		if dashboardOnly {
+			cacheKey += ":dashboard"
+		}
 	}
+	respondFromCache := func() bool {
+		if cacheKey == "" || h.cache == nil {
+			return false
+		}
+		cached, err := h.cache.Get(ctx, cacheKey)
+		if err != nil || cached == nil {
+			return false
+		}
+		var stats DetailedStats
+		if json.Unmarshal(cached, &stats) != nil {
+			return false
+		}
+		c.JSON(http.StatusOK, gin.H{"code": 200, "message": "success", "data": stats})
+		return true
+	}
+	if respondFromCache() {
+		return
+	}
+	// ponytail: serialize cache misses; SQLite already uses a single connection.
+	// Cached requests stay outside the lock so expensive reports cannot block them.
 	if cacheKey != "" && h.cache != nil {
-		if cached, err := h.cache.Get(ctx, cacheKey); err == nil && cached != nil {
-			var stats DetailedStats
-			if err := json.Unmarshal(cached, &stats); err == nil {
-				c.JSON(http.StatusOK, gin.H{
-					"code":    200,
-					"message": "success",
-					"data":    stats,
-				})
-				return
-			}
+		h.detailedMu.Lock()
+		defer h.detailedMu.Unlock()
+		if handleRequestContextError(c, ctx.Err()) || respondFromCache() {
+			return
 		}
 	}
 
@@ -667,54 +687,58 @@ func (h *StatsHandler) GetDetailedStats(c *gin.Context) {
 		}
 	}
 
-	// Get user stats
-	userTraffic, err := h.repos.Traffic.GetTrafficByUser(ctx, start, end, 10)
-	if err != nil {
-		if handleRequestContextError(c, err) {
-			return
-		}
-		h.logger.Error("failed to get user stats", logger.F("error", err))
-	} else {
-		for _, ut := range userTraffic {
-			lastActive := ""
-			if ut.LastActive != nil {
-				lastActive = ut.LastActive.Format(time.RFC3339)
+	// The dashboard does not display user rankings or the timeline.
+	if !dashboardOnly {
+		// Get user stats
+		userTraffic, err := h.repos.Traffic.GetTrafficByUser(ctx, start, end, 10)
+		if err != nil {
+			if handleRequestContextError(c, err) {
+				return
 			}
-			stats.ByUser = append(stats.ByUser, UserStats{
-				UserID:       ut.UserID,
-				Username:     ut.Username,
-				Email:        ut.Email,
-				Upload:       ut.Upload,
-				Download:     ut.Download,
-				Total:        ut.Upload + ut.Download,
-				ProxyCount:   ut.ProxyCount,
-				TrafficLimit: ut.TrafficLimit,
-				LastActive:   lastActive,
-			})
+			h.logger.Error("failed to get user stats", logger.F("error", err))
+		} else {
+			for _, ut := range userTraffic {
+				lastActive := ""
+				if ut.LastActive != nil {
+					lastActive = ut.LastActive.Format(time.RFC3339)
+				}
+				stats.ByUser = append(stats.ByUser, UserStats{
+					UserID:       ut.UserID,
+					Username:     ut.Username,
+					Email:        ut.Email,
+					Upload:       ut.Upload,
+					Download:     ut.Download,
+					Total:        ut.Upload + ut.Download,
+					ProxyCount:   ut.ProxyCount,
+					TrafficLimit: ut.TrafficLimit,
+					LastActive:   lastActive,
+				})
+			}
 		}
-	}
 
-	// Get timeline data
-	interval := getIntervalForPeriod(period)
-	timeline, err := h.repos.Traffic.GetTrafficTimeline(ctx, start, end, interval)
-	if err != nil {
-		if handleRequestContextError(c, err) {
-			return
+		// Get timeline data
+		interval := getIntervalForPeriod(period)
+		timeline, err := h.repos.Traffic.GetTrafficTimeline(ctx, start, end, interval)
+		if err != nil {
+			if handleRequestContextError(c, err) {
+				return
+			}
+			h.logger.Error("failed to get traffic timeline", logger.F("error", err))
+		} else {
+			for _, tp := range timeline {
+				stats.Timeline = append(stats.Timeline, TimelinePoint{
+					Time:     tp.Time.Format(time.RFC3339),
+					Upload:   tp.Upload,
+					Download: tp.Download,
+				})
+			}
 		}
-		h.logger.Error("failed to get traffic timeline", logger.F("error", err))
-	} else {
-		for _, tp := range timeline {
-			stats.Timeline = append(stats.Timeline, TimelinePoint{
-				Time:     tp.Time.Format(time.RFC3339),
-				Upload:   tp.Upload,
-				Download: tp.Download,
-			})
-		}
+
 	}
 
 	if cacheKey != "" && h.cache != nil {
 		if data, err := json.Marshal(stats); err == nil {
-			if err := h.cache.Set(ctx, cacheKey, data, statsCacheTTL); err != nil {
+			if err := h.cache.Set(ctx, cacheKey, data, cacheTTL); err != nil {
 				h.logger.Warn("failed to cache detailed stats", logger.F("error", err))
 			}
 		}

@@ -316,7 +316,8 @@ func (r *trafficRepository) GetTrafficTimeline(ctx context.Context, start, end t
 		}
 	}
 
-	return fillTrafficTimelineGaps(start, end, interval, results), nil
+	// SQL bucket labels use the server timezone; fill gaps in that same timezone.
+	return fillTrafficTimelineGaps(start.In(time.Local), end.In(time.Local), interval, results), nil
 }
 
 // GetTrafficTimelineByUser retrieves traffic data points for timeline charts filtered by user ID.
@@ -357,7 +358,8 @@ func (r *trafficRepository) GetTrafficTimelineByUser(ctx context.Context, userID
 		}
 	}
 
-	return fillTrafficTimelineGaps(start, end, interval, results), nil
+	// SQL bucket labels use the server timezone; fill gaps in that same timezone.
+	return fillTrafficTimelineGaps(start.In(time.Local), end.In(time.Local), interval, results), nil
 }
 
 func fillTrafficTimelineGaps(start, end time.Time, interval string, points []*TrafficTimelinePoint) []*TrafficTimelinePoint {

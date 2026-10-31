@@ -32,6 +32,7 @@ var defaultAutoProvisionProtocolPreference = []string{"vless", "trojan", "vmess"
 
 // AccessState describes the effective access state for a portal user.
 type AccessState struct {
+	accessGranted         bool
 	User                  *repository.User
 	Trial                 *repository.Trial
 	HasActiveSubscription bool
@@ -240,6 +241,7 @@ func (s *Service) evaluateAccess(ctx context.Context, userID int64, allowAutoAct
 		return state, errors.NewForbiddenError("traffic limit exceeded")
 	}
 
+	state.accessGranted = true
 	return state, nil
 }
 
@@ -315,6 +317,17 @@ func (s *Service) GetAccessibleProxies(ctx context.Context, userID int64) ([]*re
 	if err != nil {
 		return nil, nil, err
 	}
+
+	return s.GetAccessibleProxiesForState(ctx, state)
+}
+
+// GetAccessibleProxiesForState reuses a successful access evaluation from this request.
+// Callers must pass the fresh state returned by EvaluateAccess, never a cached state.
+func (s *Service) GetAccessibleProxiesForState(ctx context.Context, state *AccessState) ([]*repository.Proxy, *AccessState, error) {
+	if state == nil || state.User == nil || !state.accessGranted {
+		return nil, nil, errors.NewForbiddenError("missing access state")
+	}
+	userID := state.User.ID
 
 	proxies, err := s.proxyRepo.GetByUserID(ctx, userID, 10000, 0)
 	if err != nil {
@@ -1044,6 +1057,17 @@ func (s *Service) reconcileUserAutoProvisionedProxies(ctx context.Context, proxi
 		return proxies, nil
 	}
 
+	eligible := make([]*repository.Proxy, 0)
+	for _, p := range proxies {
+		if p != nil && p.NodeID != nil && p.UserID > 0 && isAutoProvisionedProxy(p) && s.canAutoProvisionDefaultProxy() && protocolSupportsAutoProvisionTLS(p.Protocol) {
+			eligible = append(eligible, p)
+		}
+	}
+	nodes, err := s.loadProxyNodes(ctx, eligible)
+	if err != nil {
+		return nil, err
+	}
+	ctx = context.WithValue(ctx, proxyNodeMapKey{}, nodes)
 	reconciled := make([]*repository.Proxy, len(proxies))
 	for i, proxyModel := range proxies {
 		updatedProxy, err := s.reconcileUserAutoProvisionedProxy(ctx, proxyModel)
@@ -1067,7 +1091,16 @@ func (s *Service) reconcileUserAutoProvisionedProxy(ctx context.Context, proxyMo
 		return proxyModel, nil
 	}
 
-	node, err := s.nodeRepo.GetByID(ctx, *proxyModel.NodeID)
+	var node *repository.Node
+	var err error
+	if nodes, ok := ctx.Value(proxyNodeMapKey{}).(map[int64]*repository.Node); ok {
+		node = nodes[*proxyModel.NodeID]
+		if node == nil {
+			err = errors.NewNotFoundError("node", *proxyModel.NodeID)
+		}
+	} else {
+		node, err = s.nodeRepo.GetByID(ctx, *proxyModel.NodeID)
+	}
 	if err != nil {
 		if errors.IsNotFound(err) {
 			s.logger.Warn("skip reconciliation for auto provisioned proxy on missing node",
@@ -1374,6 +1407,10 @@ func (s *Service) filterUsableUserProxies(ctx context.Context, proxies []*reposi
 		return proxies, nil
 	}
 
+	nodes, err := s.loadProxyNodes(ctx, proxies)
+	if err != nil {
+		return nil, err
+	}
 	usable := make([]*repository.Proxy, 0, len(proxies))
 	nodeUsableCache := make(map[int64]bool)
 
@@ -1389,7 +1426,11 @@ func (s *Service) filterUsableUserProxies(ctx context.Context, proxies []*reposi
 		nodeID := *proxyModel.NodeID
 		usableNode, ok := nodeUsableCache[nodeID]
 		if !ok {
-			nodeModel, err := s.nodeRepo.GetByID(ctx, nodeID)
+			nodeModel := nodes[nodeID]
+			var err error
+			if nodeModel == nil {
+				err = errors.NewNotFoundError("node", nodeID)
+			}
 			if err != nil {
 				if errors.IsNotFound(err) {
 					s.logger.Warn("skip user proxy on missing node",
@@ -1462,4 +1503,30 @@ func selectPrimaryProxy(proxies []*repository.Proxy) *repository.Proxy {
 		}
 	}
 	return selected
+}
+
+type proxyNodeMapKey struct{}
+
+// loadProxyNodes keeps reconciliation/filtering at O(P + N) work and a single node query.
+func (s *Service) loadProxyNodes(ctx context.Context, proxies []*repository.Proxy) (map[int64]*repository.Node, error) {
+	ids := make([]int64, 0)
+	seen := make(map[int64]bool)
+	for _, p := range proxies {
+		if p != nil && p.NodeID != nil && !seen[*p.NodeID] {
+			seen[*p.NodeID] = true
+			ids = append(ids, *p.NodeID)
+		}
+	}
+	result := make(map[int64]*repository.Node)
+	if len(ids) == 0 {
+		return result, nil
+	}
+	nodes, err := s.nodeRepo.GetByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for _, n := range nodes {
+		result[n.ID] = n
+	}
+	return result, nil
 }

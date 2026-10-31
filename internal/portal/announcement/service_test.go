@@ -15,9 +15,9 @@ import (
 
 // mockAnnouncementRepo is a mock implementation of AnnouncementRepository for testing.
 type mockAnnouncementRepo struct {
-	announcements    map[int64]*repository.Announcement
-	readStatus       map[int64]map[int64]bool // userID -> announcementID -> isRead
-	nextID           int64
+	announcements map[int64]*repository.Announcement
+	readStatus    map[int64]map[int64]bool // userID -> announcementID -> isRead
+	nextID        int64
 }
 
 func newMockAnnouncementRepo() *mockAnnouncementRepo {
@@ -432,4 +432,14 @@ func TestProperty_AnnouncementReadStatusTracking(t *testing.T) {
 	))
 
 	properties.TestingRun(t)
+}
+
+func (m *mockAnnouncementRepo) GetReadIDs(ctx context.Context, userID int64, ids []int64) ([]int64, error) {
+	var read []int64
+	for _, id := range ids {
+		if m.readStatus[userID][id] {
+			read = append(read, id)
+		}
+	}
+	return read, nil
 }

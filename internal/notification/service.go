@@ -112,12 +112,19 @@ type CertificateAlertData struct {
 
 // Service handles sending notifications
 type Service struct {
-	config     *NotificationConfig
-	mu         sync.RWMutex
-	client     *http.Client
-	outboxDir  string
-	outboxMu   sync.Mutex
-	outboxOnce sync.Once
+	config        *NotificationConfig
+	mu            sync.RWMutex
+	client        *http.Client
+	outboxDir     string
+	outboxMu      sync.Mutex
+	outboxOnce    sync.Once
+	nodeAlertMu   sync.Mutex
+	lastNodeAlert map[nodeAlertKey]time.Time
+}
+
+type nodeAlertKey struct {
+	nodeID int64
+	status string
 }
 
 // NewService creates a new notification service
@@ -287,6 +294,25 @@ func (s *Service) NotifyNodeStatusChange(data NodeStatusChangeData) error {
 		return nil
 	}
 
+	// ponytail: process-local cooldown; persistent delivery retries remain in the outbox.
+	// Keep statuses separate so a quality warning never suppresses an outage or recovery.
+	cooldown := time.Hour
+	if data.NewStatus == "degraded" {
+		cooldown = 6 * time.Hour
+	}
+	key := nodeAlertKey{nodeID: data.NodeID, status: data.NewStatus}
+	now := time.Now() // Event timestamps may be delayed or supplied by callers.
+	s.nodeAlertMu.Lock()
+	if last, ok := s.lastNodeAlert[key]; ok && now.Sub(last) < cooldown {
+		s.nodeAlertMu.Unlock()
+		return nil
+	}
+	if s.lastNodeAlert == nil {
+		s.lastNodeAlert = make(map[nodeAlertKey]time.Time)
+	}
+	s.lastNodeAlert[key] = now
+	s.nodeAlertMu.Unlock()
+
 	var emoji string
 	var statusText string
 	switch data.NewStatus {
@@ -321,7 +347,15 @@ func (s *Service) NotifyNodeStatusChange(data NodeStatusChangeData) error {
 		data.Timestamp.Format("2006-01-02 15:04:05"),
 	)
 
-	return s.sendToAdmin(subject, message)
+	if err := s.sendToAdmin(subject, message); err != nil {
+		s.nodeAlertMu.Lock()
+		if s.lastNodeAlert[key] == now {
+			delete(s.lastNodeAlert, key)
+		}
+		s.nodeAlertMu.Unlock()
+		return err
+	}
+	return nil
 }
 
 // NotifyNodeTrafficAlert sends notification when node traffic reaches a configured threshold.

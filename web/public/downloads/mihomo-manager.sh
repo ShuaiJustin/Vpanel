@@ -18,6 +18,7 @@ INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 CONFIG_DIR="${CONFIG_DIR:-/etc/mihomo}"
 SERVICE_NAME="${SERVICE_NAME:-mihomo}"
 BINARY_NAME="${BINARY_NAME:-mihomo}"
+SYSTEMD_UNIT_DIR="${SYSTEMD_UNIT_DIR:-/etc/systemd/system}"
 GITHUB_REPO="${GITHUB_REPO:-MetaCubeX/mihomo}"
 DEFAULT_VERSION="${DEFAULT_VERSION:-v1.19.29}"
 GITHUB_PROXY_MODE="${GITHUB_PROXY_MODE:-cn}"
@@ -31,6 +32,9 @@ DASHBOARD_SECRET_FILE="$CONFIG_DIR/dashboard.secret"
 DASHBOARD_BIND="${DASHBOARD_BIND:-127.0.0.1}"
 DASHBOARD_PORT="${DASHBOARD_PORT:-9090}"
 SYSTEM_PROXY_FILE="${SYSTEM_PROXY_FILE:-/etc/profile.d/mihomo.sh}"
+AUTO_UPDATE_SERVICE="${SERVICE_NAME}-subscription-update"
+AUTO_UPDATE_TIMER="${AUTO_UPDATE_SERVICE}.timer"
+AUTO_UPDATE_SCRIPT="$INSTALL_DIR/${SERVICE_NAME}-manager.sh"
 
 CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-8}"
 CURL_METADATA_MAX_TIME="${CURL_METADATA_MAX_TIME:-20}"
@@ -69,6 +73,23 @@ require_commands() {
         fi
     done
     [ "$missing" -eq 0 ] || exit 1
+}
+
+append_systemd_environment() {
+    local unit_file="$1"
+    local name="$2"
+    local value="$3"
+
+    case "$value" in
+        *$'\n'*|*$'\r'*)
+            print_error "systemd 环境变量 $name 不能包含换行符"
+            return 1
+            ;;
+    esac
+    value=${value//\\/\\\\}
+    value=${value//\"/\\\"}
+    value=${value//\%/%%}
+    printf 'Environment="%s=%s"\n' "$name" "$value" >> "$unit_file"
 }
 
 install_package_if_possible() {
@@ -416,7 +437,7 @@ ensure_dashboard_config() {
 
 create_systemd_service() {
     check_systemd
-    cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
+    cat > "$SYSTEMD_UNIT_DIR/${SERVICE_NAME}.service" <<EOF
 [Unit]
 Description=Mihomo Service
 Wants=network-online.target
@@ -871,6 +892,11 @@ show_status() {
     else
         print_info "开机自启: 未启用"
     fi
+    if systemctl is-enabled --quiet "$AUTO_UPDATE_TIMER" 2>/dev/null; then
+        print_info "订阅自动更新: 已启用"
+    else
+        print_info "订阅自动更新: 未启用"
+    fi
     print_info "版本: $("$INSTALL_DIR/$BINARY_NAME" -v 2>&1 | head -1)"
     print_info "配置文件: $CONFIG_DIR/config.yaml"
     if [ -s "$DASHBOARD_SECRET_FILE" ]; then
@@ -1269,6 +1295,115 @@ update_subscription() {
     print_success "订阅配置更新成功"
 }
 
+enable_subscription_auto_update() {
+    check_root
+    check_installed
+    check_systemd
+    require_commands install
+
+    local interval_hours="${1:-24}"
+    local service_file="$SYSTEMD_UNIT_DIR/${AUTO_UPDATE_SERVICE}.service"
+    local -a environment_names=(
+        INSTALL_DIR CONFIG_DIR SERVICE_NAME BINARY_NAME
+        DASHBOARD_URL DASHBOARD_BIND DASHBOARD_PORT
+        GITHUB_PROXY_MODE GITHUB_PROXY_LIST
+        CURL_CONNECT_TIMEOUT CURL_METADATA_MAX_TIME CURL_MAX_TIME CURL_RETRY
+        CURL_LOW_SPEED_LIMIT CURL_LOW_SPEED_TIME
+        SUBSCRIPTION_USER_AGENT SUBSCRIPTION_CONNECT_TIMEOUT
+        SUBSCRIPTION_MAX_TIME SUBSCRIPTION_RETRY CONFIG_TEST_TIMEOUT
+    )
+    local -a environment_values=(
+        "$INSTALL_DIR" "$CONFIG_DIR" "$SERVICE_NAME" "$BINARY_NAME"
+        "$DASHBOARD_URL" "$DASHBOARD_BIND" "$DASHBOARD_PORT"
+        "$GITHUB_PROXY_MODE" "$GITHUB_PROXY_LIST"
+        "$CURL_CONNECT_TIMEOUT" "$CURL_METADATA_MAX_TIME" "$CURL_MAX_TIME" "$CURL_RETRY"
+        "$CURL_LOW_SPEED_LIMIT" "$CURL_LOW_SPEED_TIME"
+        "$SUBSCRIPTION_USER_AGENT" "$SUBSCRIPTION_CONNECT_TIMEOUT"
+        "$SUBSCRIPTION_MAX_TIME" "$SUBSCRIPTION_RETRY" "$CONFIG_TEST_TIMEOUT"
+    )
+    local i
+    if ! [[ "$interval_hours" =~ ^[1-9][0-9]*$ ]]; then
+        print_error "更新间隔必须是正整数小时"
+        exit 1
+    fi
+    if [ ! -s "$SUBSCRIPTION_FILE" ]; then
+        print_error "尚未保存订阅链接，请先运行: $0 update \"订阅链接\""
+        exit 1
+    fi
+    case "$INSTALL_DIR$CONFIG_DIR$SERVICE_NAME$BINARY_NAME" in
+        *[[:space:]%]*)
+            print_error "自动更新暂不支持包含空格或 % 的安装路径或服务名"
+            exit 1
+            ;;
+    esac
+    for i in "${!environment_names[@]}"; do
+        case "${environment_values[$i]}" in
+            *$'\n'*|*$'\r'*)
+                print_error "systemd 环境变量 ${environment_names[$i]} 不能包含换行符"
+                exit 1
+                ;;
+        esac
+    done
+
+    install -m 0755 "$0" "${AUTO_UPDATE_SCRIPT}.tmp"
+    mv -f "${AUTO_UPDATE_SCRIPT}.tmp" "$AUTO_UPDATE_SCRIPT"
+
+    cat > "$service_file" <<EOF
+[Unit]
+Description=Update Mihomo subscription
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+EOF
+    for i in "${!environment_names[@]}"; do
+        append_systemd_environment "$service_file" "${environment_names[$i]}" "${environment_values[$i]}"
+    done
+    cat >> "$service_file" <<EOF
+ExecStart=$AUTO_UPDATE_SCRIPT update
+EOF
+
+    cat > "$SYSTEMD_UNIT_DIR/$AUTO_UPDATE_TIMER" <<EOF
+[Unit]
+Description=Update Mihomo subscription every ${interval_hours} hours
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=${interval_hours}h
+Persistent=true
+Unit=${AUTO_UPDATE_SERVICE}.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+    systemctl daemon-reload
+    systemctl enable --now "$AUTO_UPDATE_TIMER"
+    print_success "订阅自动更新已启用，每 ${interval_hours} 小时执行一次"
+    systemctl list-timers "$AUTO_UPDATE_TIMER" --no-pager || true
+}
+
+disable_subscription_auto_update() {
+    check_root
+    check_systemd
+    systemctl disable --now "$AUTO_UPDATE_TIMER" 2>/dev/null || true
+    rm -f "$SYSTEMD_UNIT_DIR/${AUTO_UPDATE_SERVICE}.service" \
+        "$SYSTEMD_UNIT_DIR/$AUTO_UPDATE_TIMER" "$AUTO_UPDATE_SCRIPT"
+    systemctl daemon-reload
+    print_success "订阅自动更新已禁用"
+}
+
+show_subscription_auto_update_status() {
+    check_systemd
+    if systemctl is-enabled --quiet "$AUTO_UPDATE_TIMER" 2>/dev/null; then
+        print_success "订阅自动更新已启用"
+        systemctl list-timers "$AUTO_UPDATE_TIMER" --no-pager || true
+    else
+        print_info "订阅自动更新未启用"
+    fi
+}
+
 test_config() {
     check_root
     check_installed
@@ -1427,7 +1562,10 @@ uninstall_mihomo() {
     [[ "$reply" =~ ^[Yy]$ ]] || exit 0
     systemctl stop "$SERVICE_NAME" 2>/dev/null || true
     systemctl disable "$SERVICE_NAME" 2>/dev/null || true
-    rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
+    systemctl disable --now "$AUTO_UPDATE_TIMER" 2>/dev/null || true
+    rm -f "$SYSTEMD_UNIT_DIR/${SERVICE_NAME}.service" \
+        "$SYSTEMD_UNIT_DIR/${AUTO_UPDATE_SERVICE}.service" \
+        "$SYSTEMD_UNIT_DIR/$AUTO_UPDATE_TIMER" "$AUTO_UPDATE_SCRIPT"
     systemctl daemon-reload
     rm -f "$INSTALL_DIR/$BINARY_NAME" "$INSTALL_DIR/clash-meta"
     read -r -p "是否删除配置文件？(y/n): " reply
@@ -1476,8 +1614,10 @@ show_menu() {
     echo " 14) 编辑配置"
     echo " 15) 启用登录终端代理"
     echo " 16) 停用登录终端代理"
-    echo " 17) 卸载 Mihomo"
-    echo " 18) 显示帮助"
+    echo " 17) 启用订阅自动更新"
+    echo " 18) 禁用订阅自动更新"
+    echo " 19) 卸载 Mihomo"
+    echo " 20) 显示帮助"
     echo "  0) 退出"
     echo ""
     echo "=========================================="
@@ -1495,7 +1635,7 @@ run_menu_action() {
 }
 
 interactive_menu() {
-    local choice input_url
+    local choice input_url interval_hours
 
     if [ ! -t 0 ]; then
         show_usage
@@ -1504,7 +1644,7 @@ interactive_menu() {
 
     while true; do
         show_menu
-        read -r -p "请选择操作 [0-18]: " choice
+        read -r -p "请选择操作 [0-20]: " choice
         echo ""
 
         case "$choice" in
@@ -1558,9 +1698,16 @@ interactive_menu() {
                 run_menu_action disable_system_proxy_file
                 ;;
             17)
-                run_menu_action uninstall_mihomo
+                read -r -p "更新间隔（小时，默认 24）: " interval_hours
+                run_menu_action enable_subscription_auto_update "${interval_hours:-24}"
                 ;;
             18)
+                run_menu_action disable_subscription_auto_update
+                ;;
+            19)
+                run_menu_action uninstall_mihomo
+                ;;
+            20)
                 run_menu_action show_usage
                 ;;
             0)
@@ -1586,6 +1733,7 @@ show_usage() {
   $0 menu
   $0 install
   $0 update [订阅链接]
+  $0 auto-update enable [小时]|disable|status
   $0 start|stop|restart|status|logs
   $0 enable|disable
   $0 test
@@ -1600,6 +1748,7 @@ show_usage() {
   sudo bash $0
   sudo bash $0 install
   sudo bash $0 update "https://example.com/sub?format=clashmeta"
+  sudo bash $0 auto-update enable 24
   sudo bash $0 verify
   sudo systemctl status $SERVICE_NAME
 
@@ -1640,6 +1789,14 @@ main() {
         enable) enable_service ;;
         disable) disable_service ;;
         update) update_subscription "${2:-}" ;;
+        auto-update)
+            case "${2:-status}" in
+                enable) enable_subscription_auto_update "${3:-24}" ;;
+                disable) disable_subscription_auto_update ;;
+                status) show_subscription_auto_update_status ;;
+                *) print_error "用法: $0 auto-update enable [小时]|disable|status"; exit 1 ;;
+            esac
+            ;;
         test) test_config ;;
         verify) verify_service ;;
         switch|node) switch_proxy_node ;;

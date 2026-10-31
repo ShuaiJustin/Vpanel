@@ -613,6 +613,7 @@ const loadStats = async () => {
   try {
     const response = await statsApi.getDetailedStats({
       period: trafficPeriod.value,
+      view: "dashboard",
     });
     const data = unwrapApiData(response) || {};
 

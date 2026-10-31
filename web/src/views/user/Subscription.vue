@@ -406,7 +406,7 @@ const subscriptionRefreshHint = computed(() => {
 async function loadSubscription(options = {}) {
   if (subscriptionRefreshInFlight.value) return
 
-  const { silent = false, includePauseStatus = !silent } = options
+  const { silent = false, includePauseStatus = !silent, includeLink = true } = options
   if (!silent) {
     loading.value = true
   }
@@ -415,7 +415,7 @@ async function loadSubscription(options = {}) {
     subscriptionRefreshInFlight.value = true
     // Kick off QR rendering as soon as the subscription link arrives —
     // don't wait for profile/pause to come back.
-    const linkAndQr = subscriptionStore.fetchLink().then(() => generateQRCode())
+    const linkAndQr = includeLink ? subscriptionStore.fetchLink().then(() => generateQRCode()) : Promise.resolve()
     const tasks = [
       userStore.fetchProfile({ silent }),
       linkAndQr,
@@ -539,7 +539,7 @@ function startSubscriptionAutoRefresh() {
   stopSubscriptionAutoRefresh()
   subscriptionRefreshTimer = window.setInterval(() => {
     if (document.visibilityState === 'hidden') return
-    loadSubscription({ silent: true, includePauseStatus: false })
+    loadSubscription({ silent: true, includePauseStatus: false, includeLink: false })
   }, SUBSCRIPTION_REFRESH_INTERVAL)
 }
 

@@ -150,3 +150,44 @@ describe('userPortal store admin bridge', () => {
     expect(sessionStorage.getItem('adminRole')).toBeNull()
   })
 })
+
+
+describe('profile request coalescing', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    sessionStorage.clear()
+    sessionStorage.setItem('userToken', 'session-a')
+    setActivePinia(createPinia())
+  })
+
+  it('shares simultaneous layout/page requests and retries after failure', async () => {
+    let resolve
+    portalAuthMocks.getProfile.mockImplementationOnce(() => new Promise(r => { resolve = r }))
+    const store = useUserPortalStore()
+    const a = store.fetchProfile({ silent: true })
+    const b = store.fetchProfile()
+    expect(portalAuthMocks.getProfile).toHaveBeenCalledTimes(1)
+    resolve({ id: 1, username: 'first', role: 'user' })
+    await Promise.all([a,b])
+    expect(store.user.id).toBe(1)
+    portalAuthMocks.getProfile.mockRejectedValueOnce(new Error('offline'))
+    await expect(store.fetchProfile()).rejects.toThrow('offline')
+    portalAuthMocks.getProfile.mockResolvedValueOnce({ id: 1, username: 'refreshed', role: 'user' })
+    await store.fetchProfile()
+    expect(store.user.username).toBe('refreshed')
+  })
+
+  it('does not restore user information after logout', async () => {
+    let resolve
+    portalAuthMocks.getProfile.mockImplementationOnce(() => new Promise(r => { resolve = r }))
+    const store = useUserPortalStore()
+    const pending = store.fetchProfile({ silent: true })
+    await store.logout()
+    resolve({ id: 1, role: 'admin', permissions: ['*'] })
+    await pending
+    expect(store.user).toBeNull()
+    expect(sessionStorage.getItem('token')).toBeNull()
+    expect(sessionStorage.getItem('userInfo')).toBeNull()
+  })
+})

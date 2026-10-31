@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -2148,7 +2149,7 @@ func (s *Service) deployViaSSH(node *repository.Node, domain string, certData, k
 		Timeout:         30 * time.Second,
 	}
 
-	addr := fmt.Sprintf("%s:%d", sshHost, sshPort)
+	addr := net.JoinHostPort(sshHost, strconv.Itoa(sshPort))
 	client, err := ssh.Dial("tcp", addr, config)
 	if err != nil {
 		return fmt.Errorf("SSH 连接失败: %w", err)

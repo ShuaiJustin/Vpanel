@@ -241,3 +241,37 @@ func TestProperty_AnnouncementReadStatusTracking(t *testing.T) {
 		}
 	}
 }
+
+func TestAnnouncementReadIDsAreScopedToUserAndPage(t *testing.T) {
+	db := setupAnnouncementTestDB(t)
+	r := NewAnnouncementRepository(db)
+	ctx := context.Background()
+	u1 := createAnnouncementTestUser(t, db, "batch-one")
+	u2 := createAnnouncementTestUser(t, db, "batch-two")
+	for i := int64(1); i <= 3; i++ {
+		if err := r.Create(ctx, &Announcement{ID: i, Title: "batch", Content: "test"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := r.MarkAsRead(ctx, u1, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.MarkAsRead(ctx, u1, 3); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.MarkAsRead(ctx, u2, 2); err != nil {
+		t.Fatal(err)
+	}
+	ids, err := r.GetReadIDs(ctx, u1, []int64{1, 2})
+	if err != nil || len(ids) != 1 || ids[0] != 1 {
+		t.Fatalf("ids=%v err=%v", ids, err)
+	}
+	ids, err = r.GetReadIDs(ctx, u2, []int64{1, 2})
+	if err != nil || len(ids) != 1 || ids[0] != 2 {
+		t.Fatalf("ids=%v err=%v", ids, err)
+	}
+	ids, err = r.GetReadIDs(ctx, u1, nil)
+	if err != nil || len(ids) != 0 {
+		t.Fatalf("empty page: %v %v", ids, err)
+	}
+}

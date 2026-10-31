@@ -351,6 +351,7 @@ func (d *Database) ensurePerformanceIndexes(ctx context.Context) error {
 			`CREATE INDEX IF NOT EXISTS idx_node_traffic_node_utc ON node_traffic(node_id, datetime(recorded_at))`,
 			`CREATE INDEX IF NOT EXISTS idx_traffic_utc_range ON traffic(datetime(recorded_at))`,
 			`CREATE INDEX IF NOT EXISTS idx_traffic_user_utc ON traffic(user_id, datetime(recorded_at))`,
+			`CREATE INDEX IF NOT EXISTS idx_health_checks_node_checked ON health_checks(node_id, checked_at DESC, id)`,
 		)
 	}
 	for _, stmt := range statements {

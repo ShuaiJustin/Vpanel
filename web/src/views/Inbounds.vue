@@ -2041,12 +2041,13 @@ const loadInbounds = async () => {
   loading.value = true
   try {
     const allRows = []
-    const pageLimit = 200
+    // Keep the full list for rich search and cross-page batch actions; use fewer requests.
+    const pageLimit = 1000
     let expectedTotal = 0
     let offset = 0
     let requestCount = 0
 
-    while (requestCount < 50) {
+    while (requestCount < 10) {
       const response = await api.get('/proxies', {
         params: {
           limit: pageLimit,

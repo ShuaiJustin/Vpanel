@@ -7,11 +7,80 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestNodeStatusNotificationsThrottleByNodeAndStatus(t *testing.T) {
+	svc := NewService(&NotificationConfig{AdminEmail: "admin@example.com", EnabledChannels: map[NotificationChannel]bool{ChannelEmail: true}, EnabledTypes: map[NotificationType]bool{NotificationNodeStatusChange: true}})
+	dir := filepath.Join(t.TempDir(), "outbox")
+	require.NoError(t, svc.ConfigureOutbox(dir))
+	sequence := 0
+	notify := func(nodeID int64, status string) {
+		sequence++
+		require.NoError(t, svc.NotifyNodeStatusChange(NodeStatusChangeData{NodeID: nodeID, NodeName: "test-node", NewStatus: status, Reason: fmt.Sprint(sequence), Timestamp: time.Now().Add(time.Duration(sequence) * time.Hour)}))
+	}
+	count := func(want int) {
+		files, err := os.ReadDir(dir)
+		require.NoError(t, err)
+		require.Len(t, files, want)
+	}
+	for _, status := range []string{"degraded", "unhealthy", "online", "offline"} {
+		notify(1, status)
+		notify(1, status) // Different payload and future timestamp must not bypass throttling.
+	}
+	count(4)
+	notify(2, "degraded")
+	count(5)
+	svc.lastNodeAlert[nodeAlertKey{1, "degraded"}] = time.Now().Add(-2 * time.Hour)
+	notify(1, "degraded")
+	count(5)
+	svc.lastNodeAlert[nodeAlertKey{1, "degraded"}] = time.Now().Add(-6 * time.Hour)
+	notify(1, "degraded")
+	svc.lastNodeAlert[nodeAlertKey{1, "unhealthy"}] = time.Now().Add(-time.Hour)
+	notify(1, "unhealthy")
+	count(7)
+}
+
+func TestNodeStatusNotificationConcurrentDuplicates(t *testing.T) {
+	svc := NewService(&NotificationConfig{AdminEmail: "admin@example.com", EnabledChannels: map[NotificationChannel]bool{ChannelEmail: true}, EnabledTypes: map[NotificationType]bool{NotificationNodeStatusChange: true}})
+	dir := filepath.Join(t.TempDir(), "outbox")
+	require.NoError(t, svc.ConfigureOutbox(dir))
+	var wg sync.WaitGroup
+	errs := make(chan error, 20)
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			errs <- svc.NotifyNodeStatusChange(NodeStatusChangeData{NodeID: 1, NewStatus: "unhealthy", Reason: fmt.Sprint(i), Timestamp: time.Now()})
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+	files, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+}
+
+func TestNodeStatusNotificationCanRetryAfterEnqueueFailure(t *testing.T) {
+	svc := NewService(&NotificationConfig{AdminEmail: "admin@example.com", EnabledChannels: map[NotificationChannel]bool{ChannelEmail: true}, EnabledTypes: map[NotificationType]bool{NotificationNodeStatusChange: true}})
+	dir := filepath.Join(t.TempDir(), "outbox")
+	require.NoError(t, svc.ConfigureOutbox(dir))
+	require.NoError(t, os.Remove(dir))
+	data := NodeStatusChangeData{NodeID: 1, NewStatus: "unhealthy", Timestamp: time.Now()}
+	require.Error(t, svc.NotifyNodeStatusChange(data))
+	require.NoError(t, os.Mkdir(dir, 0700))
+	require.NoError(t, svc.NotifyNodeStatusChange(data))
+	files, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+}
 
 func TestNetworkLossAlertIsNotReportedAsRecovery(t *testing.T) {
 	svc := NewService(&NotificationConfig{AdminEmail: "admin@example.com", EnabledChannels: map[NotificationChannel]bool{ChannelEmail: true}, EnabledTypes: map[NotificationType]bool{NotificationNodeStatusChange: true}})
