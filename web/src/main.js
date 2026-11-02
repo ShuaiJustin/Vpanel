@@ -57,8 +57,10 @@ import {
   ElTransfer,
   ElUpload,
 } from 'element-plus'
-import 'element-plus/dist/index.css'
-import 'element-plus/theme-chalk/dark/css-vars.css'
+// On-demand Element Plus styles (base + dark variables + used components only).
+// DO NOT import 'element-plus/dist/index.css' here; run `npm run scan:ep` to
+// keep this list aligned with the components actually used in the app.
+import './element-plus-styles'
 import App from './App.vue'
 import './assets/styles/main.css'
 import './assets/styles/base.scss'

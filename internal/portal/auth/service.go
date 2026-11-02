@@ -39,6 +39,11 @@ func NewService(userRepo repository.UserRepository, authTokenRepo repository.Aut
 // Email validation regex (RFC 5322 simplified)
 var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 
+// dummyBcryptHash is a valid bcrypt hash of an unrelated secret, used on the
+// "user not found" login path to equalize verification cost and prevent
+// timing-based username enumeration.
+const dummyBcryptHash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
+
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
@@ -520,9 +525,22 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest, ip string, rateL
 			if rateLimiter != nil {
 				rateLimiter.RecordFailedAttempt(ip, config)
 			}
+			// SECURITY: burn the same password-hash cost as the real path
+			// so "user not found" is indistinguishable from "wrong
+			// password" by response timing.
+			_ = verifyPassword(req.Password, dummyBcryptHash)
 			return nil, errors.NewUnauthorizedError("用户名或密码错误")
 		}
 		return nil, err
+	}
+
+	// Verify password BEFORE the enabled/verified checks so account state
+	// cannot be probed without valid credentials.
+	if !verifyPassword(req.Password, user.PasswordHash) {
+		if rateLimiter != nil {
+			rateLimiter.RecordFailedAttempt(ip, config)
+		}
+		return nil, errors.NewUnauthorizedError("用户名或密码错误")
 	}
 
 	// Check if user is enabled
@@ -538,14 +556,6 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest, ip string, rateL
 		if pendingTokens > 0 {
 			return nil, errors.NewForbiddenError("请先验证邮箱后再登录")
 		}
-	}
-
-	// Verify password
-	if !verifyPassword(req.Password, user.PasswordHash) {
-		if rateLimiter != nil {
-			rateLimiter.RecordFailedAttempt(ip, config)
-		}
-		return nil, errors.NewUnauthorizedError("用户名或密码错误")
 	}
 
 	// Check if 2FA is enabled

@@ -12,6 +12,9 @@
               </div>
             </div>
             <div class="header-actions">
+              <el-button @click="configPreviewVisible = true">
+                生成配置预览
+              </el-button>
               <el-button @click="openAutoProxyDialog">
                 <el-icon class="el-icon--left">
                   <Setting />
@@ -1233,12 +1236,14 @@
         </div>
       </template>
     </el-dialog>
+    <InboundConfigPreviewDialog v-model="configPreviewVisible" :nodes="nodeList" />
     </div>
 </div>
 </template>
 
 <script setup>
 import AdminStickyChrome from '@/components/AdminStickyChrome.vue'
+import InboundConfigPreviewDialog from '@/components/InboundConfigPreviewDialog.vue'
 import { ref, reactive, onMounted, computed, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -1257,6 +1262,7 @@ const nodeList = ref([])  // 节点列表
 const certificates = ref([])
 const certificatesLoading = ref(false)
 const inboundsTableRef = ref(null)
+const configPreviewVisible = ref(false)
 const batchLoading = ref('')
 const selectedInboundIds = ref([])
 const filters = reactive({

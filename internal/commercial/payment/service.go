@@ -233,7 +233,16 @@ func (s *Service) HandleCallback(ctx context.Context, method string, data []byte
 
 	ord, err := s.orderService.GetByOrderNo(ctx, orderNo)
 	if err == nil {
-		if result.Amount > 0 && ord.PayAmount != result.Amount {
+		// SECURITY: a successful callback must always carry a positive
+		// amount. Skipping the comparison when Amount == 0 would let a
+		// malformed callback mark an order as paid without any amount check.
+		if result.Amount <= 0 {
+			s.logger.Warn("Payment callback missing amount",
+				logger.F("orderNo", orderNo),
+				logger.F("method", method))
+			return ErrInvalidCallback
+		}
+		if ord.PayAmount != result.Amount {
 			s.logger.Warn("Payment callback amount mismatch",
 				logger.F("orderNo", orderNo),
 				logger.F("expected", ord.PayAmount),
@@ -272,7 +281,13 @@ func (s *Service) HandleCallback(ctx context.Context, method string, data []byte
 		return ErrOrderNotFound
 	}
 
-	if result.Amount > 0 && amount != result.Amount {
+	if result.Amount <= 0 {
+		s.logger.Warn("Recharge callback missing amount",
+			logger.F("orderNo", orderNo),
+			logger.F("method", method))
+		return ErrInvalidCallback
+	}
+	if amount != result.Amount {
 		s.logger.Warn("Recharge callback amount mismatch",
 			logger.F("orderNo", orderNo),
 			logger.F("expected", amount),
@@ -381,4 +396,23 @@ func (s *Service) GetPaymentStatus(ctx context.Context, orderNo string) (string,
 		return "", ErrOrderNotFound
 	}
 	return ord.Status, nil
+}
+
+// GetPaymentStatusForUser returns the payment status for an order, but only
+// if the order belongs to userID. Prevents cross-user order probing (IDOR).
+func (s *Service) GetPaymentStatusForUser(ctx context.Context, orderNo string, userID int64) (string, error) {
+	ord, err := s.orderService.GetByOrderNo(ctx, orderNo)
+	if err != nil || ord.UserID != userID {
+		// Same error for "not found" and "not yours" so callers cannot
+		// distinguish the two.
+		return "", ErrOrderNotFound
+	}
+	return ord.Status, nil
+}
+
+// OrderBelongsToUser reports whether the order exists and belongs to userID.
+// Used by handlers to gate order-scoped operations (retry, switch method).
+func (s *Service) OrderBelongsToUser(ctx context.Context, orderID int64, userID int64) bool {
+	ord, err := s.orderService.GetByID(ctx, orderID)
+	return err == nil && ord.UserID == userID
 }

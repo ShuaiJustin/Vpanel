@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -727,20 +728,20 @@ echo "检测到系统架构: $ARCH"
 	if config.PanelURL != "" && !strings.Contains(config.PanelURL, "localhost") && !strings.Contains(config.PanelURL, "127.0.0.1") {
 		logBuffer.WriteString("尝试从 Panel 服务器下载 Agent...\n")
 		downloadScript := fmt.Sprintf(`
-PANEL_URL="%s"
+PANEL_URL=%s
 DOWNLOAD_URL="${PANEL_URL}/api/admin/nodes/agent/download?arch=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/;s/armv7l/arm/')"
 
 echo "下载地址: ${DOWNLOAD_URL}"
 
 if command -v wget &> /dev/null; then
-    wget --no-check-certificate -O /usr/local/bin/vpanel-agent "$DOWNLOAD_URL" 2>&1 && chmod +x /usr/local/bin/vpanel-agent && echo "✓ Agent 下载成功" && exit 0
+    wget -O /usr/local/bin/vpanel-agent "$DOWNLOAD_URL" 2>&1 && chmod +x /usr/local/bin/vpanel-agent && echo "✓ Agent 下载成功" && exit 0
 elif command -v curl &> /dev/null; then
-    curl -k -L -o /usr/local/bin/vpanel-agent "$DOWNLOAD_URL" 2>&1 && chmod +x /usr/local/bin/vpanel-agent && echo "✓ Agent 下载成功" && exit 0
+    curl -L -o /usr/local/bin/vpanel-agent "$DOWNLOAD_URL" 2>&1 && chmod +x /usr/local/bin/vpanel-agent && echo "✓ Agent 下载成功" && exit 0
 fi
 
 echo "下载失败，将使用上传方式"
 exit 1
-`, config.PanelURL)
+`, shellQuote(config.PanelURL))
 
 		// 尝试下载，失败也不报错
 		if err := s.executeCommandWithTimeout(ctx, client, downloadScript, agentInstallTimeout, logBuffer); err == nil {
@@ -1083,12 +1084,10 @@ func (s *RemoteDeployService) configureAgent(ctx context.Context, client *ssh.Cl
 	s.logger.Info("Configuring agent",
 		logger.F("panel_url", config.PanelURL),
 		logger.F("node_token_length", len(config.NodeToken)),
-		logger.F("node_token_prefix", config.NodeToken[:min(16, len(config.NodeToken))]),
-		logger.F("node_token_suffix", config.NodeToken[max(0, len(config.NodeToken)-8):]))
+		logger.F("node_token_prefix", config.NodeToken[:min(4, len(config.NodeToken))]))
 
 	logBuffer.WriteString(fmt.Sprintf("配置 Token 长度: %d\n", len(config.NodeToken)))
-	logBuffer.WriteString(fmt.Sprintf("配置 Token 前缀: %s\n", config.NodeToken[:min(16, len(config.NodeToken))]))
-	logBuffer.WriteString(fmt.Sprintf("配置 Token 后缀: %s\n\n", config.NodeToken[max(0, len(config.NodeToken)-8):]))
+	logBuffer.WriteString(fmt.Sprintf("配置 Token 前缀: %s\n\n", config.NodeToken[:min(4, len(config.NodeToken))]))
 
 	// 创建新的 Agent 配置
 	agentConfig := fmt.Sprintf(`node:
@@ -1117,12 +1116,10 @@ mkdir -p /etc/vpanel
 
 # 写入新配置（强制覆盖）
 echo '%s' | base64 -d > /etc/vpanel/agent.yaml
-chmod 644 /etc/vpanel/agent.yaml
+chmod 600 /etc/vpanel/agent.yaml
 
 echo "✓ 配置文件已创建"
 echo ""
-echo "=== 配置内容验证 ==="
-cat /etc/vpanel/agent.yaml
 echo ""
 echo "=== Token 验证 ==="
 TOKEN_LINE=$(grep "token:" /etc/vpanel/agent.yaml | head -1)
@@ -1386,6 +1383,11 @@ func (s *RemoteDeployService) GetDeployScript(panelURL, nodeToken string, agentP
 	if agentPort <= 0 {
 		agentPort = 18443
 	}
+	// SECURITY: panelURL/nodeToken are interpolated into a shell script.
+	// Quote them so a crafted value cannot break out and execute commands
+	// on the target node as root.
+	panelURL = shellQuote(panelURL)
+	nodeToken = shellQuote(nodeToken)
 	return fmt.Sprintf(`#!/bin/bash
 # V Panel Agent 自动部署脚本
 # 支持: Ubuntu, Debian, CentOS, AlmaLinux, Rocky Linux, Fedora
@@ -1393,8 +1395,8 @@ func (s *RemoteDeployService) GetDeployScript(panelURL, nodeToken string, agentP
 
 set -e
 
-PANEL_URL="%s"
-NODE_TOKEN="%s"
+PANEL_URL=%s
+NODE_TOKEN=%s
 
 # 颜色输出
 RED='\033[0;31m'
@@ -1649,6 +1651,36 @@ func (s *RemoteDeployService) validateDeployConfig(config *DeployConfig) error {
 		return fmt.Errorf("Panel URL 不能使用 localhost 或 127.0.0.1，远程节点无法访问")
 	}
 
+	if err := ValidatePanelURL(config.PanelURL); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ValidatePanelURL enforces a strict http(s) URL format. The value is
+// interpolated into shell scripts and YAML config files on target nodes, so
+// anything outside a plain URL (quotes, control characters, whitespace,
+// shell metacharacters) must be rejected.
+func ValidatePanelURL(panelURL string) error {
+	u, err := url.Parse(panelURL)
+	if err != nil {
+		return fmt.Errorf("Panel URL 格式无效: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("Panel URL 必须以 http:// 或 https:// 开头")
+	}
+	if u.Host == "" {
+		return fmt.Errorf("Panel URL 缺少主机名")
+	}
+	if u.Fragment != "" || u.RawQuery != "" {
+		return fmt.Errorf("Panel URL 不允许包含查询参数或锚点")
+	}
+	for _, r := range panelURL {
+		if r <= 0x20 || r == '\'' || r == '"' || r == '`' || r == '$' || r == '\\' || r == ';' {
+			return fmt.Errorf("Panel URL 含有非法字符 %q", r)
+		}
+	}
 	return nil
 }
 
@@ -1683,6 +1715,12 @@ func (s *RemoteDeployService) readAgentBinary(path string) ([]byte, error) {
 // base64Encode 对数据进行 base64 编码
 func base64Encode(data []byte) string {
 	return base64.StdEncoding.EncodeToString(data)
+}
+
+// shellQuote quotes a value for safe interpolation into a POSIX shell
+// script (single-quoted form, with embedded quotes escaped).
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 // uploadFileSCP 使用 SCP 协议上传文件

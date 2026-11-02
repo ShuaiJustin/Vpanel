@@ -266,6 +266,7 @@ func CORS(allowedOrigins []string) gin.HandlerFunc {
 
 		// Check if origin is allowed
 		allowed := false
+		explicitOriginMatch := false
 		for _, o := range allowedOrigins {
 			if o == "*" {
 				// Only allow * in development
@@ -274,13 +275,17 @@ func CORS(allowedOrigins []string) gin.HandlerFunc {
 				break
 			} else if o == origin {
 				allowed = true
+				explicitOriginMatch = true
 				c.Header("Access-Control-Allow-Origin", origin)
 				break
 			}
 		}
 
 		// Empty allowlist = allow all (legacy/dev behavior). Set explicitly
-		// in production via V_SERVER_CORS_ORIGINS.
+		// in production via V_SERVER_CORS_ORIGINS. Credentials are NOT sent
+		// in this mode: reflecting an arbitrary Origin together with
+		// Allow-Credentials would let any malicious site make authenticated
+		// cross-origin requests on behalf of a logged-in admin.
 		if !allowed && len(allowedOrigins) == 0 {
 			allowed = true
 			c.Header("Access-Control-Allow-Origin", origin)
@@ -296,7 +301,12 @@ func CORS(allowedOrigins []string) gin.HandlerFunc {
 
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
 		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization, X-Request-ID")
-		c.Header("Access-Control-Allow-Credentials", "true")
+		if explicitOriginMatch {
+			// Only send Allow-Credentials when the Origin explicitly matched
+			// the configured allowlist. Never combine credentials with a
+			// reflected or wildcard Origin.
+			c.Header("Access-Control-Allow-Credentials", "true")
+		}
 		c.Header("Access-Control-Max-Age", "86400")
 
 		if c.Request.Method == "OPTIONS" {

@@ -60,11 +60,15 @@ func (m *MockPaymentGateway) VerifyCallback(data []byte, signature string) (*pay
 
 	orderNo, _ := callbackData["order_no"].(string)
 	paymentNo, _ := callbackData["payment_no"].(string)
+	// Successful callbacks must now carry a positive amount (enforced by
+	// payment.Service.HandleCallback).
+	amount, _ := callbackData["amount"].(float64)
 
 	return &payment.PaymentResult{
 		Success:   m.shouldSucceed,
 		OrderNo:   orderNo,
 		PaymentNo: paymentNo,
+		Amount:    int64(amount),
 	}, nil
 }
 
@@ -100,6 +104,14 @@ func setupPaymentTestRouter(db *gorm.DB) (*gin.Engine, *payment.Service, *order.
 	paymentHandler := NewPaymentHandler(paymentService, log)
 
 	router := gin.New()
+	// Simulate an authenticated admin caller for routes that are protected
+	// by the auth middleware in production. Ownership-specific behavior is
+	// covered by TestPaymentStatusOwnership below.
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", int64(1))
+		c.Set("role", "admin")
+		c.Next()
+	})
 	router.POST("/payments/create", paymentHandler.CreatePayment)
 	router.POST("/payments/callback/:method", paymentHandler.HandleCallback)
 	router.GET("/payments/status/:orderNo", paymentHandler.GetPaymentStatus)
@@ -177,6 +189,7 @@ func TestPaymentCallback(t *testing.T) {
 		"order_no":   createdOrder.OrderNo,
 		"payment_no": "PAY-123456",
 		"status":     "success",
+		"amount":     1000,
 	}
 	jsonBody, _ := json.Marshal(callbackData)
 
@@ -229,6 +242,7 @@ func TestPaymentCallbackIdempotency_Property(t *testing.T) {
 				"order_no":   createdOrder.OrderNo,
 				"payment_no": "PAY-IDEMPOTENT-123",
 				"status":     "success",
+				"amount":     1000,
 			}
 			jsonBody, _ := json.Marshal(callbackData)
 
@@ -280,6 +294,64 @@ func TestPaymentStatus(t *testing.T) {
 
 	if response["status"] != "pending" {
 		t.Errorf("Expected pending status, got %v", response["status"])
+	}
+}
+
+// TestPaymentStatusOwnership tests that non-admin users can only query
+// payment status for their own orders (IDOR protection).
+func TestPaymentStatusOwnership(t *testing.T) {
+	db := setupPaymentTestDB(t)
+	log := logger.NewNopLogger()
+	orderRepo := repository.NewOrderRepository(db)
+	planRepo := repository.NewPlanRepository(db)
+
+	orderService := order.NewService(orderRepo, planRepo, log, nil)
+	paymentService := payment.NewService(orderService, log)
+	paymentHandler := NewPaymentHandler(paymentService, log)
+
+	testPlan := createOrderTestPlan(db, "Test Plan", 1000, 30)
+	owner := createOrderTestUser(db, "owner")
+	other := createOrderTestUser(db, "other")
+
+	ctx := context.Background()
+	createdOrder, err := orderService.Create(ctx, &order.CreateOrderRequest{
+		UserID: int64(owner.ID),
+		PlanID: int64(testPlan.ID),
+	})
+	if err != nil {
+		t.Fatalf("Failed to create order: %v", err)
+	}
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", int64(other.ID))
+		c.Set("role", "user")
+		c.Next()
+	})
+	router.GET("/payments/status/:orderNo", paymentHandler.GetPaymentStatus)
+
+	// Non-owner gets a 404 (indistinguishable from non-existent order)
+	req := httptest.NewRequest(http.MethodGet, "/payments/status/"+createdOrder.OrderNo, nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected 404 for non-owner, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Owner can query their own order
+	router2 := gin.New()
+	router2.Use(func(c *gin.Context) {
+		c.Set("user_id", int64(owner.ID))
+		c.Set("role", "user")
+		c.Next()
+	})
+	router2.GET("/payments/status/:orderNo", paymentHandler.GetPaymentStatus)
+
+	req2 := httptest.NewRequest(http.MethodGet, "/payments/status/"+createdOrder.OrderNo, nil)
+	w2 := httptest.NewRecorder()
+	router2.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusOK {
+		t.Errorf("Expected 200 for owner, got %d: %s", w2.Code, w2.Body.String())
 	}
 }
 

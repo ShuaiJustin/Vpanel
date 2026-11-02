@@ -99,6 +99,12 @@ type XrayConfig struct {
 	ConfigPath string `yaml:"config_path" env:"V_XRAY_CONFIG_PATH" default:"./xray/config.json"`
 	BackupDir  string `yaml:"backup_dir" env:"V_XRAY_BACKUP_DIR" default:"/tmp/xray-backups"`
 	Version    string `yaml:"version" env:"V_XRAY_VERSION" default:"latest"`
+	// MergeInbounds groups proxies that share every inbound-level field
+	// (protocol, port, streamSettings, sniffing, shared settings) into one
+	// inbound with multiple clients. Disabled by default: enabling it on
+	// legacy data where ports / Reality keys differ is a no-op, but on
+	// normalized data it changes subscription ports and tags.
+	MergeInbounds bool `yaml:"merge_inbounds" env:"V_XRAY_MERGE_INBOUNDS" default:"false"`
 }
 
 // LogConfig contains logging settings.

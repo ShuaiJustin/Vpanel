@@ -81,6 +81,21 @@ func resolveDeployPanelURL(c *gin.Context, publicURL, explicitURL, savedURL stri
 	return scheme + "://" + strings.TrimSpace(host)
 }
 
+// sanitizeDeployPanelURL validates a resolved panel URL before it is embedded
+// into deployment scripts / YAML configs executed on target nodes as root.
+// X-Forwarded-Host and X-Panel-URL are client-controlled, so anything that is
+// not a plain http(s) URL is rejected (returns empty string) rather than
+// interpolated.
+func sanitizeDeployPanelURL(panelURL string) string {
+	if panelURL == "" {
+		return ""
+	}
+	if err := node.ValidatePanelURL(panelURL); err != nil {
+		return ""
+	}
+	return panelURL
+}
+
 // DeployAgent deploys the agent to a remote server.
 // POST /api/admin/nodes/:id/deploy
 func (h *NodeDeployHandler) DeployAgent(c *gin.Context) {
@@ -158,7 +173,14 @@ func (h *NodeDeployHandler) DeployAgent(c *gin.Context) {
 			logger.F("token_prefix", nodeData.Token[:min(8, len(nodeData.Token))]))
 	}
 
-	panelURL := resolveDeployPanelURL(c, h.currentPublicURL(), req.PanelURL, nodeData.PanelURL)
+	panelURL := sanitizeDeployPanelURL(resolveDeployPanelURL(c, h.currentPublicURL(), req.PanelURL, nodeData.PanelURL))
+	if panelURL == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Panel URL 无效：必须是形如 https://panel.example.com 的地址",
+		})
+		return
+	}
 
 	// 验证 Panel URL 不能是 localhost 或 127.0.0.1
 	if strings.Contains(panelURL, "localhost") || strings.Contains(panelURL, "127.0.0.1") {
@@ -281,7 +303,14 @@ func (h *NodeDeployHandler) GetDeployScript(c *gin.Context) {
 		}
 	}
 
-	panelURL := resolveDeployPanelURL(c, h.currentPublicURL(), c.Query("panel_url"), nodeData.PanelURL)
+	panelURL := sanitizeDeployPanelURL(resolveDeployPanelURL(c, h.currentPublicURL(), c.Query("panel_url"), nodeData.PanelURL))
+	if panelURL == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Panel URL 无效：必须是形如 https://panel.example.com 的地址",
+		})
+		return
+	}
 
 	// Generate script
 	script := h.deployService.GetDeployScript(panelURL, nodeData.Token, nodeData.Port)

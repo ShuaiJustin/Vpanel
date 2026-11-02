@@ -26,6 +26,12 @@ import (
 // emailRegex is a simple regex for email validation.
 var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 
+// dummyBcryptHash is a valid bcrypt hash of an unrelated secret. It is
+// compared against on the "user not found" login path so that path burns the
+// same CPU cost as a real password verification, closing the timing side
+// channel used to enumerate valid usernames.
+const dummyBcryptHash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
+
 // isValidEmail validates email format.
 func isValidEmail(email string) bool {
 	return emailRegex.MatchString(email)
@@ -460,6 +466,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	if err != nil {
 		h.recordRateLimitedLoginAttempt(c.Request.Context(), loginRateLimiter, clientIP, false)
 		h.logger.Warn("login failed: user not found", logger.F("username", req.Username))
+		// SECURITY: burn the same bcrypt cost as a real password check so
+		// the "user not found" path is indistinguishable from "wrong
+		// password" by response timing (prevents username enumeration).
+		_ = h.authService.VerifyPassword(req.Password, dummyBcryptHash)
 		middleware.HandleUnauthorized(c, errors.MsgInvalidCredentials)
 		return
 	}
@@ -479,20 +489,22 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		}
 	}
 
+	// Verify password BEFORE the enabled check so the disabled state cannot
+	// be probed without valid credentials.
+	if !h.authService.VerifyPassword(req.Password, user.PasswordHash) {
+		h.recordRateLimitedLoginAttempt(c.Request.Context(), loginRateLimiter, clientIP, false)
+		h.logger.Warn("login failed: invalid password", logger.F("username", req.Username))
+		recordLogin(false)
+		middleware.HandleUnauthorized(c, errors.MsgInvalidCredentials)
+		return
+	}
+
 	// Check if user is enabled
 	if !user.Enabled {
 		h.recordRateLimitedLoginAttempt(c.Request.Context(), loginRateLimiter, clientIP, false)
 		h.logger.Warn("login failed: user disabled", logger.F("username", req.Username))
 		recordLogin(false)
 		middleware.HandleForbidden(c, errors.MsgUserDisabled)
-		return
-	}
-
-	if !h.authService.VerifyPassword(req.Password, user.PasswordHash) {
-		h.recordRateLimitedLoginAttempt(c.Request.Context(), loginRateLimiter, clientIP, false)
-		h.logger.Warn("login failed: invalid password", logger.F("username", req.Username))
-		recordLogin(false)
-		middleware.HandleUnauthorized(c, errors.MsgInvalidCredentials)
 		return
 	}
 

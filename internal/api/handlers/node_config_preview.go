@@ -68,9 +68,14 @@ func (h *NodeConfigTestHandler) PreviewConfig(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":       true,
-		"node_id":       nodeID,
-		"inbound_count": len(config.Inbounds),
-		"config":        string(configJSON),
+		"success":              true,
+		"node_id":              nodeID,
+		"inbound_count":        len(config.Inbounds),
+		// client_count is the authoritative user count: a merged inbound
+		// carries many clients, so inbound_count alone under-reports users.
+		"client_count":         xray.ClientCount(config.Inbounds),
+		"merged_inbound_count": xray.MergedInboundCount(config.Inbounds),
+		"merge_enabled":        h.configGenerator.InboundMergingEnabled(),
+		"config":               string(configJSON),
 	})
 }

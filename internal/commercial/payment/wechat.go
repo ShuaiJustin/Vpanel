@@ -148,6 +148,18 @@ func (g *WeChatGateway) VerifyCallback(data []byte, signature string) (*PaymentR
 		return nil, errors.New("signature verification failed")
 	}
 
+	// SECURITY: verify the notification actually belongs to THIS merchant.
+	// Without this check a callback issued for another app/mch (e.g. a
+	// misconfigured notify_url or a reused key) could be credited here.
+	if g.config != nil {
+		if v := result["appid"]; v != g.config.AppID {
+			return nil, fmt.Errorf("callback appid mismatch: got %q", v)
+		}
+		if v := result["mch_id"]; v != g.config.MchID {
+			return nil, fmt.Errorf("callback mch_id mismatch: got %q", v)
+		}
+	}
+
 	// Check result
 	if result["return_code"] != "SUCCESS" || result["result_code"] != "SUCCESS" {
 		return &PaymentResult{
@@ -157,10 +169,13 @@ func (g *WeChatGateway) VerifyCallback(data []byte, signature string) (*PaymentR
 		}, nil
 	}
 
-	// Parse amount
+	// Parse amount — required and must be positive on a successful callback
 	var amount int64
 	if feeStr := result["total_fee"]; feeStr != "" {
 		fmt.Sscanf(feeStr, "%d", &amount)
+	}
+	if amount <= 0 {
+		return nil, errors.New("callback missing or invalid total_fee")
 	}
 
 	// Parse paid time

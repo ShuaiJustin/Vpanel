@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"v/internal/database/repository"
@@ -60,6 +61,11 @@ type HealthCheckResult struct {
 	Latency   int // milliseconds
 	Message   string
 	CheckedAt time.Time
+	// StatusProtected marks a Success that was granted by the config-sync
+	// grace period or the heartbeat fallback. These decisions deliberately
+	// tolerate panel-side probe degradation, so applyNetworkQuality must not
+	// downgrade them to Failed on a single bad probe.
+	StatusProtected bool
 }
 
 type certificateHealth struct {
@@ -69,7 +75,9 @@ type certificateHealth struct {
 
 // HealthChecker performs periodic health checks on nodes.
 type HealthChecker struct {
-	config          *HealthCheckConfig
+	// config is accessed concurrently by check goroutines and updated via
+	// UpdateConfig; it must only be read through Load().
+	config          atomic.Pointer[HealthCheckConfig]
 	nodeRepo        repository.NodeRepository
 	proxyRepo       repository.ProxyRepository
 	certRepo        repository.CertificateRepository
@@ -85,7 +93,6 @@ type HealthChecker struct {
 	pendingSince         map[int64]time.Time
 	probeCursor          map[int64]int
 	probeFailures        map[int64]map[int64]bool
-	lastQualityAlert     map[int64]time.Time
 
 	// Control
 	ctx       context.Context
@@ -111,8 +118,7 @@ func NewHealthChecker(
 		config = DefaultHealthCheckConfig()
 	}
 
-	return &HealthChecker{
-		config:               config,
+	hc := &HealthChecker{
 		nodeRepo:             nodeRepo,
 		proxyRepo:            proxyRepo,
 		certRepo:             certRepo,
@@ -124,8 +130,9 @@ func NewHealthChecker(
 		pendingSince:         make(map[int64]time.Time),
 		probeCursor:          make(map[int64]int),
 		probeFailures:        make(map[int64]map[int64]bool),
-		lastQualityAlert:     make(map[int64]time.Time),
 	}
+	hc.config.Store(config)
+	return hc
 }
 
 // SetOnStatusChange sets the callback for node status changes.
@@ -153,10 +160,11 @@ func (hc *HealthChecker) Start(ctx context.Context) error {
 	hc.wg.Add(1)
 	go hc.runLoop()
 
+	cfg := hc.config.Load()
 	hc.logger.Info("Health checker started",
-		logger.F("interval", hc.config.Interval.String()),
-		logger.F("unhealthy_threshold", hc.config.UnhealthyThreshold),
-		logger.F("healthy_threshold", hc.config.HealthyThreshold))
+		logger.F("interval", cfg.Interval.String()),
+		logger.F("unhealthy_threshold", cfg.UnhealthyThreshold),
+		logger.F("healthy_threshold", cfg.HealthyThreshold))
 
 	return nil
 }
@@ -199,7 +207,7 @@ func (hc *HealthChecker) IsRunning() bool {
 func (hc *HealthChecker) runLoop() {
 	defer hc.wg.Done()
 
-	ticker := time.NewTicker(hc.config.Interval)
+	ticker := time.NewTicker(hc.config.Load().Interval)
 	defer ticker.Stop()
 
 	// Run initial check immediately
@@ -229,7 +237,7 @@ func (hc *HealthChecker) checkAllNodes() {
 	}
 
 	// Create a semaphore to limit concurrent checks
-	maxConcurrent := hc.config.MaxConcurrentChecks
+	maxConcurrent := hc.config.Load().MaxConcurrentChecks
 	if maxConcurrent <= 0 {
 		maxConcurrent = 10 // Default fallback
 	}
@@ -326,7 +334,7 @@ func (hc *HealthChecker) performCheck(node *repository.Node) *HealthCheckResult 
 
 	// Check certificate expiration if node has a certificate
 	certHealth := hc.checkCertificateExpiration(node)
-	heartbeatHealthy := shouldTrustRecentHeartbeat(node, hc.config.Interval, time.Now())
+	heartbeatHealthy := shouldTrustRecentHeartbeat(node, hc.config.Load().Interval, time.Now())
 	proxyHealth := hc.checkReachableProxyEndpoint(node)
 	pendingGrace := hc.pendingSyncWithinGrace(node, time.Now())
 
@@ -340,6 +348,7 @@ func (hc *HealthChecker) performCheck(node *repository.Node) *HealthCheckResult 
 		// Determine overall status
 		result.Status = repository.HealthCheckStatusSuccess
 		result.Message = sampledProxyEndpointConfigPendingMessage(proxyHealth)
+		result.StatusProtected = true
 	} else if result.TCPOk && result.APIOk && result.XrayOk && sampledProxyEndpointsHealthyForPrimary(proxyHealth) {
 		result.Status = repository.HealthCheckStatusSuccess
 		result.Message = "All checks passed"
@@ -354,6 +363,7 @@ func (hc *HealthChecker) performCheck(node *repository.Node) *HealthCheckResult 
 	} else if shouldAcceptHeartbeatFallback(heartbeatHealthy, proxyHealth.HasSampled, proxyHealth.AllReachable) {
 		result.Status = repository.HealthCheckStatusSuccess
 		result.Message = heartbeatFallbackMessage(proxyHealth.HasSampled)
+		result.StatusProtected = true
 	} else {
 		result.Status = repository.HealthCheckStatusFailed
 		if heartbeatHealthy && proxyHealth.HasSampled && !proxyHealth.AnyReachable {
@@ -442,26 +452,28 @@ func (hc *HealthChecker) applyNetworkQuality(node *repository.Node, result *Heal
 	if match := packetLossPattern.FindSubmatch(output); len(match) == 2 {
 		loss, _ := strconv.ParseFloat(string(match[1]), 64)
 		result.Message += fmt.Sprintf("; ICMP丢包率 %.0f%%（10包）", loss)
-		if loss >= 20 {
-			hc.stateMu.Lock()
-			alert := time.Since(hc.lastQualityAlert[node.ID]) >= 30*time.Minute
-			if alert {
-				hc.lastQualityAlert[node.ID] = time.Now()
-			}
-			hc.stateMu.Unlock()
-			if alert {
-				hc.sendStatusChangeNotification(node, node.Status, "degraded", "线路丢包告警："+result.Message)
-			}
-		}
-		// ICMP can be rate limited; require TCP corroboration before failover.
+		// ICMP can be rate limited; record loss without a standalone alert.
+		// Require TCP corroboration and confirmed health transitions for alerts/failover.
 		if loss >= 30 && (failed > 0 || slow > 0) {
-			result.Status = repository.HealthCheckStatusFailed
+			if result.StatusProtected {
+				result.Message += "; 处于配置同步宽限/心跳兜底窗口，ICMP 丢包不改变本次判定"
+			} else {
+				result.Status = repository.HealthCheckStatusFailed
+			}
 		}
 	} else {
 		result.Message += "; ICMP丢包率未测得"
 	}
 	if failed >= 2 || slow >= 3 {
-		result.Status = repository.HealthCheckStatusFailed
+		if result.StatusProtected {
+			// The grace period / heartbeat fallback deliberately tolerates
+			// panel-side degradation; do not override it on a single check.
+			// Once the heartbeat goes stale or the grace period expires the
+			// normal evaluation path applies again.
+			result.Message += fmt.Sprintf("; TCP探测劣化（失败 %d/5，慢连接 %d/5），处于宽限/兜底窗口不改变本次判定", failed, slow)
+		} else {
+			result.Status = repository.HealthCheckStatusFailed
+		}
 	}
 }
 
@@ -578,7 +590,7 @@ func formatSampledProxyEndpointFailure(format string, health sampledProxyEndpoin
 // checkTCP checks TCP connectivity to the node.
 func (hc *HealthChecker) checkTCP(address string, port int) bool {
 	addr := net.JoinHostPort(address, strconv.Itoa(port))
-	conn, err := net.DialTimeout("tcp", addr, hc.config.Timeout)
+	conn, err := net.DialTimeout("tcp", addr, hc.config.Load().Timeout)
 	if err != nil {
 		return false
 	}
@@ -589,18 +601,34 @@ func (hc *HealthChecker) checkTCP(address string, port int) bool {
 // checkAPI checks the node agent API responsiveness.
 func (hc *HealthChecker) checkAPI(address string, port int) bool {
 	url := "http://" + net.JoinHostPort(address, strconv.Itoa(port)) + "/health"
-	resp, err := hc.httpClient.Get(url)
-	if err != nil {
-		return false
-	}
-	defer resp.Body.Close()
-	return resp.StatusCode == http.StatusOK
+	return hc.probeGet(url)
 }
 
 // checkXray checks the Xray process status via the node agent.
 func (hc *HealthChecker) checkXray(address string, port int) bool {
 	url := "http://" + net.JoinHostPort(address, strconv.Itoa(port)) + "/xray/status"
-	resp, err := hc.httpClient.Get(url)
+	return hc.probeGet(url)
+}
+
+// probeGet performs a GET request with a per-request timeout taken from the
+// current config. The timeout is applied via the request context instead of
+// mutating the shared http.Client, which would race in-flight requests.
+func (hc *HealthChecker) probeGet(url string) bool {
+	timeout := 30 * time.Second
+	if cfg := hc.config.Load(); cfg != nil && cfg.Timeout > 0 {
+		timeout = cfg.Timeout
+	}
+	ctx := hc.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	reqCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := hc.httpClient.Do(req)
 	if err != nil {
 		return false
 	}
@@ -763,7 +791,7 @@ func (hc *HealthChecker) checkProxyEndpoint(node *repository.Node, proxyModel *r
 
 	serverName := resolveProxyTLSServerName(node, proxyModel, host)
 	address := net.JoinHostPort(host, strconv.Itoa(proxyModel.Port))
-	rawConn, err := net.DialTimeout("tcp", address, hc.config.Timeout)
+	rawConn, err := net.DialTimeout("tcp", address, hc.config.Load().Timeout)
 	if err != nil {
 		return proxyEndpointHealth{Reason: fmt.Sprintf("TCP connection failed: %v", err)}
 	}
@@ -779,7 +807,7 @@ func (hc *HealthChecker) checkProxyEndpoint(node *repository.Node, proxyModel *r
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	handshakeCtx, cancel := context.WithTimeout(ctx, hc.config.Timeout)
+	handshakeCtx, cancel := context.WithTimeout(ctx, hc.config.Load().Timeout)
 	defer cancel()
 	if err := tlsConn.HandshakeContext(handshakeCtx); err != nil {
 		return proxyEndpointHealth{TLSFailure: true, Reason: fmt.Sprintf("TLS handshake failed: %v", err)}
@@ -943,7 +971,7 @@ func (hc *HealthChecker) handleCheckResult(node *repository.Node, result *Health
 
 		// Check if we should transition to healthy
 		if node.Status == repository.NodeStatusUnhealthy &&
-			hc.consecutiveSuccesses[node.ID] >= hc.config.HealthyThreshold {
+			hc.consecutiveSuccesses[node.ID] >= hc.config.Load().HealthyThreshold {
 			hc.transitionToHealthy(node, oldStatus)
 		} else if node.Status == repository.NodeStatusOffline {
 			// Node came online
@@ -956,7 +984,7 @@ func (hc *HealthChecker) handleCheckResult(node *repository.Node, result *Health
 
 		// Check if we should transition to unhealthy
 		if node.Status == repository.NodeStatusOnline &&
-			hc.consecutiveFailures[node.ID] >= hc.config.UnhealthyThreshold {
+			hc.consecutiveFailures[node.ID] >= hc.config.Load().UnhealthyThreshold {
 			hc.transitionToUnhealthy(node, oldStatus, result.Message)
 		}
 	}
@@ -1035,7 +1063,7 @@ func (hc *HealthChecker) transitionToUnhealthy(node *repository.Node, oldStatus 
 
 // cleanupOldRecords removes health check records older than retention period.
 func (hc *HealthChecker) cleanupOldRecords() {
-	cutoff := time.Now().AddDate(0, 0, -hc.config.RetentionDays)
+	cutoff := time.Now().AddDate(0, 0, -hc.config.Load().RetentionDays)
 	deleted, err := hc.healthCheckRepo.DeleteOlderThan(hc.ctx, cutoff)
 	if err != nil {
 		hc.logger.Error("Failed to cleanup old health check records", logger.Err(err))
@@ -1095,7 +1123,7 @@ func (hc *HealthChecker) CheckAll(ctx context.Context) ([]*HealthCheckResult, er
 	var wg sync.WaitGroup
 
 	// Create a semaphore to limit concurrent checks
-	maxConcurrent := hc.config.MaxConcurrentChecks
+	maxConcurrent := hc.config.Load().MaxConcurrentChecks
 	if maxConcurrent <= 0 {
 		maxConcurrent = 10
 	}
@@ -1173,19 +1201,25 @@ func (hc *HealthChecker) GetConsecutiveSuccesses(nodeID int64) int {
 	return hc.consecutiveSuccesses[nodeID]
 }
 
-// UpdateConfig updates the health checker configuration.
+// UpdateConfig updates the health checker configuration. Safe to call while
+// checks are running: the new config is published atomically and readers
+// pick it up on their next Load. Passing nil is a no-op.
 func (hc *HealthChecker) UpdateConfig(config *HealthCheckConfig) {
-	hc.runningMu.Lock()
-	defer hc.runningMu.Unlock()
-	hc.config = config
-	hc.httpClient.Timeout = config.Timeout
+	if config == nil {
+		return
+	}
+	hc.config.Store(config)
 }
 
-// GetConfig returns the current health checker configuration.
+// GetConfig returns a snapshot copy of the current health checker
+// configuration. A copy is returned so callers can freely mutate it and pass
+// the result to UpdateConfig without racing concurrent readers.
 func (hc *HealthChecker) GetConfig() *HealthCheckConfig {
-	hc.runningMu.Lock()
-	defer hc.runningMu.Unlock()
-	return hc.config
+	if c := hc.config.Load(); c != nil {
+		cp := *c
+		return &cp
+	}
+	return DefaultHealthCheckConfig()
 }
 
 // sendStatusChangeNotification sends a notification when node status changes.

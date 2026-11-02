@@ -89,6 +89,10 @@ var (
 	registerRateLimiter = newAuthRateLimiter(3, 1*time.Hour)
 	// Password reset: 3 attempts per hour per IP
 	passwordResetRateLimiter = newAuthRateLimiter(3, 1*time.Hour)
+	// Token refresh: 30 attempts per 15 minutes per IP. Refresh has no
+	// credential guessing value, but the endpoint triggers a DB session
+	// lookup on every call, so cap it to prevent DoS amplification.
+	refreshRateLimiter = newAuthRateLimiter(30, 15*time.Minute)
 
 	// Non-auth portal action limiters. These live in the same file because
 	// they share the same in-memory counter implementation; they key by
@@ -126,6 +130,9 @@ func AuthRateLimit(endpoint string) gin.HandlerFunc {
 		case "password-reset":
 			limiter = passwordResetRateLimiter
 			endpointName = "password reset"
+		case "refresh":
+			limiter = refreshRateLimiter
+			endpointName = "token refresh"
 		default:
 			// Unknown endpoint, allow through
 			c.Next()

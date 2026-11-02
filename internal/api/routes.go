@@ -96,6 +96,23 @@ func NewRouter(
 
 	engine := gin.New()
 
+	// SECURITY: only trust proxies on private networks (cloudflared on
+	// loopback, the docker bridge gateway, or a local reverse proxy).
+	// Without this, gin trusts every proxy by default and c.ClientIP()
+	// takes the attacker-controlled left-most X-Forwarded-For value, which
+	// lets a direct-to-origin client rotate fake IPs to bypass every
+	// IP-based rate limit, lockout and IP whitelist in the panel.
+	// Public-internet clients are not in the trusted list, so their
+	// X-Forwarded-For headers are ignored and the real socket address is
+	// used instead.
+	if err := engine.SetTrustedProxies([]string{
+		"127.0.0.1", "::1",
+		"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+	}); err != nil {
+		// Fail closed: distrust all proxies rather than all-but-none.
+		_ = engine.SetTrustedProxies(nil)
+	}
+
 	// Create settings service
 	settingsService := settings.NewService(repos.Settings)
 
@@ -357,6 +374,7 @@ func (r *Router) Setup() {
 
 	// Create Xray config generator for nodes
 	configGenerator := xray.NewConfigGenerator(r.repos.Proxy, r.repos.Certificate, r.repos.Node, r.logger).
+		WithInboundMerging(r.config.Xray.MergeInbounds).
 		WithUserAccessCheck(func(ctx context.Context, userID int64) error {
 			_, err := r.entitlementService.EvaluateExistingAccess(ctx, userID)
 			return err
@@ -483,7 +501,7 @@ func (r *Router) Setup() {
 	{
 		// Error reporting endpoint (public)
 		errorReportHandler := handlers.NewErrorReportHandler(r.logger)
-		api.POST("/errors/report", errorReportHandler.ReportErrors)
+		api.POST("/errors/report", middleware.MaxBodySize(64*1024), errorReportHandler.ReportErrors)
 
 		// Agent binary download endpoint (public, for remote deployment).
 		//
@@ -502,7 +520,7 @@ func (r *Router) Setup() {
 		{
 			// SECURITY: Add rate limiting to prevent brute force attacks
 			auth.POST("/login", middleware.AuthRateLimit("login"), authHandler.Login)
-			auth.POST("/refresh", authHandler.RefreshToken)
+			auth.POST("/refresh", middleware.AuthRateLimit("refresh"), authHandler.RefreshToken)
 		}
 
 		// SSE endpoint (placeholder - returns 204 No Content to avoid HTML fallback)
@@ -1044,7 +1062,7 @@ func (r *Router) Setup() {
 		}
 
 		// Payment callback routes (public - no auth required)
-		api.POST("/payments/callback/:method", paymentHandler.HandleCallback)
+		api.POST("/payments/callback/:method", middleware.MaxBodySize(1024*1024), paymentHandler.HandleCallback)
 
 		// Node Agent routes (token-based auth, rate limited, body size limited)
 		agentRateLimiter := middleware.NewAgentRateLimiter(30) // 30 req/min per IP
@@ -1122,8 +1140,17 @@ func (r *Router) Setup() {
 		mountRoot.GET("/apple-touch-icon.png", serveStaticIcon("apple-touch-icon.png", "image/png"))
 		mountRoot.HEAD("/apple-touch-icon.png", serveStaticIcon("apple-touch-icon.png", "image/png"))
 
-		// Serve documentation files
-		mountRoot.Static("/docs", "Docs")
+	// Base-path marker consumed by web/src/api/base.js and web/src/router/index.js.
+	// It is served as a regular same-origin script instead of an inline block:
+	// SecureHeaders() sets `script-src 'self' ...` without 'unsafe-inline', so an
+	// inline marker is rejected by the browser and the SPA silently falls back to
+	// an empty base path, which breaks every API call and route once base_path is
+	// configured. A synchronous <script src> still runs before the module entry.
+	mountRoot.GET("/vpbase.js", servePanelBaseScript(basePath))
+	mountRoot.HEAD("/vpbase.js", servePanelBaseScript(basePath))
+
+	// Serve documentation files
+	mountRoot.Static("/docs", "Docs")
 
 		// Cache the index.html bytes once at boot, with absolute paths
 		// rewritten to honor basePath. This means changing basePath requires
@@ -1174,11 +1201,24 @@ func (r *Router) Setup() {
 	}
 }
 
+// servePanelBaseScript serves window.__VPANEL_BASE__ as a same-origin script.
+// The value only changes when base_path changes, which already requires a
+// restart, so it is safe to cache briefly.
+func servePanelBaseScript(basePath string) gin.HandlerFunc {
+	body := `window.__VPANEL_BASE__=` + jsonString(basePath) + `;`
+	return func(c *gin.Context) {
+		c.Header("Content-Type", "application/javascript; charset=utf-8")
+		c.Header("Cache-Control", "public, max-age=300")
+		c.String(http.StatusOK, body)
+	}
+}
+
 // loadAndRewriteIndexHTML reads dist/index.html and rewrites references to
 // absolute root paths (href="/...", src="/...") so they land under basePath.
-// Also injects <base href="basePath/"/> and a window.__VPANEL_BASE__ script
-// so the SPA's axios + Vue Router can find the right prefix at runtime.
-// Pass "" to skip rewriting.
+// Also injects <base href="basePath/"/> and a window.__VPANEL_BASE__ script tag
+// (pointing at the same-origin /vpbase.js rather than an inline block, which the
+// CSP would block) so the SPA's axios + Vue Router can find the right prefix at
+// runtime. Pass "" to skip rewriting.
 func loadAndRewriteIndexHTML(path, basePath string) ([]byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -1187,7 +1227,7 @@ func loadAndRewriteIndexHTML(path, basePath string) ([]byte, error) {
 	html := string(data)
 	// Always inject the prefix marker so the frontend has a single source of
 	// truth (axios/router read it). Empty string when no prefix.
-	prefixScript := `<script>window.__VPANEL_BASE__=` + jsonString(basePath) + `;</script>`
+	prefixScript := `<script src="` + basePath + `/vpbase.js"></script>`
 	if basePath == "" {
 		if idx := strings.Index(html, "<head>"); idx >= 0 {
 			html = html[:idx+len("<head>")] + "\n  " + prefixScript + html[idx+len("<head>"):]

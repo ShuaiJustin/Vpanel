@@ -29,6 +29,10 @@ type ConfigGenerator struct {
 	nodeRepo        repository.NodeRepository
 	userAccessCheck func(context.Context, int64) error
 	logger          logger.Logger
+	// mergeInbounds groups proxies that share every inbound-level field into
+	// a single inbound with multiple clients. Off by default so that enabling
+	// it is an explicit, reversible operational decision.
+	mergeInbounds bool
 }
 
 // NewConfigGenerator creates a new Xray config generator.
@@ -51,6 +55,19 @@ func NewConfigGenerator(
 func (g *ConfigGenerator) WithUserAccessCheck(check func(context.Context, int64) error) *ConfigGenerator {
 	g.userAccessCheck = check
 	return g
+}
+
+// WithInboundMerging enables grouping of proxies with identical inbound-level
+// fields into one inbound carrying multiple clients. It is disabled by
+// default (V_XRAY_MERGE_INBOUNDS=false) for backwards compatibility.
+func (g *ConfigGenerator) WithInboundMerging(enabled bool) *ConfigGenerator {
+	g.mergeInbounds = enabled
+	return g
+}
+
+// InboundMergingEnabled reports whether the merge path is active.
+func (g *ConfigGenerator) InboundMergingEnabled() bool {
+	return g.mergeInbounds
 }
 
 // XrayConfig represents the complete Xray configuration.
@@ -335,14 +352,38 @@ func (g *ConfigGenerator) generateInbounds(ctx context.Context, nodeID int64, pr
 		},
 	}
 
-	// Generate inbound for each proxy
+	// Build one inbound per proxy first (unchanged per-proxy logic, so
+	// credentials / email / flow / per-proxy Reality settings stay intact).
+	candidates := make([]inboundCandidate, 0, len(proxies))
 	for _, proxy := range proxies {
 		inbound := g.proxyToInbound(ctx, proxy, optimizationSettings)
 		if inbound != nil {
-			inbounds = append(inbounds, *inbound)
+			candidates = append(candidates, inboundCandidate{proxy: proxy, inbound: *inbound})
 		}
 	}
 
+	if !g.mergeInbounds {
+		// Legacy behaviour: 1 proxy = 1 inbound, byte-identical output.
+		for _, candidate := range candidates {
+			inbounds = append(inbounds, candidate.inbound)
+		}
+		return inbounds
+	}
+
+	merged := g.mergeInboundCandidates(candidates)
+	if err := ValidateMergedInbounds(merged); err != nil {
+		// Never ship a config that would break traffic accounting or be
+		// rejected by Xray. Fall back to the legacy one-inbound-per-proxy
+		// shape instead of failing the whole node config sync.
+		g.logger.Warn("merged inbound validation failed, falling back to legacy inbounds",
+			logger.Err(err))
+		for _, candidate := range candidates {
+			inbounds = append(inbounds, candidate.inbound)
+		}
+		return inbounds
+	}
+
+	inbounds = append(inbounds, merged...)
 	return inbounds
 }
 

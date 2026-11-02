@@ -159,7 +159,25 @@ func (h *PaymentHandler) GetPaymentStatus(c *gin.Context) {
 		return
 	}
 
-	status, err := h.paymentService.GetPaymentStatus(c.Request.Context(), orderNo)
+	// SECURITY: only the order owner (or an admin) may query payment status.
+	userID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
+
+	var status string
+	var err error
+	if role == "admin" {
+		status, err = h.paymentService.GetPaymentStatus(c.Request.Context(), orderNo)
+	} else {
+		uid, ok := userID.(int64)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"code":    "UNAUTHORIZED",
+				"message": "Authentication required",
+			})
+			return
+		}
+		status, err = h.paymentService.GetPaymentStatusForUser(c.Request.Context(), orderNo, uid)
+	}
 	if err != nil {
 		h.logger.Error("Failed to get payment status", logger.Err(err))
 		c.JSON(http.StatusNotFound, gin.H{
@@ -170,6 +188,33 @@ func (h *PaymentHandler) GetPaymentStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": status})
+}
+
+// requireOrderOwnership returns the caller's user ID if the order belongs to
+// them, or an admin. Writes the error response and returns ok=false otherwise.
+// Non-owners get a 404 so order IDs cannot be probed.
+func (h *PaymentHandler) requireOrderOwnership(c *gin.Context, orderID int64) bool {
+	userID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
+	if role == "admin" {
+		return true
+	}
+	uid, ok := userID.(int64)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"code":    "UNAUTHORIZED",
+			"message": "Authentication required",
+		})
+		return false
+	}
+	if !h.paymentService.OrderBelongsToUser(c.Request.Context(), orderID, uid) {
+		c.JSON(http.StatusNotFound, gin.H{
+			"code":    "NOT_FOUND",
+			"message": "Order not found",
+		})
+		return false
+	}
+	return true
 }
 
 // SwitchPaymentMethodRequest represents a request to switch payment method.
@@ -194,6 +239,11 @@ func (h *PaymentHandler) SwitchPaymentMethod(c *gin.Context) {
 	var req SwitchPaymentMethodRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	// SECURITY: only the order owner (or an admin) may switch its method.
+	if !h.requireOrderOwnership(c, req.OrderID) {
 		return
 	}
 
@@ -222,6 +272,11 @@ func (h *PaymentHandler) RetryPayment(c *gin.Context) {
 		return
 	}
 
+	// SECURITY: only the order owner (or an admin) may retry its payment.
+	if !h.requireOrderOwnership(c, req.OrderID) {
+		return
+	}
+
 	if err := h.retryService.ExecuteRetry(c.Request.Context(), req.OrderID, req.Method); err != nil {
 		h.logger.Error("Failed to retry payment",
 			logger.Err(err),
@@ -244,6 +299,11 @@ func (h *PaymentHandler) GetRetryInfo(c *gin.Context) {
 	orderID, err := strconv.ParseInt(orderIDStr, 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order ID"})
+		return
+	}
+
+	// SECURITY: only the order owner (or an admin) may read retry info.
+	if !h.requireOrderOwnership(c, orderID) {
 		return
 	}
 

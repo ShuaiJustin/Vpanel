@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.7
 
 ARG ALPINE_MIRROR=mirrors.aliyun.com
 ARG GO_PROXY=https://goproxy.cn|https://mirrors.aliyun.com/goproxy/|https://goproxy.io|direct

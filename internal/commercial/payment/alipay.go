@@ -170,6 +170,16 @@ func (g *AlipayGateway) VerifyCallback(data []byte, signature string) (*PaymentR
 		return nil, fmt.Errorf("signature verification failed: %w", err)
 	}
 
+	// SECURITY: verify the notification belongs to THIS app. A valid
+	// signature from a different app under the same account (reused key
+	// config) must not be credited here (confused-deputy protection).
+	// Only skipped when neither side configures an app_id (bare fixtures).
+	if g.config != nil {
+		if v := values.Get("app_id"); v != g.config.AppID && !(v == "" && g.config.AppID == "") {
+			return nil, fmt.Errorf("callback app_id mismatch: got %q", v)
+		}
+	}
+
 	// Check trade status
 	tradeStatus := values.Get("trade_status")
 	if tradeStatus != "TRADE_SUCCESS" && tradeStatus != "TRADE_FINISHED" {

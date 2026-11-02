@@ -62,6 +62,18 @@ func main() {
 	}
 	cfg.Version = version
 
+	// SECURITY: refuse to start in release mode with default/insecure
+	// credentials. Without this check a fresh deployment that forgets to
+	// set V_JWT_SECRET / V_ADMIN_PASS would silently come up with
+	// admin/admin123 and a publicly known JWT signing secret.
+	if cfg.Server.Mode == "release" {
+		if err := cfg.ValidateForProduction(); err != nil {
+			fmt.Fprintf(os.Stderr, "production configuration validation failed:\n%v\n", err)
+			fmt.Fprintln(os.Stderr, "refusing to start: set a strong V_JWT_SECRET and V_ADMIN_PASS (or set V_SERVER_MODE=development for local testing)")
+			os.Exit(1)
+		}
+	}
+
 	// Initialize logger
 	log := logger.New(logger.Config{
 		Level:  cfg.Log.Level,
