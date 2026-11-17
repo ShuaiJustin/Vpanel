@@ -51,6 +51,9 @@
           <el-radio-button value="pending">
             待支付
           </el-radio-button>
+          <el-radio-button value="expired">
+            已过期
+          </el-radio-button>
           <el-radio-button value="paid">
             已支付
           </el-radio-button>
@@ -118,10 +121,10 @@
           >
             <template #default="{ row }">
               <el-tag
-                :type="getStatusInfo(row.status).type"
+                :type="getStatusInfo(row.status, row.payment_expired).type"
                 size="small"
               >
-                {{ getStatusInfo(row.status).label }}
+                {{ getStatusInfo(row.status, row.payment_expired).label }}
               </el-tag>
             </template>
           </el-table-column>
@@ -137,7 +140,7 @@
             <template #default="{ row }">
               <div class="row-actions">
                 <el-button
-                  v-if="row.status === 'pending'"
+                  v-if="row.status === 'pending' && !row.payment_expired"
                   type="primary"
                   link
                   @click="goToPay(row)"
@@ -145,7 +148,7 @@
                   去支付
                 </el-button>
                 <el-button
-                  v-if="row.status === 'pending'"
+                  v-if="row.status === 'pending' && !row.payment_expired"
                   type="danger"
                   link
                   @click="handleCancel(row)"
@@ -235,10 +238,10 @@
         </el-descriptions-item>
         <el-descriptions-item label="状态">
           <el-tag
-            :type="getStatusInfo(currentOrder.status).type"
+            :type="getStatusInfo(currentOrder.status, currentOrder.payment_expired).type"
             size="small"
           >
-            {{ getStatusInfo(currentOrder.status).label }}
+            {{ getStatusInfo(currentOrder.status, currentOrder.payment_expired).label }}
           </el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="支付方式">
@@ -316,12 +319,13 @@ const methodLabels = {
   wechat: '微信支付',
   paypal: 'PayPal',
   crypto: '加密货币',
-  balance: '余额支付'
+  balance: '余额支付',
+  free: '免费开通'
 }
 
 // 方法
 const formatPrice = (price) => (price / 100).toFixed(2)
-const getStatusInfo = (status) => orderStore.getStatusInfo(status)
+const getStatusInfo = (status, expired) => orderStore.getStatusInfo(status, expired)
 const getMethodLabel = (method) => methodLabels[method] || method || '-'
 
 const fetchOrders = async () => {

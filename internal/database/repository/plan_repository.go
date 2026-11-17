@@ -3,6 +3,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"gorm.io/gorm"
@@ -17,7 +18,7 @@ type CommercialPlan struct {
 	Duration       int       `gorm:"not null"`
 	Price          int64     `gorm:"not null"`
 	PlanType       string    `gorm:"size:32;default:monthly"`
-	ResetCycle     string    `gorm:"size:32;default:monthly"`
+	ResetCycle     string    `gorm:"size:32;default:on_purchase"`
 	IPLimit        int       `gorm:"default:0"`
 	SortOrder      int       `gorm:"default:0"`
 	IsActive       bool      `gorm:"default:true"`
@@ -29,9 +30,48 @@ type CommercialPlan struct {
 	UpdatedAt      time.Time `gorm:"autoUpdateTime"`
 }
 
+const (
+	PlanTypeMonthly   = "monthly"
+	PlanTypeQuarterly = "quarterly"
+	PlanTypeYearly    = "yearly"
+	PlanTypeTraffic   = "traffic"
+	PlanTypeCustom    = "custom"
+
+	ResetCycleMonthly    = "monthly"
+	ResetCycleOnPurchase = "on_purchase"
+	ResetCycleNever      = "never"
+)
+
 // TableName returns the table name for CommercialPlan.
 func (CommercialPlan) TableName() string {
 	return "commercial_plans"
+}
+
+// PlanUsesMonthlyTraffic reports whether a plan grants a quota that renews
+// every month during its validity period.
+func PlanUsesMonthlyTraffic(plan *CommercialPlan) bool {
+	if plan == nil {
+		return false
+	}
+	if plan.ResetCycle == ResetCycleMonthly {
+		return true
+	}
+	switch plan.PlanType {
+	case PlanTypeMonthly, PlanTypeQuarterly, PlanTypeYearly:
+		return true
+	default:
+		return false
+	}
+}
+
+// MonthlyTrafficAnchor returns the start of the calendar month containing at.
+// UTC/locality is preserved so callers can consistently compare database times.
+func MonthlyTrafficAnchor(at time.Time) time.Time {
+	location := at.Location()
+	if location == nil {
+		location = time.UTC
+	}
+	return time.Date(at.Year(), at.Month(), 1, 0, 0, 0, 0, location)
 }
 
 // PlanGroup represents a plan group in the database.
@@ -89,7 +129,18 @@ func NewPlanRepository(db *gorm.DB) PlanRepository {
 
 // Create creates a new plan.
 func (r *planRepository) Create(ctx context.Context, plan *CommercialPlan) error {
-	return r.db.WithContext(ctx).Create(plan).Error
+	active := plan.IsActive
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(plan).Error; err != nil {
+			return err
+		}
+		// GORM replaces false with the model's default:true during Create.
+		if !active {
+			plan.IsActive = false
+			return tx.Model(plan).Update("is_active", false).Error
+		}
+		return nil
+	})
 }
 
 // GetByID retrieves a plan by ID.
@@ -104,7 +155,66 @@ func (r *planRepository) GetByID(ctx context.Context, id int64) (*CommercialPlan
 
 // Update updates a plan.
 func (r *planRepository) Update(ctx context.Context, plan *CommercialPlan) error {
-	return r.db.WithContext(ctx).Save(plan).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var previous CommercialPlan
+		if err := tx.First(&previous, plan.ID).Error; err != nil {
+			return err
+		}
+		// Freeze legacy purchase terms before changing the catalog.
+		snapshot, err := json.Marshal(&previous)
+		if err != nil {
+			return err
+		}
+		if err := tx.Model(&Order{}).Where("plan_id = ? AND status IN ? AND (plan_snapshot IS NULL OR plan_snapshot = '')", plan.ID, []string{OrderStatusPending, OrderStatusPaid, OrderStatusCompleted}).Update("plan_snapshot", string(snapshot)).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&User{}).Where("current_plan_id = ? AND (current_plan_type IS NULL OR current_plan_type = '')", plan.ID).Update("current_plan_type", previous.PlanType).Error; err != nil {
+			return err
+		}
+		if err := tx.Save(plan).Error; err != nil {
+			return err
+		}
+
+		// The catalog update rule is immediate for active entitlements: keep
+		// traffic already consumed, but apply the new quota to every unexpired
+		// user whose current (or legacy latest paid) plan is this plan. Expiry,
+		// pricing and purchased duration remain unchanged.
+		now := time.Now()
+		paidStatuses := []string{OrderStatusPaid, OrderStatusCompleted}
+		legacyPlanCondition := `
+			current_plan_id = ? OR (
+				current_plan_id = 0 AND EXISTS (
+					SELECT 1 FROM orders paid_orders
+					WHERE paid_orders.user_id = users.id
+					  AND paid_orders.plan_id = ?
+					  AND paid_orders.status IN (?, ?)
+					  AND NOT EXISTS (
+						SELECT 1 FROM orders newer_orders
+						WHERE newer_orders.user_id = paid_orders.user_id
+						  AND newer_orders.status IN (?, ?)
+						  AND (
+							COALESCE(newer_orders.paid_at, newer_orders.created_at) > COALESCE(paid_orders.paid_at, paid_orders.created_at)
+							OR (
+								COALESCE(newer_orders.paid_at, newer_orders.created_at) = COALESCE(paid_orders.paid_at, paid_orders.created_at)
+								AND newer_orders.id > paid_orders.id
+							)
+						  )
+					  )
+				)
+			)`
+		userUpdates := map[string]any{"traffic_limit": plan.TrafficLimit}
+		if PlanUsesMonthlyTraffic(plan) {
+			userUpdates["traffic_reset_at"] = gorm.Expr("COALESCE(traffic_reset_at, ?)", MonthlyTrafficAnchor(now))
+		}
+		if err := tx.Model(&User{}).
+			Where("(expires_at IS NULL OR expires_at > ?)", now).
+			Where("("+legacyPlanCondition+")", plan.ID, plan.ID, paidStatuses[0], paidStatuses[1], paidStatuses[0], paidStatuses[1]).
+			Updates(userUpdates).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
 }
 
 // Delete deletes a plan by ID.

@@ -30,7 +30,28 @@ log_error() {
 }
 
 docker_container_running() {
-    command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -Fxq "$PANEL_CONTAINER_NAME"
+	if ! command -v docker >/dev/null 2>&1; then
+		return 1
+	fi
+
+	if docker ps --format '{{.Names}}' | grep -Fxq "$PANEL_CONTAINER_NAME"; then
+		return 0
+	fi
+
+	# Compose adds the project and replica suffix (for example,
+	# vpanel-v-panel-1). Discover that name so the documented deploy command
+	# updates the running container instead of silently falling back to local
+	# binary deployment.
+	while IFS= read -r candidate; do
+		case "$candidate" in
+			*-v-panel-[0-9]*|v-panel-[0-9]*)
+				PANEL_CONTAINER_NAME="$candidate"
+				return 0
+				;;
+		esac
+	done < <(docker ps --format '{{.Names}}')
+
+	return 1
 }
 
 auto_rollback_on_error() {

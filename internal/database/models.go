@@ -9,19 +9,20 @@ import (
 
 // User represents a user in the system.
 type User struct {
-	ID               int64     `json:"id" gorm:"primaryKey"`
-	Username         string    `json:"username" gorm:"uniqueIndex;size:50;not null"`
-	Password         string    `json:"-" gorm:"size:255;not null"`
-	Email            string    `json:"email" gorm:"uniqueIndex;size:100"`
-	Role             string    `json:"role" gorm:"size:20;default:user"`
-	IsAdmin          bool      `json:"is_admin" gorm:"default:false"`
-	Enabled          bool      `json:"enabled" gorm:"default:true"`
-	TrafficLimit     int64     `json:"traffic_limit" gorm:"default:0"` // 0 means unlimited
-	TrafficUsed      int64     `json:"traffic_used" gorm:"default:0"`
-	MaxConcurrentIPs int       `json:"max_concurrent_ips" gorm:"default:-1"` // -1 means use plan default, 0 means unlimited
-	ExpiresAt        time.Time `json:"expires_at"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID               int64      `json:"id" gorm:"primaryKey"`
+	Username         string     `json:"username" gorm:"uniqueIndex;size:50;not null"`
+	Password         string     `json:"-" gorm:"size:255;not null"`
+	Email            string     `json:"email" gorm:"uniqueIndex;size:100"`
+	Role             string     `json:"role" gorm:"size:20;default:user"`
+	IsAdmin          bool       `json:"is_admin" gorm:"default:false"`
+	Enabled          bool       `json:"enabled" gorm:"default:true"`
+	TrafficLimit     int64      `json:"traffic_limit" gorm:"default:0"` // 0 means unlimited
+	TrafficUsed      int64      `json:"traffic_used" gorm:"default:0"`
+	TrafficResetAt   *time.Time `json:"traffic_reset_at,omitempty" gorm:"index"`
+	MaxConcurrentIPs int        `json:"max_concurrent_ips" gorm:"default:-1"` // -1 means use plan default, 0 means unlimited
+	ExpiresAt        time.Time  `json:"expires_at"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 
 	// User Portal fields
 	EmailVerified    bool       `json:"email_verified" gorm:"default:false"`
@@ -379,12 +380,12 @@ type CommercialPlan struct {
 	ID             int64     `json:"id" gorm:"primaryKey"`
 	Name           string    `json:"name" gorm:"size:128;not null"`
 	Description    string    `json:"description" gorm:"type:text"`
-	TrafficLimit   int64     `json:"traffic_limit" gorm:"default:0"`             // bytes, 0 = unlimited
-	Duration       int       `json:"duration" gorm:"not null"`                   // days
-	Price          int64     `json:"price" gorm:"not null"`                      // cents
-	PlanType       string    `json:"plan_type" gorm:"size:32;default:monthly"`   // monthly, quarterly, yearly, traffic
-	ResetCycle     string    `json:"reset_cycle" gorm:"size:32;default:monthly"` // monthly, on_purchase, never
-	IPLimit        int       `json:"ip_limit" gorm:"default:0"`                  // 0 = unlimited
+	TrafficLimit   int64     `json:"traffic_limit" gorm:"default:0"`                 // bytes, 0 = unlimited
+	Duration       int       `json:"duration" gorm:"not null"`                       // days
+	Price          int64     `json:"price" gorm:"not null"`                          // cents
+	PlanType       string    `json:"plan_type" gorm:"size:32;default:monthly"`       // monthly, quarterly, yearly, traffic, custom
+	ResetCycle     string    `json:"reset_cycle" gorm:"size:32;default:on_purchase"` // on_purchase, never
+	IPLimit        int       `json:"ip_limit" gorm:"default:0"`                      // 0 = unlimited
 	SortOrder      int       `json:"sort_order" gorm:"default:0"`
 	IsActive       bool      `json:"is_active" gorm:"default:true"`
 	IsRecommended  bool      `json:"is_recommended" gorm:"default:false"`
@@ -406,6 +407,7 @@ const (
 	PlanTypeQuarterly = "quarterly"
 	PlanTypeYearly    = "yearly"
 	PlanTypeTraffic   = "traffic"
+	PlanTypeCustom    = "custom"
 )
 
 // ResetCycle constants
@@ -435,6 +437,7 @@ type Order struct {
 	OrderNo        string     `json:"order_no" gorm:"uniqueIndex;size:64;not null"` // ORD-20260114-XXXX
 	UserID         int64      `json:"user_id" gorm:"index;not null"`
 	PlanID         int64      `json:"plan_id" gorm:"index;not null"`
+	PlanSnapshot   string     `json:"-" gorm:"type:text"`
 	CouponID       *int64     `json:"coupon_id" gorm:"index"`
 	OriginalAmount int64      `json:"original_amount" gorm:"not null"`             // cents
 	DiscountAmount int64      `json:"discount_amount" gorm:"default:0"`            // cents

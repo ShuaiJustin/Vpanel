@@ -36,10 +36,10 @@
           </el-descriptions-item>
           <el-descriptions-item label="订单状态">
             <el-tag
-              :type="getStatusInfo(order.status).type"
+              :type="getStatusInfo(order.status, order.payment_expired).type"
               size="small"
             >
-              {{ getStatusInfo(order.status).label }}
+              {{ getStatusInfo(order.status, order.payment_expired).label }}
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="套餐">
@@ -165,6 +165,12 @@
           shadow="never"
           class="summary-card"
         >
+          <el-alert
+            type="warning"
+            show-icon
+            :closable="false"
+            title="同套餐续费叠加剩余天数；更换套餐付款后立即生效、重新计时，原套餐剩余天数不叠加。"
+          />
           <div
             v-if="showRechargePrompt"
             class="payment-hint"
@@ -201,7 +207,7 @@
             :disabled="!selectedMethod || balancePaymentDisabled"
             @click="handlePay"
           >
-            {{ selectedMethod === 'balance' ? '确认余额支付' : '立即支付' }}
+            {{ selectedMethod === 'free' ? '免费开通' : selectedMethod === 'balance' ? '确认余额支付' : '立即支付' }}
           </el-button>
         </el-card>
 
@@ -294,7 +300,7 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { CreditCard, Wallet, Coin } from '@element-plus/icons-vue'
 import QRCode from 'qrcode'
 import { useOrderStore } from '@/stores/order'
@@ -326,7 +332,8 @@ const balanceInfoError = ref('')
 const paymentMethodMeta = {
   alipay: { label: '支付宝', icon: CreditCard },
   wechat: { label: '微信支付', icon: Wallet },
-  balance: { label: '余额支付', icon: Coin }
+  balance: { label: '余额支付', icon: Coin },
+  free: { label: '免费开通', icon: Coin }
 }
 
 let pollProgressTimer = null
@@ -334,9 +341,12 @@ let pollProgressTimer = null
 const order = computed(() => orderStore.currentOrder)
 const descriptionColumns = computed(() => (isMobile.value ? 1 : 2))
 const qrDialogWidth = computed(() => (isMobile.value ? '92%' : '420px'))
-const canPay = computed(() => order.value?.status === 'pending')
+const canPay = computed(() => order.value?.status === 'pending' && !order.value.payment_expired)
 const statusAlertTitle = computed(() => {
   const status = order.value?.status
+  if (status === 'pending' && order.value.payment_expired) {
+    return '该订单已过期。如已付款，请先核对订单状态，避免重复付款。'
+  }
   if (status === 'paid' || status === 'completed') {
     return '该订单已支付完成，无需重复付款。'
   }
@@ -353,7 +363,7 @@ const statusPrimaryActionLabel = computed(() => {
   if (status === 'paid' || status === 'completed') {
     return '前往订阅管理'
   }
-  if (status === 'cancelled' || status === 'refunded') {
+  if (status === 'cancelled' || status === 'refunded' || order.value?.payment_expired) {
     return '重新选择套餐'
   }
   return '返回订单列表'
@@ -390,7 +400,7 @@ const showRechargePrompt = computed(() => {
 })
 
 const formatPrice = price => (Number(price || 0) / 100).toFixed(2)
-const getStatusInfo = status => orderStore.getStatusInfo(status)
+const getStatusInfo = (status, expired) => orderStore.getStatusInfo(status, expired)
 const getMethodLabel = method => paymentMethodMeta[method]?.label || method || '-'
 
 const clearPaymentHint = () => {
@@ -451,7 +461,7 @@ const handleStatusPrimaryAction = () => {
     goToSubscription()
     return
   }
-  if (status === 'cancelled' || status === 'refunded') {
+  if (status === 'cancelled' || status === 'refunded' || order.value?.payment_expired) {
     goToPlans()
     return
   }
@@ -479,6 +489,11 @@ const fetchBalanceInfo = async () => {
 }
 
 const fetchPaymentMethods = async () => {
+  if (Number(order.value?.pay_amount) === 0) {
+    paymentMethods.value = [{ value: 'free', ...paymentMethodMeta.free }]
+    selectedMethod.value = 'free'
+    return
+  }
   try {
     const response = await paymentsApi.getMethods()
     const methods = (response.methods || []).map(method => ({
@@ -524,8 +539,10 @@ const initOrder = async () => {
       return
     }
 
-    await fetchPaymentMethods()
-    await fetchBalanceInfo()
+    if (canPay.value) {
+      await fetchPaymentMethods()
+      await fetchBalanceInfo()
+    }
   } catch (error) {
     ElMessage.error(extractErrorMessage(error) || '加载订单失败')
     router.replace({ name: 'user-plans' })
@@ -568,13 +585,15 @@ const startPolling = async () => {
 
   try {
     const result = await orderStore.pollPaymentStatus(order.value.order_no)
-    if (result.status === 'paid') {
+    if (result.status === 'paid' || result.status === 'completed') {
       pollProgress.value = 100
       ElMessage.success('支付成功')
       router.replace({
         name: 'user-orders',
         query: { payment: 'success', order_no: order.value.order_no }
       })
+    } else {
+      ElMessage.warning('订单未完成付款，请核对订单状态。')
     }
   } catch (error) {
     ElMessage.error('支付超时，请返回订单页查看状态')
@@ -586,6 +605,7 @@ const startPolling = async () => {
 }
 
 const handlePay = async () => {
+  if (paying.value || !canPay.value) return
   if (!selectedMethod.value) {
     ElMessage.warning('请选择支付方式')
     return
@@ -594,6 +614,11 @@ const handlePay = async () => {
   clearPaymentHint()
   paying.value = true
   try {
+    await ElMessageBox.confirm(
+      '同套餐续费会叠加剩余天数；购买其他套餐将立即替换当前套餐并重新计时，原剩余天数不叠加。确认支付？',
+      '确认套餐生效规则',
+      { type: 'warning', confirmButtonText: '确认支付', cancelButtonText: '取消' }
+    )
     const paymentData = await orderStore.createPayment(order.value.order_no, selectedMethod.value)
     paymentLink.value = paymentData.payment?.payment_url || ''
     const qrPayload = paymentData.payment?.qrcode_data || paymentData.payment?.payment_url
@@ -611,8 +636,12 @@ const handlePay = async () => {
       query: { payment: 'success', order_no: order.value.order_no }
     })
   } catch (error) {
+    if (error === 'cancel' || error === 'close') return
     const message = extractErrorMessage(error) || '创建支付失败'
 
+    if (getErrorCode(error) === 'ORDER_EXPIRED' && order.value) {
+      order.value.payment_expired = true
+    }
     if (selectedMethod.value === 'balance' && isInsufficientBalanceError(error)) {
       insufficientBalanceMessage.value = message
     }

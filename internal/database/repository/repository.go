@@ -19,6 +19,7 @@ type User struct {
 	Enabled             bool       `gorm:"default:true;index"`
 	TrafficLimit        int64      `gorm:"default:0"`
 	TrafficUsed         int64      `gorm:"default:0"`
+	TrafficResetAt      *time.Time `gorm:"index"`
 	ExpiresAt           *time.Time `gorm:"index"`
 	ForcePasswordChange bool       `gorm:"default:false"`
 	// Portal fields
@@ -47,6 +48,7 @@ type User struct {
 	CurrentPlanID       int64     `gorm:"default:0"`
 	CurrentPlanPrice    int64     `gorm:"default:0"`
 	CurrentPlanDuration int       `gorm:"default:0"`
+	CurrentPlanType     string    `gorm:"size:32"`
 	Balance             int64     `gorm:"default:0"` // User balance in cents
 	CreatedAt           time.Time `gorm:"autoCreateTime"`
 	UpdatedAt           time.Time `gorm:"autoUpdateTime"`

@@ -54,6 +54,7 @@ type OrderResponse struct {
 	PaymentNo      string  `json:"payment_no,omitempty"`
 	PaidAt         *string `json:"paid_at,omitempty"`
 	ExpiredAt      string  `json:"expired_at"`
+	PaymentExpired bool    `json:"payment_expired"`
 	CreatedAt      string  `json:"created_at"`
 }
 
@@ -373,7 +374,7 @@ func (h *OrderHandler) RefundOrder(c *gin.Context) {
 	}
 
 	var req struct {
-		Amount int64  `json:"amount"`
+		Amount *int64 `json:"amount" binding:"required,min=0"`
 		Reason string `json:"reason"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -383,7 +384,7 @@ func (h *OrderHandler) RefundOrder(c *gin.Context) {
 
 	result, err := h.refundService.ProcessRefund(c.Request.Context(), &refund.RefundRequest{
 		OrderID: id,
-		Amount:  req.Amount,
+		Amount:  *req.Amount,
 		Reason:  strings.TrimSpace(req.Reason),
 	})
 	if err != nil {
@@ -435,6 +436,7 @@ func (h *OrderHandler) toOrderResponse(o *order.Order) OrderResponse {
 		PaymentMethod:  o.PaymentMethod,
 		PaymentNo:      o.PaymentNo,
 		ExpiredAt:      o.ExpiredAt.Format("2006-01-02 15:04:05"),
+		PaymentExpired: o.Status == order.StatusPending && !o.ExpiredAt.After(time.Now()),
 		CreatedAt:      o.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
 	if o.PaidAt != nil {

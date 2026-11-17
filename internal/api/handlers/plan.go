@@ -59,7 +59,7 @@ type CreatePlanRequest struct {
 	Description   string   `json:"description"`
 	TrafficLimit  int64    `json:"traffic_limit"`
 	Duration      int      `json:"duration" binding:"required,min=1"`
-	Price         int64    `json:"price" binding:"required,min=0"`
+	Price         *int64   `json:"price" binding:"required,min=0"`
 	PlanType      string   `json:"plan_type"`
 	ResetCycle    string   `json:"reset_cycle"`
 	IPLimit       int      `json:"ip_limit"`
@@ -145,7 +145,7 @@ func (h *PlanHandler) CreatePlan(c *gin.Context) {
 		Description:   req.Description,
 		TrafficLimit:  req.TrafficLimit,
 		Duration:      req.Duration,
-		Price:         req.Price,
+		Price:         *req.Price,
 		PlanType:      req.PlanType,
 		ResetCycle:    req.ResetCycle,
 		IPLimit:       req.IPLimit,

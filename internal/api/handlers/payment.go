@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"v/internal/commercial/balance"
+	"v/internal/commercial/order"
 	"v/internal/commercial/payment"
 	"v/internal/logger"
 )
@@ -67,6 +68,8 @@ func getCreatePaymentErrorResponse(err error) (int, gin.H) {
 			"code":    "ORDER_NOT_PAYABLE",
 			"message": "当前订单状态不支持继续支付，请返回订单页刷新后重试。",
 		}
+	case errors.Is(err, order.ErrOrderExpired):
+		return http.StatusBadRequest, gin.H{"code": "ORDER_EXPIRED", "message": "订单已过期，请重新创建订单。"}
 	case errors.Is(err, payment.ErrGatewayNotFound):
 		return http.StatusBadRequest, gin.H{
 			"code":    "PAYMENT_METHOD_UNAVAILABLE",
@@ -94,6 +97,21 @@ func (h *PaymentHandler) CreatePayment(c *gin.Context) {
 			"message": "请求参数不正确，请刷新页面后重试。",
 		})
 		return
+	}
+
+	// Authorize before creating gateway payments or debiting an order's wallet.
+	if c.GetString("role") != "admin" {
+		uid, ok := c.Get("user_id")
+		userID, valid := uid.(int64)
+		if !ok || !valid || userID <= 0 {
+			c.JSON(http.StatusUnauthorized, gin.H{"code": "UNAUTHORIZED", "message": "Authentication required"})
+			return
+		}
+		if _, err := h.paymentService.GetPaymentStatusForUser(c.Request.Context(), req.OrderNo, userID); err != nil {
+			status, payload := getCreatePaymentErrorResponse(err)
+			c.JSON(status, payload)
+			return
+		}
 	}
 
 	result, err := h.paymentService.CreatePayment(c.Request.Context(), req.OrderNo, req.Method, c.ClientIP())

@@ -88,6 +88,11 @@ func (g *AlipayGateway) CreatePayment(order *PaymentOrder) (*PaymentRequest, err
 		"subject":      order.Subject,
 		"product_code": "FAST_INSTANT_TRADE_PAY",
 	}
+	expiresAt := order.ExpiresAt
+	if expiresAt.IsZero() {
+		expiresAt = time.Now().Add(15 * time.Minute)
+	}
+	bizContent["time_expire"] = expiresAt.In(gatewayChinaTime).Format("2006-01-02 15:04:05")
 
 	bizContentJSON, err := json.Marshal(bizContent)
 	if err != nil {
@@ -130,7 +135,7 @@ func (g *AlipayGateway) CreatePayment(order *PaymentOrder) (*PaymentRequest, err
 
 	return &PaymentRequest{
 		PaymentURL: paymentURL,
-		ExpireTime: time.Now().Add(15 * time.Minute),
+		ExpireTime: expiresAt,
 		Extra: map[string]string{
 			"method": "alipay.trade.page.pay",
 		},
@@ -197,12 +202,7 @@ func (g *AlipayGateway) VerifyCallback(data []byte, signature string) (*PaymentR
 	}
 
 	// Parse paid time
-	paidAt := time.Now()
-	if gmtPayment := values.Get("gmt_payment"); gmtPayment != "" {
-		if t, err := time.Parse("2006-01-02 15:04:05", gmtPayment); err == nil {
-			paidAt = t
-		}
-	}
+	paidAt, _ := time.ParseInLocation("2006-01-02 15:04:05", values.Get("gmt_payment"), gatewayChinaTime)
 
 	return &PaymentResult{
 		Success:   true,

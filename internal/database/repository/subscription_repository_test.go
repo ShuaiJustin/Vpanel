@@ -536,6 +536,7 @@ func TestSubscriptionRepository_CascadeDelete(t *testing.T) {
 		enabled BOOLEAN DEFAULT true,
 		traffic_limit INTEGER DEFAULT 0,
 		traffic_used INTEGER DEFAULT 0,
+		traffic_reset_at DATETIME,
 		expires_at DATETIME,
 		force_password_change BOOLEAN DEFAULT false,
 		email_verified BOOLEAN DEFAULT false,
@@ -559,6 +560,7 @@ func TestSubscriptionRepository_CascadeDelete(t *testing.T) {
 		current_plan_id INTEGER DEFAULT 0,
 		current_plan_price INTEGER DEFAULT 0,
 		current_plan_duration INTEGER DEFAULT 0,
+		current_plan_type VARCHAR(32),
 		created_at DATETIME,
 		updated_at DATETIME
 	)`)

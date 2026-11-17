@@ -15,13 +15,84 @@ import (
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
 	"github.com/leanovate/gopter/prop"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
 	"v/internal/commercial/order"
+	"v/internal/commercial/refund"
 	"v/internal/database/repository"
 	"v/internal/logger"
 )
+
+func TestRefundRequiresExplicitAmount(t *testing.T) {
+	db := setupOrderTestDB(t)
+	require.NoError(t, db.AutoMigrate(&repository.BalanceTransaction{}, &repository.Commission{}))
+	plan := createOrderTestPlan(db, "Refund plan", 1000, 30)
+	user := createOrderTestUser(db, "refund-test")
+	ord := &repository.Order{OrderNo: "ORD-REFUND-EXPLICIT", UserID: user.ID, PlanID: plan.ID, Status: repository.OrderStatusCompleted, PayAmount: 1000, ExpiredAt: time.Now()}
+	require.NoError(t, db.Create(ord).Error)
+	log := logger.NewNopLogger()
+	h := NewOrderHandler(nil, log).WithRefundService(refund.NewService(repository.NewOrderRepository(db), nil, nil, log))
+	router := gin.New()
+	router.POST("/refund/:id", h.RefundOrder)
+	for _, tc := range []struct {
+		body    string
+		status  int
+		balance int64
+	}{{`{}`, 400, 0}, {`{"amount":null}`, 400, 0}, {`{"amount":-1}`, 400, 0}, {`{"amount":0}`, 200, 1000}} {
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/refund/%d", ord.ID), bytes.NewBufferString(tc.body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		require.Equal(t, tc.status, w.Code, w.Body.String())
+		require.NoError(t, db.First(user, user.ID).Error)
+		require.Equal(t, tc.balance, user.Balance)
+	}
+}
+
+func TestOrderListSeparatesExpiredAndPayableOrders(t *testing.T) {
+	db := setupOrderTestDB(t)
+	router, svc := setupOrderTestRouter(db)
+	plan := createOrderTestPlan(db, "Expiry plan", 1000, 30)
+	user := createOrderTestUser(db, "order-expiry-test")
+	expired, err := svc.Create(t.Context(), &order.CreateOrderRequest{UserID: user.ID, PlanID: plan.ID})
+	require.NoError(t, err)
+	payable, err := svc.Create(t.Context(), &order.CreateOrderRequest{UserID: user.ID, PlanID: plan.ID})
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&repository.Order{}).Where("id = ?", expired.ID).Update("expired_at", time.Now().Add(-time.Hour)).Error)
+	for _, tc := range []struct {
+		status  string
+		id      int64
+		expired bool
+	}{{"pending", payable.ID, false}, {"expired", expired.ID, true}} {
+		req := httptest.NewRequest(http.MethodGet, "/orders?status="+tc.status, nil)
+		req.Header.Set("X-User-ID", fmt.Sprint(user.ID))
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code)
+		var response struct {
+			Orders []OrderResponse
+			Total  int
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		require.Equal(t, 1, response.Total)
+		require.Len(t, response.Orders, 1)
+		require.Equal(t, tc.id, response.Orders[0].ID)
+		require.Equal(t, tc.expired, response.Orders[0].PaymentExpired)
+		require.Equal(t, order.StatusPending, response.Orders[0].Status)
+	}
+	for _, tc := range []struct {
+		id   int64
+		want int
+	}{{expired.ID, http.StatusBadRequest}, {payable.ID, http.StatusOK}} {
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/orders/%d/cancel", tc.id), nil)
+		req.Header.Set("X-User-ID", fmt.Sprint(user.ID))
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		require.Equal(t, tc.want, w.Code, w.Body.String())
+	}
+}
 
 func init() {
 	gin.SetMode(gin.TestMode)

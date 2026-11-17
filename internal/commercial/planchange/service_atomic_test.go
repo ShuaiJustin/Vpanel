@@ -39,6 +39,14 @@ func TestPlanOwnershipAndScheduledDowngrade(t *testing.T) {
 	require.Equal(t, old.Price, current.Price)
 	_, err = svc.CalculateChange(context.Background(), &PlanChangeRequest{UserID: user.ID, CurrentPlanID: 999, NewPlanID: low.ID})
 	require.ErrorIs(t, err, ErrCurrentPlanUnknown)
+	for _, target := range []*repository.CommercialPlan{
+		{Name: "Annual", Price: 10000, Duration: 365, PlanType: repository.PlanTypeYearly, IsActive: true},
+		{Name: "Custom", Price: 1000, Duration: 45, PlanType: repository.PlanTypeCustom, IsActive: true},
+	} {
+		require.NoError(t, db.Create(target).Error)
+		_, err := svc.CalculateChange(context.Background(), &PlanChangeRequest{UserID: user.ID, NewPlanID: target.ID})
+		require.ErrorIs(t, err, ErrPlanPeriodMismatch)
+	}
 	require.NoError(t, svc.ScheduleDowngrade(context.Background(), request))
 	items, total, err := svc.ListPendingDowngrades(context.Background(), 1, 20)
 	require.NoError(t, err)

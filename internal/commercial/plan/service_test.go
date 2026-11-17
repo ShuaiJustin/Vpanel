@@ -162,6 +162,9 @@ func TestService_Create(t *testing.T) {
 	if plan.PlanType != "monthly" {
 		t.Errorf("Expected default plan type 'monthly', got '%s'", plan.PlanType)
 	}
+	if plan.ResetCycle != repository.ResetCycleMonthly {
+		t.Errorf("Expected default reset cycle %q, got %q", repository.ResetCycleMonthly, plan.ResetCycle)
+	}
 }
 
 func TestService_Create_ValidationErrors(t *testing.T) {
@@ -304,6 +307,40 @@ func TestService_Create_RejectsInvalidPlanOptions(t *testing.T) {
 		ResetCycle: "daily",
 	}); err == nil {
 		t.Fatal("expected invalid reset cycle to fail")
+	}
+}
+
+func TestService_CustomPlanRoundTrip(t *testing.T) {
+	svc := NewService(newMockPlanRepository(), logger.NewNopLogger())
+	ctx := context.Background()
+	created, err := svc.Create(ctx, &CreatePlanRequest{
+		Name: "Custom 45 days", Duration: 45, Price: 1500,
+		PlanType: repository.PlanTypeCustom, TrafficLimit: 123 * 1024 * 1024 * 1024,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := svc.GetByID(ctx, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.PlanType != repository.PlanTypeCustom || stored.Duration != 45 || stored.TrafficLimit != created.TrafficLimit {
+		t.Fatalf("custom plan did not round trip: %+v", stored)
+	}
+	quarterly := repository.PlanTypeQuarterly
+	days := 90
+	updated, err := svc.Update(ctx, created.ID, &UpdatePlanRequest{PlanType: &quarterly, Duration: &days})
+	if err != nil {
+		t.Fatal(err)
+	}
+	custom := repository.PlanTypeCustom
+	days = 47
+	updated, err = svc.Update(ctx, updated.ID, &UpdatePlanRequest{PlanType: &custom, Duration: &days})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.PlanType != custom || updated.Duration != 47 || updated.TrafficLimit != created.TrafficLimit {
+		t.Fatalf("custom plan update lost settings: %+v", updated)
 	}
 }
 

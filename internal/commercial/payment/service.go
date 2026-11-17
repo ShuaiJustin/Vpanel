@@ -122,6 +122,19 @@ func (s *Service) CreatePayment(ctx context.Context, orderNo string, method stri
 	if ord.Status != order.StatusPending {
 		return nil, ErrOrderNotPending
 	}
+	if !ord.ExpiredAt.After(time.Now()) {
+		return nil, order.ErrOrderExpired
+	}
+	// A zero-price order needs neither a wallet debit nor an external gateway.
+	if ord.PayAmount == 0 {
+		if err := s.orderService.Pay(ctx, ord.OrderNo, "FREE-"+ord.OrderNo, "free", false); err != nil {
+			return nil, err
+		}
+		if err := s.orderService.Complete(ctx, ord.ID); err != nil {
+			return nil, err
+		}
+		return &PaymentRequest{ExpireTime: time.Now()}, nil
+	}
 
 	if method == "balance" {
 		return s.createBalancePayment(ctx, ord)
@@ -133,6 +146,7 @@ func (s *Service) CreatePayment(ctx context.Context, orderNo string, method stri
 		Subject:     fmt.Sprintf("Order %s", ord.OrderNo),
 		Description: fmt.Sprintf("Payment for order %s", ord.OrderNo),
 		ClientIP:    clientIP,
+		ExpiresAt:   ord.ExpiredAt,
 	}
 
 	return s.CreateGatewayPayment(method, paymentOrder)
@@ -258,7 +272,7 @@ func (s *Service) HandleCallback(ctx context.Context, method string, data []byte
 			return nil
 		}
 
-		if err := s.orderService.Pay(ctx, orderNo, paymentNo, method, false); err != nil {
+		if err := s.orderService.PayFromGateway(ctx, orderNo, paymentNo, method, result.PaidAt); err != nil {
 			s.logger.Error("Failed to mark order as paid",
 				logger.Err(err),
 				logger.F("orderNo", orderNo))
@@ -303,7 +317,11 @@ func (s *Service) HandleCallback(ctx context.Context, method string, data []byte
 		return nil
 	}
 
-	if err := s.rechargeHandler.MarkRechargePaid(ctx, orderNo, paymentNo, result.PaidAt); err != nil {
+	paidAt := result.PaidAt
+	if paidAt.IsZero() {
+		paidAt = time.Now()
+	}
+	if err := s.rechargeHandler.MarkRechargePaid(ctx, orderNo, paymentNo, paidAt); err != nil {
 		s.logger.Error("Failed to mark recharge order as paid",
 			logger.Err(err),
 			logger.F("orderNo", orderNo))

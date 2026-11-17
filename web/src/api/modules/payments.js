@@ -67,7 +67,7 @@ export const paymentsApi = {
     while (Date.now() - startTime < timeout && retryCount < maxRetries) {
       try {
         const result = await paymentsApi.getStatus(orderNo)
-        if (result.status === 'paid' || result.status === 'failed' || result.status === 'cancelled') {
+        if (['paid', 'completed', 'failed', 'cancelled', 'refunded'].includes(result.status)) {
           return result
         }
         retryCount++

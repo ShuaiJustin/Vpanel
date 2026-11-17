@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -15,11 +17,12 @@ var (
 	ErrCommercialState    = errors.New("commercial state changed or operation is not allowed")
 	ErrCommercialExpired  = errors.New("order has expired")
 	ErrCurrentPlanUnknown = errors.New("current plan cannot be determined from a paid order; contact administrator")
+	ErrPlanPeriodMismatch = errors.New("plan changes require the same billing period; purchase the new plan to change periods")
 )
 
 // These narrow capabilities keep financial transactions inside the database.
 type AtomicOrderRepository interface {
-	PayAndApplyPlan(context.Context, string, string, string, bool, bool) (*Order, error)
+	PayAndApplyPlan(context.Context, string, string, string, bool, bool, time.Time) (*Order, error)
 	RefundToBalance(context.Context, int64, int64, string) (*Order, error)
 	MarkFulfillmentSynced(context.Context, int64) error
 	ListPendingFulfillments(context.Context, int) ([]*Order, error)
@@ -35,6 +38,27 @@ type AtomicPlanChangeRepository interface {
 	ApplyDueDowngrade(context.Context, int64) error
 }
 
+// SamePlanPeriod limits proration to comparable durations and billing types.
+// Different periods use a full new purchase rather than mixing monthly/yearly prices.
+func SamePlanPeriod(old, target *CommercialPlan) bool {
+	normalize := func(value string) string {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value == "" {
+			return PlanTypeMonthly
+		}
+		return value
+	}
+	return old.Duration > 0 && old.Duration == target.Duration && normalize(old.PlanType) == normalize(target.PlanType)
+}
+
+func monthlyTrafficResetAt(plan *CommercialPlan, at time.Time) *time.Time {
+	if !PlanUsesMonthlyTraffic(plan) {
+		return nil
+	}
+	anchor := MonthlyTrafficAnchor(at)
+	return &anchor
+}
+
 func PlanProration(oldPrice, newPrice int64, remainingDays, totalDays int) (int64, error) {
 	if oldPrice < 0 || newPrice < 0 || remainingDays < 0 || totalDays <= 0 {
 		return 0, gorm.ErrInvalidData
@@ -48,7 +72,7 @@ func PlanProration(oldPrice, newPrice int64, remainingDays, totalDays int) (int6
 	return value.Int64(), nil
 }
 
-func (r *orderRepository) PayAndApplyPlan(ctx context.Context, orderNo, paymentNo, method string, useBalance, applyPlan bool) (*Order, error) {
+func (r *orderRepository) PayAndApplyPlan(ctx context.Context, orderNo, paymentNo, method string, useBalance, applyPlan bool, verifiedPaidAt time.Time) (*Order, error) {
 	var ord Order
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("order_no = ?", orderNo).First(&ord).Error; err != nil {
@@ -64,11 +88,19 @@ func (r *orderRepository) PayAndApplyPlan(ctx context.Context, orderNo, paymentN
 			return ErrCommercialState
 		}
 		now := time.Now()
-		if now.After(ord.ExpiredAt) {
+		paidAt := now
+		if !verifiedPaidAt.IsZero() {
+			// Payment gateways report timestamps with one-second precision.
+			if verifiedPaidAt.Before(ord.CreatedAt.Truncate(time.Second)) || verifiedPaidAt.After(now.Add(time.Minute)) {
+				return gorm.ErrInvalidData
+			}
+			paidAt = verifiedPaidAt
+		}
+		if !paidAt.Before(ord.ExpiredAt) {
 			return ErrCommercialExpired
 		}
 		res := tx.Model(&Order{}).Where("id = ? AND status = ?", ord.ID, OrderStatusPending).Updates(map[string]any{
-			"status": OrderStatusPaid, "payment_no": paymentNo, "payment_method": method, "paid_at": now,
+			"status": OrderStatusPaid, "payment_no": paymentNo, "payment_method": method, "paid_at": paidAt,
 		})
 		if res.Error != nil {
 			return res.Error
@@ -76,15 +108,27 @@ func (r *orderRepository) PayAndApplyPlan(ctx context.Context, orderNo, paymentN
 		if res.RowsAffected != 1 {
 			return ErrCommercialState
 		}
-		if useBalance {
+		if ord.PayAmount < 0 {
+			return gorm.ErrInvalidData
+		}
+		if useBalance && ord.PayAmount > 0 {
 			if _, err := (&balanceRepository{db: tx}).DebitAtomic(ctx, ord.UserID, ord.PayAmount, &BalanceTransaction{Type: BalanceTxTypePurchase, OrderID: &ord.ID, Description: "Balance payment for order " + ord.OrderNo, Operator: "system"}); err != nil {
 				return err
 			}
 		}
 		if applyPlan {
-			var plan CommercialPlan
-			if err := tx.First(&plan, ord.PlanID).Error; err != nil {
+			plan, err := ord.PurchasedPlan()
+			if err != nil {
 				return err
+			}
+			if plan == nil {
+				plan = &CommercialPlan{}
+				if err := tx.First(plan, ord.PlanID).Error; err != nil {
+					return err
+				}
+			}
+			if plan.Duration <= 0 || plan.TrafficLimit < 0 {
+				return gorm.ErrInvalidData
 			}
 			var user User
 			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, ord.UserID).Error; err != nil {
@@ -92,12 +136,31 @@ func (r *orderRepository) PayAndApplyPlan(ctx context.Context, orderNo, paymentN
 			}
 			base := now
 			if user.ExpiresAt != nil && user.ExpiresAt.After(base) {
-				base = *user.ExpiresAt
+				// Only renewal of the same paid plan carries remaining days.
+				// A different plan is a full new purchase starting now.
+				currentID := user.CurrentPlanID
+				if currentID == 0 {
+					var previous Order
+					// Exclude this just-paid order when resolving legacy ownership.
+					err := tx.Where("user_id = ? AND id <> ? AND status IN ?", user.ID, ord.ID, []string{OrderStatusPaid, OrderStatusCompleted}).Order("paid_at DESC, id DESC").First(&previous).Error
+					if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+						return err
+					}
+					currentID = previous.PlanID
+				}
+				if currentID == plan.ID {
+					base = *user.ExpiresAt
+				}
 			}
 			expires := base.AddDate(0, 0, plan.Duration)
+			trafficUsed := int64(0)
+			if plan.ResetCycle == ResetCycleNever {
+				trafficUsed = user.TrafficUsed
+			}
+			trafficResetAt := monthlyTrafficResetAt(plan, paidAt)
 			if err := tx.Model(&User{}).Where("id = ?", user.ID).Updates(map[string]any{
-				"enabled": true, "traffic_used": 0, "traffic_limit": plan.TrafficLimit, "expires_at": expires,
-				"current_plan_id": plan.ID, "current_plan_price": ord.OriginalAmount, "current_plan_duration": plan.Duration,
+				"enabled": true, "traffic_used": trafficUsed, "traffic_limit": plan.TrafficLimit, "traffic_reset_at": trafficResetAt, "expires_at": expires,
+				"current_plan_id": plan.ID, "current_plan_price": ord.OriginalAmount, "current_plan_duration": plan.Duration, "current_plan_type": plan.PlanType,
 			}).Error; err != nil {
 				return err
 			}
@@ -106,7 +169,7 @@ func (r *orderRepository) PayAndApplyPlan(ctx context.Context, orderNo, paymentN
 			}
 			ord.FulfilledAt, ord.FulfillmentPending = &now, true
 		}
-		ord.Status, ord.PaymentNo, ord.PaymentMethod, ord.PaidAt = OrderStatusPaid, paymentNo, method, &now
+		ord.Status, ord.PaymentNo, ord.PaymentMethod, ord.PaidAt = OrderStatusPaid, paymentNo, method, &paidAt
 		return nil
 	})
 	return &ord, err
@@ -209,6 +272,7 @@ func (r *giftCardRepository) RedeemAndCredit(ctx context.Context, id, userID int
 func currentPlan(tx *gorm.DB, user *User) (*CommercialPlan, error) {
 	var plan CommercialPlan
 	id, price, duration := user.CurrentPlanID, user.CurrentPlanPrice, user.CurrentPlanDuration
+	planType := user.CurrentPlanType
 	if id == 0 {
 		var ord Order
 		if err := tx.Where("user_id = ? AND status IN ?", user.ID, []string{OrderStatusPaid, OrderStatusCompleted}).Order("paid_at DESC, id DESC").First(&ord).Error; err != nil {
@@ -218,13 +282,25 @@ func currentPlan(tx *gorm.DB, user *User) (*CommercialPlan, error) {
 			return nil, err
 		}
 		id, price = ord.PlanID, ord.OriginalAmount
+		purchased, err := ord.PurchasedPlan()
+		if err != nil {
+			return nil, err
+		}
+		if purchased != nil {
+			duration, planType = purchased.Duration, purchased.PlanType
+		}
 	}
 	if err := tx.First(&plan, id).Error; err != nil {
 		return nil, err
 	}
 	plan.Price = price
+	// Catalog edits affect future purchases, not an already granted quota.
+	plan.TrafficLimit = user.TrafficLimit
 	if duration > 0 {
 		plan.Duration = duration
+	}
+	if planType != "" {
+		plan.PlanType = planType
 	}
 	return &plan, nil
 }
@@ -264,17 +340,28 @@ func (r *planChangeRepository) UpgradeAndDebit(ctx context.Context, userID, expe
 		if !plan.IsActive || plan.ID == old.ID || plan.Price <= old.Price || old.Duration <= 0 {
 			return ErrCommercialState
 		}
-		days := int(time.Until(*user.ExpiresAt).Hours() / 24)
+		if !SamePlanPeriod(old, &plan) {
+			return ErrPlanPeriodMismatch
+		}
+		days := int(math.Ceil(time.Until(*user.ExpiresAt).Hours() / 24))
 		amount, err := PlanProration(old.Price, plan.Price, days, old.Duration)
 		if err != nil {
 			return err
 		}
-		if amount > 0 {
-			if _, err := (&balanceRepository{db: tx}).DebitAtomic(ctx, userID, amount, &BalanceTransaction{Type: BalanceTxTypePurchase, Description: fmt.Sprintf("Plan upgrade %d -> %d", old.ID, plan.ID), Operator: "system"}); err != nil {
-				return err
-			}
+		if amount < 1 {
+			amount = 1
 		}
-		if err := tx.Model(&User{}).Where("id = ?", userID).Updates(map[string]any{"traffic_limit": plan.TrafficLimit, "current_plan_id": plan.ID, "current_plan_price": plan.Price, "current_plan_duration": plan.Duration}).Error; err != nil {
+		if _, err := (&balanceRepository{db: tx}).DebitAtomic(ctx, userID, amount, &BalanceTransaction{Type: BalanceTxTypePurchase, Description: fmt.Sprintf("Plan upgrade %d -> %d", old.ID, plan.ID), Operator: "system"}); err != nil {
+			return err
+		}
+		// An upgrade keeps the current cycle and usage; only purchases/renewals reset it.
+		updates := map[string]any{"traffic_limit": plan.TrafficLimit, "current_plan_id": plan.ID, "current_plan_price": plan.Price, "current_plan_duration": plan.Duration, "current_plan_type": plan.PlanType}
+		if resetAt := monthlyTrafficResetAt(&plan, time.Now()); resetAt != nil {
+			updates["traffic_reset_at"] = resetAt
+		} else {
+			updates["traffic_reset_at"] = nil
+		}
+		if err := tx.Model(&User{}).Where("id = ?", userID).Updates(updates).Error; err != nil {
 			return err
 		}
 		return tx.Where("user_id = ?", userID).Delete(&PendingDowngrade{}).Error
@@ -313,6 +400,16 @@ func (r *planChangeRepository) ApplyDueDowngrade(ctx context.Context, id int64) 
 		if !plan.IsActive {
 			return ErrCommercialState
 		}
-		return tx.Model(&User{}).Where("id = ?", user.ID).Updates(map[string]any{"traffic_limit": plan.TrafficLimit, "current_plan_id": plan.ID, "current_plan_price": plan.Price, "current_plan_duration": plan.Duration}).Error
+		trafficUsed := int64(0)
+		if plan.ResetCycle == ResetCycleNever {
+			trafficUsed = user.TrafficUsed
+		}
+		updates := map[string]any{"traffic_used": trafficUsed, "traffic_limit": plan.TrafficLimit, "current_plan_id": plan.ID, "current_plan_price": plan.Price, "current_plan_duration": plan.Duration, "current_plan_type": plan.PlanType}
+		if resetAt := monthlyTrafficResetAt(&plan, time.Now()); resetAt != nil {
+			updates["traffic_reset_at"] = resetAt
+		} else {
+			updates["traffic_reset_at"] = nil
+		}
+		return tx.Model(&User{}).Where("id = ?", user.ID).Updates(updates).Error
 	})
 }

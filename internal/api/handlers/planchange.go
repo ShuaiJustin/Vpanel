@@ -260,6 +260,8 @@ func (h *PlanChangeHandler) AdminListPendingDowngrades(c *gin.Context) {
 // handleError handles errors and returns appropriate HTTP responses.
 func (h *PlanChangeHandler) handleError(c *gin.Context, err error) {
 	switch err {
+	case planchange.ErrPlanPeriodMismatch:
+		c.JSON(http.StatusBadRequest, gin.H{"code": "PLAN_PERIOD_MISMATCH", "message": "升降级仅支持相同周期和天数；更换周期请前往购买套餐"})
 	case planchange.ErrCurrentPlanUnknown:
 		c.JSON(http.StatusConflict, gin.H{"code": "CURRENT_PLAN_UNKNOWN", "message": "无法从已支付订单确认当前套餐，请联系管理员核对套餐归属"})
 	case planchange.ErrPlanNotFound:

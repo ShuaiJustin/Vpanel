@@ -3,6 +3,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ type Order struct {
 	OrderNo            string `gorm:"uniqueIndex;size:64;not null"`
 	UserID             int64  `gorm:"index;not null"`
 	PlanID             int64  `gorm:"index;not null"`
+	PlanSnapshot       string `gorm:"type:text"`
 	CouponID           *int64 `gorm:"index"`
 	OriginalAmount     int64  `gorm:"not null"`
 	DiscountAmount     int64  `gorm:"default:0"`
@@ -41,6 +43,22 @@ type Order struct {
 // TableName returns the table name for Order.
 func (Order) TableName() string {
 	return "orders"
+}
+
+// PurchasedPlan returns immutable terms for new orders. Legacy orders have no
+// snapshot until their plan is edited, and retain the existing catalog fallback.
+func (o *Order) PurchasedPlan() (*CommercialPlan, error) {
+	if o.PlanSnapshot == "" {
+		return nil, nil
+	}
+	var plan CommercialPlan
+	if err := json.Unmarshal([]byte(o.PlanSnapshot), &plan); err != nil {
+		return nil, err
+	}
+	if plan.ID != o.PlanID || plan.Duration <= 0 || plan.TrafficLimit < 0 || plan.Price < 0 {
+		return nil, gorm.ErrInvalidData
+	}
+	return &plan, nil
 }
 
 // Order status constants
@@ -160,7 +178,13 @@ func (r *orderRepository) List(ctx context.Context, filter OrderFilter, limit, o
 			query = query.Where("(order_no LIKE ? OR payment_no LIKE ?)", searchLike, searchLike)
 		}
 	}
-	if filter.Status != "" {
+	switch filter.Status {
+	case OrderStatusPending:
+		query = query.Where("status = ? AND expired_at > ?", OrderStatusPending, time.Now())
+	case "expired":
+		query = query.Where("status = ? AND expired_at <= ?", OrderStatusPending, time.Now())
+	case "":
+	default:
 		query = query.Where("status = ?", filter.Status)
 	}
 	if filter.PaymentMethod != "" {
@@ -216,10 +240,14 @@ func (r *orderRepository) UpdateStatus(ctx context.Context, id int64, status str
 	if !ok {
 		return ErrCommercialState
 	}
-	result := r.db.WithContext(ctx).
+	query := r.db.WithContext(ctx).
 		Model(&Order{}).
-		Where("id = ? AND status IN ?", id, from).
-		Update("status", status)
+		Where("id = ? AND status IN ?", id, from)
+	if status == OrderStatusCancelled {
+		// Keep expired orders available to reconcile an on-time gateway payment.
+		query = query.Where("expired_at > ?", time.Now())
+	}
+	result := query.Update("status", status)
 	if result.Error != nil {
 		return result.Error
 	}

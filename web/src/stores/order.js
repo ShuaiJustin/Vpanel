@@ -14,7 +14,7 @@ export const useOrderStore = defineStore('order', () => {
   const pagination = ref({ page: 1, pageSize: 10, total: 0 })
 
   // 计算属性
-  const pendingOrders = computed(() => orders.value.filter(o => o.status === 'pending'))
+  const pendingOrders = computed(() => orders.value.filter(o => o.status === 'pending' && !o.payment_expired))
   const paidOrders = computed(() => orders.value.filter(o => o.status === 'paid'))
   const hasOrders = computed(() => orders.value.length > 0)
   const isPaying = computed(() => paymentLoading.value)
@@ -22,13 +22,14 @@ export const useOrderStore = defineStore('order', () => {
   // 订单状态映射
   const statusMap = {
     pending: { label: '待支付', type: 'warning' },
+    expired: { label: '已过期', type: 'info' },
     paid: { label: '已支付', type: 'success' },
     completed: { label: '已完成', type: 'success' },
     cancelled: { label: '已取消', type: 'info' },
     refunded: { label: '已退款', type: 'danger' }
   }
 
-  const getStatusInfo = (status) => statusMap[status] || { label: status, type: 'info' }
+  const getStatusInfo = (status, paymentExpired = false) => statusMap[status === 'pending' && paymentExpired ? 'expired' : status] || { label: status, type: 'info' }
 
   // 格式化价格（分转元）
   const formatPrice = (price) => (price / 100).toFixed(2)

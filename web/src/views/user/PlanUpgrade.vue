@@ -51,8 +51,8 @@
             {{ currentPlan.name }}
           </div>
           <div class="plan-details">
-            <span>价格: ¥{{ formatPrice(currentPlan.price) }} / {{ currentPlan.duration }}天</span>
-            <span>流量: {{ formatTraffic(currentPlan.traffic_limit) }}</span>
+            <span>价格: ¥{{ formatPrice(currentPlan.price) }} / {{ formatPlanType(currentPlan.plan_type) }} · {{ currentPlan.duration }}天</span>
+            <span>{{ isMonthlyPlan(currentPlan) ? '每月流量' : '流量' }}: {{ formatTraffic(currentPlan.traffic_limit) }}</span>
             <span v-if="expiresAt">到期时间: {{ formatDate(expiresAt) }}</span>
             <span v-if="remainingDays > 0">剩余: {{ remainingDays }} 天</span>
           </div>
@@ -117,6 +117,9 @@
         <h2 class="section-title">
           选择新套餐
         </h2>
+        <p class="empty-state-desc">
+          同周期升级保留已用流量，剩余不足一天按一天计费，差价最低 0.01 元。更换周期请购买新套餐，付款后重新计时；预约降级后仍需付款续费。
+        </p>
         <div class="plans-grid">
           <div
             v-for="plan in availablePlans"
@@ -124,8 +127,8 @@
             class="plan-card"
             :class="{
               'plan-card--selected': selectedPlan?.id === plan.id,
-              'plan-card--upgrade': plan.price > (currentPlan?.price || 0),
-              'plan-card--downgrade': plan.price < (currentPlan?.price || 0),
+              'plan-card--upgrade': canProratePlan(plan) && plan.price > (currentPlan?.price || 0),
+              'plan-card--downgrade': canProratePlan(plan) && plan.price < (currentPlan?.price || 0),
               'plan-card--current': plan.id === currentPlan?.id
             }"
             @click="selectPlan(plan)"
@@ -136,7 +139,14 @@
               class="plan-badge"
             >
               <el-tag
-                v-if="plan.price > (currentPlan?.price || 0)"
+                v-if="!canProratePlan(plan)"
+                type="info"
+                size="small"
+              >
+                更换周期，重新购买
+              </el-tag>
+              <el-tag
+                v-else-if="plan.price > (currentPlan?.price || 0)"
                 type="success"
                 size="small"
               >
@@ -171,13 +181,13 @@
             <div class="plan-price">
               <span class="price-currency">¥</span>
               <span class="price-amount">{{ formatPrice(plan.price) }}</span>
-              <span class="price-period">/ {{ plan.duration }}天</span>
+              <span class="price-period">/ {{ formatPlanType(plan.plan_type) }} · {{ plan.duration }}天</span>
             </div>
 
             <ul class="plan-features">
               <li>
                 <el-icon><Check /></el-icon>
-                流量 {{ formatTraffic(plan.traffic_limit) }}
+                {{ isMonthlyPlan(plan) ? '每月流量' : '流量' }} {{ formatTraffic(plan.traffic_limit) }}
               </li>
             </ul>
           </div>
@@ -299,7 +309,17 @@ const formatPrice = (price) => {
   return (price / 100).toFixed(2)
 }
 
+const formatPlanType = (value) => ({
+  monthly: '月度',
+  quarterly: '季度',
+  yearly: '年度',
+  traffic: '按流量',
+  custom: '自定义'
+}[value] || '周期')
+
 const formatTraffic = (bytes) => formatTrafficLimit(bytes, 0)
+
+const isMonthlyPlan = (plan) => ['monthly', 'quarterly', 'yearly'].includes(plan?.plan_type) || plan?.reset_cycle === 'monthly'
 
 const formatDate = (dateStr) => {
   if (!dateStr) return ''
@@ -327,6 +347,9 @@ const ensureCurrentPlan = () => {
   return false
 }
 
+const canProratePlan = (plan) => Number(plan.duration) === Number(currentPlan.value?.duration) &&
+  (plan.plan_type || 'monthly') === (currentPlan.value?.plan_type || 'monthly')
+
 const selectPlan = async (plan) => {
   if (!ensureCurrentPlan()) {
     return
@@ -334,6 +357,11 @@ const selectPlan = async (plan) => {
 
   if (plan.id === currentPlan.value?.id) {
     ElMessage.info('这是您当前的套餐')
+    return
+  }
+
+  if (!canProratePlan(plan)) {
+    router.push({ name: 'user-payment', query: { plan_id: plan.id } })
     return
   }
 
@@ -349,8 +377,10 @@ const selectPlan = async (plan) => {
       changeResult.value = response?.data || response
     }
   } catch (error) {
-    ElMessage.error(extractErrorMessage(error) || '计算价格失败')
-    selectedPlan.value = null
+    if (selectedPlan.value?.id === plan.id) {
+      ElMessage.error(extractErrorMessage(error) || '计算价格失败')
+      selectedPlan.value = null
+    }
   }
 }
 
@@ -395,7 +425,7 @@ const confirmDowngrade = async () => {
 
   try {
     await ElMessageBox.confirm(
-      `确定要降级到 ${selectedPlan.value.name} 吗？降级将在当前套餐到期后生效`,
+      `确定要降级到 ${selectedPlan.value.name} 吗？降级将在当前套餐到期后生效，仍需付款续费才能继续使用`,
       '确认降级',
       { type: 'warning' }
     )
@@ -406,7 +436,7 @@ const confirmDowngrade = async () => {
       new_plan_id: selectedPlan.value.id
     })
 
-    ElMessage.success('降级已预约，将在当前套餐到期后生效')
+    ElMessage.success('降级已预约，到期后仍需付款续费')
     await fetchPendingDowngrade()
     cancelSelection()
   } catch (error) {

@@ -22,7 +22,7 @@ var (
 
 const (
 	defaultPlanType   = "monthly"
-	defaultResetCycle = "monthly"
+	defaultResetCycle = "on_purchase"
 )
 
 var validPlanTypes = map[string]struct{}{
@@ -30,6 +30,7 @@ var validPlanTypes = map[string]struct{}{
 	"quarterly": {},
 	"yearly":    {},
 	"traffic":   {},
+	"custom":    {},
 }
 
 var validResetCycles = map[string]struct{}{
@@ -133,9 +134,13 @@ func normalizePlanType(value string) string {
 	return value
 }
 
-func normalizeResetCycle(value string) string {
+func normalizeResetCycle(value, planType string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
+	planType = normalizePlanType(planType)
 	if value == "" {
+		if planType == repository.PlanTypeMonthly || planType == repository.PlanTypeQuarterly || planType == repository.PlanTypeYearly {
+			return repository.ResetCycleMonthly
+		}
 		return defaultResetCycle
 	}
 	return value
@@ -183,7 +188,13 @@ func (s *Service) Create(ctx context.Context, req *CreatePlanRequest) (*Plan, er
 
 	name := strings.TrimSpace(req.Name)
 	planType := normalizePlanType(req.PlanType)
-	resetCycle := normalizeResetCycle(req.ResetCycle)
+	resetCycle := normalizeResetCycle(req.ResetCycle, planType)
+	if err := validateResetCycle(resetCycle); err != nil {
+		return nil, err
+	}
+	if planType == repository.PlanTypeMonthly || planType == repository.PlanTypeQuarterly || planType == repository.PlanTypeYearly {
+		resetCycle = repository.ResetCycleMonthly
+	}
 
 	if err := validatePlanCore(name, req.Duration, req.Price, req.TrafficLimit, req.IPLimit); err != nil {
 		return nil, err
@@ -191,10 +202,6 @@ func (s *Service) Create(ctx context.Context, req *CreatePlanRequest) (*Plan, er
 	if err := validatePlanType(planType); err != nil {
 		return nil, err
 	}
-	if err := validateResetCycle(resetCycle); err != nil {
-		return nil, err
-	}
-
 	paymentMethodsJSON, _ := json.Marshal(req.PaymentMethods)
 	featuresJSON, _ := json.Marshal(req.Features)
 
@@ -262,7 +269,7 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdatePlanRequest) 
 		repoPlan.PlanType = planType
 	}
 	if req.ResetCycle != nil {
-		resetCycle := normalizeResetCycle(*req.ResetCycle)
+		resetCycle := normalizeResetCycle(*req.ResetCycle, repoPlan.PlanType)
 		if err := validateResetCycle(resetCycle); err != nil {
 			return nil, err
 		}
@@ -290,6 +297,9 @@ func (s *Service) Update(ctx context.Context, id int64, req *UpdatePlanRequest) 
 	if req.Features != nil {
 		featuresJSON, _ := json.Marshal(*req.Features)
 		repoPlan.Features = string(featuresJSON)
+	}
+	if repoPlan.PlanType == repository.PlanTypeMonthly || repoPlan.PlanType == repository.PlanTypeQuarterly || repoPlan.PlanType == repository.PlanTypeYearly {
+		repoPlan.ResetCycle = repository.ResetCycleMonthly
 	}
 
 	if err := validatePlanCore(repoPlan.Name, repoPlan.Duration, repoPlan.Price, repoPlan.TrafficLimit, repoPlan.IPLimit); err != nil {

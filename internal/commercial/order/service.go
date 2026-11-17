@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -200,12 +201,17 @@ func (s *Service) Create(ctx context.Context, req *CreateOrderRequest) (*Order, 
 	discountAmount := int64(0)
 	balanceUsed := int64(0)
 	payAmount := originalAmount - discountAmount - balanceUsed
+	snapshot, err := json.Marshal(plan)
+	if err != nil {
+		return nil, err
+	}
 
 	// Create order
 	repoOrder := &repository.Order{
 		OrderNo:        orderNo,
 		UserID:         req.UserID,
 		PlanID:         req.PlanID,
+		PlanSnapshot:   string(snapshot),
 		OriginalAmount: originalAmount,
 		DiscountAmount: discountAmount,
 		BalanceUsed:    balanceUsed,
@@ -312,6 +318,9 @@ func (s *Service) Cancel(ctx context.Context, id int64) error {
 	}
 
 	if err := s.orderRepo.UpdateStatus(ctx, id, StatusCancelled); err != nil {
+		if errors.Is(err, repository.ErrCommercialState) {
+			return ErrOrderCannotCancel
+		}
 		s.logger.Error("Failed to cancel order", logger.Err(err), logger.F("id", id))
 		return err
 	}
@@ -359,11 +368,21 @@ func (s *Service) MarkPaid(ctx context.Context, orderNo string, paymentNo string
 // Pay commits payment, optional wallet debit, and plan activation atomically.
 // External runtime work is persisted as pending and can be retried safely.
 func (s *Service) Pay(ctx context.Context, orderNo, paymentNo, method string, useBalance bool) error {
+	return s.pay(ctx, orderNo, paymentNo, method, useBalance, time.Time{})
+}
+
+// PayFromGateway uses the timestamp from a verified gateway notification to
+// check the payment deadline. Entitlement starts when it is applied.
+func (s *Service) PayFromGateway(ctx context.Context, orderNo, paymentNo, method string, paidAt time.Time) error {
+	return s.pay(ctx, orderNo, paymentNo, method, false, paidAt)
+}
+
+func (s *Service) pay(ctx context.Context, orderNo, paymentNo, method string, useBalance bool, verifiedPaidAt time.Time) error {
 	repo, ok := s.orderRepo.(repository.AtomicOrderRepository)
 	if !ok {
 		return errors.New("atomic order repository is required")
 	}
-	ord, err := repo.PayAndApplyPlan(ctx, orderNo, paymentNo, method, useBalance, s.userRepo != nil)
+	ord, err := repo.PayAndApplyPlan(ctx, orderNo, paymentNo, method, useBalance, s.userRepo != nil, verifiedPaidAt)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrOrderNotFound
 	}
@@ -431,39 +450,6 @@ func (s *Service) Complete(ctx context.Context, id int64) error {
 	}
 
 	return nil
-}
-
-// ExpirePendingOrders cancels all expired pending orders and refunds any
-// balance they had reserved. Iterates by order so each refund is attributable,
-// falling back to the bulk-cancel path when no balance refunds are needed.
-func (s *Service) ExpirePendingOrders(ctx context.Context) (int64, error) {
-	expired, err := s.orderRepo.GetExpiredPending(ctx)
-	if err != nil {
-		s.logger.Error("Failed to load expired pending orders", logger.Err(err))
-		return 0, err
-	}
-	if len(expired) == 0 {
-		return 0, nil
-	}
-
-	var count int64
-	for _, ord := range expired {
-		if updateErr := s.orderRepo.UpdateStatus(ctx, ord.ID, StatusCancelled); updateErr != nil {
-			s.logger.Error("Failed to cancel expired order",
-				logger.Err(updateErr),
-				logger.F("order_id", ord.ID),
-				logger.F("order_no", ord.OrderNo))
-			continue
-		}
-		count++
-		s.refundCancelledBalance(ctx, ord, "expired")
-	}
-
-	if count > 0 {
-		s.logger.Info("Expired pending orders", logger.F("count", count))
-	}
-
-	return count, nil
 }
 
 // UpdateStatus updates the status of an order.
@@ -568,6 +554,9 @@ func (s *Service) toOrder(ro *repository.Order) *Order {
 }
 
 func planName(ro *repository.Order) string {
+	if plan, err := ro.PurchasedPlan(); err == nil && plan != nil {
+		return plan.Name
+	}
 	if ro.Plan == nil {
 		return ""
 	}

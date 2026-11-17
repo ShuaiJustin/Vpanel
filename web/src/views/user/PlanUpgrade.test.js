@@ -84,6 +84,36 @@ describe('PlanUpgrade server-owned plan', () => {
     wrapper.unmount()
   })
 
+  it('routes different billing periods to a new purchase instead of quoting a wrong difference', async () => {
+    mocks.plans.mockResolvedValue({ plans: [{ ...newPlan, duration: 365, plan_type: 'yearly' }] })
+    const wrapper = mountPage()
+    await flushPromises()
+    expect(wrapper.find('.plan-card').text()).toContain('重新购买')
+    await wrapper.find('.plan-card').trigger('click')
+    await flushPromises()
+    expect(mocks.calculate).not.toHaveBeenCalled()
+    expect(mocks.upgrade).not.toHaveBeenCalled()
+    expect(mocks.push).toHaveBeenCalledWith({ name: 'user-payment', query: { plan_id: 8 } })
+    wrapper.unmount()
+  })
+
+  it('ignores a late failure for a previously selected plan', async () => {
+    const alternative = { ...newPlan, id: 9, name: '另一套餐' }
+    mocks.plans.mockResolvedValue({ plans: [newPlan, alternative] })
+    let rejectFirst
+    mocks.calculate.mockImplementationOnce(() => new Promise((resolve, reject) => { rejectFirst = reject }))
+    const wrapper = mountPage()
+    await flushPromises()
+    await wrapper.findAll('.plan-card')[0].trigger('click')
+    await wrapper.findAll('.plan-card')[1].trigger('click')
+    await flushPromises()
+    rejectFirst(new Error('late network failure'))
+    await flushPromises()
+    expect(wrapper.find('.result-card').exists()).toBe(true)
+    expect(wrapper.findAll('.plan-card')[1].classes()).toContain('plan-card--selected')
+    wrapper.unmount()
+  })
+
   it('does not disguise an ownership lookup failure as a missing subscription', async () => {
     mocks.current.mockRejectedValue({ code: 'CURRENT_PLAN_UNKNOWN', message: '请联系管理员核对套餐归属' })
     const wrapper = mountPage()

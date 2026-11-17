@@ -253,6 +253,10 @@ func (d *Database) AutoMigrate() error {
 		return err
 	}
 
+	if err := d.normalizeCommercialPlanData(context.Background()); err != nil {
+		return err
+	}
+
 	if err := d.reconcileLegacyRefundedOrders(context.Background()); err != nil {
 		return err
 	}
@@ -269,6 +273,94 @@ func (d *Database) AutoMigrate() error {
 		return err
 	}
 
+	return nil
+}
+
+// normalizeCommercialPlanData repairs values written by older releases. The
+// running server uses GORM AutoMigrate rather than the unused SQL migrator, so
+// data fixes that affect existing rows must be idempotent startup operations.
+func (d *Database) normalizeCommercialPlanData(ctx context.Context) error {
+	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// The old seed data used the explicit plan-paid365 name for the annual
+		// plan while incorrectly storing its type as monthly. Keep this
+		// predicate narrow so a custom 365-day monthly plan is never silently
+		// reclassified on startup.
+		if err := tx.Model(&repository.CommercialPlan{}).
+			Where("LOWER(TRIM(name)) = ? AND duration BETWEEN ? AND ? AND LOWER(TRIM(COALESCE(plan_type, ''))) IN ? AND traffic_limit >= ?", "plan-paid365", 360, 366, []string{repository.PlanTypeMonthly, repository.PlanTypeYearly}, 10*1024*1024*1024*1024).
+			Updates(map[string]any{
+				"plan_type":     repository.PlanTypeYearly,
+				"reset_cycle":   repository.ResetCycleMonthly,
+				"traffic_limit": gorm.Expr("CASE WHEN traffic_limit > 0 THEN traffic_limit / 12 ELSE 0 END"),
+			}).Error; err != nil {
+			return fmt.Errorf("normalize long-term commercial plans: %w", err)
+		}
+
+		// Annual and quarterly plans grant a monthly quota. Older versions stored
+		// the multiplied period total, so divide it once when converting them.
+		if err := tx.Model(&repository.CommercialPlan{}).
+			Where("LOWER(TRIM(plan_type)) IN ? AND LOWER(TRIM(COALESCE(reset_cycle, ''))) <> ?", []string{repository.PlanTypeQuarterly, repository.PlanTypeYearly}, repository.ResetCycleMonthly).
+			Updates(map[string]any{
+				"reset_cycle":   repository.ResetCycleMonthly,
+				"traffic_limit": gorm.Expr("CASE WHEN traffic_limit > 0 AND LOWER(TRIM(plan_type)) = ? THEN traffic_limit / 12 WHEN traffic_limit > 0 THEN traffic_limit / 3 ELSE 0 END", repository.PlanTypeYearly),
+			}).Error; err != nil {
+			return fmt.Errorf("normalize commercial plan reset cycles: %w", err)
+		}
+
+		if err := tx.Model(&repository.CommercialPlan{}).
+			Where("LOWER(TRIM(plan_type)) IN ? AND LOWER(TRIM(COALESCE(reset_cycle, ''))) <> ?", []string{repository.PlanTypeMonthly, repository.PlanTypeQuarterly, repository.PlanTypeYearly}, repository.ResetCycleMonthly).
+			Update("reset_cycle", repository.ResetCycleMonthly).Error; err != nil {
+			return fmt.Errorf("normalize monthly commercial plan reset cycles: %w", err)
+		}
+
+		if err := d.initializeMonthlyUserTraffic(ctx, tx, time.Now()); err != nil {
+			return fmt.Errorf("initialize monthly user traffic: %w", err)
+		}
+		return nil
+	})
+}
+
+func (d *Database) initializeMonthlyUserTraffic(ctx context.Context, tx *gorm.DB, now time.Time) error {
+	var users []repository.User
+	if err := tx.WithContext(ctx).
+		Where("enabled = ? AND (expires_at IS NULL OR expires_at > ?)", true, now).
+		Find(&users).Error; err != nil {
+		return err
+	}
+
+	anchor := repository.MonthlyTrafficAnchor(now)
+	for _, user := range users {
+		planID := user.CurrentPlanID
+		if planID <= 0 {
+			var order repository.Order
+			if err := tx.WithContext(ctx).
+				Where("user_id = ? AND status IN ?", user.ID, []string{repository.OrderStatusPaid, repository.OrderStatusCompleted}).
+				Order("paid_at DESC, id DESC").First(&order).Error; err != nil {
+				continue
+			}
+			planID = order.PlanID
+		}
+
+		var plan repository.CommercialPlan
+		if err := tx.WithContext(ctx).First(&plan, planID).Error; err != nil || !repository.PlanUsesMonthlyTraffic(&plan) {
+			continue
+		}
+
+		updates := map[string]any{"traffic_limit": plan.TrafficLimit}
+		if user.TrafficResetAt == nil {
+			var used int64
+			if err := tx.WithContext(ctx).Model(&repository.Traffic{}).
+				Select("COALESCE(SUM(upload + download), 0)").
+				Where("user_id = ? AND recorded_at >= ?", user.ID, anchor).
+				Scan(&used).Error; err != nil {
+				return err
+			}
+			updates["traffic_used"] = used
+			updates["traffic_reset_at"] = anchor
+		}
+		if err := tx.WithContext(ctx).Model(&repository.User{}).Where("id = ?", user.ID).Updates(updates).Error; err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

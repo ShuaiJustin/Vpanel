@@ -5,14 +5,63 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
 	"v/internal/commercial/order"
 	"v/internal/database/repository"
 	"v/internal/logger"
 )
+
+func TestDelayedCallbackUsesVerifiedPaymentTime(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		offset   time.Duration
+		missing  bool
+		wantPaid bool
+	}{
+		{"paid before cutoff", -time.Minute, false, true},
+		{"paid after cutoff", time.Minute, false, false},
+		{"missing paid time", 0, true, false},
+		{"paid before order existed", -2 * time.Hour, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := serviceTestDB(t)
+			ord := seedCallbackTestOrder(t, db)
+			now := time.Now().Truncate(time.Second)
+			deadline := now.Add(-5 * time.Minute)
+			require.NoError(t, db.Model(&repository.Order{}).Where("id = ?", ord.ID).Updates(map[string]any{
+				"created_at": now.Add(-35 * time.Minute), "expired_at": deadline,
+			}).Error)
+			paidAt := deadline.Add(tc.offset)
+			if tc.missing {
+				paidAt = time.Time{}
+			}
+			service := newPaymentServiceForCallbackTest(t, db)
+			service.RegisterGateway(&callbackResultGateway{name: "mock", result: &PaymentResult{
+				Success: true, OrderNo: ord.OrderNo, PaymentNo: "PAY-delayed", Amount: ord.PayAmount, PaidAt: paidAt,
+			}})
+			err := service.HandleCallback(t.Context(), "mock", nil, "")
+			var stored repository.Order
+			require.NoError(t, db.First(&stored, ord.ID).Error)
+			if tc.wantPaid {
+				require.NoError(t, err)
+				require.Equal(t, order.StatusPaid, stored.Status)
+				require.True(t, stored.PaidAt.Equal(paidAt))
+				require.NoError(t, service.HandleCallback(t.Context(), "mock", nil, ""))
+				var user repository.User
+				require.NoError(t, db.First(&user, ord.UserID).Error)
+				require.WithinDuration(t, now.AddDate(0, 0, 30), *user.ExpiresAt, 2*time.Second)
+			} else {
+				require.Error(t, err)
+				require.Equal(t, order.StatusPending, stored.Status)
+			}
+		})
+	}
+}
 
 type callbackResultGateway struct {
 	name   string

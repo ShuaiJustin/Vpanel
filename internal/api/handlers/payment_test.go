@@ -7,11 +7,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
 	"github.com/leanovate/gopter/prop"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
@@ -42,11 +44,13 @@ type MockPaymentGateway struct {
 	name           string
 	shouldSucceed  bool
 	callbackCalled int
+	created        int
 }
 
 func (m *MockPaymentGateway) Name() string { return m.name }
 
 func (m *MockPaymentGateway) CreatePayment(o *payment.PaymentOrder) (*payment.PaymentRequest, error) {
+	m.created++
 	return &payment.PaymentRequest{
 		PaymentURL: "https://mock.payment.com/pay/" + o.OrderNo,
 		QRCodeData: "mock_qr_data",
@@ -469,4 +473,101 @@ func TestBalancePaymentInsufficientBalance(t *testing.T) {
 	if response["message"] != "余额不足，请先充值后再支付。" {
 		t.Errorf("Expected friendly insufficient balance message, got %v", response["message"])
 	}
+}
+
+func TestPaymentCreationRequiresOrderOwner(t *testing.T) {
+	db := setupPaymentTestDB(t)
+	require.NoError(t, db.AutoMigrate(&repository.BalanceTransaction{}))
+	_, paymentService, orderService := setupPaymentTestRouter(db)
+	plan := createOrderTestPlan(db, "Owner only", 1000, 30)
+	owner := createOrderTestUser(db, "wallet-owner")
+	require.NoError(t, db.Model(owner).Update("balance", 5000).Error)
+	ord, err := orderService.Create(context.Background(), &order.CreateOrderRequest{UserID: owner.ID, PlanID: plan.ID})
+	require.NoError(t, err)
+	handler := NewPaymentHandler(paymentService, logger.NewNopLogger())
+	for _, tc := range []struct {
+		name   string
+		userID int64
+		method string
+		want   int
+	}{
+		{"other wallet", owner.ID + 1, "balance", http.StatusNotFound},
+		{"other gateway", owner.ID + 1, "mock", http.StatusNotFound},
+		{"anonymous", 0, "balance", http.StatusUnauthorized},
+		{"owner", owner.ID, "mock", http.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			router := gin.New()
+			router.Use(func(c *gin.Context) {
+				if tc.userID > 0 {
+					c.Set("user_id", tc.userID)
+				}
+				c.Set("role", "user")
+			})
+			router.POST("/payments/create", handler.CreatePayment)
+			body, err := json.Marshal(map[string]string{"order_no": ord.OrderNo, "method": tc.method})
+			require.NoError(t, err)
+			req := httptest.NewRequest(http.MethodPost, "/payments/create", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			require.Equal(t, tc.want, w.Code, w.Body.String())
+		})
+	}
+	var stored repository.User
+	require.NoError(t, db.First(&stored, owner.ID).Error)
+	require.EqualValues(t, 5000, stored.Balance)
+	var storedOrder repository.Order
+	require.NoError(t, db.First(&storedOrder, ord.ID).Error)
+	require.Equal(t, order.StatusPending, storedOrder.Status)
+}
+
+func TestFreeOrderPaymentWithoutWalletOrGateway(t *testing.T) {
+	db := setupPaymentTestDB(t)
+	plan := createOrderTestPlan(db, "Free", 0, 30)
+	owner := createOrderTestUser(db, "free-owner")
+	log := logger.NewNopLogger()
+	orders := order.NewService(repository.NewOrderRepository(db), repository.NewPlanRepository(db), log, nil).WithUserRepository(repository.NewUserRepository(db))
+	ord, err := orders.Create(context.Background(), &order.CreateOrderRequest{UserID: owner.ID, PlanID: plan.ID})
+	require.NoError(t, err)
+	handler := NewPaymentHandler(payment.NewService(orders, log), log)
+	router := gin.New()
+	router.Use(func(c *gin.Context) { c.Set("user_id", owner.ID); c.Set("role", "user") })
+	router.POST("/payments/create", handler.CreatePayment)
+	body, err := json.Marshal(map[string]string{"order_no": ord.OrderNo, "method": "free"})
+	require.NoError(t, err)
+	req := httptest.NewRequest(http.MethodPost, "/payments/create", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	stored, err := orders.GetByID(context.Background(), ord.ID)
+	require.NoError(t, err)
+	require.Equal(t, order.StatusCompleted, stored.Status)
+	var user repository.User
+	require.NoError(t, db.First(&user, owner.ID).Error)
+	require.Zero(t, user.Balance)
+	require.Equal(t, plan.ID, user.CurrentPlanID)
+	require.WithinDuration(t, time.Now().AddDate(0, 0, 30), *user.ExpiresAt, 2*time.Second)
+}
+
+func TestExpiredOrderCannotCreateGatewayPayment(t *testing.T) {
+	db := setupPaymentTestDB(t)
+	router, payments, orders := setupPaymentTestRouter(db)
+	plan := createOrderTestPlan(db, "Expired", 1000, 30)
+	owner := createOrderTestUser(db, "expired-owner")
+	ord, err := orders.Create(context.Background(), &order.CreateOrderRequest{UserID: owner.ID, PlanID: plan.ID})
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&repository.Order{}).Where("id = ?", ord.ID).Update("expired_at", time.Now().Add(-time.Minute)).Error)
+	body, err := json.Marshal(map[string]string{"order_no": ord.OrderNo, "method": "mock"})
+	require.NoError(t, err)
+	req := httptest.NewRequest(http.MethodPost, "/payments/create", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), "ORDER_EXPIRED")
+	gateway, err := payments.GetGateway("mock")
+	require.NoError(t, err)
+	require.Zero(t, gateway.(*MockPaymentGateway).created)
 }

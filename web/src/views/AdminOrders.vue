@@ -27,7 +27,7 @@
               <strong class="overview-value is-danger">{{ refundableOrderCount }}</strong>
             </div>
             <div class="overview-card">
-              <span class="overview-label">当前页实付总额</span>
+              <span class="overview-label">当前页已付未退款金额</span>
               <strong class="overview-value is-primary">¥{{ currentPageRevenue }}</strong>
             </div>
           </div>
@@ -44,6 +44,7 @@
                   label="待支付"
                   value="pending"
                 />
+                <el-option label="已过期" value="expired" />
                 <el-option
                   label="已支付"
                   value="paid"
@@ -148,7 +149,7 @@
             <div class="entity-cell">
               <div class="entity-cell__header">
                 <span class="entity-cell__title">{{ row.order_no }}</span>
-                <span :class="['metric-pill', getStatusPillClass(row.status)]">{{ getStatusLabel(row.status) }}</span>
+                <span :class="['metric-pill', getStatusPillClass(row.status)]">{{ getStatusLabel(row.status, row.payment_expired) }}</span>
               </div>
               <div class="entity-cell__meta">
                 <span>用户 ID：{{ row.user_id }}</span>
@@ -292,7 +293,7 @@
             :type="getStatusType(currentOrder.status)"
             size="small"
           >
-            {{ getStatusLabel(currentOrder.status) }}
+            {{ getStatusLabel(currentOrder.status, currentOrder.payment_expired) }}
           </el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="原价">
@@ -340,17 +341,13 @@
       </div>
       <el-form label-position="top">
         <el-form-item label="退款金额">
-          <el-input-number
+          <el-input
             v-model="refundForm.amount"
-            :min="0"
-            :max="refundMaxAmount"
-            :precision="2"
-            :step="10"
-            controls-position="right"
-            style="width: 100%"
+            inputmode="decimal"
+            placeholder="请输入金额"
           />
           <div class="form-tip">
-            填 `0` 表示全额退款，最大可退 ¥{{ refundMaxAmount.toFixed(2) }}
+            填 0 表示全额退款，最大可退 ¥{{ refundMaxAmount.toFixed(2) }}。退款退至账户余额，不会自动调整套餐期限或流量。
           </div>
         </el-form-item>
         <el-form-item label="退款原因">
@@ -423,9 +420,11 @@ const refundMaxAmount = computed(() => {
 
   return (currentOrder.value.pay_amount + currentOrder.value.balance_used) / 100
 })
-const pendingOrderCount = computed(() => orders.value.filter((order) => order.status === 'pending').length)
+const pendingOrderCount = computed(() => orders.value.filter((order) => order.status === 'pending' && !order.payment_expired).length)
 const refundableOrderCount = computed(() => orders.value.filter((order) => canRefund(order)).length)
-const currentPageRevenue = computed(() => (orders.value.reduce((sum, order) => sum + Number(order.pay_amount || 0), 0) / 100).toFixed(2))
+const currentPageRevenue = computed(() => (orders.value
+  .filter(order => ['paid', 'completed'].includes(order.status))
+  .reduce((sum, order) => sum + Number(order.pay_amount || 0) + Number(order.balance_used || 0), 0) / 100).toFixed(2))
 
 const statusMap = {
   pending: { label: '待支付', type: 'warning' },
@@ -440,12 +439,13 @@ const methodLabels = {
   wechat: '微信支付',
   paypal: 'PayPal',
   crypto: '加密货币',
-  balance: '余额支付'
+  balance: '余额支付',
+  free: '免费开通'
 }
 
 const formatPrice = (price) => (Number(price || 0) / 100).toFixed(2)
 const getStatusType = (status) => statusMap[status]?.type || 'info'
-const getStatusLabel = (status) => statusMap[status]?.label || status || '-'
+const getStatusLabel = (status, expired = false) => status === 'pending' && expired ? '已过期' : statusMap[status]?.label || status || '-'
 const getMethodLabel = (method) => methodLabels[method] || method || '-'
 const getStatusPillClass = (status) => {
   const type = getStatusType(status)
@@ -454,9 +454,9 @@ const getStatusPillClass = (status) => {
   if (type === 'danger') return 'is-danger'
   return 'is-muted'
 }
-const canRefund = (order) => ['paid', 'completed'].includes(order.status)
+const canRefund = (order) => ['paid', 'completed'].includes(order.status) && order.pay_amount + order.balance_used > 0
 const getStatusAction = (order) => {
-  if (order.status === 'pending') {
+  if (order.status === 'pending' && !order.payment_expired) {
     return { label: '取消', status: 'cancelled' }
   }
 
@@ -578,19 +578,20 @@ const updateStatus = async (order, status) => {
 
 const openRefundDialog = (order) => {
   currentOrder.value = order
-  refundForm.amount = 0
+  refundForm.amount = ''
   refundForm.reason = ''
   refundVisible.value = true
 }
 
 const submitRefund = async () => {
-  if (!currentOrder.value) {
+  if (!currentOrder.value || submittingRefund.value) {
     return
   }
 
-  const amountInCents = toAmountInCents(refundForm.amount) || 0
-  if (amountInCents < 0) {
-    ElMessage.warning('退款金额不能小于 0')
+  const amount = String(refundForm.amount ?? '').trim()
+  const amountInCents = Math.round(Number(amount) * 100)
+  if (!/^\d+(?:\.\d{1,2})?$/.test(amount) || !Number.isSafeInteger(amountInCents)) {
+    ElMessage.warning('请输入非负金额，最多两位小数；填 0 表示全额退款')
     return
   }
 

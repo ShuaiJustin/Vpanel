@@ -75,6 +75,11 @@ func (g *WeChatGateway) CreatePayment(order *PaymentOrder) (*PaymentRequest, err
 		"notify_url":       g.config.NotifyURL,
 		"trade_type":       "NATIVE", // QR code payment
 	}
+	expiresAt := order.ExpiresAt
+	if expiresAt.IsZero() {
+		expiresAt = time.Now().Add(2 * time.Hour)
+	}
+	params["time_expire"] = expiresAt.In(gatewayChinaTime).Format("20060102150405")
 
 	// Sign request
 	sign := g.sign(params)
@@ -121,7 +126,7 @@ func (g *WeChatGateway) CreatePayment(order *PaymentOrder) (*PaymentRequest, err
 
 	return &PaymentRequest{
 		QRCodeData: codeURL,
-		ExpireTime: time.Now().Add(2 * time.Hour),
+		ExpireTime: expiresAt,
 		Extra: map[string]string{
 			"prepay_id": result["prepay_id"],
 		},
@@ -179,12 +184,7 @@ func (g *WeChatGateway) VerifyCallback(data []byte, signature string) (*PaymentR
 	}
 
 	// Parse paid time
-	paidAt := time.Now()
-	if timeEnd := result["time_end"]; timeEnd != "" {
-		if t, err := time.Parse("20060102150405", timeEnd); err == nil {
-			paidAt = t
-		}
-	}
+	paidAt, _ := time.ParseInLocation("20060102150405", result["time_end"], gatewayChinaTime)
 
 	return &PaymentResult{
 		Success:   true,

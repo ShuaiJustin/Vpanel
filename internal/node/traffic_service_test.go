@@ -33,6 +33,8 @@ func setupTrafficServiceTestDB(t *testing.T) *gorm.DB {
 		&repository.Traffic{},
 		&repository.NodeTraffic{},
 		&repository.Trial{},
+		&repository.CommercialPlan{},
+		&repository.Order{},
 	); err != nil {
 		t.Fatalf("failed to migrate test tables: %v", err)
 	}
@@ -824,6 +826,80 @@ func TestTrafficService_ProcessMonthlyTrafficResets_ClampsEndOfMonthAnchors(t *t
 	expectedResetAt := time.Date(2026, 2, 28, 10, 15, 0, 0, time.UTC)
 	if updated.TrafficResetAt == nil || !updated.TrafficResetAt.Equal(expectedResetAt) {
 		t.Fatalf("expected clamped traffic_reset_at %v, got %v", expectedResetAt, updated.TrafficResetAt)
+	}
+}
+
+func TestTrafficService_ProcessMonthlyTrafficResets_ResetsUserQuotaToCurrentMonth(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+	now := time.Date(2026, 3, 26, 12, 0, 0, 0, time.UTC)
+	oldAnchor := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	currentAnchor := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	expires := now.AddDate(0, 1, 0)
+	plan := &repository.CommercialPlan{
+		Name: "Annual monthly quota", Duration: 365, Price: 1000,
+		TrafficLimit: 1000, PlanType: repository.PlanTypeYearly,
+		ResetCycle: repository.ResetCycleMonthly, IsActive: true,
+	}
+	if err := db.Create(plan).Error; err != nil {
+		t.Fatalf("failed to seed plan: %v", err)
+	}
+	active := &repository.User{ID: 41, Username: "monthly-active", PasswordHash: "x", Enabled: true,
+		TrafficLimit: 1000, TrafficUsed: 900, CurrentPlanID: plan.ID, ExpiresAt: &expires, TrafficResetAt: &oldAnchor}
+	legacy := &repository.User{ID: 42, Username: "monthly-legacy", PasswordHash: "x", Enabled: true,
+		TrafficLimit: 1000, TrafficUsed: 800, ExpiresAt: &expires, TrafficResetAt: &oldAnchor}
+	notDue := &repository.User{ID: 43, Username: "monthly-not-due", PasswordHash: "x", Enabled: true,
+		TrafficLimit: 1000, TrafficUsed: 7, CurrentPlanID: plan.ID, ExpiresAt: &expires, TrafficResetAt: &currentAnchor}
+	expiredAt := now.Add(-time.Hour)
+	expired := &repository.User{ID: 44, Username: "monthly-expired", PasswordHash: "x", Enabled: true,
+		TrafficLimit: 1000, TrafficUsed: 99, CurrentPlanID: plan.ID, ExpiresAt: &expiredAt, TrafficResetAt: &oldAnchor}
+	for _, user := range []*repository.User{active, legacy, notDue, expired} {
+		if err := db.Create(user).Error; err != nil {
+			t.Fatalf("failed to seed user %d: %v", user.ID, err)
+		}
+	}
+	paidAt := now.Add(-24 * time.Hour)
+	if err := db.Create(&repository.Order{OrderNo: "ORD-legacy-monthly", UserID: legacy.ID, PlanID: plan.ID,
+		OriginalAmount: plan.Price, PayAmount: plan.Price, Status: repository.OrderStatusPaid,
+		PaidAt: &paidAt, CreatedAt: paidAt, ExpiredAt: now.Add(time.Hour)}).Error; err != nil {
+		t.Fatalf("failed to seed legacy order: %v", err)
+	}
+	for _, record := range []*repository.Traffic{
+		{UserID: active.ID, Upload: 20, Download: 10, RecordedAt: now},
+		{UserID: active.ID, Upload: 100, Download: 0, RecordedAt: oldAnchor.Add(24 * time.Hour)},
+		{UserID: legacy.ID, Upload: 5, Download: 7, RecordedAt: now},
+	} {
+		if err := db.Create(record).Error; err != nil {
+			t.Fatalf("failed to seed traffic: %v", err)
+		}
+	}
+
+	service := NewTrafficService(db, repository.NewNodeTrafficRepository(db), repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db), repository.NewUserRepository(db), repository.NewNodeRepository(db), nil, logger.NewNopLogger())
+	if _, err := service.ProcessMonthlyTrafficResets(ctx, now); err != nil {
+		t.Fatalf("ProcessMonthlyTrafficResets returned error: %v", err)
+	}
+
+	var updatedActive, updatedLegacy, updatedNotDue, updatedExpired repository.User
+	for _, item := range []struct {
+		id   int64
+		user *repository.User
+	}{
+		{active.ID, &updatedActive}, {legacy.ID, &updatedLegacy},
+		{notDue.ID, &updatedNotDue}, {expired.ID, &updatedExpired},
+	} {
+		if err := db.First(item.user, item.id).Error; err != nil {
+			t.Fatalf("failed to load user %d: %v", item.id, err)
+		}
+	}
+	if updatedActive.TrafficUsed != 30 || updatedLegacy.TrafficUsed != 12 {
+		t.Fatalf("expected current-month usage to be preserved, active=%d legacy=%d", updatedActive.TrafficUsed, updatedLegacy.TrafficUsed)
+	}
+	if updatedActive.TrafficResetAt == nil || !updatedActive.TrafficResetAt.Equal(currentAnchor) || updatedLegacy.TrafficResetAt == nil || !updatedLegacy.TrafficResetAt.Equal(currentAnchor) {
+		t.Fatalf("expected reset anchors to advance to %v", currentAnchor)
+	}
+	if updatedNotDue.TrafficUsed != 7 || updatedExpired.TrafficUsed != 99 {
+		t.Fatalf("unexpected reset of not-due/expired users: %d/%d", updatedNotDue.TrafficUsed, updatedExpired.TrafficUsed)
 	}
 }
 

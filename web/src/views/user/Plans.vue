@@ -62,7 +62,7 @@
         <div class="plan-price">
           <span class="price-currency">¥</span>
           <span class="price-amount">{{ formatPlanPrice(plan) }}</span>
-          <span class="price-period">/ {{ plan.duration }}天</span>
+          <span class="price-period">/ {{ formatPlanType(plan.plan_type) }} · {{ plan.duration }}天</span>
         </div>
 
         <!-- 月均价格 -->
@@ -74,11 +74,7 @@
         <ul class="plan-features">
           <li>
             <el-icon><Check /></el-icon>
-            流量 {{ formatTraffic(plan.traffic_limit) }}
-          </li>
-          <li v-if="plan.ip_limit">
-            <el-icon><Check /></el-icon>
-            {{ plan.ip_limit }} 台设备同时在线
+            {{ isMonthlyPlan(plan) ? '每月流量' : '流量' }} {{ formatTraffic(plan.traffic_limit) }}
           </li>
           <li
             v-for="feature in plan.features"
@@ -136,6 +132,16 @@ const formatMonthlyPrice = (plan) => {
 }
 
 const formatTraffic = (bytes) => formatTrafficLimit(bytes, 0)
+
+const isMonthlyPlan = (plan) => ['monthly', 'quarterly', 'yearly'].includes(plan?.plan_type) || plan?.reset_cycle === 'monthly'
+
+const formatPlanType = (value) => ({
+  monthly: '月度',
+  quarterly: '季度',
+  yearly: '年度',
+  traffic: '按流量',
+  custom: '自定义'
+}[value] || '周期')
 
 const selectPlan = (plan) => {
   router.push({

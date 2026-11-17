@@ -4,6 +4,7 @@ package planchange
 import (
 	"context"
 	"errors"
+	"math"
 	"time"
 
 	"v/internal/commercial/balance"
@@ -25,6 +26,7 @@ var (
 	ErrNoPendingDowngrade   = errors.New("user has no pending downgrade")
 	ErrInsufficientBalance  = errors.New("insufficient balance for upgrade")
 	ErrCurrentPlanUnknown   = repository.ErrCurrentPlanUnknown
+	ErrPlanPeriodMismatch   = repository.ErrPlanPeriodMismatch
 )
 
 // PlanChangeRequest represents a request to change plans.
@@ -51,6 +53,8 @@ type PlanInfo struct {
 	Name         string   `json:"name"`
 	Price        int64    `json:"price"`
 	Duration     int      `json:"duration"`
+	PlanType     string   `json:"plan_type"`
+	ResetCycle   string   `json:"reset_cycle"`
 	TrafficLimit int64    `json:"traffic_limit"`
 	Features     []string `json:"features"`
 }
@@ -159,9 +163,12 @@ func (s *Service) CalculateChange(ctx context.Context, req *PlanChangeRequest) (
 	if !newPlan.IsActive {
 		return nil, ErrPlanInactive
 	}
+	if !repository.SamePlanPeriod(currentPlan, newPlan) {
+		return nil, ErrPlanPeriodMismatch
+	}
 
 	// Calculate remaining days
-	remainingDays := int(time.Until(*user.ExpiresAt).Hours() / 24)
+	remainingDays := int(math.Ceil(time.Until(*user.ExpiresAt).Hours() / 24))
 	if remainingDays < 0 {
 		remainingDays = 0
 	}
@@ -174,6 +181,9 @@ func (s *Service) CalculateChange(ctx context.Context, req *PlanChangeRequest) (
 	priceDifference, err := repository.PlanProration(currentPlan.Price, newPlan.Price, remainingDays, currentPlan.Duration)
 	if err != nil {
 		return nil, err
+	}
+	if isUpgrade && priceDifference < 1 {
+		priceDifference = 1
 	}
 
 	// Calculate new expiration date
@@ -359,6 +369,8 @@ func (s *Service) toPlanInfo(plan *repository.CommercialPlan) *PlanInfo {
 		Name:         plan.Name,
 		Price:        plan.Price,
 		Duration:     plan.Duration,
+		PlanType:     plan.PlanType,
+		ResetCycle:   plan.ResetCycle,
 		TrafficLimit: plan.TrafficLimit,
 		Features:     []string{}, // Features would need to be parsed from JSON
 	}

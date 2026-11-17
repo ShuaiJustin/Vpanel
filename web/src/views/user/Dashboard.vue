@@ -91,7 +91,7 @@
           <template #header>
             <div class="card-header">
               <div class="card-header-info">
-                <span>当前周期流量使用</span>
+                <span>本月套餐流量使用</span>
                 <span class="card-header-hint">{{ trafficRefreshHint }}</span>
               </div>
               <el-button link type="primary" @click="goToStats">
@@ -115,7 +115,7 @@
                     <div class="progress-value">
                       {{ trafficPercentDisplay }}
                     </div>
-                    <div class="progress-label">当前周期已用</div>
+                    <div class="progress-label">本月已用</div>
                   </div>
                 </template>
               </el-progress>
@@ -123,17 +123,17 @@
 
             <div class="traffic-details">
               <div class="traffic-item">
-                <span class="item-label">当前周期已用</span>
+                <span class="item-label">本月已用</span>
                 <span class="item-value">{{
                   formatTraffic(userStore.trafficUsed)
                 }}</span>
               </div>
               <div class="traffic-item">
-                <span class="item-label">当前周期总流量</span>
+                <span class="item-label">每月额度</span>
                 <span class="item-value">{{ totalTrafficDisplay }}</span>
               </div>
               <div class="traffic-item">
-                <span class="item-label">当前周期剩余流量</span>
+                <span class="item-label">本月剩余</span>
                 <span class="item-value">{{ remainingTrafficDisplay }}</span>
               </div>
             </div>

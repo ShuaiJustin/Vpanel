@@ -21,7 +21,7 @@ func TestPaidFulfillmentSurvivesFailureAndRestart(t *testing.T) {
 	sqlDB.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	require.NoError(t, db.AutoMigrate(&repository.User{}, &repository.Order{}, &repository.BalanceTransaction{}))
-	user := &repository.User{Username: "fulfillment", PasswordHash: "hash", Balance: 5000}
+	user := &repository.User{Username: "fulfillment", PasswordHash: "hash", Balance: 5000, TrafficUsed: 500}
 	require.NoError(t, db.Create(user).Error)
 	plan := &repository.CommercialPlan{Name: "Paid", Price: 1999, Duration: 30, TrafficLimit: 1000, IsActive: true}
 	require.NoError(t, db.Create(plan).Error)
@@ -31,11 +31,26 @@ func TestPaidFulfillmentSurvivesFailureAndRestart(t *testing.T) {
 	svc := newService().WithAfterPlanAppliedHook(func(context.Context, int64) error { return errors.New("node unavailable") })
 	ord, err := svc.Create(context.Background(), &CreateOrderRequest{UserID: user.ID, PlanID: plan.ID})
 	require.NoError(t, err)
+	// An administrator editing the catalog must not change a pending order's terms.
+	plan.Name, plan.Duration, plan.TrafficLimit, plan.Price, plan.ResetCycle = "Changed annual", 365, 12000, 9999, repository.ResetCycleNever
+	plan.PlanType = repository.PlanTypeYearly
+	require.NoError(t, repository.NewPlanRepository(db).Update(context.Background(), plan))
+	listed, err := svc.GetByOrderNo(context.Background(), ord.OrderNo)
+	require.NoError(t, err)
+	require.Equal(t, "Paid", listed.PlanName)
 	require.Error(t, svc.Pay(context.Background(), ord.OrderNo, "BALANCE-1", "balance", true))
 	var stored repository.User
 	require.NoError(t, db.First(&stored, user.ID).Error)
 	require.Equal(t, int64(3001), stored.Balance)
 	require.Equal(t, plan.ID, stored.CurrentPlanID)
+	require.EqualValues(t, 1000, stored.TrafficLimit)
+	require.Zero(t, stored.TrafficUsed)
+	require.WithinDuration(t, time.Now().AddDate(0, 0, 30), *stored.ExpiresAt, 2*time.Second)
+	current, err := repository.NewPlanChangeRepository(db).(repository.AtomicPlanChangeRepository).CurrentPlan(context.Background(), user.ID)
+	require.NoError(t, err)
+	require.Equal(t, repository.PlanTypeMonthly, current.PlanType)
+	require.Equal(t, 30, current.Duration)
+	require.True(t, repository.SamePlanPeriod(current, &repository.CommercialPlan{PlanType: repository.PlanTypeMonthly, Duration: 30}))
 	expires := *stored.ExpiresAt
 	var paid repository.Order
 	require.NoError(t, db.First(&paid, ord.ID).Error)

@@ -1207,7 +1207,94 @@ func (s *TrafficService) ProcessMonthlyTrafficResets(ctx context.Context, now ti
 		resetNodeIDs = append(resetNodeIDs, nodeData.ID)
 	}
 
+	if resetUserIDs, userErr := s.ProcessMonthlyUserTrafficResets(ctx, now); userErr != nil {
+		s.logger.Warn("monthly user traffic reset failed", logger.Err(userErr))
+	} else if len(resetUserIDs) > 0 {
+		s.logger.Info("processed monthly user traffic resets",
+			logger.F("count", len(resetUserIDs)),
+			logger.F("user_ids", resetUserIDs))
+	}
+
 	return resetNodeIDs, nil
+}
+
+type monthlyUserTrafficReset struct {
+	ID             int64      `gorm:"column:id"`
+	TrafficResetAt *time.Time `gorm:"column:traffic_reset_at"`
+}
+
+// ProcessMonthlyUserTrafficResets resets paid users whose plan grants a
+// monthly quota. Legacy users are resolved from their latest paid order.
+func (s *TrafficService) ProcessMonthlyUserTrafficResets(ctx context.Context, now time.Time) ([]int64, error) {
+	if s == nil || s.db == nil {
+		return nil, nil
+	}
+
+	var users []monthlyUserTrafficReset
+	err := s.db.WithContext(ctx).Raw(`
+		SELECT u.id, u.traffic_reset_at
+		FROM users u
+		LEFT JOIN commercial_plans current_plan ON current_plan.id = u.current_plan_id
+		LEFT JOIN commercial_plans legacy_plan ON legacy_plan.id = (
+			SELECT o.plan_id
+			FROM orders o
+			WHERE o.user_id = u.id AND o.status IN (?, ?)
+			ORDER BY COALESCE(o.paid_at, o.created_at) DESC, o.id DESC
+			LIMIT 1
+		)
+		WHERE u.enabled = ?
+		  AND (u.expires_at IS NULL OR u.expires_at > ?)
+		  AND u.traffic_limit > 0
+		  AND LOWER(COALESCE(current_plan.reset_cycle, legacy_plan.reset_cycle)) = ?`,
+		repository.OrderStatusPaid, repository.OrderStatusCompleted, true, now, repository.ResetCycleMonthly).
+		Scan(&users).Error
+	if err != nil {
+		return nil, err
+	}
+
+	resetIDs := make([]int64, 0, len(users))
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, user := range users {
+			if user.ID <= 0 {
+				continue
+			}
+			if user.TrafficResetAt == nil {
+				anchor := repository.MonthlyTrafficAnchor(now)
+				if err := tx.Model(&repository.User{}).
+					Where("id = ? AND traffic_reset_at IS NULL", user.ID).
+					Update("traffic_reset_at", anchor).Error; err != nil {
+					return err
+				}
+				continue
+			}
+			if !monthlyTrafficResetDue(*user.TrafficResetAt, now) {
+				continue
+			}
+			nextAnchor := advanceNodeTrafficCycleAnchor(*user.TrafficResetAt, now)
+			currentMonth := repository.MonthlyTrafficAnchor(now)
+			if err := tx.Model(&repository.User{}).
+				Where("id = ? AND traffic_reset_at = ?", user.ID, *user.TrafficResetAt).
+				Updates(map[string]any{
+					// Recompute the current month's usage instead of blindly writing
+					// zero. This preserves traffic recorded concurrently at the month
+					// boundary and also repairs a delayed scheduler run safely.
+					"traffic_used":     gorm.Expr("COALESCE((SELECT SUM(upload + download) FROM traffic WHERE traffic.user_id = users.id AND traffic.recorded_at >= ?), 0)", currentMonth),
+					"traffic_reset_at": nextAnchor,
+				}).Error; err != nil {
+				return err
+			}
+			resetIDs = append(resetIDs, user.ID)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resetIDs, nil
+}
+
+func monthlyTrafficResetDue(anchor, now time.Time) bool {
+	return !now.Before(addOneCalendarMonthClamped(anchor))
 }
 
 func (s *TrafficService) initializeNodeTrafficResetAt(ctx context.Context, nodeID int64, resetAt time.Time) error {

@@ -129,6 +129,10 @@
                 <span class="stack-value">{{ row.duration }} 天</span>
               </div>
               <div class="stack-item">
+                <span class="stack-label">套餐周期</span>
+                <span class="stack-value">{{ formatPlanType(row.plan_type) }}</span>
+              </div>
+              <div class="stack-item">
                 <span class="stack-label">排序</span>
                 <span class="stack-value">{{ row.sort_order || 0 }}</span>
               </div>
@@ -146,12 +150,12 @@
           <template #default="{ row }">
             <div class="stack-cell">
               <div class="stack-item">
-                <span class="stack-label">流量限制</span>
+                <span class="stack-label">{{ isMonthlyPlan(row) ? '每月流量' : '套餐流量' }}</span>
                 <span class="stack-value">{{ formatTraffic(row.traffic_limit) }}</span>
               </div>
               <div class="stack-item">
                 <span class="stack-label">并发 IP</span>
-                <span class="stack-value">{{ row.ip_limit ? `${row.ip_limit} 个` : '不限制' }}</span>
+                <span class="stack-value">节点未执行</span>
               </div>
               <div class="stack-item stack-item--inline">
                 <span class="stack-label">启用状态</span>
@@ -216,8 +220,62 @@
         ref="formRef"
         :model="form"
         :rules="rules"
+        :label-position="isMobile ? 'top' : 'right'"
         :label-width="isMobile ? '82px' : '100px'"
       >
+        <el-form-item
+          label="套餐周期"
+          prop="plan_type"
+        >
+          <el-select v-model="form.plan_type" class="form-select" @change="handlePlanTypeChange">
+            <el-option label="月度（30 天）" value="monthly" />
+            <el-option label="季度（90 天）" value="quarterly" />
+            <el-option label="年度（365 天）" value="yearly" />
+            <el-option label="按流量" value="traffic" />
+            <el-option label="自定义" value="custom" />
+          </el-select>
+        </el-form-item>
+        <el-form-item
+          label="时长(天)"
+          prop="duration"
+        >
+          <el-input-number
+            v-model="form.duration"
+            :min="1"
+            :precision="0"
+            @change="handleDurationChange"
+          />
+          <span class="form-unit">修改预设天数后自动切换为自定义</span>
+        </el-form-item>
+        <el-form-item v-if="usesMonthlyTraffic" label="每月流量" prop="traffic_limit">
+          <el-input-number
+            v-model="monthlyTraffic"
+            :min="0"
+            :precision="2"
+            @change="updateTotalTraffic"
+          />
+          <span class="form-unit">GB / 月，0 表示不限量</span>
+          <div class="form-hint">
+            包年、包季和包月套餐按此额度每月重置，不累计全年总量。
+          </div>
+        </el-form-item>
+        <el-form-item
+          v-else
+          label="套餐流量"
+          prop="traffic_limit"
+        >
+          <el-input-number
+            v-model="form.traffic_limit"
+            :min="0"
+            :precision="2"
+            :disabled="Boolean(periodMonths)"
+            @change="handleTotalTrafficChange"
+          />
+          <span class="form-unit">GB，0 表示不限量</span>
+          <div class="form-hint">
+            自定义套餐可选择购买时清零、每月重置或累计不清零。
+          </div>
+        </el-form-item>
         <el-form-item
           label="名称"
           prop="name"
@@ -249,25 +307,19 @@
           />
         </el-form-item>
         <el-form-item
-          label="时长(天)"
-          prop="duration"
+          v-if="!periodMonths"
+          label="流量重置"
+          prop="reset_cycle"
         >
-          <el-input-number
-            v-model="form.duration"
-            :min="1"
-          />
+          <el-select v-model="form.reset_cycle" class="form-select">
+            <el-option label="每月重置" value="monthly" />
+            <el-option label="购买/续费时清零" value="on_purchase" />
+            <el-option label="累计不清零" value="never" />
+          </el-select>
         </el-form-item>
-        <el-form-item
-          label="流量限制"
-          prop="traffic_limit"
-        >
-          <el-input-number
-            v-model="form.traffic_limit"
-            :min="0"
-            placeholder="0表示无限制"
-          />
-          <span class="form-unit">GB</span>
-        </el-form-item>
+        <div v-else class="form-hint plan-reset-hint">
+          当前周期套餐固定按月重置流量。
+        </div>
         <el-form-item
           label="并发 IP"
           prop="ip_limit"
@@ -275,8 +327,9 @@
           <el-input-number
             v-model="form.ip_limit"
             :min="0"
-            placeholder="0表示不限制"
+            disabled
           />
+          <span class="form-unit">节点暂未执行此限制</span>
         </el-form-item>
         <el-form-item
           label="排序"
@@ -359,6 +412,7 @@ const submitting = ref(false)
 const formRef = ref(null)
 const showFeatureInput = ref(false)
 const newFeature = ref('')
+const monthlyTraffic = ref(0)
 
 const form = reactive({
   id: null,
@@ -366,6 +420,8 @@ const form = reactive({
   description: '',
   price: 0,
   duration: 30,
+  plan_type: 'monthly',
+  reset_cycle: 'monthly',
   traffic_limit: 0,
   ip_limit: 0,
   sort_order: 0,
@@ -376,7 +432,8 @@ const form = reactive({
 const rules = {
   name: [{ required: true, message: '请输入套餐名称', trigger: 'blur' }],
   price: [{ required: true, message: '请输入价格', trigger: 'blur' }],
-  duration: [{ required: true, message: '请输入时长', trigger: 'blur' }]
+  duration: [{ required: true, type: 'integer', min: 1, message: '请输入至少 1 天的整数时长', trigger: 'change' }],
+  traffic_limit: [{ required: true, type: 'number', min: 0, message: '请输入流量额度，0 表示不限量', trigger: 'change' }]
 }
 
 const activePlanCount = computed(() => plans.value.filter((plan) => plan.is_active).length)
@@ -387,6 +444,50 @@ const formatPrice = (price) => (Number(price || 0) / 100).toFixed(2)
 const formatTraffic = (bytes) => {
   if (!bytes) return '无限制'
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(0)} GB`
+}
+
+const formatPlanType = (value) => ({
+  monthly: '月度',
+  quarterly: '季度',
+  yearly: '年度',
+  traffic: '按流量',
+  custom: '自定义'
+}[value] || '自定义')
+
+const isMonthlyPlan = (plan) => ['monthly', 'quarterly', 'yearly'].includes(plan?.plan_type) || plan?.reset_cycle === 'monthly'
+
+const planDurations = { monthly: 30, quarterly: 90, yearly: 365 }
+const planMonths = { monthly: 1, quarterly: 3, yearly: 12 }
+const periodMonths = computed(() => planMonths[form.plan_type] || 0)
+const usesMonthlyTraffic = computed(() => periodMonths.value > 0 || form.reset_cycle === 'monthly')
+
+const updateTotalTraffic = () => {
+  if (usesMonthlyTraffic.value) {
+    form.traffic_limit = Number.isFinite(monthlyTraffic.value) ? monthlyTraffic.value : null
+  }
+}
+
+const handlePlanTypeChange = (value) => {
+  if (planDurations[value]) {
+    form.duration = planDurations[value]
+    form.reset_cycle = 'monthly'
+    updateTotalTraffic()
+  } else if (value === 'custom') {
+    form.reset_cycle = 'on_purchase'
+  }
+}
+
+const handleDurationChange = (value) => {
+  if (planDurations[form.plan_type] && value !== planDurations[form.plan_type]) {
+    form.plan_type = 'custom'
+    form.reset_cycle = 'on_purchase'
+  }
+}
+
+const handleTotalTrafficChange = () => {
+  if (!periodMonths.value) {
+    monthlyTraffic.value = form.traffic_limit
+  }
 }
 
 const getBillingHint = (plan) => {
@@ -423,6 +524,8 @@ const resetForm = () => {
     description: '',
     price: 0,
     duration: 30,
+    plan_type: 'monthly',
+    reset_cycle: 'monthly',
     traffic_limit: 0,
     ip_limit: 0,
     sort_order: 0,
@@ -431,6 +534,7 @@ const resetForm = () => {
   })
   showFeatureInput.value = false
   newFeature.value = ''
+  monthlyTraffic.value = 0
 }
 
 const showCreateDialog = async () => {
@@ -448,12 +552,17 @@ const editPlan = async (plan) => {
     description: plan.description,
     price: plan.price / 100,
     duration: plan.duration,
+    plan_type: plan.plan_type || 'monthly',
+    reset_cycle: ['monthly', 'never'].includes(plan.reset_cycle) ? plan.reset_cycle : 'on_purchase',
     traffic_limit: plan.traffic_limit ? plan.traffic_limit / (1024 * 1024 * 1024) : 0,
     ip_limit: plan.ip_limit || 0,
     sort_order: plan.sort_order || 0,
     is_active: plan.is_active ?? true,
     features: plan.features || []
   })
+  // Preserve the exact stored total on open/save; derive the reference without
+  // running the period-change handler or rounding the existing quota.
+  monthlyTraffic.value = form.traffic_limit
   showFeatureInput.value = false
   newFeature.value = ''
   dialogVisible.value = true
@@ -469,7 +578,9 @@ const submitForm = async () => {
       description: form.description,
       price: Math.round(form.price * 100),
       duration: form.duration,
-      traffic_limit: form.traffic_limit ? form.traffic_limit * 1024 * 1024 * 1024 : 0,
+      plan_type: form.plan_type,
+      reset_cycle: form.reset_cycle,
+      traffic_limit: form.traffic_limit ? Math.round(form.traffic_limit * 1024 * 1024 * 1024) : 0,
       ip_limit: form.ip_limit,
       sort_order: form.sort_order,
       is_active: form.is_active,
@@ -552,6 +663,14 @@ onMounted(fetchPlans)
   margin-left: 8px;
   font-size: 12px;
   color: #64748b;
+}
+
+.form-hint {
+  width: 100%;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+  margin-top: 6px;
 }
 
 .feature-editor {
