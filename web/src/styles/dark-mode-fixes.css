@@ -1,0 +1,1146 @@
+/**
+ * 深色模式全局修复
+ * 为所有用户界面组件提供统一的深色模式支持
+ */
+
+/* 卡片和容器 */
+.dark .status-card,
+.dark .plan-card,
+.dark .client-card,
+.dark .article-item,
+.dark .featured-card,
+.dark .contact-card,
+.dark .announcement-card,
+.dark .ticket-card,
+.dark .stat-card {
+  background: var(--color-bg-card) !important;
+  border-color: var(--color-border) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+/* 二维码容器 */
+.dark .qrcode-wrapper {
+  background: var(--color-bg-card) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+/* 列表项 */
+.dark .popular-list {
+  background: var(--color-bg-card) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+/* 消息内容 */
+.dark .message-content {
+  background: var(--color-bg-card) !important;
+}
+
+.dark .message-item.admin .message-content {
+  background: rgba(64, 158, 255, 0.1) !important;
+}
+
+/* 附件链接 */
+.dark .attachment-link {
+  background: var(--color-border-light) !important;
+}
+
+.dark .attachment-link:hover {
+  background: rgba(64, 158, 255, 0.1) !important;
+}
+
+/* 公告卡片渐变 */
+.dark .announcement-card.pinned {
+  background: linear-gradient(135deg, var(--color-bg-card) 0%, var(--color-border-light) 100%) !important;
+}
+
+/* 文本颜色修复 */
+.dark .plan-name,
+.dark .plan-price,
+.dark .article-title,
+.dark .ticket-title,
+.dark h1, .dark h2, .dark h3, .dark h4, .dark h5, .dark h6 {
+  color: var(--color-text-primary) !important;
+}
+
+/* 次要文本 */
+.dark .plan-description,
+.dark .article-excerpt,
+.dark .ticket-meta {
+  color: var(--color-text-secondary) !important;
+}
+
+/* 边框修复 */
+.dark .plan-card,
+.dark .client-card,
+.dark .article-item {
+  border-color: var(--color-border) !important;
+}
+
+.dark .plan-card:hover {
+  border-color: var(--color-primary) !important;
+}
+
+/* 进度条文本 */
+.dark .el-progress__text {
+  color: var(--color-text-primary) !important;
+}
+
+/* 输入框 */
+.dark .el-input__inner,
+.dark .el-select__selection,
+.dark .el-select__selected-item,
+.dark .el-select__placeholder,
+.dark .el-select__input {
+  background: transparent !important;
+  background-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: var(--color-text-primary) !important;
+}
+
+/* 下拉菜单 */
+.dark .el-select-dropdown {
+  background-color: var(--color-bg-card) !important;
+  border-color: var(--color-border) !important;
+}
+
+.dark .el-select-dropdown__item {
+  color: var(--color-text-regular) !important;
+}
+
+.dark .el-select-dropdown__item:hover {
+  background-color: var(--color-border-light) !important;
+}
+
+/* 对话框 */
+.dark .el-dialog {
+  background-color: var(--color-bg-card) !important;
+}
+
+.dark .el-dialog__header {
+  border-bottom-color: var(--color-border) !important;
+}
+
+.dark .el-dialog__title {
+  color: var(--color-text-primary) !important;
+}
+
+/* 抽屉 */
+.dark .el-drawer {
+  background-color: var(--color-bg-card) !important;
+}
+
+.dark .el-drawer__header {
+  border-bottom-color: var(--color-border) !important;
+}
+
+.dark .el-drawer__title {
+  color: var(--color-text-primary) !important;
+}
+
+/* 消息框 */
+.dark .el-message-box {
+  background-color: var(--color-bg-card) !important;
+  border-color: var(--color-border) !important;
+}
+
+.dark .el-message-box__title {
+  color: var(--color-text-primary) !important;
+}
+
+.dark .el-message-box__content {
+  color: var(--color-text-regular) !important;
+}
+
+/* 通知 */
+.dark .el-notification {
+  background-color: var(--color-bg-card) !important;
+  border-color: var(--color-border) !important;
+}
+
+.dark .el-notification__title {
+  color: var(--color-text-primary) !important;
+}
+
+.dark .el-notification__content {
+  color: var(--color-text-regular) !important;
+}
+
+/* 分页 */
+.dark .el-pagination {
+  color: var(--color-text-regular) !important;
+}
+
+.dark .el-pagination button {
+  background-color: var(--color-bg-card) !important;
+  color: var(--color-text-regular) !important;
+}
+
+.dark .el-pagination .el-pager li {
+  background-color: var(--color-bg-card) !important;
+  color: var(--color-text-regular) !important;
+}
+
+.dark .el-pagination .el-pager li:hover {
+  color: var(--color-primary) !important;
+}
+
+.dark .el-pagination .el-pager li.is-active {
+  background-color: var(--color-primary) !important;
+  color: #fff !important;
+}
+
+/* 加载 */
+.dark .el-loading-mask {
+  background-color: rgba(0, 0, 0, 0.7) !important;
+}
+
+/* 空状态 */
+.dark .el-empty__description {
+  color: var(--color-text-secondary) !important;
+}
+
+/* 时间线 */
+.dark .el-timeline-item__timestamp {
+  color: var(--color-text-secondary) !important;
+}
+
+/* 步骤条 */
+.dark .el-step__title {
+  color: var(--color-text-primary) !important;
+}
+
+.dark .el-step__description {
+  color: var(--color-text-secondary) !important;
+}
+
+/* 面包屑 */
+.dark .el-breadcrumb__inner {
+  color: var(--color-text-regular) !important;
+}
+
+.dark .el-breadcrumb__inner:hover {
+  color: var(--color-primary) !important;
+}
+
+/* 菜单 */
+.dark .el-menu {
+  background-color: var(--color-bg-card) !important;
+  border-color: var(--color-border) !important;
+}
+
+.dark .el-menu-item {
+  color: var(--color-text-regular) !important;
+}
+
+.dark .el-menu-item:hover {
+  background-color: var(--color-border-light) !important;
+  color: var(--color-primary) !important;
+}
+
+.dark .el-menu-item.is-active {
+  color: var(--color-primary) !important;
+}
+
+/* 子菜单 */
+.dark .el-sub-menu__title {
+  color: var(--color-text-regular) !important;
+}
+
+.dark .el-sub-menu__title:hover {
+  background-color: var(--color-border-light) !important;
+  color: var(--color-primary) !important;
+}
+
+/* 描述列表 */
+.dark .el-descriptions__label {
+  color: var(--color-text-secondary) !important;
+}
+
+.dark .el-descriptions__content {
+  color: var(--color-text-primary) !important;
+}
+
+/* 结果页 */
+.dark .el-result__title {
+  color: var(--color-text-primary) !important;
+}
+
+.dark .el-result__subtitle {
+  color: var(--color-text-secondary) !important;
+}
+
+/* 骨架屏 */
+.dark .el-skeleton__item {
+  background: linear-gradient(90deg, var(--color-border-light) 25%, var(--color-border) 37%, var(--color-border-light) 63%) !important;
+}
+
+/* 代码块 */
+.dark pre,
+.dark code {
+  background: var(--color-border-light) !important;
+  color: var(--color-text-primary) !important;
+}
+
+/* 引用 */
+.dark blockquote {
+  border-left-color: var(--color-border-dark) !important;
+  color: var(--color-text-secondary) !important;
+}
+
+/* 链接 */
+.dark a {
+  color: var(--color-primary) !important;
+}
+
+.dark a:hover {
+  color: var(--color-primary-light) !important;
+}
+
+/* 分割线 */
+.dark hr,
+.dark .el-divider {
+  border-color: var(--color-border) !important;
+}
+
+/* 徽章 */
+.dark .el-badge__content {
+  background-color: var(--color-danger) !important;
+}
+
+/* 头像 */
+.dark .el-avatar {
+  background-color: var(--color-primary) !important;
+}
+
+/* 图片占位 */
+.dark .el-image__placeholder {
+  background-color: var(--color-border-light) !important;
+}
+
+/* 上传 */
+.dark .el-upload {
+  border-color: var(--color-border) !important;
+}
+
+.dark .el-upload:hover {
+  border-color: var(--color-primary) !important;
+}
+
+.dark .el-upload-dragger {
+  background-color: var(--color-bg-card) !important;
+  border-color: var(--color-border) !important;
+}
+
+.dark .el-upload-dragger:hover {
+  border-color: var(--color-primary) !important;
+}
+
+/* 穿梭框 */
+.dark .el-transfer-panel {
+  background-color: var(--color-bg-card) !important;
+  border-color: var(--color-border) !important;
+}
+
+.dark .el-transfer-panel__header {
+  background-color: var(--color-border-light) !important;
+}
+
+/* 日历 */
+.dark .el-calendar-table {
+  background-color: var(--color-bg-card) !important;
+}
+
+.dark .el-calendar-table td {
+  border-color: var(--color-border) !important;
+}
+
+.dark .el-calendar-day {
+  color: var(--color-text-regular) !important;
+}
+
+/* 回到顶部 */
+.dark .el-backtop {
+  background-color: var(--color-bg-card) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* 页头 */
+.dark .el-page-header__title {
+  color: var(--color-text-primary) !important;
+}
+
+.dark .el-page-header__content {
+  color: var(--color-text-regular) !important;
+}
+
+/* 统计数值 */
+.dark .el-statistic__head {
+  color: var(--color-text-secondary) !important;
+}
+
+.dark .el-statistic__content {
+  color: var(--color-text-primary) !important;
+}
+
+
+/* 后台概览与统计页补充修复 */
+.dark .page-header,
+.dark .overview-card,
+.dark .toolbar-card,
+.dark .hero-card,
+.dark .highlight-chip,
+.dark .hero-side,
+.dark .status-stat,
+.dark .focus-stat,
+.dark .traffic-pill {
+  border-color: var(--admin-border, var(--color-border)) !important;
+  background: var(--admin-surface, var(--color-bg-card)) !important;
+  box-shadow: var(--admin-shadow-soft, var(--shadow-sm)) !important;
+}
+
+.dark .toolbar-card {
+  background:
+    linear-gradient(180deg, var(--admin-surface-strong, var(--color-bg-card)) 0%, var(--admin-surface, var(--color-bg-card)) 100%) !important;
+}
+
+.dark .hero-card {
+  background:
+    radial-gradient(circle at top right, rgba(96, 165, 250, 0.12), transparent 32%),
+    linear-gradient(135deg, var(--admin-surface-strong, var(--color-bg-card)) 0%, var(--admin-surface-soft, var(--color-border-light)) 100%) !important;
+}
+
+/* 搜索头图与搜索输入额外提亮，避免暗黑模式下融入背景 */
+.dark .search-section .el-input__wrapper {
+  background: rgba(255, 255, 255, 0.16) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.24) inset, 0 12px 28px rgba(15, 23, 42, 0.16) !important;
+}
+
+.dark .search-section .el-input__wrapper:hover,
+.dark .search-section .el-input__wrapper.is-focus {
+  background: rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3) inset, 0 0 0 3px rgba(255, 255, 255, 0.08), 0 12px 28px rgba(15, 23, 42, 0.2) !important;
+}
+
+.dark .search-section .el-input__inner,
+.dark .search-section .el-input__prefix-inner,
+.dark .search-section .el-input__suffix-inner,
+.dark .search-section .el-input__clear,
+.dark .search-section .el-input__icon {
+  color: #fff !important;
+}
+
+.dark .search-section .el-input__inner::placeholder {
+  color: rgba(255, 255, 255, 0.74) !important;
+}
+
+.dark .metric-card--good,
+.dark .traffic-pill--total {
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.18), var(--admin-surface-strong, var(--color-bg-card))) !important;
+}
+
+.dark .metric-card--latency {
+  background: linear-gradient(180deg, rgba(96, 165, 250, 0.18), var(--admin-surface-strong, var(--color-bg-card))) !important;
+}
+
+.dark .focus-node--issue {
+  background: linear-gradient(180deg, var(--admin-surface-strong, var(--color-bg-card)), rgba(245, 158, 11, 0.12)) !important;
+}
+
+.dark .alert-card--warning {
+  background: rgba(245, 158, 11, 0.12) !important;
+  border-color: rgba(245, 158, 11, 0.24) !important;
+}
+
+.dark .alert-card--error {
+  background: rgba(239, 68, 68, 0.12) !important;
+  border-color: rgba(239, 68, 68, 0.24) !important;
+}
+
+.dark .page-eyebrow,
+.dark .page-subtitle,
+.dark .hero-kicker,
+.dark .hero-note,
+.dark .chip-label,
+.dark .hero-percent-label,
+.dark .metric-label,
+.dark .metric-foot,
+.dark .card-subtitle,
+.dark .status-stat-head,
+.dark .status-stat-meta,
+.dark .focus-node-meta,
+.dark .metric-row,
+.dark .focus-stat-label,
+.dark .group-meta,
+.dark .group-card-foot,
+.dark .alert-meta,
+.dark .traffic-label,
+.dark .traffic-foot,
+.dark .update-time {
+  color: var(--admin-text-muted, var(--color-text-secondary)) !important;
+}
+
+.dark .page-title,
+.dark .hero-title,
+.dark .hero-percent,
+.dark .metric-value,
+.dark .card-title,
+.dark .status-stat-value,
+.dark .metric-row strong,
+.dark .focus-stat-value,
+.dark .group-name,
+.dark .alert-title,
+.dark .traffic-pill strong,
+.dark .terms-header h1,
+.dark .terms-content,
+.dark .terms-content h2,
+.dark .terms-content h3,
+.dark .privacy-header h1,
+.dark .privacy-content,
+.dark .privacy-content h2,
+.dark .privacy-content h3,
+.dark .dropdown-link {
+  color: var(--admin-text, var(--color-text-primary)) !important;
+}
+
+.dark .terms-header,
+.dark .terms-content h2,
+.dark .terms-footer,
+.dark .privacy-header,
+.dark .privacy-content h2,
+.dark .privacy-footer,
+.dark .result-row,
+.dark .plan-features li,
+.dark .history-item,
+.dark .transaction-item,
+.dark .dropdown-link:hover,
+.dark .el-dropdown-menu__item--divided {
+  border-color: var(--color-border) !important;
+}
+
+.dark .privacy-content .highlight {
+  background: rgba(230, 162, 60, 0.12) !important;
+  border-left-color: #e6a23c !important;
+}
+
+.dark .content,
+.dark .status-track,
+.dark .traffic-stack {
+  background: var(--color-bg-page) !important;
+}
+
+
+/* Inbounds 深色模式补充 */
+.dark .inbounds-page :is(.protocol-tag.vmess, .format-icon) {
+  background-color: rgba(96, 165, 250, 0.16) !important;
+  color: #93c5fd !important;
+}
+
+.dark .inbounds-page .protocol-tag.vless {
+  background-color: rgba(34, 197, 94, 0.16) !important;
+  color: #86efac !important;
+}
+
+.dark .inbounds-page .protocol-tag.trojan {
+  background-color: rgba(245, 158, 11, 0.16) !important;
+  color: #fcd34d !important;
+}
+
+.dark .inbounds-page .protocol-tag.shadowsocks {
+  background-color: rgba(239, 68, 68, 0.16) !important;
+  color: #fda4af !important;
+}
+
+.dark .inbounds-page .protocol-tag.dokodemo-door,
+.dark .inbounds-page .status-tag.running,
+.dark .inbounds-page .status-tag.stopped,
+.dark .inbounds-page .service-cell__server,
+.dark .inbounds-page .row-action--more.el-button {
+  background: var(--admin-surface-soft, var(--color-border-light)) !important;
+  border-color: var(--admin-border, var(--color-border)) !important;
+}
+
+.dark .inbounds-page .status-tag.running {
+  color: #86efac !important;
+}
+
+.dark .inbounds-page .status-tag.stopped {
+  color: #fda4af !important;
+}
+
+.dark .inbounds-page .service-cell__server,
+.dark .inbounds-page .detail-value,
+.dark .inbounds-page .service-name {
+  color: var(--admin-text, var(--color-text-primary)) !important;
+}
+
+.dark .inbounds-page .service-cell__meta,
+.dark .inbounds-page .detail-label,
+.dark .inbounds-page .toolbar-summary {
+  color: var(--admin-text-muted, var(--color-text-secondary)) !important;
+}
+
+.dark .inbounds-page .row-action--primary.el-button {
+  color: #93c5fd !important;
+  background: rgba(96, 165, 250, 0.16) !important;
+  border-color: rgba(96, 165, 250, 0.28) !important;
+}
+
+.dark .inbounds-page .row-action--success.el-button {
+  color: #86efac !important;
+  background: rgba(34, 197, 94, 0.16) !important;
+  border-color: rgba(34, 197, 94, 0.28) !important;
+}
+
+.dark .inbounds-page .row-action--warning.el-button {
+  color: #fcd34d !important;
+  background: rgba(245, 158, 11, 0.16) !important;
+  border-color: rgba(245, 158, 11, 0.28) !important;
+}
+
+.dark .inbounds-page .el-table__header th,
+.dark .inbounds-page .el-table__body tr:hover > td,
+.dark .inbounds-page .el-table--striped .el-table__body tr.el-table__row--striped > td {
+  background: var(--admin-surface-soft, var(--color-border-light)) !important;
+  color: var(--admin-text, var(--color-text-primary)) !important;
+}
+
+
+/* 用户页细节补充 */
+.dark .payment-method,
+.dark .amount-option,
+.dark .format-item {
+  border-color: var(--color-border) !important;
+  background: var(--color-bg-card) !important;
+}
+
+.dark .payment-method--active,
+.dark .amount-option--active {
+  background: rgba(64, 158, 255, 0.12) !important;
+  border-color: var(--color-primary) !important;
+  color: var(--color-primary) !important;
+}
+
+.dark .summary-row,
+.dark .traffic-item,
+.dark .faq-item,
+.dark .article-list-item {
+  border-color: var(--color-border) !important;
+}
+
+.dark .price-highlight,
+.dark .summary-value,
+.dark .announcement-title,
+.dark .ticket-subject {
+  color: var(--color-text-primary) !important;
+}
+
+.dark .qr-tip,
+.dark .poll-tip,
+.dark .loading-state,
+.dark .publish-date,
+.dark .announcement-content,
+.dark .ticket-id,
+.dark .meta-item,
+.dark .message-time,
+.dark .message-body,
+.dark .format-desc,
+.dark .summary-row--muted {
+  color: var(--color-text-secondary) !important;
+}
+
+.dark .message-item.admin .message-content,
+.dark .step-content .tip-box,
+.dark .client-recommend-chip {
+  background: rgba(64, 158, 255, 0.12) !important;
+}
+
+.dark .announcement-content blockquote,
+.dark .step-content .tip-box strong {
+  color: var(--color-primary) !important;
+}
+
+.dark .announcement-content blockquote,
+.dark .step-content .tip-box {
+  border-left-color: var(--color-primary) !important;
+}
+
+
+/* 后台通用操作按钮补充 */
+.app-container.dark-mode .content .row-action--muted,
+.app-container.dark-mode .content .row-action--more {
+  color: var(--admin-text-muted, var(--color-text-secondary)) !important;
+  background: var(--admin-surface-soft, var(--color-border-light)) !important;
+  border-color: var(--admin-border, var(--color-border)) !important;
+}
+
+.app-container.dark-mode .content .row-action--danger {
+  color: #fca5a5 !important;
+  background: rgba(239, 68, 68, 0.14) !important;
+  border-color: rgba(239, 68, 68, 0.28) !important;
+}
+
+
+/* 共享组件与统计页补充 */
+.dark .empty-state.with-border {
+  background: var(--color-border-light) !important;
+  border-color: var(--color-border-dark) !important;
+}
+
+.dark .empty-state-icon {
+  color: var(--color-text-placeholder) !important;
+}
+
+.dark .empty-state-description,
+.dark .page-hint,
+.dark .chart-loading,
+.dark .empty-data,
+.dark .stat-label,
+.dark .card-hint,
+.dark .strength-label,
+.dark .password-tips,
+.dark .password-tips li,
+.dark .overview-label,
+.dark .protocol-description,
+.dark .setting-description,
+.dark .xray-version-switcher .label {
+  color: var(--color-text-secondary) !important;
+}
+
+.dark .overview-value {
+  color: var(--color-text-primary) !important;
+}
+
+.dark .stat-footer {
+  color: var(--color-text-secondary) !important;
+  border-top-color: var(--color-border) !important;
+}
+
+.dark .strength-indicator,
+.dark .skeleton-cell {
+  background-color: var(--color-border) !important;
+}
+
+.dark .skeleton-table-header {
+  background: var(--color-border-light) !important;
+}
+
+.dark .skeleton-table-row,
+.dark .skeleton-list-item,
+.dark .xray-version-switcher .controls {
+  border-color: var(--color-border) !important;
+}
+
+
+/* 后台配置页补充 */
+.dark .change-password-container,
+.dark .protocol-settings-container {
+  background: var(--color-bg-page) !important;
+}
+
+.dark .xray-version-switcher,
+.dark .protocol-item,
+.dark .inbounds-page .page-header {
+  background: var(--admin-surface-soft, var(--color-bg-card)) !important;
+  border-color: var(--admin-border, var(--color-border)) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+.dark .inbounds-page .title,
+.dark .inbounds-page .overview-value {
+  color: var(--admin-text, var(--color-text-primary)) !important;
+}
+
+.dark .inbounds-page .page-subtitle,
+.dark .inbounds-page .overview-label {
+  color: var(--admin-text-muted, var(--color-text-secondary)) !important;
+}
+
+
+/* 帮助与内容页补充 */
+.dark .empty-state,
+.dark .view-count,
+.dark .info-item,
+.dark .tags-label,
+.dark .tx-desc,
+.dark .tx-time,
+.dark .category-count,
+.dark .popular-views,
+.dark .feedback-label {
+  color: var(--color-text-secondary) !important;
+}
+
+.dark .article-content {
+  color: var(--color-text-regular) !important;
+}
+
+.dark .related-item,
+.dark .article-content :is(th, td) {
+  border-color: var(--color-border) !important;
+}
+
+.dark .article-content :is(th, code, pre) {
+  background: var(--color-border-light) !important;
+}
+
+
+.dark .node-address {
+  color: #93c5fd !important;
+  background: rgba(59, 130, 246, 0.14) !important;
+}
+
+/* 设置页错误详情与版本提示 */
+.dark .version-tips,
+.dark .sync-info-content,
+.dark .sync-info-content p {
+  color: var(--color-text-secondary) !important;
+}
+
+.dark .error-message-content {
+  background: var(--color-border-light) !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text-primary) !important;
+}
+
+.dark .error-resolution {
+  background: rgba(230, 162, 60, 0.12) !important;
+  border-left-color: #e6a23c !important;
+  color: var(--color-text-primary) !important;
+}
+
+.dark .error-troubleshooting {
+  background: rgba(64, 158, 255, 0.12) !important;
+  border-left-color: var(--color-primary) !important;
+  color: var(--color-text-primary) !important;
+}
+
+.dark .error-troubleshooting :is(h4, ul, ol, li) {
+  color: var(--color-text-primary) !important;
+}
+
+.dark .error-troubleshooting code {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: var(--color-text-primary) !important;
+}
+
+
+/* 交互浮层与弹窗补充 */
+.dark :is(.el-popper.is-light, .el-dropdown__popper.el-popper, .el-select__popper.el-popper, .el-picker__popper.el-popper) {
+  background: var(--color-bg-card) !important;
+  border-color: var(--color-border) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+.dark :is(.el-popper.is-light, .el-dropdown__popper, .el-select__popper, .el-picker__popper) .el-popper__arrow::before {
+  background: var(--color-bg-card) !important;
+  border-color: var(--color-border) !important;
+}
+
+.dark .el-dropdown-menu__item {
+  color: var(--color-text-regular) !important;
+}
+
+.dark .el-dropdown-menu__item:not(.is-disabled):is(:hover, :focus) {
+  background: var(--color-border-light) !important;
+  color: var(--color-primary) !important;
+}
+
+.dark .el-dropdown-menu__item--divided,
+.dark .el-dropdown-menu__item--divided::before {
+  border-color: var(--color-border) !important;
+  background: var(--color-bg-card) !important;
+}
+
+.dark :is(.el-dialog__header, .el-dialog__body, .el-dialog__footer, .el-drawer__header, .el-drawer__body, .el-drawer__footer) {
+  background: var(--color-bg-card) !important;
+  border-color: var(--color-border) !important;
+}
+
+.dark .el-dialog__body,
+.dark .el-dialog__footer,
+.dark :is(.el-drawer__body, .el-message-box__content) {
+  color: var(--color-text-regular) !important;
+}
+
+.dark :is(.el-dialog__title, .el-drawer__title, .el-message-box__title) {
+  color: var(--color-text-primary) !important;
+}
+
+.dark :is(.el-dialog__headerbtn .el-dialog__close, .el-drawer__close-btn, .el-message-box__headerbtn .el-message-box__close) {
+  color: var(--color-text-secondary) !important;
+}
+
+.dark :is(.el-dialog__headerbtn:hover .el-dialog__close, .el-drawer__close-btn:hover, .el-message-box__headerbtn:hover .el-message-box__close) {
+  color: var(--color-primary) !important;
+}
+
+.dark .el-message-box__btns .el-button--default {
+  background: var(--color-bg-card) !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text-regular) !important;
+}
+
+.dark .el-message-box__btns .el-button--default:hover {
+  background: var(--color-border-light) !important;
+  border-color: var(--color-border-dark) !important;
+  color: var(--color-primary) !important;
+}
+
+.dark :is(.secret-key code, .backup-codes code, .new-token-text) {
+  background: var(--color-border-light) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text-primary) !important;
+}
+
+.dark :is(.token-label, .secret-key, .two-factor-info p) {
+  color: var(--color-text-secondary) !important;
+}
+
+
+/* 入站批量按钮与用户提示补充 */
+.dark .inbounds-page :is(.toolbar-batch-btn--success.el-button, .toolbar-batch-btn--warning.el-button, .toolbar-batch-btn--danger.el-button) {
+  box-shadow: none !important;
+}
+
+.dark .inbounds-page .toolbar-batch-btn--success.el-button {
+  color: #86efac !important;
+  background: rgba(34, 197, 94, 0.16) !important;
+  border-color: rgba(34, 197, 94, 0.28) !important;
+}
+
+.dark .inbounds-page .toolbar-batch-btn--warning.el-button {
+  color: #fcd34d !important;
+  background: rgba(245, 158, 11, 0.16) !important;
+  border-color: rgba(245, 158, 11, 0.28) !important;
+}
+
+.dark .inbounds-page .toolbar-batch-btn--danger.el-button {
+  color: #fca5a5 !important;
+  background: rgba(239, 68, 68, 0.16) !important;
+  border-color: rgba(239, 68, 68, 0.28) !important;
+}
+
+.dark :is(.tx-icon--recharge, .tx-icon--commission) {
+  background: rgba(34, 197, 94, 0.16) !important;
+  color: #86efac !important;
+}
+
+.dark .tx-icon--purchase {
+  background: rgba(239, 68, 68, 0.16) !important;
+  color: #fca5a5 !important;
+}
+
+.dark .tx-icon--refund {
+  background: rgba(245, 158, 11, 0.16) !important;
+  color: #fcd34d !important;
+}
+
+.dark .tx-icon--adjustment {
+  background: rgba(148, 163, 184, 0.16) !important;
+  color: #cbd5e1 !important;
+}
+
+.dark .redeem-desc {
+  color: var(--color-text-secondary) !important;
+}
+
+.dark .validation-result {
+  background: rgba(239, 68, 68, 0.16) !important;
+  color: #fca5a5 !important;
+}
+
+.dark .validation-result--valid {
+  background: rgba(34, 197, 94, 0.16) !important;
+  color: #86efac !important;
+}
+
+
+/* 日志错误行与礼品卡历史补充 */
+.dark :is(.log-row-error > td, .log-row-error:hover > td) {
+  background: rgba(239, 68, 68, 0.12) !important;
+  color: var(--color-text-primary) !important;
+}
+
+/* Logs.vue 内 :deep(.log-row-error) 用了 #fef0f0 浅粉红（light-mode 设计），
+ * 在 dark mode 下浅色背景把浅色文字吞掉。提到 html.dark 提高 specificity，
+ * 同时显式给 tr / td / 含 :hover 的所有路径都覆盖，确保不漏。
+ */
+html.dark .el-table tr.log-row-error,
+html.dark .el-table tr.log-row-error > td,
+html.dark .el-table tr.log-row-error:hover > td,
+html.dark .el-table tr.log-row-error.el-table__row > td {
+  background: rgba(239, 68, 68, 0.16) !important;
+  background-color: rgba(239, 68, 68, 0.16) !important;
+  color: #fecaca !important;
+}
+
+.dark .gc-icon {
+  background: rgba(34, 197, 94, 0.16) !important;
+  color: #86efac !important;
+}
+
+.dark .gc-time {
+  color: var(--color-text-secondary) !important;
+}
+
+
+/* 协议配置页与证书详情补充 */
+.dark .settings-tabs {
+  background: var(--admin-surface, var(--color-bg-card)) !important;
+  border-color: var(--admin-border, var(--color-border)) !important;
+  box-shadow: var(--admin-shadow-soft, var(--shadow-sm)) !important;
+}
+
+.dark .tab-header {
+  background: var(--admin-surface-soft, var(--color-border-light)) !important;
+  border-bottom-color: var(--admin-border, var(--color-border)) !important;
+}
+
+.dark .tab-item {
+  color: var(--admin-text-muted, var(--color-text-secondary)) !important;
+}
+
+.dark .tab-item:hover,
+.dark .tab-item.active {
+  color: var(--color-primary) !important;
+}
+
+.dark .tab-item.active {
+  background: var(--admin-surface-strong, var(--color-bg-card)) !important;
+  border-bottom-color: var(--color-primary) !important;
+}
+
+.dark .section-header,
+.dark .protocol-label,
+.dark .details-content,
+.dark .result-details,
+.dark .inbounds-page .expiry-readonly__value {
+  color: var(--admin-text, var(--color-text-primary)) !important;
+}
+
+.dark .protocol-desc,
+.dark .detail-item .label {
+  color: var(--admin-text-muted, var(--color-text-secondary)) !important;
+}
+
+.dark .protocol-row,
+.dark .settings-divider,
+.dark .settings-footer,
+.dark .fallback-item {
+  border-color: var(--admin-border, var(--color-border)) !important;
+}
+
+.dark .details-content,
+.dark .result-details,
+.dark .inbounds-page .cert-input,
+.dark .inbounds-page .expiry-readonly,
+.dark .fallback-item {
+  background: var(--admin-surface-soft, var(--color-border-light)) !important;
+  border-color: var(--admin-border, var(--color-border)) !important;
+}
+
+
+/* 入站页剩余表单容器补充 */
+.dark .inbounds-page :is(.cert-input, .expiry-readonly, .fallback-item) {
+  color: var(--admin-text, var(--color-text-primary)) !important;
+}
+
+/* 暗黑模式搜索/筛选控件统一背景 */
+.dark :is(.toolbar-card, .filter-bar, .orders-toolbar-card, .toolbar-filters, .filter-left, .filter-right, .orders-toolbar) :is(.el-input, .el-select, .el-date-editor, .el-input-number) {
+  --el-input-bg-color: rgba(51, 65, 85, 0.98) !important;
+  --el-fill-color-blank: rgba(51, 65, 85, 0.98) !important;
+  --el-fill-color-light: rgba(71, 85, 105, 0.96) !important;
+  --el-fill-color-lighter: rgba(71, 85, 105, 0.92) !important;
+  --el-border-color: rgba(148, 163, 184, 0.48) !important;
+  --el-border-color-hover: rgba(191, 219, 254, 0.56) !important;
+  --el-input-border-color: rgba(148, 163, 184, 0.48) !important;
+  --el-input-hover-border-color: rgba(191, 219, 254, 0.56) !important;
+  --el-input-focus-border-color: rgba(96, 165, 250, 0.88) !important;
+  --el-input-placeholder-color: #cbd5e1 !important;
+  --el-input-icon-color: #cbd5e1 !important;
+  --el-select-input-color: #cbd5e1 !important;
+  --el-text-color-placeholder: #cbd5e1 !important;
+}
+
+.dark :is(.toolbar-card, .filter-bar, .orders-toolbar-card, .toolbar-filters, .filter-left, .filter-right, .orders-toolbar) :is(.el-input__wrapper, .el-select__wrapper, .el-input-number, .el-date-editor.el-input__wrapper, .el-date-editor .el-input__wrapper) {
+  background: rgba(51, 65, 85, 0.98) !important;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.48) inset, 0 10px 24px rgba(2, 6, 23, 0.22) !important;
+}
+
+.dark :is(.toolbar-card, .filter-bar, .orders-toolbar-card, .toolbar-filters, .filter-left, .filter-right, .orders-toolbar) :is(.el-input__wrapper:hover, .el-select__wrapper:hover, .el-input-number:hover, .el-date-editor.el-input__wrapper:hover, .el-date-editor .el-input__wrapper:hover, .el-input__wrapper.is-focus, .el-select__wrapper.is-focused, .el-date-editor.el-input__wrapper.is-focus, .el-date-editor .el-input__wrapper.is-focus, .el-input-number:focus-within) {
+  background: rgba(71, 85, 105, 0.98) !important;
+  box-shadow: 0 0 0 1px rgba(191, 219, 254, 0.56) inset, 0 0 0 3px rgba(59, 130, 246, 0.12), 0 12px 28px rgba(2, 6, 23, 0.24) !important;
+}
+
+.dark :is(.toolbar-card, .filter-bar, .orders-toolbar-card, .toolbar-filters, .filter-left, .filter-right, .orders-toolbar) :is(.el-input__inner, .el-textarea__inner, .el-input__wrapper input, .el-input__wrapper textarea, .el-select__selection, .el-select__selected-item, .el-select__placeholder, .el-select__input, .el-select__tags-text) {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.dark :is(.toolbar-card, .filter-bar, .orders-toolbar-card, .toolbar-filters, .filter-left, .filter-right, .orders-toolbar) :is(.el-input__inner, .el-textarea__inner, .el-input__wrapper input, .el-input__wrapper textarea, .el-select__selected-item, .el-select__input, .el-select__tags-text) {
+  color: var(--admin-text, var(--color-text-primary)) !important;
+}
+
+.dark :is(.toolbar-card, .filter-bar, .orders-toolbar-card, .toolbar-filters, .filter-left, .filter-right, .orders-toolbar) :is(.el-input__inner::placeholder, .el-textarea__inner::placeholder, .el-select__placeholder) {
+  color: #cbd5e1 !important;
+}
+
+.dark :is(.toolbar-card, .filter-bar, .orders-toolbar-card, .toolbar-filters, .filter-left, .filter-right, .orders-toolbar) :is(.el-input__prefix-inner, .el-input__suffix-inner, .el-input__icon, .el-input__clear, .el-select__caret, .el-select__icon, .el-select__wrapper .el-icon) {
+  color: #cbd5e1 !important;
+}
+/* 暗黑模式搜索/筛选控件统一背景结束 */
+
+/* ========== el-button link 在 dark mode 下渲染成蓝色椭圆块的修复 ==========
+ * element-plus 的 dark theme + 它给 .el-button--primary.is-link 注入的
+ * --el-button-bg-color (= --el-color-primary-light-9) 会让 link 按钮表现
+ * 出实心蓝色椭圆，文字反差小且看起来跟普通按钮没区别。这里把所有可能
+ * 残留的视觉效果一起 reset 掉，强制 link 按钮表现为"纯文字 + hover 下划线"。
+ *
+ * 用 html.dark 增加 specificity 防止被 element-plus 的某条 dark scope
+ * 规则覆盖；用 background 而不只是 background-color 兼容 shorthand。
+ */
+html.dark .el-button.is-link,
+html.dark .el-button.is-link:hover,
+html.dark .el-button.is-link:focus,
+html.dark .el-button.is-link:active {
+  --el-button-bg-color: transparent;
+  --el-button-hover-bg-color: transparent;
+  --el-button-active-bg-color: transparent;
+  --el-button-border-color: transparent;
+  --el-button-hover-border-color: transparent;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 4px !important;
+  height: auto !important;
+  min-height: 0 !important;
+  line-height: 1.4 !important;
+}
+
+html.dark .el-button.is-link:hover,
+html.dark .el-button.is-link:focus {
+  text-decoration: underline;
+}
+
+html.dark .el-button.is-link.el-button--primary {
+  color: var(--el-color-primary) !important;
+}
+
+/* ========== el-input-number 在 dark mode 下加减按钮看不清的修复 ==========
+ * 默认情况下加减按钮背景跟周围 input 背景几乎一样，按钮像素被吃掉。
+ * 给按钮一个轻微对比背景 + 主题色 hover，让用户能清楚看到这是控件。
+ */
+.dark .el-input-number .el-input-number__decrease,
+.dark .el-input-number .el-input-number__increase {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  color: #cbd5e1 !important;
+}
+
+.dark .el-input-number .el-input-number__decrease:hover,
+.dark .el-input-number .el-input-number__increase:hover {
+  background-color: rgba(64, 158, 255, 0.15) !important;
+  color: var(--el-color-primary) !important;
+}

@@ -1,0 +1,3171 @@
+<template>
+  <div class="settings-container">
+    <AdminStickyChrome>
+      <div class="page-header">
+        <div class="page-heading">
+          <h1>系统设置</h1>
+          <p class="page-subtitle">
+            维护面板、数据库、邮件和核心运行参数
+          </p>
+        </div>
+      </div>
+    </AdminStickyChrome>
+    <div class="admin-page-body">
+
+    <el-tabs
+      v-model="activeName"
+      class="settings-tabs"
+      type="border-card"
+    >
+      <el-tab-pane
+        label="服务器配置"
+        name="server"
+      >
+        <el-form
+          :model="serverForm"
+          :label-position="settingsLabelPosition"
+          :label-width="settingsLabelWidth"
+          class="settings-form"
+        >
+          <el-alert
+            type="warning"
+            :closable="false"
+            show-icon
+            class="settings-note"
+          >
+            <template #title>
+              修改服务器监听、基础路径或 TLS 配置后，需要点击 <strong>重启面板</strong> 才会生效；时区与公开访问地址保存后立即生效。
+            </template>
+          </el-alert>
+
+          <section class="settings-section">
+            <div class="settings-section__header">
+              <div>
+                <h3 class="settings-section__title">
+                  当前运行状态
+                </h3>
+                <p class="settings-section__description">
+                  只读信息，来自当前容器和环境变量
+                </p>
+              </div>
+            </div>
+
+            <div class="runtime-summary-grid">
+              <div class="runtime-summary-item">
+                <span class="runtime-summary-label">对外访问地址</span>
+                <strong class="runtime-summary-value">{{ runtimePublicUrlLabel }}</strong>
+              </div>
+              <div class="runtime-summary-item">
+                <span class="runtime-summary-label">Docker 端口映射（HOST -> CONTAINER）</span>
+                <strong class="runtime-summary-value">{{ runtimePortMappingLabel }}</strong>
+              </div>
+              <div class="runtime-summary-item">
+                <span class="runtime-summary-label">容器监听</span>
+                <strong class="runtime-summary-value">{{ runtimeListenLabel }}</strong>
+              </div>
+              <div class="runtime-summary-item">
+                <span class="runtime-summary-label">URL 基础路径</span>
+                <strong class="runtime-summary-value">{{ serverForm.panelBasePath || '/' }}</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <div class="settings-section__header">
+              <div>
+                <h3 class="settings-section__title">
+                  站点信息
+                </h3>
+                <p class="settings-section__description">
+                  用于系统邮件、通知标题与面板基础标识，保存后立即生效
+                </p>
+              </div>
+            </div>
+
+            <el-form-item label="站点名称">
+              <el-input
+                v-model="serverForm.siteName"
+                placeholder="V Panel"
+              />
+            </el-form-item>
+            <el-form-item label="站点描述">
+              <el-input
+                v-model="serverForm.siteDescription"
+                placeholder="面板简介（可选）"
+              />
+            </el-form-item>
+          </section>
+
+          <section class="settings-section">
+            <div class="settings-section__header">
+              <div>
+                <h3 class="settings-section__title">
+                  对外访问
+                </h3>
+                <p class="settings-section__description">
+                  用于远程部署、订阅链接、邀请链接和浏览器跨域访问
+                </p>
+              </div>
+            </div>
+
+            <el-form-item label="对外访问地址">
+              <el-input
+                v-model="serverForm.publicUrl"
+                placeholder="https://panel.example.com:13212"
+              />
+              <div class="form-tips">
+                填浏览器和节点实际访问的 Origin：协议 + 域名/IP + 可选端口，不填写路径
+              </div>
+            </el-form-item>
+            <el-form-item label="URL 基础路径">
+              <el-input
+                v-model="serverForm.panelBasePath"
+                placeholder="/"
+              />
+              <div class="form-tips">
+                默认 /。如面板挂在反向代理的 /vpanel 下，这里填写 /vpanel
+              </div>
+            </el-form-item>
+            <el-form-item label="允许的浏览器来源">
+              <el-input
+                v-model="serverForm.corsOrigins"
+                type="textarea"
+                :rows="2"
+                placeholder="https://panel.example.com:13212"
+              />
+              <div class="form-tips">
+                CORS Origin 列表，通常与对外访问地址一致；多个来源可用逗号或换行分隔。公网环境建议明确填写来源，留空时保持兼容模式
+              </div>
+            </el-form-item>
+          </section>
+
+          <section class="settings-section">
+            <el-collapse
+              v-model="serverAdvancedSections"
+              class="advanced-collapse"
+            >
+              <el-collapse-item name="listen">
+                <template #title>
+                  <span class="advanced-collapse-title">服务监听（高级）</span>
+                </template>
+                <el-form-item label="监听地址">
+                  <el-input
+                    v-model="serverForm.panelListenIP"
+                    placeholder="0.0.0.0"
+                  />
+                  <div class="form-tips">
+                    容器内应用绑定地址。Docker 部署通常保持 0.0.0.0
+                  </div>
+                </el-form-item>
+                <el-form-item label="监听端口">
+                  <el-input-number
+                    v-model="serverForm.panelPort"
+                    :min="1"
+                    :max="65535"
+                  />
+                  <div class="form-tips">
+                    容器内 target 端口，Docker 部署通常保持 8080；对外端口由发布端口决定
+                  </div>
+                </el-form-item>
+              </el-collapse-item>
+            </el-collapse>
+          </section>
+
+          <section class="settings-section">
+            <div class="settings-section__header">
+              <div>
+                <h3 class="settings-section__title">
+                  HTTPS / TLS（可选）
+                </h3>
+                <p class="settings-section__description">
+                  直接在面板应用内启用 HTTPS；使用反向代理终止 TLS 时可留空
+                </p>
+              </div>
+            </div>
+          <el-form-item label="选择证书">
+            <div class="cert-picker">
+              <el-select
+                v-model="serverForm.selectedCertId"
+                placeholder="从证书管理中选择已申请的证书"
+                clearable
+                filterable
+                :loading="certListLoading"
+                style="flex: 1"
+              >
+                <el-option
+                  v-for="cert in availableCerts"
+                  :key="cert.id"
+                  :label="`${cert.domain}（${cert.expiresLabel}）`"
+                  :value="cert.id"
+                />
+                <template #empty>
+                  <div style="padding: 10px; color: var(--el-text-color-secondary); font-size: 13px;">
+                    {{ certListLoading ? '加载中...' : '暂无可用证书。请先到「证书管理」申请或上传' }}
+                  </div>
+                </template>
+              </el-select>
+              <el-button
+                type="primary"
+                :loading="applyingCert"
+                :disabled="!serverForm.selectedCertId"
+                @click="applyCertificate"
+              >
+                应用并保存
+              </el-button>
+            </div>
+            <div class="form-tips">
+              选择一个已申请的证书后点"应用并保存"，系统会自动把证书写入文件并填到下方路径。重启面板后生效。
+            </div>
+          </el-form-item>
+          <el-form-item label=" ">
+            <a class="manual-cert-toggle-link" @click="showManualCertPaths = !showManualCertPaths">
+              {{ showManualCertPaths ? '收起' : '展开' }}手动填写路径（高级 / 外部证书）
+            </a>
+          </el-form-item>
+          <template v-if="showManualCertPaths">
+            <el-form-item label="TLS 证书路径">
+              <el-input
+                v-model="serverForm.panelCertPath"
+                placeholder="/app/certs/fullchain.pem"
+              />
+              <div class="form-tips">
+                容器内的证书文件路径。把证书放到宿主机的 <code>deployments/docker/certs/</code> 后，对应容器内 <code>/app/certs/</code>
+              </div>
+            </el-form-item>
+            <el-form-item label="TLS 私钥路径">
+              <el-input
+                v-model="serverForm.panelKeyPath"
+                placeholder="/app/certs/privkey.pem"
+              />
+              <div class="form-tips">
+              同上。两个路径都填且文件存在时，重启后面板自动切到 HTTPS；只填一个会被保存校验拒绝
+              </div>
+            </el-form-item>
+          </template>
+          </section>
+
+          <section class="settings-section">
+            <div class="settings-section__header">
+              <div>
+                <h3 class="settings-section__title">
+                  运行环境
+                </h3>
+              </div>
+            </div>
+          <el-form-item label="服务时区">
+            <el-select
+              v-model="serverForm.timezone"
+              style="width: 100%"
+            >
+              <el-option
+                label="Asia/Shanghai (UTC+8)"
+                value="Asia/Shanghai"
+              />
+              <el-option
+                label="UTC"
+                value="UTC"
+              />
+              <el-option
+                label="America/New_York (UTC-5)"
+                value="America/New_York"
+              />
+              <el-option
+                label="Europe/London (UTC+0)"
+                value="Europe/London"
+              />
+            </el-select>
+            <div class="form-tips">
+              保存后立即生效；同时影响日志、调度等所有时间戳
+            </div>
+          </el-form-item>
+          </section>
+          <el-divider />
+          <el-form-item class="form-actions-row">
+            <el-button
+              type="primary"
+              @click="saveServerSettings"
+            >
+              保存服务器配置
+            </el-button>
+            <el-button
+              type="warning"
+              @click="restartPanel"
+            >
+              重启面板
+            </el-button>
+          </el-form-item>
+        </el-form>
+      </el-tab-pane>
+
+      <el-tab-pane
+        label="Tunnel 隧道"
+        name="tunnel"
+      >
+        <el-form
+          :model="tunnelForm"
+          :label-position="settingsLabelPosition"
+          :label-width="settingsLabelWidth"
+          class="settings-form"
+        >
+          <el-alert
+            type="info"
+            :closable="false"
+            show-icon
+            class="settings-note"
+          >
+            <template #title>
+              Cloudflare Tunnel 模式通过 <code>cloudflared</code> 将本机回环端口安全暴露到公网，无需开放源站端口或维护源站 TLS 证书。
+            </template>
+          </el-alert>
+
+          <el-alert
+            v-if="serverForm.panelCertPath"
+            type="warning"
+            :closable="false"
+            show-icon
+            class="settings-note"
+          >
+            <template #title>
+              检测到「服务器配置」已启用应用内 TLS（<code>{{ serverForm.panelCertPath }}</code>）。使用 Cloudflare Tunnel 时建议清空应用内 TLS 由 Cloudflare 终止 HTTPS，或在 Tunnel Public Hostname 中将 Service 协议改为 <code>https://</code> 并开启 No TLS Verify，否则回源会报 502。
+            </template>
+          </el-alert>
+
+          <section class="settings-section">
+            <div class="settings-section__header">
+              <div>
+                <h3 class="settings-section__title">
+                  当前配置与运行状态
+                </h3>
+                <p class="settings-section__description">
+                  自动汇总已保存的 Tunnel 配置、环境变量 Token 与当前面板转发目标
+                </p>
+              </div>
+            </div>
+
+            <div class="runtime-summary-grid">
+              <div class="runtime-summary-item">
+                <span class="runtime-summary-label">Tunnel 状态</span>
+                <strong class="runtime-summary-value">{{ runtimeTunnelStatusLabel }}</strong>
+              </div>
+              <div class="runtime-summary-item">
+                <span class="runtime-summary-label">Token 状态（脱敏预览）</span>
+                <strong class="runtime-summary-value">{{ runtimeTunnelTokenLabel }}</strong>
+              </div>
+              <div class="runtime-summary-item">
+                <span class="runtime-summary-label">生效公网地址</span>
+                <strong class="runtime-summary-value">{{ runtimeTunnelPublicUrlLabel }}</strong>
+              </div>
+              <div class="runtime-summary-item">
+                <span class="runtime-summary-label">源站转发目标</span>
+                <strong class="runtime-summary-value">{{ runtimeTunnelOriginLabel }}</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <div class="settings-section__header">
+              <div>
+                <h3 class="settings-section__title">
+                  基础配置
+                </h3>
+                <p class="settings-section__description">
+                  保存 Token 与公网域名，可选自动联动面板对外访问地址与 CORS 来源
+                </p>
+              </div>
+            </div>
+
+            <el-form-item label="启用 Cloudflare Tunnel">
+              <el-switch v-model="tunnelForm.enabled" />
+            </el-form-item>
+
+            <el-form-item label="运行模式">
+              <el-radio-group v-model="tunnelForm.mode">
+                <el-radio value="host">
+                  宿主机 cloudflared 服务
+                </el-radio>
+                <el-radio value="docker">
+                  Docker Compose Sidecar
+                </el-radio>
+              </el-radio-group>
+              <div class="form-tips">
+                宿主机模式指向 <code>http://127.0.0.1:{{ runtimePanel.publishPort || runtimePanel.listenPort || 8080 }}</code>；Docker Sidecar 模式指向 <code>http://v-panel:{{ runtimePanel.listenPort || 8080 }}</code>
+              </div>
+            </el-form-item>
+
+            <el-form-item label="隧道公网地址">
+              <el-input
+                v-model="tunnelForm.publicUrl"
+                placeholder="https://panel.example.com"
+              />
+              <div class="form-tips">
+                填写在 Cloudflare Zero Trust → Networks → Tunnels 中配置的 Public Hostname（必须为 https://，不含路径）
+              </div>
+            </el-form-item>
+
+            <el-form-item label="Tunnel Token">
+              <el-input
+                v-model="tunnelForm.token"
+                type="password"
+                show-password
+                :placeholder="tunnelForm.tokenConfigured ? '已配置，留空则保持不变' : (runtimeTunnel.tokenSource === 'env' ? '已由环境变量配置，如需在面板覆盖请在此填写' : '粘贴 Cloudflare Tunnel Token（eyJhIjoi...）')"
+              />
+              <div
+                v-if="tunnelForm.tokenConfigured"
+                class="form-tips"
+              >
+                <el-checkbox v-model="tunnelForm.clearToken">
+                  清除已保存的 Tunnel Token
+                </el-checkbox>
+              </div>
+            </el-form-item>
+
+            <el-form-item label="自动联动公网地址">
+              <el-switch v-model="tunnelForm.autoSyncPublicUrl" />
+              <div class="form-tips">
+                启用 Tunnel 且填写公网地址时，保存后自动同步到「服务器配置 → 对外访问地址」并加入「允许的浏览器来源 (CORS)」
+              </div>
+            </el-form-item>
+          </section>
+
+          <el-divider />
+          <el-form-item class="form-actions-row">
+            <el-button
+              type="primary"
+              :loading="tunnelForm.saving"
+              @click="saveTunnelSettings"
+            >
+              保存 Tunnel 配置
+            </el-button>
+            <el-button
+              type="success"
+              :loading="tunnelForm.testing"
+              @click="testTunnelConnection"
+            >
+              检测隧道连通性
+            </el-button>
+          </el-form-item>
+
+          <el-alert
+            v-if="tunnelProbeResult"
+            :type="tunnelProbeResult.reachable && tunnelProbeResult.via_cloudflare ? 'success' : (tunnelProbeResult.reachable ? 'warning' : 'error')"
+            :closable="false"
+            show-icon
+            style="margin-bottom: 20px"
+          >
+            <template #title>
+              {{ tunnelProbeResult.message }}
+            </template>
+            <div style="font-size: 13px; line-height: 1.7">
+              <div>检测地址：<code>{{ tunnelProbeResult.checked_url }}</code></div>
+              <div>HTTP 状态码：<strong>{{ tunnelProbeResult.status_code || '-' }}</strong> · 延迟：<strong>{{ tunnelProbeResult.latency_ms }} ms</strong></div>
+              <div v-if="tunnelProbeResult.cf_ray">
+                CF-Ray：<code>{{ tunnelProbeResult.cf_ray }}</code>
+              </div>
+            </div>
+          </el-alert>
+
+          <section class="settings-section">
+            <div class="settings-section__header">
+              <div>
+                <h3 class="settings-section__title">
+                  部署参考命令
+                </h3>
+                <p class="settings-section__description">
+                  以下模板仅使用占位符，不包含明文 Token；复制后替换为你的 Tunnel Token 即可
+                </p>
+              </div>
+              <el-button
+                size="small"
+                @click="copyTunnelCommand"
+              >
+                复制命令
+              </el-button>
+            </div>
+            <pre class="tunnel-command-preview">{{ tunnelDeploySnippet }}</pre>
+          </section>
+        </el-form>
+      </el-tab-pane>
+      
+      <el-tab-pane
+        label="数据库配置"
+        name="db"
+      >
+        <el-form
+          :model="dbForm"
+          :label-position="settingsLabelPosition"
+          :label-width="settingsLabelWidth"
+          class="settings-form"
+        >
+          <el-alert
+            type="warning"
+            :closable="false"
+            show-icon
+            class="settings-note"
+          >
+            <template #title>
+              当前运行数据库由 <code>V_DB_DRIVER</code> / <code>V_DB_DSN</code> 决定（SQLite 也兼容 <code>V_DB_PATH</code>），<strong>无法通过 UI 直接保存切换</strong>。下方表单仅作为"测试连接"和"迁移数据"的目标 DB 输入。要真正切换：先备份，再迁移，最后修改环境变量并重启容器。
+            </template>
+          </el-alert>
+          <el-alert
+            type="info"
+            :closable="false"
+            show-icon
+            class="settings-note"
+          >
+            <template #title>
+              当前运行数据库：<strong>{{ runtimeDatabaseLabel }}</strong>
+              <span v-if="runtimeDatabaseDetail">（{{ runtimeDatabaseDetail }}）</span>
+            </template>
+          </el-alert>
+          <el-form-item label="目标数据库类型">
+            <el-select
+              v-model="dbForm.dbType"
+              style="width: 100%"
+            >
+              <el-option
+                label="SQLite"
+                value="sqlite"
+              />
+              <el-option
+                label="MySQL"
+                value="mysql"
+              />
+              <el-option
+                label="PostgreSQL"
+                value="postgres"
+              />
+            </el-select>
+          </el-form-item>
+          
+          <template v-if="dbForm.dbType !== 'sqlite'">
+            <el-form-item label="目标数据库服务器">
+              <el-input
+                v-model="dbForm.dbHost"
+                placeholder="localhost"
+              />
+            </el-form-item>
+            <el-form-item label="目标数据库端口">
+              <el-input-number 
+                v-model="dbForm.dbPort" 
+                :min="1" 
+                :max="65535"
+                :placeholder="dbForm.dbType === 'mysql' ? '3306' : '5432'"
+              />
+            </el-form-item>
+            <el-form-item label="目标数据库名称">
+              <el-input
+                v-model="dbForm.dbName"
+                placeholder="v_panel"
+              />
+            </el-form-item>
+            <el-form-item label="用户名">
+              <el-input
+                v-model="dbForm.dbUser"
+                placeholder="root"
+              />
+            </el-form-item>
+            <el-form-item label="密码">
+              <el-input
+                v-model="dbForm.dbPassword"
+                type="password"
+                placeholder="密码"
+                show-password
+              />
+            </el-form-item>
+          </template>
+          
+          <template v-else>
+            <el-form-item label="目标 SQLite 路径">
+              <el-input
+                v-model="dbForm.sqlitePath"
+                placeholder="/app/data/v-next.db"
+              />
+              <div class="form-tips">
+                这是测试连接和迁移数据的目标文件路径，不是当前运行库路径
+              </div>
+            </el-form-item>
+          </template>
+          
+          <el-divider />
+          <el-form-item class="form-actions-row">
+            <el-button @click="testDbConnection">
+              测试连接
+            </el-button>
+            <el-button
+              type="success"
+              :disabled="runtimeDatabase.driver !== 'sqlite'"
+              :title="runtimeDatabase.driver !== 'sqlite' ? '仅 SQLite 运行时支持在线文件备份' : ''"
+              @click="backupDb"
+            >
+              备份当前 SQLite
+            </el-button>
+            <el-button
+              type="danger"
+              :loading="dbMigrating"
+              @click="migrateDb"
+            >
+              迁移数据到目标数据库
+            </el-button>
+          </el-form-item>
+          <el-alert
+            type="info"
+            :closable="false"
+            show-icon
+            class="db-migrate-tip"
+          >
+            <template #title>
+              数据库切换说明
+            </template>
+            "迁移数据到目标数据库" 会把当前 DB 的所有表 + 数据复制到上方填写的目标 DB。<strong>迁移完成后，本服务仍连接旧 DB</strong>——请手动在 docker-compose.yml 或环境变量中设置 <code>V_DB_DRIVER</code> / <code>V_DB_DSN</code>，然后重启容器才会真正切换。SQLite 文件路径也可以继续使用 <code>V_DB_PATH</code>。建议先点 备份当前 SQLite 留好快照。
+          </el-alert>
+        </el-form>
+      </el-tab-pane>
+      
+      <el-tab-pane
+        label="日志配置"
+        name="log"
+      >
+        <el-form
+          :model="logForm"
+          :label-position="settingsLabelPosition"
+          :label-width="settingsLabelWidth"
+          class="settings-form"
+        >
+          <el-form-item label="日志级别">
+            <el-select
+              v-model="logForm.logLevel"
+              style="width: 100%"
+            >
+              <el-option
+                label="DEBUG"
+                value="debug"
+              />
+              <el-option
+                label="INFO"
+                value="info"
+              />
+              <el-option
+                label="WARN"
+                value="warn"
+              />
+              <el-option
+                label="ERROR"
+                value="error"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="日志保留天数">
+            <el-input-number
+              v-model="logForm.logRetentionDays"
+              :min="1"
+              :max="365"
+            />
+            <div class="form-tips">
+              超过该天数的日志将被自动清理
+            </div>
+          </el-form-item>
+          <el-form-item label="日志存储路径">
+            <el-input v-model="logForm.logPath" />
+            <div class="form-tips">
+              默认在程序目录下的 logs 文件夹
+            </div>
+          </el-form-item>
+          <el-form-item label="启用访问日志">
+            <el-switch v-model="logForm.enableAccessLog" />
+            <div class="form-tips">
+              记录所有HTTP请求访问日志
+            </div>
+          </el-form-item>
+          <el-form-item label="启用操作日志">
+            <el-switch v-model="logForm.enableOperationLog" />
+            <div class="form-tips">
+              记录所有用户操作日志
+            </div>
+          </el-form-item>
+          <el-divider />
+          <el-form-item class="form-actions-row">
+            <el-button
+              type="primary"
+              @click="saveLogSettings"
+            >
+              保存日志配置
+            </el-button>
+            <el-button
+              type="danger"
+              @click="clearLogs"
+            >
+              清理日志
+            </el-button>
+          </el-form-item>
+        </el-form>
+      </el-tab-pane>
+
+      <el-tab-pane
+        label="邮箱与告警"
+        name="email"
+      >
+        <el-form
+          :model="emailForm"
+          :label-position="settingsLabelPosition"
+          :label-width="settingsLabelWidth"
+          class="settings-form"
+        >
+          <el-alert
+            title="邮箱用于注册验证、密码重置与邮件告警；Telegram 用于节点状态、流量、证书与异常 IP 实时告警"
+            type="info"
+            :closable="false"
+            show-icon
+            style="margin-bottom: 20px"
+          />
+
+          <el-form-item label="SMTP 服务器">
+            <el-input
+              v-model="emailForm.host"
+              placeholder="例如：smtp.qq.com"
+            />
+          </el-form-item>
+          <el-form-item label="SMTP 端口">
+            <el-input-number
+              v-model="emailForm.port"
+              :min="1"
+              :max="65535"
+            />
+            <div class="form-tips">
+              常见端口为 465 / 587 / 25
+            </div>
+          </el-form-item>
+          <el-form-item label="SMTP 用户名">
+            <el-input
+              v-model="emailForm.user"
+              placeholder="通常为邮箱地址"
+            />
+          </el-form-item>
+          <el-form-item label="发件邮箱">
+            <el-input
+              v-model="emailForm.from"
+              placeholder="留空则默认使用 SMTP 用户名"
+            />
+            <div class="form-tips">
+              用于注册验证、重置密码等系统邮件的发件人地址
+            </div>
+          </el-form-item>
+          <el-form-item label="告警收件邮箱">
+            <el-input
+              v-model="emailForm.alertEmail"
+              placeholder="留空则默认发到 SMTP 用户名"
+            />
+            <div class="form-tips">
+              用于节点异常、系统提醒等后台告警邮件
+            </div>
+          </el-form-item>
+          <el-form-item label="SMTP 密码">
+            <el-input
+              v-model="emailForm.password"
+              type="password"
+              show-password
+              :placeholder="emailForm.passwordConfigured ? '已配置，留空则保持不变' : '请输入 SMTP 密码或授权码'"
+            />
+          </el-form-item>
+          <el-form-item label="测试收件邮箱">
+            <el-input
+              v-model="emailForm.testTo"
+              placeholder="留空则发送到告警收件邮箱或 SMTP 用户名"
+            />
+            <div class="form-tips">
+              点击“发送测试邮件”会直接使用当前表单中的 SMTP 参数进行测试（密码留空时沿用已保存密码）
+            </div>
+          </el-form-item>
+
+          <el-divider content-position="left">
+            Telegram 运维告警（可选）
+          </el-divider>
+
+          <el-form-item label="Bot Token">
+            <el-input
+              v-model="emailForm.telegramBotToken"
+              type="password"
+              show-password
+              placeholder="由 @BotFather 创建的机器人 Token"
+            />
+          </el-form-item>
+          <el-form-item label="Chat ID">
+            <el-input
+              v-model="emailForm.telegramChatId"
+              placeholder="接收告警的个人或群组 Chat ID，例如 -1001234567890"
+            />
+            <div class="form-tips">
+              同时填写 Bot Token 与 Chat ID 后，节点上下线、流量超限、证书过期与异常 IP 告警将自动推送到 Telegram
+            </div>
+          </el-form-item>
+
+          <el-divider />
+          <el-form-item class="form-actions-row">
+            <el-button
+              type="primary"
+              :loading="emailForm.saving"
+              @click="saveEmailSettings"
+            >
+              保存通知配置
+            </el-button>
+            <el-button
+              :loading="emailForm.loading"
+              @click="loadEmailSettings"
+            >
+              刷新
+            </el-button>
+            <el-button
+              type="success"
+              :loading="emailForm.testing"
+              @click="testEmailSettings"
+            >
+              发送测试邮件
+            </el-button>
+          </el-form-item>
+        </el-form>
+      </el-tab-pane>
+
+      <el-tab-pane
+        label="支付设置"
+        name="payment"
+      >
+        <el-alert
+          title="支付/充值配置已迁移到商业化管理"
+          description="为避免系统设置和商业化管理出现两套支付配置入口，这里只保留跳转入口。请统一在“商业化管理 -> 支付/充值配置”中维护商户参数。"
+          type="info"
+          :closable="false"
+          show-icon
+        />
+        <div style="margin-top: 16px;">
+          <el-button
+            type="primary"
+            @click="openPaymentSettingsPage"
+          >
+            前往商业化管理中的支付/充值配置
+          </el-button>
+        </div>
+      </el-tab-pane>
+
+      <el-tab-pane
+        label="管理员配置"
+        name="admin"
+      >
+        <el-form
+          :model="adminForm"
+          :label-position="settingsLabelPosition"
+          :label-width="settingsLabelWidth"
+          class="settings-form"
+        >
+          <el-alert
+            title="管理员账号安全提示"
+            type="warning"
+            description="修改管理员密码后，当前会话将被注销，需要重新登录。请确保记住新密码，否则可能无法访问系统。"
+            show-icon
+            :closable="false"
+            style="margin-bottom: 20px"
+          />
+          
+          <el-form-item label="管理员用户名">
+            <el-input
+              v-model="adminForm.username"
+              placeholder="当前管理员"
+              :disabled="true"
+            />
+            <div class="form-tips">
+              当前登录的管理员账号
+            </div>
+          </el-form-item>
+          <el-form-item label="当前密码">
+            <el-input
+              v-model="adminForm.currentPassword"
+              type="password"
+              placeholder="当前密码"
+              show-password
+            />
+          </el-form-item>
+          <el-form-item label="新密码">
+            <el-input
+              v-model="adminForm.newPassword"
+              type="password"
+              placeholder="新密码"
+              show-password
+            />
+          </el-form-item>
+          <el-form-item label="确认新密码">
+            <el-input
+              v-model="adminForm.confirmPassword"
+              type="password"
+              placeholder="确认新密码"
+              show-password
+            />
+          </el-form-item>
+          
+          <el-divider />
+          <el-form-item class="form-actions-row">
+            <el-button
+              type="primary"
+              @click="changeAdminPassword"
+            >
+              修改密码
+            </el-button>
+            <el-button
+              type="warning"
+              @click="resetAdminPassword"
+            >
+              前往用户管理重置密码
+            </el-button>
+          </el-form-item>
+        </el-form>
+      </el-tab-pane>
+      
+      <el-tab-pane
+        label="安全设置"
+        name="security"
+      >
+        <el-form
+          :model="securityForm"
+          :label-position="settingsLabelPosition"
+          :label-width="settingsLabelWidth"
+          class="settings-form security-form"
+        >
+          <el-form-item
+            label="会话超时时间"
+            class="security-inline-item"
+          >
+            <div class="security-inline-control">
+              <el-input-number
+                v-model="securityForm.sessionTimeout"
+                :min="5"
+                :max="1440"
+              />
+            </div>
+            <div class="form-tips">
+              单位：分钟，登录令牌在签发后到达该时长将过期失效（对新登录立即生效）
+            </div>
+          </el-form-item>
+          <el-form-item label="启用IP白名单">
+            <el-switch v-model="securityForm.enableIpWhitelist" />
+          </el-form-item>
+          <el-form-item
+            v-if="securityForm.enableIpWhitelist"
+            label="IP白名单"
+          >
+            <el-input 
+              v-model="securityForm.ipWhitelist" 
+              type="textarea" 
+              :rows="4"
+              placeholder="每行一个IP地址，支持CIDR格式，如：192.168.1.0/24"
+            />
+          </el-form-item>
+          <el-form-item
+            label="登录失败锁定"
+            class="security-inline-item"
+          >
+            <div class="security-inline-control">
+              <el-switch v-model="securityForm.enableLoginLock" />
+            </div>
+            <div class="form-tips">
+              连续登录失败将暂时锁定账号
+            </div>
+          </el-form-item>
+          <el-form-item
+            v-if="securityForm.enableLoginLock"
+            label="失败尝试次数"
+          >
+            <el-input-number
+              v-model="securityForm.maxLoginAttempts"
+              :min="3"
+              :max="10"
+            />
+          </el-form-item>
+          <el-form-item
+            v-if="securityForm.enableLoginLock"
+            label="锁定时间(分钟)"
+          >
+            <el-input-number
+              v-model="securityForm.lockDuration"
+              :min="5"
+              :max="60"
+            />
+          </el-form-item>
+          
+          <el-divider />
+          <el-form-item class="form-actions-row">
+            <el-button
+              type="primary"
+              :loading="securityState.saving"
+              @click="saveSecuritySettings"
+            >
+              保存安全设置
+            </el-button>
+          </el-form-item>
+        </el-form>
+      </el-tab-pane>
+      
+      <!-- 新增协议管理标签页 -->
+      <el-tab-pane
+        label="协议管理"
+        name="protocol"
+      >
+        <el-form
+          class="settings-form"
+          :label-position="settingsLabelPosition"
+        >
+          <el-form-item
+            label="支持的协议"
+            :label-width="settingsLabelWidth"
+          >
+            <el-descriptions
+              :column="1"
+              border
+              size="medium"
+            >
+              <el-descriptions-item>
+                <template #label>
+                  <el-switch
+                    v-model="protocolSettings.enableTrojan"
+                    active-text="启用 Trojan 协议"
+                    :disabled="disableProtocolSwitch"
+                  />
+                </template>
+                <div class="protocol-description">
+                  <p>Trojan 协议：基于 TLS 的轻量级协议，伪装成 HTTPS 流量。</p>
+                  <el-tag
+                    v-if="protocolSettings.enableTrojan"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
+                </div>
+              </el-descriptions-item>
+              
+              <el-descriptions-item>
+                <template #label>
+                  <el-switch
+                    v-model="protocolSettings.enableVMess"
+                    active-text="启用 VMess 协议"
+                    :disabled="disableProtocolSwitch"
+                  />
+                </template>
+                <div class="protocol-description">
+                  <p>VMess 协议：V2Ray 的核心传输协议，支持多种传输层。</p>
+                  <el-tag
+                    v-if="protocolSettings.enableVMess"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
+                </div>
+              </el-descriptions-item>
+              
+              <el-descriptions-item>
+                <template #label>
+                  <el-switch
+                    v-model="protocolSettings.enableVLESS"
+                    active-text="启用 VLESS 协议"
+                    :disabled="disableProtocolSwitch"
+                  />
+                </template>
+                <div class="protocol-description">
+                  <p>VLESS 协议：轻量化的 VMess 协议，去除不必要的加密。</p>
+                  <el-tag
+                    v-if="protocolSettings.enableVLESS"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
+                </div>
+              </el-descriptions-item>
+              
+              <el-descriptions-item>
+                <template #label>
+                  <el-switch
+                    v-model="protocolSettings.enableShadowsocks"
+                    active-text="启用 Shadowsocks 协议"
+                    :disabled="disableProtocolSwitch"
+                  />
+                </template>
+                <div class="protocol-description">
+                  <p>Shadowsocks 协议：经典的加密代理协议。</p>
+                  <el-tag
+                    v-if="protocolSettings.enableShadowsocks"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
+                </div>
+              </el-descriptions-item>
+              
+              <el-descriptions-item>
+                <template #label>
+                  <el-switch
+                    v-model="protocolSettings.enableSocks"
+                    active-text="启用 SOCKS 协议"
+                    :disabled="disableProtocolSwitch"
+                  />
+                </template>
+                <div class="protocol-description">
+                  <p>SOCKS 协议：标准代理协议，支持 TCP/UDP。</p>
+                  <el-tag
+                    v-if="protocolSettings.enableSocks"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
+                </div>
+              </el-descriptions-item>
+              
+              <el-descriptions-item>
+                <template #label>
+                  <el-switch
+                    v-model="protocolSettings.enableHTTP"
+                    active-text="启用 HTTP 协议"
+                    :disabled="disableProtocolSwitch"
+                  />
+                </template>
+                <div class="protocol-description">
+                  <p>HTTP 协议：基础代理协议，明文传输。</p>
+                  <el-tag
+                    v-if="protocolSettings.enableHTTP"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
+                </div>
+              </el-descriptions-item>
+            </el-descriptions>
+          </el-form-item>
+          
+          <el-divider content-position="left">
+            自动生成节点
+          </el-divider>
+
+          <el-form-item
+            label="协议优先级"
+            :label-width="settingsLabelWidth"
+          >
+            <div class="auto-proxy-priority">
+              <div
+                v-for="(protocol, index) in autoProxySettings.protocolPriority"
+                :key="index"
+                class="priority-row"
+              >
+                <span class="priority-index">第 {{ index + 1 }} 优先</span>
+                <el-select
+                  v-model="autoProxySettings.protocolPriority[index]"
+                  class="priority-select"
+                  :disabled="protocolsLoading"
+                  @change="ensureAutoProxyPriority"
+                >
+                  <el-option
+                    v-for="option in autoProxyProtocolOptions"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value"
+                  />
+                </el-select>
+              </div>
+            </div>
+            <div class="form-tips">
+              新用户或重建自动代理时按这个顺序选择协议；节点只配置单一协议时仍使用该协议。
+            </div>
+          </el-form-item>
+
+          <el-divider content-position="left">
+            传输层设置
+          </el-divider>
+          
+          <el-form-item
+            label="支持的传输层"
+            :label-width="settingsLabelWidth"
+          >
+            <el-descriptions
+              :column="1"
+              border
+              size="medium"
+            >
+              <el-descriptions-item>
+                <template #label>
+                  <el-switch
+                    v-model="transportSettings.enableTCP"
+                    active-text="启用 TCP 传输"
+                    :disabled="disableTransportSwitch"
+                  />
+                </template>
+                <div class="protocol-description">
+                  <p>TCP 传输：最基础的传输方式。</p>
+                  <el-tag
+                    v-if="transportSettings.enableTCP"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
+                </div>
+              </el-descriptions-item>
+              
+              <el-descriptions-item>
+                <template #label>
+                  <el-switch
+                    v-model="transportSettings.enableWebSocket"
+                    active-text="启用 WebSocket 传输"
+                    :disabled="disableTransportSwitch"
+                  />
+                </template>
+                <div class="protocol-description">
+                  <p>WebSocket 传输：基于HTTP协议的持久化连接，兼容性好。</p>
+                  <el-tag
+                    v-if="transportSettings.enableWebSocket"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
+                </div>
+              </el-descriptions-item>
+              
+              <el-descriptions-item>
+                <template #label>
+                  <el-switch
+                    v-model="transportSettings.enableHTTP2"
+                    active-text="启用 HTTP/2 传输"
+                    :disabled="disableTransportSwitch"
+                  />
+                </template>
+                <div class="protocol-description">
+                  <p>HTTP/2 传输：新一代HTTP协议，多路复用，需启用TLS。</p>
+                  <el-tag
+                    v-if="transportSettings.enableHTTP2"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
+                </div>
+              </el-descriptions-item>
+              
+              <el-descriptions-item>
+                <template #label>
+                  <el-switch
+                    v-model="transportSettings.enableGRPC"
+                    active-text="启用 gRPC 传输"
+                    :disabled="disableTransportSwitch"
+                  />
+                </template>
+                <div class="protocol-description">
+                  <p>gRPC 传输：基于HTTP/2的高性能RPC框架，抗干扰能力强。</p>
+                  <el-tag
+                    v-if="transportSettings.enableGRPC"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
+                </div>
+              </el-descriptions-item>
+              
+              <el-descriptions-item>
+                <template #label>
+                  <el-switch
+                    v-model="transportSettings.enableQUIC"
+                    active-text="启用 QUIC 传输"
+                    :disabled="disableTransportSwitch"
+                  />
+                </template>
+                <div class="protocol-description">
+                  <p>QUIC 传输：基于UDP的传输层协议，低延迟。</p>
+                  <el-tag
+                    v-if="transportSettings.enableQUIC"
+                    type="success"
+                    size="small"
+                  >
+                    已启用
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="danger"
+                    size="small"
+                  >
+                    已禁用
+                  </el-tag>
+                </div>
+              </el-descriptions-item>
+            </el-descriptions>
+          </el-form-item>
+          
+          <el-divider />
+
+          <el-form-item>
+            <el-button
+              type="primary"
+              :loading="protocolsLoading"
+              @click="saveProtocolSettings"
+            >
+              保存协议配置
+            </el-button>
+          </el-form-item>
+        </el-form>
+      </el-tab-pane>
+    </el-tabs>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import AdminStickyChrome from '@/components/AdminStickyChrome.vue'
+import { ref, reactive, onMounted, computed, h } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { useUserStore } from '@/stores/user'
+import api from '@/api/index'
+import { useViewport } from '@/composables/useViewport'
+import { extractErrorMessage } from '@/utils/entitlement'
+
+// store
+const userStore = useUserStore()
+const router = useRouter()
+const { isMobile } = useViewport()
+
+// 当前活动标签页
+const activeName = ref('server')
+const settingsLabelPosition = computed(() => (isMobile.value ? 'top' : 'right'))
+const settingsLabelWidth = computed(() => (isMobile.value ? 'auto' : '168px'))
+
+// 表单数据
+const serverForm = reactive({
+  siteName: 'V Panel',
+  siteDescription: '',
+  panelListenIP: '0.0.0.0',
+  panelPort: 8080,
+  panelBasePath: '/',
+  publicUrl: '',
+  corsOrigins: '',
+  panelCertPath: '',
+  panelKeyPath: '',
+  selectedCertId: null,
+  proxyMode: 'compatible',
+  timezone: 'Asia/Shanghai'
+})
+
+const savedServerRestartBaseline = reactive({
+  panelListenIP: '0.0.0.0',
+  panelPort: 8080,
+  panelBasePath: '/',
+  corsOrigins: '',
+  panelCertPath: '',
+  panelKeyPath: ''
+})
+
+// HTTPS/TLS 证书选择相关
+const availableCerts = ref([])
+const certListLoading = ref(false)
+const applyingCert = ref(false)
+const showManualCertPaths = ref(false)
+const serverAdvancedSections = ref([])
+
+const dbForm = reactive({
+  dbType: 'sqlite',
+  dbHost: 'localhost',
+  dbPort: 3306,
+  dbName: 'v_panel',
+  dbUser: 'root',
+  dbPassword: '',
+  sqlitePath: ''
+})
+
+const runtimeDatabase = reactive({
+  driver: 'sqlite',
+  path: '',
+  dsnMasked: ''
+})
+
+const runtimePanel = reactive({
+  listenHost: '0.0.0.0',
+  listenPort: 8080,
+  publicUrl: '',
+  publicHost: '',
+  publicPort: null,
+  publishPort: null
+})
+
+const runtimePublicUrlLabel = computed(() => runtimePanel.publicUrl || '未配置')
+const runtimeListenLabel = computed(() => {
+  const host = runtimePanel.listenHost || serverForm.panelListenIP || '0.0.0.0'
+  const port = runtimePanel.listenPort || serverForm.panelPort || 8080
+  return `${host}:${port}`
+})
+const runtimePortMappingLabel = computed(() => {
+  const publishPort = runtimePanel.publishPort
+  const targetPort = runtimePanel.listenPort || serverForm.panelPort || 8080
+  if (!publishPort) return `未检测到宿主机发布端口 -> ${targetPort}`
+  return `${publishPort} -> ${targetPort}`
+})
+
+const normalizeRuntimeDbDriver = (driver) => {
+  const value = String(driver || '').trim().toLowerCase()
+  if (value === 'sqlite3') return 'sqlite'
+  if (value === 'postgresql') return 'postgres'
+  return ['sqlite', 'mysql', 'postgres'].includes(value) ? value : 'sqlite'
+}
+
+const runtimeDatabaseLabel = computed(() => {
+  const labels = {
+    sqlite: 'SQLite',
+    mysql: 'MySQL',
+    postgres: 'PostgreSQL'
+  }
+  return labels[runtimeDatabase.driver] || runtimeDatabase.driver || 'SQLite'
+})
+
+const runtimeDatabaseDetail = computed(() => {
+  if (runtimeDatabase.driver === 'sqlite') {
+    return runtimeDatabase.path || ''
+  }
+  return runtimeDatabase.dsnMasked || ''
+})
+
+const logForm = reactive({
+  logLevel: 'info',
+  logRetentionDays: 30,
+  logPath: '/usr/local/v-panel/logs',
+  enableAccessLog: true,
+  enableOperationLog: true
+})
+
+const emailForm = reactive({
+  loading: false,
+  saving: false,
+  testing: false,
+  host: '',
+  port: 587,
+  user: '',
+  from: '',
+  alertEmail: '',
+  password: '',
+  passwordConfigured: false,
+  testTo: '',
+  telegramBotToken: '',
+  telegramChatId: ''
+})
+
+const adminForm = reactive({
+  username: userStore.user?.username || userStore.username || 'admin',
+  currentPassword: '',
+  newPassword: '',
+  confirmPassword: ''
+})
+
+const securityForm = reactive({
+  sessionTimeout: 1440,
+  enableIpWhitelist: false,
+  ipWhitelist: '',
+  enableLoginLock: false,
+  maxLoginAttempts: 5,
+  lockDuration: 10
+})
+
+const securityState = reactive({
+  loading: false,
+  saving: false
+})
+
+const tunnelForm = reactive({
+  enabled: false,
+  mode: 'host',
+  token: '',
+  tokenConfigured: false,
+  clearToken: false,
+  publicUrl: '',
+  autoSyncPublicUrl: true,
+  saving: false,
+  testing: false
+})
+
+const tunnelProbeResult = ref(null)
+
+const runtimeTunnel = reactive({
+  enabled: false,
+  mode: 'host',
+  tokenConfigured: false,
+  tokenSource: 'none',
+  tokenMasked: '',
+  effectivePublicUrl: '',
+  publicUrlSource: 'none',
+  originTarget: ''
+})
+
+const runtimeTunnelStatusLabel = computed(() => {
+  const modeLabel = runtimeTunnel.mode === 'docker' ? 'Docker Sidecar' : '宿主机 cloudflared'
+  return runtimeTunnel.enabled ? `已启用（${modeLabel}）` : `未启用（${modeLabel}）`
+})
+
+const runtimeTunnelTokenLabel = computed(() => {
+  if (!runtimeTunnel.tokenConfigured) return '未配置'
+  const sourceLabel = runtimeTunnel.tokenSource === 'env' ? '环境变量' : '面板已保存'
+  return runtimeTunnel.tokenMasked ? `${sourceLabel} · ${runtimeTunnel.tokenMasked}` : sourceLabel
+})
+
+const runtimeTunnelPublicUrlLabel = computed(() => {
+  if (!runtimeTunnel.effectivePublicUrl) return '未配置'
+  if (runtimeTunnel.publicUrlSource === 'panel') {
+    return `${runtimeTunnel.effectivePublicUrl}（沿用对外访问地址）`
+  }
+  return runtimeTunnel.effectivePublicUrl
+})
+
+const runtimeTunnelOriginLabel = computed(() => {
+  if (runtimeTunnel.originTarget) return runtimeTunnel.originTarget
+  const publishPort = runtimePanel.publishPort || runtimePanel.listenPort || 8080
+  const containerPort = runtimePanel.listenPort || 8080
+  return tunnelForm.mode === 'docker' ? `http://v-panel:${containerPort}` : `http://127.0.0.1:${publishPort}`
+})
+
+const tunnelDeploySnippet = computed(() => {
+  const publishPort = runtimePanel.publishPort || runtimePanel.listenPort || 8080
+  const containerPort = runtimePanel.listenPort || 8080
+  if (tunnelForm.mode === 'docker') {
+    return `# 1. 在 deployments/docker/.env 中添加：\nCLOUDFLARED_TUNNEL_TOKEN=<YOUR_TUNNEL_TOKEN>\n\n# 2. 启动带 cloudflared sidecar 的编排：\ncd /root/Vpanel/deployments/docker && docker compose --profile tunnel up -d\n\n# 3. Cloudflare Zero Trust Public Hostname 指向：\n#    Service: http://v-panel:${containerPort}`
+  }
+  return `# 1. 宿主机安装并启动 cloudflared 服务：\ncloudflared service install <YOUR_TUNNEL_TOKEN>\nsystemctl enable --now cloudflared\n\n# 2. Cloudflare Zero Trust Public Hostname 指向：\n#    Service: http://127.0.0.1:${publishPort}`
+})
+
+const applyServerSettings = (settings) => {
+  serverForm.siteName = settings?.site_name || 'V Panel'
+  serverForm.siteDescription = settings?.site_description || ''
+  serverForm.panelListenIP = settings?.panel_access_ip || '0.0.0.0'
+  serverForm.panelPort = settings?.panel_port || 8080
+  serverForm.panelBasePath = settings?.panel_base_path || '/'
+  serverForm.publicUrl = settings?.public_url || ''
+  serverForm.corsOrigins = settings?.cors_origins || ''
+  serverForm.panelCertPath = settings?.panel_cert_path || ''
+  serverForm.panelKeyPath = settings?.panel_key_path || ''
+  serverForm.proxyMode = settings?.proxy_mode || 'compatible'
+  serverForm.timezone = settings?.timezone || 'Asia/Shanghai'
+
+  savedServerRestartBaseline.panelListenIP = serverForm.panelListenIP
+  savedServerRestartBaseline.panelPort = serverForm.panelPort
+  savedServerRestartBaseline.panelBasePath = serverForm.panelBasePath
+  savedServerRestartBaseline.corsOrigins = serverForm.corsOrigins
+  savedServerRestartBaseline.panelCertPath = serverForm.panelCertPath
+  savedServerRestartBaseline.panelKeyPath = serverForm.panelKeyPath
+
+  const runtime = settings?.runtime_panel || {}
+  runtimePanel.listenHost = runtime.listen_host || serverForm.panelListenIP || '0.0.0.0'
+  runtimePanel.listenPort = runtime.listen_port || serverForm.panelPort || 8080
+  runtimePanel.publicUrl = runtime.public_url || serverForm.publicUrl || ''
+  runtimePanel.publicHost = runtime.public_host || ''
+  runtimePanel.publicPort = runtime.public_port || null
+  runtimePanel.publishPort = runtime.publish_port || null
+}
+
+const applyDbSettings = (settings) => {
+  const runtime = settings?.runtime_database || {}
+  runtimeDatabase.driver = normalizeRuntimeDbDriver(runtime.driver || settings?.db_type)
+  runtimeDatabase.path = runtime.path || ''
+  runtimeDatabase.dsnMasked = runtime.dsn_masked || ''
+
+  dbForm.dbType = runtimeDatabase.driver
+  dbForm.dbHost = 'localhost'
+  dbForm.dbPort = dbForm.dbType === 'postgres' ? 5432 : 3306
+  dbForm.dbName = 'v_panel'
+  dbForm.dbUser = dbForm.dbType === 'postgres' ? 'postgres' : 'root'
+  dbForm.dbPassword = ''
+  dbForm.sqlitePath = ''
+}
+
+const applyLogSettings = (settings) => {
+  logForm.logLevel = settings?.log_level || 'info'
+  logForm.logRetentionDays = settings?.log_retention_days || 30
+  logForm.logPath = settings?.log_path || './logs'
+  logForm.enableAccessLog = settings?.enable_access_log ?? true
+  logForm.enableOperationLog = settings?.enable_operation_log ?? true
+}
+
+const applyTunnelSettings = (settings) => {
+  const runtime = settings?.runtime_tunnel || {}
+  runtimeTunnel.enabled = runtime.enabled ?? (settings?.tunnel_enabled ?? false)
+  runtimeTunnel.mode = runtime.mode || settings?.tunnel_mode || 'host'
+  runtimeTunnel.tokenConfigured = runtime.token_configured ?? (settings?.tunnel_token_configured ?? false)
+  runtimeTunnel.tokenSource = runtime.token_source || (runtimeTunnel.tokenConfigured ? 'settings' : 'none')
+  runtimeTunnel.tokenMasked = runtime.token_masked || ''
+  runtimeTunnel.effectivePublicUrl = runtime.effective_public_url || settings?.tunnel_public_url || ''
+  runtimeTunnel.publicUrlSource = runtime.public_url_source || (settings?.tunnel_public_url ? 'tunnel' : 'none')
+  runtimeTunnel.originTarget = runtime.origin_target || ''
+
+  tunnelForm.enabled = settings?.tunnel_enabled ?? false
+  tunnelForm.mode = settings?.tunnel_mode || 'host'
+  tunnelForm.token = ''
+  tunnelForm.tokenConfigured = settings?.tunnel_token_configured ?? false
+  tunnelForm.clearToken = false
+  tunnelForm.publicUrl = settings?.tunnel_public_url || runtimeTunnel.effectivePublicUrl || ''
+  tunnelForm.autoSyncPublicUrl = settings?.tunnel_auto_sync_public_url ?? true
+}
+
+const loadGeneralSettings = async () => {
+  const response = await api.get('/settings')
+  const settings = response?.data || {}
+  applyServerSettings(settings)
+  applyTunnelSettings(settings)
+  applyDbSettings(settings)
+  applyLogSettings(settings)
+  applyEmailSettings(settings)
+  applySecuritySettings(settings)
+  return settings
+}
+
+// 协议设置
+const protocolSettings = reactive({
+  enableTrojan: true,
+  enableVMess: true,
+  enableVLESS: true,
+  enableShadowsocks: true,
+  enableSocks: false,
+  enableHTTP: false
+})
+
+const defaultAutoProxyPriority = ['vless', 'trojan', 'vmess', 'shadowsocks']
+const autoProxyProtocolOptions = [
+  { label: 'Trojan', value: 'trojan' },
+  { label: 'VMess', value: 'vmess' },
+  { label: 'VLESS', value: 'vless' },
+  { label: 'Shadowsocks', value: 'shadowsocks' }
+]
+const autoProxySettings = reactive({
+  protocolPriority: [...defaultAutoProxyPriority]
+})
+
+// 传输层设置
+const transportSettings = reactive({
+  enableTCP: true,
+  enableWebSocket: true,
+  enableHTTP2: true,
+  enableGRPC: true,
+  enableQUIC: false
+})
+
+// 状态控制
+const protocolsLoading = ref(false)
+const disableProtocolSwitch = computed(() => protocolsLoading.value)
+const disableTransportSwitch = computed(() => protocolsLoading.value)
+
+const normalizeAutoProxyPriority = (priority = []) => {
+  const allowed = new Set(defaultAutoProxyPriority)
+  const seen = new Set()
+  const normalized = []
+  for (const protocol of priority) {
+    const value = String(protocol || '').trim().toLowerCase()
+    if (!allowed.has(value) || seen.has(value)) continue
+    seen.add(value)
+    normalized.push(value)
+  }
+  for (const protocol of defaultAutoProxyPriority) {
+    if (seen.has(protocol)) continue
+    normalized.push(protocol)
+  }
+  return normalized.slice(0, defaultAutoProxyPriority.length)
+}
+
+const ensureAutoProxyPriority = () => {
+  autoProxySettings.protocolPriority.splice(
+    0,
+    autoProxySettings.protocolPriority.length,
+    ...normalizeAutoProxyPriority(autoProxySettings.protocolPriority)
+  )
+}
+
+const applyProtocolSettings = (settings = {}) => {
+  const protocols = settings?.protocols || {}
+  protocolSettings.enableTrojan = protocols.trojan ?? true
+  protocolSettings.enableVMess = protocols.vmess ?? true
+  protocolSettings.enableVLESS = protocols.vless ?? true
+  protocolSettings.enableShadowsocks = protocols.shadowsocks ?? true
+  protocolSettings.enableSocks = protocols.socks ?? false
+  protocolSettings.enableHTTP = protocols.http ?? false
+
+  const transports = settings?.transports || {}
+  transportSettings.enableTCP = transports.tcp ?? true
+  transportSettings.enableWebSocket = transports.ws ?? true
+  transportSettings.enableHTTP2 = transports.http2 ?? true
+  transportSettings.enableGRPC = transports.grpc ?? true
+  transportSettings.enableQUIC = transports.quic ?? false
+}
+
+const applyAutoProxySettings = (settings = {}) => {
+  autoProxySettings.protocolPriority.splice(
+    0,
+    autoProxySettings.protocolPriority.length,
+    ...normalizeAutoProxyPriority(settings?.protocol_priority || settings?.protocolPriority)
+  )
+}
+
+const loadProtocolSettings = async () => {
+  protocolsLoading.value = true
+  try {
+    const [protocolResponse, autoProxyResponse] = await Promise.all([
+      api.get('/settings/protocols'),
+      api.get('/settings/auto-proxy')
+    ])
+    applyProtocolSettings(protocolResponse || {})
+    applyAutoProxySettings(autoProxyResponse || {})
+  } catch (error) {
+    console.error('Failed to load protocol settings:', error)
+    ElMessage.error('加载协议配置失败')
+  } finally {
+    protocolsLoading.value = false
+  }
+}
+
+// 初始化
+onMounted(async () => {
+  adminForm.username = userStore.user?.username || userStore.username || 'admin'
+  try {
+    await Promise.allSettled([
+      loadGeneralSettings(),
+      loadProtocolSettings(),
+      fetchCertList()
+    ]);
+  } catch (error) {
+    console.error('Failed to load initial settings:', error);
+    ElMessage.error('加载设置失败，请刷新页面重试');
+  }
+});
+
+// 拉取证书管理里"已申请、未过期"的证书供下拉选择
+const fetchCertList = async () => {
+  certListLoading.value = true
+  try {
+    const response = await api.get('/certificates')
+    const raw = Array.isArray(response) ? response
+      : Array.isArray(response?.certificates) ? response.certificates
+      : Array.isArray(response?.data?.certificates) ? response.data.certificates
+      : Array.isArray(response?.data) ? response.data
+      : []
+
+    const now = Date.now()
+    availableCerts.value = raw
+      .filter((c) => {
+        const status = c.status || ''
+        const usable = !status || ['active', 'valid', 'expiring'].includes(status)
+        const expiresAt = c.expires_at || c.expiresAt
+        const notExpired = !expiresAt || new Date(expiresAt).getTime() > now
+        return usable && notExpired
+      })
+      .map((c) => ({
+        id: c.id,
+        domain: c.domain || '(未命名)',
+        expiresAt: c.expires_at || c.expiresAt || '',
+        expiresLabel: formatExpiresLabel(c.expires_at || c.expiresAt)
+      }))
+  } catch (error) {
+    console.warn('Failed to load certificate list:', error)
+    availableCerts.value = []
+  } finally {
+    certListLoading.value = false
+  }
+}
+
+const formatExpiresLabel = (expiresAt) => {
+  if (!expiresAt) return '无到期信息'
+  const d = new Date(expiresAt)
+  if (isNaN(d.getTime())) return '到期日未知'
+  const days = Math.ceil((d.getTime() - Date.now()) / 86400000)
+  const dateStr = d.toISOString().slice(0, 10)
+  if (days < 0) return `已过期 ${dateStr}`
+  if (days <= 30) return `${dateStr}，剩 ${days} 天`
+  return `${dateStr}`
+}
+
+const applyCertificate = async () => {
+  if (!serverForm.selectedCertId) return
+  applyingCert.value = true
+  try {
+    const response = await api.post('/settings/apply-certificate', {
+      certificate_id: Number(serverForm.selectedCertId)
+    })
+    const data = response?.data || response || {}
+    if (data.cert_path) {
+      serverForm.panelCertPath = data.cert_path
+      savedServerRestartBaseline.panelCertPath = data.cert_path
+    }
+    if (data.key_path) {
+      serverForm.panelKeyPath = data.key_path
+      savedServerRestartBaseline.panelKeyPath = data.key_path
+    }
+    ElMessage.success('证书已应用并保存。重启面板后生效')
+  } catch (error) {
+    ElMessage.error(extractErrorMessage(error) || '应用证书失败')
+  } finally {
+    applyingCert.value = false
+  }
+}
+
+const normalizePanelBasePath = (value) => {
+  let basePath = String(value || '').trim()
+  if (!basePath || basePath === '/') return { value: '/' }
+  if (basePath.includes('://')) {
+    return { error: '面板URL基础路径只能填写路径，例如 /vpanel，不能填写完整 URL' }
+  }
+  if (/[\s?#]/.test(basePath)) {
+    return { error: '面板URL基础路径不能包含空格、查询参数或 # 片段' }
+  }
+  if (!basePath.startsWith('/')) {
+    basePath = `/${basePath}`
+  }
+  basePath = basePath.replace(/\/+$/g, '')
+  if (!basePath) return { value: '/' }
+  if (basePath.includes('//')) {
+    return { error: '面板URL基础路径不能包含连续斜杠' }
+  }
+  return { value: basePath }
+}
+
+const normalizeOriginUrl = (value, label) => {
+  const raw = String(value || '').trim()
+  if (!raw) return { value: '' }
+  try {
+    const url = new URL(raw)
+    if (!['http:', 'https:'].includes(url.protocol)) {
+      return { error: `${label}只支持 http 或 https` }
+    }
+    if (url.username || url.password || url.search || url.hash) {
+      return { error: `${label}不能包含用户名、密码、查询参数或 # 片段` }
+    }
+    if (url.pathname && url.pathname !== '/') {
+      return { error: `${label}只填写协议、域名和端口；路径请使用面板URL基础路径` }
+    }
+    return { value: url.origin }
+  } catch (error) {
+    return { error: `${label}格式不正确，例如 https://panel.example.com` }
+  }
+}
+
+const normalizeCorsOrigins = (value) => {
+  const parts = String(value || '')
+    .split(/[,\n]/)
+    .map(item => item.trim())
+    .filter(Boolean)
+  const seen = new Set()
+  const normalized = []
+  for (const part of parts) {
+    if (part === '*') {
+      if (!seen.has(part)) {
+        seen.add(part)
+        normalized.push(part)
+      }
+      continue
+    }
+    const origin = normalizeOriginUrl(part, 'CORS 来源')
+    if (origin.error) return origin
+    if (seen.has(origin.value)) continue
+    seen.add(origin.value)
+    normalized.push(origin.value)
+  }
+  return { value: normalized.join(', ') }
+}
+
+const buildServerSettingsPayload = () => {
+  const panelPort = Number(serverForm.panelPort)
+  if (!Number.isInteger(panelPort) || panelPort < 1 || panelPort > 65535) {
+    ElMessage.warning('容器内监听端口必须在 1-65535 之间')
+    return null
+  }
+
+  const normalizedBasePath = normalizePanelBasePath(serverForm.panelBasePath)
+  if (normalizedBasePath.error) {
+    ElMessage.warning(normalizedBasePath.error)
+    return null
+  }
+
+  const certPath = serverForm.panelCertPath.trim()
+  const keyPath = serverForm.panelKeyPath.trim()
+  if (Boolean(certPath) !== Boolean(keyPath)) {
+    ElMessage.warning('TLS 证书路径和私钥路径必须同时填写，或同时留空')
+    return null
+  }
+
+  const publicUrl = normalizeOriginUrl(serverForm.publicUrl, '公网访问地址')
+  if (publicUrl.error) {
+    ElMessage.warning(publicUrl.error)
+    return null
+  }
+
+  const corsOrigins = normalizeCorsOrigins(serverForm.corsOrigins)
+  if (corsOrigins.error) {
+    ElMessage.warning(corsOrigins.error)
+    return null
+  }
+
+  return {
+    site_name: serverForm.siteName.trim() || 'V Panel',
+    site_description: serverForm.siteDescription.trim(),
+    panel_access_ip: serverForm.panelListenIP.trim(),
+    panel_port: panelPort,
+    panel_base_path: normalizedBasePath.value,
+    public_url: publicUrl.value,
+    cors_origins: corsOrigins.value,
+    panel_cert_path: certPath,
+    panel_key_path: keyPath,
+    timezone: serverForm.timezone
+  }
+}
+
+// 方法
+const saveServerSettings = async () => {
+  const payload = buildServerSettingsPayload()
+  if (!payload) return
+
+  const needsRestart =
+    payload.panel_access_ip !== savedServerRestartBaseline.panelListenIP ||
+    payload.panel_port !== savedServerRestartBaseline.panelPort ||
+    payload.panel_base_path !== savedServerRestartBaseline.panelBasePath ||
+    payload.cors_origins !== savedServerRestartBaseline.corsOrigins ||
+    payload.panel_cert_path !== savedServerRestartBaseline.panelCertPath ||
+    payload.panel_key_path !== savedServerRestartBaseline.panelKeyPath
+
+  try {
+    const response = await api.put('/settings', payload)
+    const updated = response?.data || {}
+    applyServerSettings(updated)
+    applyTunnelSettings(updated)
+    ElMessage.success(
+      needsRestart
+        ? '服务器配置保存成功（监听/路径/CORS/TLS 变更需重启面板后生效）'
+        : '服务器配置保存成功，已立即生效'
+    )
+  } catch (error) {
+    ElMessage.error('保存失败：' + (extractErrorMessage(error) || '未知错误'))
+  }
+}
+
+const saveTunnelSettings = async () => {
+  const rawUrl = tunnelForm.publicUrl.trim()
+  if (rawUrl) {
+    const checked = normalizeOriginUrl(rawUrl, '隧道公网地址')
+    if (checked.error) {
+      ElMessage.warning(checked.error)
+      return
+    }
+    if (!checked.value.startsWith('https://')) {
+      ElMessage.warning('隧道公网地址必须使用 https://')
+      return
+    }
+  }
+
+  tunnelForm.saving = true
+  try {
+    const payload = {
+      tunnel_enabled: tunnelForm.enabled,
+      tunnel_mode: tunnelForm.mode,
+      tunnel_public_url: rawUrl.replace(/\/+$/, ''),
+      tunnel_auto_sync_public_url: tunnelForm.autoSyncPublicUrl
+    }
+    if (tunnelForm.clearToken) {
+      payload.tunnel_token_clear = true
+    } else if (tunnelForm.token.trim()) {
+      payload.tunnel_token = tunnelForm.token.trim()
+    }
+
+    const response = await api.put('/settings', payload)
+    const updated = response?.data || {}
+    applyTunnelSettings(updated)
+    applyServerSettings(updated)
+    ElMessage.success(
+      tunnelForm.enabled && tunnelForm.autoSyncPublicUrl && updated.tunnel_public_url
+        ? 'Tunnel 配置保存成功，已自动同步对外访问地址与 CORS 来源'
+        : 'Tunnel 配置保存成功'
+    )
+  } catch (error) {
+    ElMessage.error('保存失败：' + (extractErrorMessage(error) || '未知错误'))
+  } finally {
+    tunnelForm.saving = false
+  }
+}
+
+const testTunnelConnection = async () => {
+  const targetUrl = tunnelForm.publicUrl.trim() || serverForm.publicUrl.trim()
+  if (!targetUrl) {
+    ElMessage.warning('请先填写隧道公网地址')
+    return
+  }
+  tunnelForm.testing = true
+  tunnelProbeResult.value = null
+  try {
+    const response = await api.post('/settings/test-tunnel', {
+      tunnel_public_url: targetUrl
+    })
+    tunnelProbeResult.value = response?.data || response || null
+    if (tunnelProbeResult.value?.reachable) {
+      ElMessage.success(tunnelProbeResult.value.message || '隧道连通正常')
+    } else {
+      ElMessage.warning(tunnelProbeResult.value?.message || '隧道暂不可达')
+    }
+  } catch (error) {
+    ElMessage.error('检测失败：' + (extractErrorMessage(error) || '未知错误'))
+  } finally {
+    tunnelForm.testing = false
+  }
+}
+
+const copyTunnelCommand = async () => {
+  try {
+    await navigator.clipboard.writeText(tunnelDeploySnippet.value)
+    ElMessage.success('部署参考命令已复制到剪贴板')
+  } catch {
+    ElMessage.warning('复制失败，请手动选中复制')
+  }
+}
+
+const restartPanel = () => {
+  ElMessageBox.confirm(
+    '确定要重启面板吗？这将暂时中断所有连接。',
+    '警告',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  )
+  .then(async () => {
+    try {
+      await api.post('/admin/system/restart-panel')
+      ElMessage.success('面板重启指令已发送，请稍后重新访问当前页面')
+    } catch (error) {
+      ElMessage.error('重启失败：' + (extractErrorMessage(error) || '未知错误'))
+    }
+  })
+  .catch(() => {
+    ElMessage.info('已取消重启')
+  })
+}
+
+const testDbConnection = async () => {
+  if (dbForm.dbType === 'sqlite' && !dbForm.sqlitePath.trim()) {
+    return ElMessage.warning('请填写目标 SQLite 路径')
+  }
+
+  try {
+    await api.post('/settings/test-db', {
+      db_type: dbForm.dbType,
+      db_host: dbForm.dbHost.trim(),
+      db_port: dbForm.dbPort,
+      db_name: dbForm.dbName.trim(),
+      db_user: dbForm.dbUser.trim(),
+      db_password: dbForm.dbPassword,
+      sqlite_path: dbForm.sqlitePath.trim()
+    })
+    ElMessage.success('数据库连接测试成功')
+  } catch (error) {
+    ElMessage.error('连接测试失败：' + (extractErrorMessage(error) || '未知错误'))
+  }
+}
+
+const backupDb = async () => {
+  try {
+    const response = await api.post('/settings/backup-db')
+    const backupPath = response?.backup_path || response?.data?.backup_path
+    ElMessage.success(backupPath ? `数据库备份成功：${backupPath}` : '数据库备份成功')
+  } catch (error) {
+    ElMessage.error('备份失败：' + (extractErrorMessage(error) || '未知错误'))
+  }
+}
+
+const dbMigrating = ref(false)
+const migrateDb = async () => {
+  if (dbForm.dbType === 'sqlite') {
+    if (!dbForm.sqlitePath.trim()) {
+      return ElMessage.warning('请填写目标 SQLite 路径')
+    }
+  } else if (!dbForm.dbHost.trim() || !dbForm.dbName.trim() || !dbForm.dbUser.trim()) {
+    return ElMessage.warning('请填写目标数据库主机 / 库名 / 用户名')
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `即将把当前数据库的所有数据复制到目标 ${dbForm.dbType}。这是单向操作，目标库现有数据会被覆盖。建议先点"备份数据库"。`,
+      '确认迁移',
+      {
+        confirmButtonText: '开始迁移',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+  } catch {
+    return
+  }
+
+  dbMigrating.value = true
+  try {
+    const response = await api.post('/settings/migrate-db', {
+      db_type: dbForm.dbType,
+      db_host: dbForm.dbHost.trim(),
+      db_port: dbForm.dbPort,
+      db_name: dbForm.dbName.trim(),
+      db_user: dbForm.dbUser.trim(),
+      db_password: dbForm.dbPassword,
+      sqlite_path: dbForm.sqlitePath.trim(),
+      confirm: true,
+    })
+
+    const data = response?.data || response || {}
+    const cutover = data.cutover_env || {}
+    const envBlock = Object.entries(cutover)
+      .map(([k, v]) => `${k}=${v}`)
+      .join('\n')
+
+    ElMessageBox.alert(
+      h('div', [
+        h('p', [
+          h('strong', '迁移完成'),
+          `，共复制 ${data?.report?.total_rows ?? '?'} 行，跨 ${data?.report?.table_count ?? '?'} 张表。`
+        ]),
+        h('p', { style: 'margin-top:12px' }, '本服务仍在使用旧数据库。请在容器环境变量或 docker-compose.yml 中设置：'),
+        h(
+          'pre',
+          { style: 'margin:8px 0;padding:10px;background:#f4f4f5;border-radius:6px;white-space:pre-wrap;word-break:break-all' },
+          envBlock
+        ),
+        h('p', '然后重启容器，新连接才会生效。')
+      ]),
+      '迁移成功',
+      { confirmButtonText: '我已记下' }
+    )
+  } catch (error) {
+    ElMessage.error('迁移失败：' + (extractErrorMessage(error) || '未知错误'))
+  } finally {
+    dbMigrating.value = false
+  }
+}
+
+const saveLogSettings = async () => {
+  try {
+    const response = await api.put('/settings', {
+      log_level: logForm.logLevel,
+      log_retention_days: logForm.logRetentionDays,
+      log_path: logForm.logPath.trim(),
+      enable_access_log: logForm.enableAccessLog,
+      enable_operation_log: logForm.enableOperationLog
+    })
+    applyLogSettings(response?.data || {})
+    ElMessage.success('日志配置保存成功')
+  } catch (error) {
+    ElMessage.error('保存失败：' + (extractErrorMessage(error) || '未知错误'))
+  }
+}
+
+const applyEmailSettings = (settings) => {
+  emailForm.host = settings?.smtp_host || ''
+  emailForm.port = settings?.smtp_port || 587
+  emailForm.user = settings?.smtp_user || ''
+  emailForm.from = settings?.smtp_from || ''
+  emailForm.alertEmail = settings?.smtp_alert_email || ''
+  emailForm.password = ''
+  emailForm.passwordConfigured = settings?.smtp_password_configured ?? false
+  emailForm.telegramBotToken = settings?.telegram_bot_token || ''
+  emailForm.telegramChatId = settings?.telegram_chat_id || ''
+}
+
+const loadEmailSettings = async () => {
+  emailForm.loading = true
+  try {
+    const response = await api.get('/settings')
+    applyEmailSettings(response?.data || {})
+  } catch (error) {
+    console.error('Failed to load email settings:', error)
+    ElMessage.error('加载通知配置失败')
+  } finally {
+    emailForm.loading = false
+  }
+}
+
+const saveEmailSettings = async () => {
+  const hasSmtpFields = Boolean(emailForm.host.trim() || emailForm.user.trim() || emailForm.password.trim())
+  if (hasSmtpFields && !emailForm.host.trim()) {
+    ElMessage.warning('请填写 SMTP 服务器地址')
+    return
+  }
+  if (hasSmtpFields && (!emailForm.port || Number(emailForm.port) < 1 || Number(emailForm.port) > 65535)) {
+    ElMessage.warning('请填写有效的 SMTP 端口 (1-65535)')
+    return
+  }
+  const hasTgToken = Boolean(emailForm.telegramBotToken.trim())
+  const hasTgChat = Boolean(emailForm.telegramChatId.trim())
+  if (hasTgToken !== hasTgChat) {
+    ElMessage.warning('Telegram Bot Token 和 Chat ID 需要同时填写，或同时留空')
+    return
+  }
+  emailForm.saving = true
+  try {
+    const payload = {
+      smtp_host: emailForm.host.trim(),
+      smtp_port: emailForm.port,
+      smtp_user: emailForm.user.trim(),
+      smtp_from: emailForm.from.trim(),
+      smtp_alert_email: emailForm.alertEmail.trim(),
+      telegram_bot_token: emailForm.telegramBotToken.trim(),
+      telegram_chat_id: emailForm.telegramChatId.trim()
+    }
+
+    if (emailForm.password.trim()) {
+      payload.smtp_password = emailForm.password.trim()
+    }
+
+    const response = await api.put('/settings', payload)
+    applyEmailSettings(response?.data || {})
+    ElMessage.success('通知配置保存成功，已立即生效')
+  } catch (error) {
+    console.error('Failed to save email settings:', error)
+    ElMessage.error(extractErrorMessage(error) || '保存通知配置失败')
+  } finally {
+    emailForm.saving = false
+  }
+}
+
+const testEmailSettings = async () => {
+  emailForm.testing = true
+  try {
+    const payload = {
+      to: emailForm.testTo.trim(),
+      smtp_host: emailForm.host.trim(),
+      smtp_port: Number(emailForm.port) || 587,
+      smtp_user: emailForm.user.trim(),
+      smtp_from: emailForm.from.trim(),
+      smtp_alert_email: emailForm.alertEmail.trim()
+    }
+    if (emailForm.password.trim()) {
+      payload.smtp_password = emailForm.password.trim()
+    }
+    await api.post('/settings/test-email', payload)
+    ElMessage.success('测试邮件已发送，请检查收件箱')
+  } catch (error) {
+    console.error('Failed to send test email:', error)
+    ElMessage.error(extractErrorMessage(error) || '发送测试邮件失败')
+  } finally {
+    emailForm.testing = false
+  }
+}
+
+const openPaymentSettingsPage = () => {
+  router.push('/admin/payment-settings')
+}
+
+const clearLogs = () => {
+  const days = Number(logForm.logRetentionDays) || 30
+  ElMessageBox.confirm(
+    `确定要清理超过 ${days} 天的历史日志吗？此操作不可恢复。`,
+    '警告',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  )
+  .then(async () => {
+    try {
+      const res = await api.post('/logs/cleanup', {
+        retention_days: days
+      })
+      const deleted = res?.deleted_count ?? res?.deleted ?? res?.data?.deleted_count
+      ElMessage.success(
+        typeof deleted === 'number'
+          ? `历史日志清理完成，共删除 ${deleted} 条记录`
+          : '历史日志清理成功'
+      )
+    } catch (error) {
+      ElMessage.error('清理失败：' + (extractErrorMessage(error) || '未知错误'))
+    }
+  })
+  .catch(() => {
+    ElMessage.info('已取消清理')
+  })
+}
+
+const changeAdminPassword = async () => {
+  // 表单验证
+  if (!adminForm.currentPassword) {
+    return ElMessage.warning('请输入当前密码')
+  }
+  if (!adminForm.newPassword) {
+    return ElMessage.warning('请输入新密码')
+  }
+  if (adminForm.newPassword.length < 8 || !/[A-Za-z]/.test(adminForm.newPassword) || !/\d/.test(adminForm.newPassword)) {
+    return ElMessage.warning('新密码长度至少 8 位，且须同时包含字母和数字')
+  }
+  if (adminForm.newPassword !== adminForm.confirmPassword) {
+    return ElMessage.warning('两次输入的密码不一致')
+  }
+  
+  ElMessageBox.confirm(
+    '修改密码后，当前会话将被注销，需要重新登录。是否继续？',
+    '提示',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  )
+  .then(async () => {
+    try {
+      await api.put('/auth/password', {
+        old_password: adminForm.currentPassword,
+        new_password: adminForm.newPassword
+      })
+      ElMessage.success('密码修改成功，请重新登录')
+      
+      // 清空表单
+      adminForm.currentPassword = ''
+      adminForm.newPassword = ''
+      adminForm.confirmPassword = ''
+      
+      // 注销当前会话
+      setTimeout(async () => {
+        await userStore.logout()
+        router.push('/user/login')
+      }, 1500)
+    } catch (error) {
+      ElMessage.error('修改失败：' + (extractErrorMessage(error) || '未知错误'))
+    }
+  })
+  .catch(() => {
+    ElMessage.info('已取消修改')
+  })
+}
+
+const resetAdminPassword = () => {
+  ElMessageBox.confirm(
+    '系统密码重置请在 用户管理 中找到管理员账户并执行重置。是否跳转到用户管理页？',
+    '提示',
+    {
+      confirmButtonText: '跳转',
+      cancelButtonText: '取消',
+      type: 'info'
+    }
+  )
+  .then(() => {
+    router.push('/admin/users?role=admin')
+  })
+  .catch(() => {})
+}
+
+const applySecuritySettings = (settings) => {
+  securityForm.sessionTimeout = settings?.session_timeout || 1440
+  securityForm.enableIpWhitelist = settings?.enable_ip_whitelist ?? false
+  securityForm.ipWhitelist = settings?.ip_whitelist || ''
+  securityForm.enableLoginLock = settings?.enable_login_lock ?? false
+  securityForm.maxLoginAttempts = settings?.max_login_attempts || 5
+  securityForm.lockDuration = settings?.lock_duration || 10
+}
+
+const loadSecuritySettings = async () => {
+  securityState.loading = true
+  try {
+    const response = await api.get('/settings')
+    applySecuritySettings(response?.data || {})
+  } catch (error) {
+    console.error('Failed to load security settings:', error)
+    ElMessage.error('加载安全设置失败')
+  } finally {
+    securityState.loading = false
+  }
+}
+
+const saveSecuritySettings = async () => {
+  if (securityForm.enableIpWhitelist) {
+    try {
+      await ElMessageBox.confirm(
+        '启用后，管理后台登录将立即校验 IP 白名单。请确认当前访问 IP 已包含在白名单中，以免无法登录。',
+        '确认启用 IP 白名单',
+        { type: 'warning', confirmButtonText: '确认保存', cancelButtonText: '取消' }
+      )
+    } catch {
+      return
+    }
+  }
+  securityState.saving = true
+  try {
+    const payload = {
+      session_timeout: securityForm.sessionTimeout,
+      enable_ip_whitelist: securityForm.enableIpWhitelist,
+      ip_whitelist: securityForm.ipWhitelist.trim(),
+      enable_login_lock: securityForm.enableLoginLock,
+      max_login_attempts: securityForm.maxLoginAttempts,
+      lock_duration: securityForm.lockDuration
+    }
+
+    const response = await api.put('/settings', payload)
+    applySecuritySettings(response?.data || {})
+    ElMessage.success('安全设置保存成功')
+  } catch (error) {
+    console.error('Failed to save security settings:', error)
+    ElMessage.error(extractErrorMessage(error) || '保存安全设置失败')
+  } finally {
+    securityState.saving = false
+  }
+}
+
+
+// 保存协议设置
+const saveProtocolSettings = async () => {
+  protocolsLoading.value = true
+  try {
+    ensureAutoProxyPriority()
+    await Promise.all([
+      api.post('/settings/protocols', {
+        protocols: {
+          trojan: protocolSettings.enableTrojan,
+          vmess: protocolSettings.enableVMess,
+          vless: protocolSettings.enableVLESS,
+          shadowsocks: protocolSettings.enableShadowsocks,
+          socks: protocolSettings.enableSocks,
+          http: protocolSettings.enableHTTP
+        },
+        transports: {
+          tcp: transportSettings.enableTCP,
+          ws: transportSettings.enableWebSocket,
+          http2: transportSettings.enableHTTP2,
+          grpc: transportSettings.enableGRPC,
+          quic: transportSettings.enableQUIC
+        }
+      }),
+      api.post('/settings/auto-proxy', {
+        protocol_priority: autoProxySettings.protocolPriority
+      })
+    ])
+    ElMessage.success('协议配置保存成功')
+  } catch (error) {
+    console.error('Failed to save protocol settings:', error)
+    ElMessage.error('保存协议配置失败: ' + (extractErrorMessage(error) || '未知错误'))
+  } finally {
+    protocolsLoading.value = false
+  }
+}
+
+
+</script>
+
+<style scoped>
+.settings-container {
+  padding: 20px;
+}
+
+.settings-tabs :deep(.el-tabs__header) {
+  margin-bottom: 22px;
+}
+
+.settings-tabs :deep(.el-tabs__nav-wrap) {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.settings-tabs :deep(.el-tabs__nav-scroll) {
+  overflow-x: auto;
+}
+
+.settings-tabs :deep(.el-tabs__nav) {
+  flex-wrap: nowrap;
+}
+
+.settings-tabs :deep(.el-tabs__item) {
+  min-width: max-content;
+  padding-inline: 24px;
+}
+
+.settings-tabs :deep(.el-tabs__content) {
+  padding-top: 8px;
+}
+
+.settings-form {
+  max-width: 800px;
+  margin-top: 20px;
+}
+
+.settings-section {
+  padding: 18px 0 4px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.settings-note + .settings-section {
+  border-top: 0;
+  padding-top: 4px;
+}
+
+.settings-section__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.settings-section__title {
+  margin: 0;
+  color: var(--admin-title);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.settings-section__description {
+  margin: 4px 0 0;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.runtime-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.runtime-summary-item {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 8px;
+  background: var(--admin-surface);
+}
+
+.runtime-summary-label {
+  display: block;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.runtime-summary-value {
+  display: block;
+  margin-top: 5px;
+  color: var(--admin-title);
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.advanced-collapse {
+  width: 100%;
+  border-top: 0;
+  border-bottom: 0;
+}
+
+.advanced-collapse :deep(.el-collapse-item__header) {
+  height: 44px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  color: var(--admin-title);
+  font-weight: 700;
+}
+
+.advanced-collapse :deep(.el-collapse-item__wrap) {
+  border-bottom: 0;
+}
+
+.advanced-collapse-title {
+  font-size: 15px;
+}
+
+.cert-picker {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  align-items: center;
+}
+
+.cert-picker :deep(.el-select) {
+  min-width: 0;
+}
+
+.cert-picker :deep(.el-button) {
+  flex-shrink: 0;
+}
+
+.manual-cert-toggle-link {
+  color: var(--el-color-primary);
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.manual-cert-toggle-link:hover {
+  text-decoration: underline;
+}
+
+.form-tips {
+  display: block;
+  width: 100%;
+  flex: 0 0 100%;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #909399;
+  margin-top: 5px;
+}
+
+.settings-form :deep(.el-form-item__label) {
+  width: 168px !important;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+
+.settings-form :deep(.el-form-item__content) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 6px;
+  min-width: 0;
+}
+
+.settings-form :deep(.el-input),
+.settings-form :deep(.el-select),
+.settings-form :deep(.el-textarea),
+.settings-form :deep(.el-date-editor),
+.settings-form :deep(.el-cascader),
+.settings-form :deep(.el-descriptions) {
+  width: 100%;
+  max-width: 100%;
+}
+
+.settings-form :deep(.el-divider__text) {
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--admin-surface-strong);
+  color: var(--admin-title);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.settings-form :deep(.form-actions-row .el-form-item__content) {
+  width: 100%;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-form :deep(.form-actions-row .el-button) {
+  min-width: 160px;
+  min-height: 44px;
+  padding-inline: 20px;
+}
+
+.settings-form :deep(.el-input-number) {
+  width: min(320px, 100%);
+  max-width: 100%;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.settings-form :deep(.el-input-number .el-input__wrapper) {
+  border-radius: inherit;
+}
+
+.security-inline-control {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+}
+
+.security-form :deep(.security-inline-item .el-form-item__content) {
+  align-items: flex-start;
+}
+
+.security-inline-control :deep(.el-input-number),
+.security-inline-control :deep(.el-switch) {
+  flex-shrink: 0;
+}
+
+.el-divider {
+  margin: 20px 0;
+}
+
+.protocol-description {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.protocol-description p {
+  margin: 0;
+}
+
+.auto-proxy-priority {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+
+.priority-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.priority-index {
+  width: 76px;
+  flex: 0 0 auto;
+  color: #606266;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.priority-select {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.el-descriptions-item {
+  margin-bottom: 10px;
+}
+
+.version-selector {
+  display: flex;
+  align-items: center;
+}
+
+.version-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.version-tips {
+  margin-left: 15px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.info-icon {
+  margin-left: 5px;
+}
+
+.version-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+}
+
+.version-info__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.version-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 10px;
+  gap: 10px;
+}
+
+.version-sync-info {
+  margin-top: 15px;
+  width: 100%;
+}
+
+.sync-info-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sync-info-content {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.sync-info-content p {
+  margin: 5px 0;
+}
+
+.sync-status {
+  width: 100%;
+  max-width: 150px;
+  margin-top: 5px;
+}
+
+.changelog-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.changelog-list li {
+  margin-bottom: 5px;
+}
+
+.update-progress {
+  padding: 20px 0;
+}
+
+.update-status {
+  margin-top: 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.error-message {
+  color: #f56c6c;
+  margin-top: 10px;
+}
+
+/* 错误详情样式 */
+.error-details-container {
+  max-height: 70vh;
+  overflow-y: auto;
+  font-size: 14px;
+}
+
+.error-card {
+  margin-bottom: 15px;
+}
+
+.error-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: bold;
+}
+
+.error-message-content {
+  white-space: pre-wrap;
+  margin: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 8px;
+  background-color: #f8f8f8;
+  border-radius: 4px;
+  border: 1px solid #e0e0e0;
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.error-resolution {
+  margin-top: 15px;
+  border-left: 3px solid #e6a23c;
+  padding-left: 10px;
+  background-color: #fdf6ec;
+  padding: 10px;
+  border-radius: 4px;
+  line-height: 1.5;
+}
+
+.error-resolution h4, .error-troubleshooting h4 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  color: var(--color-text-primary);
+}
+
+.error-resolution p {
+  margin: 5px 0;
+}
+
+.error-troubleshooting {
+  margin-top: 15px;
+  border-left: 3px solid var(--color-primary);
+  padding: 10px;
+  background-color: rgba(64, 158, 255, 0.12);
+  border-radius: 4px;
+}
+
+.error-troubleshooting ul {
+  padding-left: 20px;
+  margin: 5px 0;
+}
+
+.error-troubleshooting li {
+  margin-bottom: 5px;
+  line-height: 1.5;
+}
+
+.error-troubleshooting ol {
+  padding-left: 20px;
+  margin: 5px 0;
+}
+
+.error-troubleshooting code {
+  background: rgba(0,0,0,0.07);
+  border-radius: 3px;
+  padding: 2px 5px;
+  font-family: monospace;
+}
+
+.error-troubleshooting el-link {
+  display: inline;
+}
+
+.version-dropdown {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.error-troubleshooting {
+  margin-top: 15px;
+  padding: 10px;
+  border-left: 3px solid #E6A23C;
+  background-color: rgba(230, 162, 60, 0.1);
+}
+
+.error-troubleshooting h4 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  color: #606266;
+}
+
+.error-troubleshooting ul {
+  margin: 0;
+  padding-left: 20px;
+  color: #606266;
+}
+
+.error-troubleshooting li {
+  margin-bottom: 5px;
+}
+
+.version-action-alert {
+  margin: 15px 0;
+  border-radius: 4px;
+}
+
+.version-select-container {
+  display: flex;
+  align-items: center;
+}
+
+.version-controls {
+  margin-left: 15px;
+}
+
+.version-alert-content {
+  display: flex;
+  align-items: center;
+}
+
+.version-change-info {
+  margin: 0 10px;
+}
+
+.version-action-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.version-dialog-content {
+  padding: 20px;
+  text-align: center;
+}
+
+.version-info-row {
+  margin-bottom: 10px;
+}
+
+.version-label {
+  font-weight: bold;
+}
+
+.dialog-footer {
+  margin-top: 20px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.status-control {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.version-control {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+}
+
+.version-control :deep(.el-select) {
+  width: min(240px, 100%);
+}
+
+.version-control :deep(.el-button) {
+  flex-shrink: 0;
+}
+
+.version-tips {
+  margin-left: 15px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.tunnel-command-preview {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-lighter);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: auto;
+}
+
+@media (max-width: 768px) {
+  .settings-container {
+    padding: 12px;
+  }
+
+  .settings-form {
+    max-width: 100%;
+  }
+
+  .settings-form :deep(.el-form-item__label) {
+    width: 100% !important;
+    text-align: left;
+    line-height: 1.4;
+    padding-bottom: 6px;
+  }
+
+  .settings-form :deep(.el-form-item__content) {
+    width: 100%;
+    max-width: 100%;
+    flex: 0 0 100%;
+    margin-left: 0 !important;
+  }
+
+  .cert-picker {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cert-picker :deep(.el-button),
+  .settings-form :deep(.form-actions-row .el-button),
+  .settings-form :deep(.el-input-number) {
+    width: 100%;
+    margin-left: 0 !important;
+  }
+
+  .settings-tabs :deep(.el-tabs__item) {
+    padding-inline: 18px;
+  }
+
+  .settings-form :deep(.form-actions-row .el-form-item__content) {
+    width: 100%;
+  }
+
+  .protocol-description,
+  .auto-proxy-priority,
+  .version-info,
+  .version-info__actions,
+  .status-control,
+  .version-control,
+  .sync-info-title,
+  .error-header,
+  .dialog-footer {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .auto-proxy-priority {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .version-info__actions,
+  .version-info__actions :deep(.el-button),
+  .status-control,
+  .status-control :deep(.el-button),
+  .version-control :deep(.el-select),
+  .version-control :deep(.el-button),
+  .version-actions,
+  .version-actions :deep(.el-button),
+  .dialog-footer :deep(.el-button) {
+    width: 100%;
+    margin-left: 0 !important;
+  }
+}
+</style> 

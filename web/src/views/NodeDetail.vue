@@ -1,0 +1,1800 @@
+<template>
+  <div class="node-detail-page">
+    
+    <AdminStickyChrome>
+      <div class="page-header">
+            <div class="header-left">
+              <el-button
+                link
+                @click="goBack"
+              >
+                <el-icon><ArrowLeft /></el-icon>
+                返回
+              </el-button>
+              <h1 class="page-title">
+                {{ node?.name || '节点详情' }}
+              </h1>
+              <el-tag
+                v-if="node"
+                :type="getStatusType(node.status)"
+                size="large"
+              >
+                {{ getStatusText(node.status) }}
+              </el-tag>
+            </div>
+            <div class="header-actions">
+              <el-button @click="refreshData">
+                <el-icon><Refresh /></el-icon>
+                刷新
+              </el-button>
+              <el-button v-if="canManageNodes" :disabled="!node" @click="openOperationsPage">
+                节点运维
+              </el-button>
+              <el-button
+                type="primary"
+                :disabled="!node"
+                v-if="canManageNodes"
+                @click="editNode"
+              >
+                编辑
+              </el-button>
+            </div>
+          </div>
+    </AdminStickyChrome>
+    <div class="admin-page-body">
+
+    <div
+      v-if="node"
+      class="overview-grid"
+    >
+      <div
+        v-for="card in overviewCards"
+        :key="card.key"
+        :class="['overview-card', { 'overview-card-primary': card.primary }]"
+      >
+        <div class="overview-label">
+          {{ card.label }}
+        </div>
+        <div
+          v-if="card.tags?.length"
+          class="overview-tag-row"
+        >
+          <el-tag
+            v-for="tag in card.tags"
+            :key="`${card.key}-${tag.label}`"
+            :type="tag.type"
+            :effect="tag.effect || 'light'"
+          >
+            {{ tag.label }}
+          </el-tag>
+        </div>
+        <div
+          v-else
+          :class="['overview-value', card.valueClass]"
+        >
+          {{ card.value }}
+        </div>
+        <div class="overview-meta">
+          {{ card.meta }}
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-loading="loading"
+      class="detail-layout"
+    >
+      <!-- 基本信息 -->
+      <section class="detail-main">
+        <el-card
+          shadow="never"
+          class="info-card"
+        >
+          <template #header>
+            <PageSectionHeader
+              title="基本信息"
+              subtitle="节点识别、接入参数与容量配置"
+            >
+              <el-tag
+                v-if="node?.region"
+                size="small"
+                effect="plain"
+              >
+                {{ node.region }}
+              </el-tag>
+            </PageSectionHeader>
+          </template>
+          <el-descriptions
+            v-if="node"
+            :column="detailColumns"
+            border
+          >
+            <el-descriptions-item
+              v-for="item in basicInfoItems"
+              :key="item.label"
+              :label="item.label"
+            >
+              <el-tag
+                v-if="item.type === 'tag'"
+                :type="item.tagType"
+                size="small"
+              >
+                {{ item.value }}
+              </el-tag>
+              <span
+                v-else
+                :class="item.valueClass"
+              >
+                {{ item.value }}
+              </span>
+            </el-descriptions-item>
+          </el-descriptions>
+          <div
+            v-if="parsedTags.length"
+            class="tags-section"
+          >
+            <span class="tags-label">标签：</span>
+            <el-tag
+              v-for="tag in parsedTags"
+              :key="tag"
+              size="small"
+              style="margin-right: 8px;"
+            >
+              {{ tag }}
+            </el-tag>
+          </div>
+          <div
+            v-if="node"
+            class="detail-panel-grid"
+          >
+            <div class="detail-panel">
+              <span class="detail-panel-label">支持协议</span>
+              <div class="detail-panel-content">
+                <el-tag
+                  v-for="protocol in supportedProtocols"
+                  :key="protocol"
+                  size="small"
+                  effect="plain"
+                >
+                  {{ String(protocol).toUpperCase() }}
+                </el-tag>
+                <span
+                  v-if="!supportedProtocols.length"
+                  class="detail-inline-text"
+                >
+                  未配置
+                </span>
+              </div>
+            </div>
+            <div class="detail-panel">
+              <span class="detail-panel-label">TLS 配置</span>
+              <div class="detail-panel-content">
+                <el-tag
+                  :type="node.tls_enabled ? 'success' : 'info'"
+                  size="small"
+                >
+                  {{ node.tls_enabled ? '已启用' : '未启用' }}
+                </el-tag>
+                <span
+                  v-if="node.tls_domain"
+                  class="detail-inline-text"
+                >
+                  {{ node.tls_domain }}
+                </span>
+              </div>
+            </div>
+            <div class="detail-panel">
+              <span class="detail-panel-label">流量限制</span>
+              <div class="detail-panel-content detail-panel-content-text">
+                {{ formatLimitDisplay(node.traffic_limit) }}
+              </div>
+            </div>
+            <div class="detail-panel">
+              <span class="detail-panel-label">速率限制</span>
+              <div class="detail-panel-content detail-panel-content-text">
+                {{ formatSpeedLimitDisplay(node.speed_limit) }}
+              </div>
+            </div>
+          </div>
+        </el-card>
+
+        <el-card
+          v-if="hasNodeNotes"
+          shadow="never"
+          class="info-card"
+        >
+          <template #header>
+            <PageSectionHeader
+              title="备注信息"
+              subtitle="节点说明、管理员备注与访问约束"
+            />
+          </template>
+          <div class="notes-grid">
+            <div
+              v-if="node?.description"
+              class="note-panel"
+            >
+              <div class="detail-panel-label">
+                节点描述
+              </div>
+              <div class="note-text">
+                {{ node.description }}
+              </div>
+            </div>
+            <div
+              v-if="node?.remarks"
+              class="note-panel"
+            >
+              <div class="detail-panel-label">
+                管理员备注
+              </div>
+              <div class="note-text">
+                {{ node.remarks }}
+              </div>
+            </div>
+            <div
+              v-if="ipWhitelistEntries.length"
+              class="note-panel note-panel-wide"
+            >
+              <div class="detail-panel-label">
+                IP 白名单
+              </div>
+              <div class="tag-cloud">
+                <el-tag
+                  v-for="ip in ipWhitelistEntries"
+                  :key="ip"
+                  size="small"
+                  effect="plain"
+                >
+                  {{ ip }}
+                </el-tag>
+              </div>
+            </div>
+          </div>
+        </el-card>
+
+        <!-- 流量统计 -->
+        <el-card
+          shadow="never"
+          class="info-card"
+        >
+          <template #header>
+            <PageSectionHeader
+              title="流量统计"
+              subtitle="查看节点在不同周期内的总流量消耗"
+              align="center"
+            >
+              <el-radio-group
+                v-model="trafficPeriod"
+                size="small"
+                @change="changeTrafficPeriod"
+              >
+                <el-radio-button label="today">
+                  今日
+                </el-radio-button>
+                <el-radio-button label="week">
+                  本周
+                </el-radio-button>
+                <el-radio-button label="month">
+                  本月
+                </el-radio-button>
+              </el-radio-group>
+            </PageSectionHeader>
+          </template>
+          <div class="traffic-stat-grid">
+            <div class="traffic-cycle-note">
+              {{ cycleTrafficHint }}
+            </div>
+            <div
+              v-for="item in trafficSummaryCards"
+              :key="item.key"
+              class="traffic-stat"
+            >
+              <div class="traffic-value">
+                {{ item.value }}
+              </div>
+              <div class="traffic-label">
+                {{ item.label }}
+              </div>
+            </div>
+          </div>
+        </el-card>
+
+        <!-- Top 用户 -->
+        <el-card
+          shadow="never"
+          class="info-card"
+        >
+          <template #header>
+            <PageSectionHeader
+              title="流量 Top 用户"
+              :subtitle="`${trafficPeriodText}内消耗流量最高的用户列表`"
+            />
+          </template>
+          <div
+            v-if="topUsers.length"
+            class="table-shell"
+          >
+            <el-table
+              :data="topUsers"
+              size="small"
+              style="width: 100%"
+            >
+              <el-table-column
+                prop="user_id"
+                label="用户 ID"
+                width="100"
+              />
+              <el-table-column
+                prop="username"
+                label="用户名"
+              />
+              <el-table-column
+                label="上传"
+                width="120"
+              >
+                <template #default="{ row }">
+                  {{ formatBytes(row.upload) }}
+                </template>
+              </el-table-column>
+              <el-table-column
+                label="下载"
+                width="120"
+              >
+                <template #default="{ row }">
+                  {{ formatBytes(row.download) }}
+                </template>
+              </el-table-column>
+              <el-table-column
+                label="总流量"
+                width="120"
+              >
+                <template #default="{ row }">
+                  {{ formatBytes(row.upload + row.download) }}
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+          <el-empty
+            v-else
+            :description="topUsersEmptyDescription"
+            :image-size="56"
+          />
+        </el-card>
+      </section>
+
+      <!-- 右侧面板 -->
+      <aside class="detail-side">
+        <el-card
+          shadow="never"
+          class="info-card"
+        >
+          <template #header>
+            <PageSectionHeader
+              title="节点运维"
+              subtitle="将内核管理、网络优化和运维记录集中到独立工作台"
+            />
+          </template>
+          <div class="operation-handoff">
+            <div class="operation-handoff__meta">
+              <el-tag
+                :type="node?.xray_running ? 'success' : 'danger'"
+                size="small"
+              >
+                {{ node?.xray_running ? '内核运行中' : '内核已停止' }}
+              </el-tag>
+              <el-tag
+                :type="getSyncStatusType(node?.sync_status)"
+                size="small"
+                effect="plain"
+              >
+                {{ getSyncStatusText(node?.sync_status) }}
+              </el-tag>
+            </div>
+            <div class="operation-handoff__body">
+              节点详情页只保留查看信息。内核管理、网络优化和运维记录已经移到独立工作台，避免详情页继续堆叠。
+            </div>
+            <div class="quick-actions operation-handoff__actions">
+              <el-button
+                type="primary"
+                v-if="canManageNodes"
+                @click="openOperationsPage"
+              >
+                进入节点运维
+              </el-button>
+              <el-button
+                plain
+                v-if="canManageNodes"
+                @click="editNode"
+              >
+                编辑节点
+              </el-button>
+            </div>
+          </div>
+        </el-card>
+
+        <el-card
+          shadow="never"
+          class="info-card"
+        >
+          <template #header>
+            <PageSectionHeader
+              title="流量采集诊断"
+              subtitle="定位节点在线但流量不上报的问题"
+            >
+              <el-button
+                link
+                :loading="trafficDiagnosticLoading"
+                @click="fetchTrafficDiagnostic(true)"
+              >
+                刷新诊断
+              </el-button>
+            </PageSectionHeader>
+          </template>
+          <div v-if="trafficDiagnosticLoading" role="status">
+            正在读取节点的流量采集状态…
+          </div>
+          <el-alert
+            v-else-if="trafficDiagnosticError"
+            :title="trafficDiagnosticError"
+            type="error"
+            :closable="false"
+            show-icon
+          />
+          <div
+            v-else-if="trafficDiagnostic"
+            class="traffic-diagnostic"
+          >
+            <div class="traffic-diagnostic__header">
+              <el-tag
+                :type="trafficDiagnosticStatusType"
+                size="small"
+              >
+                {{ trafficDiagnosticStatusText }}
+              </el-tag>
+            </div>
+            <div class="traffic-diagnostic__message">
+              {{ trafficDiagnostic.message || '暂无诊断说明' }}
+            </div>
+            <el-alert
+              v-if="trafficDiagnosticHasMismatch"
+              type="warning"
+              :closable="false"
+              show-icon
+              class="traffic-diagnostic__alert"
+              title="Agent 配置的路径与 Xray 实际使用的路径不同"
+            />
+            <el-descriptions
+              v-if="trafficDiagnostic.traffic"
+              :column="1"
+              border
+              size="small"
+            >
+              <el-descriptions-item
+                v-for="item in trafficDiagnosticItems"
+                :key="item.label"
+                :label="item.label"
+              >
+                <span class="detail-inline-text">
+                  {{ item.value }}
+                </span>
+              </el-descriptions-item>
+            </el-descriptions>
+          </div>
+          <el-empty
+            v-else
+            description="暂无诊断数据"
+            :image-size="60"
+          />
+        </el-card>
+
+        <!-- 所属分组 -->
+        <el-card
+          shadow="never"
+          class="info-card"
+        >
+          <template #header>
+            <PageSectionHeader
+              title="所属分组"
+              subtitle="当前节点归属的节点分组"
+            />
+          </template>
+          <div
+            v-if="nodeGroups.length"
+            class="groups-list"
+          >
+            <el-tag
+              v-for="group in nodeGroups"
+              :key="group.id"
+              style="margin-right: 8px; margin-bottom: 8px;"
+            >
+              {{ group.name }}
+            </el-tag>
+          </div>
+          <el-empty
+            v-else
+            description="暂无分组"
+            :image-size="60"
+          />
+        </el-card>
+
+        <!-- 快捷操作 -->
+        <el-card
+          v-if="canManageNodes"
+          shadow="never"
+          class="info-card"
+        >
+          <template #header>
+            <PageSectionHeader
+              title="快捷操作"
+              subtitle="节点 Token 与删除等高风险操作入口"
+            />
+          </template>
+          <div class="quick-actions">
+            <el-button
+              type="primary"
+              @click="openOperationsPage"
+            >
+              进入节点运维
+            </el-button>
+            <el-button
+              type="warning"
+              plain
+              @click="openTokenDialog(node)"
+            >
+              管理 Token
+            </el-button>
+            <el-button
+              type="danger"
+              plain
+              @click="deleteNode"
+            >
+              删除节点
+            </el-button>
+          </div>
+        </el-card>
+      </aside>
+    </div>
+
+    <!-- Token 管理对话框 -->
+    <el-dialog
+      v-model="tokenDialogVisible"
+      title="Token 管理"
+      :width="tokenDialogWidth"
+    >
+      <div class="token-dialog-content">
+        <div class="token-info">
+          <div class="token-label">
+            当前 Token
+          </div>
+          <div class="token-value token-text">
+            <span v-if="currentToken">{{ showToken ? currentToken : '••••••••••••••••' }}</span>
+            <span v-else>{{ hasToken === false ? '未配置' : hasToken ? '已配置' : '状态未知' }}</span>
+            <el-button
+              v-if="currentToken"
+              link
+              @click="showToken = !showToken"
+            >
+              <el-icon><View v-if="!showToken" /><Hide v-else /></el-icon>
+            </el-button>
+            <el-button
+              v-if="currentToken"
+              link
+              @click="copyToken"
+            >
+              <el-icon><CopyDocument /></el-icon>
+            </el-button>
+          </div>
+        </div>
+        <div class="token-actions">
+          <el-button
+            v-if="hasToken !== true"
+            type="primary"
+            :loading="tokenLoading"
+            @click="handleGenerateToken"
+          >
+            生成 Token
+          </el-button>
+          <el-button
+            v-if="hasToken !== false"
+            type="warning"
+            :loading="tokenLoading"
+            @click="handleRotateToken"
+          >
+            轮换 Token
+          </el-button>
+          <el-button
+            v-if="hasToken !== false"
+            type="danger"
+            :loading="tokenLoading"
+            @click="handleRevokeToken"
+          >
+            撤销 Token
+          </el-button>
+        </div>
+        <el-alert
+          v-if="currentToken"
+          type="success"
+          :closable="false"
+          show-icon
+          class="new-token-alert"
+        >
+          <template #title>
+            新 Token 已生成，请妥善保存：
+          </template>
+          <div class="new-token-text">
+            {{ currentToken }}
+          </div>
+        </el-alert>
+      </div>
+    </el-dialog>
+    </div>
+</div>
+</template>
+
+<script setup>
+import AdminStickyChrome from '@/components/AdminStickyChrome.vue'
+import { ref, computed, onBeforeUnmount, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowLeft, Refresh, View, Hide, CopyDocument } from '@element-plus/icons-vue'
+import PageSectionHeader from '@/components/PageSectionHeader.vue'
+import { useNodeStore } from '@/stores/node'
+import { useUserStore } from '@/stores/user'
+import { nodeGroupsApi, usersApi } from '@/api'
+import {
+  formatCoreVersion,
+  formatNodeTrafficResetAt,
+  formatNodeTrafficUsageSummary,
+  formatNodeTime as formatTime,
+  formatUsersLimitDisplay,
+  getNodeLatencyClass as getLatencyClass,
+  getNodeStatusText as getStatusText,
+  getNodeStatusType as getStatusType,
+  getNodeSyncStatusText as getSyncStatusText,
+  getNodeSyncStatusType as getSyncStatusType,
+  getNodeTrafficStateText,
+  hasNodeTrafficLimit,
+  parseNodeTags as parseTags
+} from '@/composables/useNodePresentation'
+import {
+  getNodeTrafficDiagnosticStatusText,
+  getNodeTrafficDiagnosticStatusType,
+  hasNodeTrafficDiagnosticConfigMismatch,
+  normalizeNodeTrafficDiagnostic
+} from '@/composables/useNodeTrafficDiagnostic'
+import { useNodeTokenDialog } from '@/composables/useNodeTokenDialog'
+import { useViewport } from '@/composables/useViewport'
+
+const route = useRoute()
+const router = useRouter()
+const nodeStore = useNodeStore()
+const userStore = useUserStore()
+const canManageNodes = computed(() => userStore.can('system:write'))
+const { isMobile } = useViewport()
+
+const loading = ref(false)
+const {
+  tokenDialogVisible, tokenLoading, currentToken, showToken, hasToken, openTokenDialog, closeTokenDialog,
+  handleGenerateToken, handleRotateToken, handleRevokeToken, copyToken
+} = useNodeTokenDialog()
+const trafficPeriod = ref('today')
+const trafficStats = ref({ upload: 0, download: 0 })
+const topUsers = ref([])
+const nodeGroups = ref([])
+const trafficDiagnostic = ref(null)
+const trafficDiagnosticLoading = ref(false)
+const trafficDiagnosticError = ref('')
+let refreshRequest = 0
+let trafficRequest = 0
+let diagnosticRequest = 0
+
+const node = computed(() => String(nodeStore.currentNode?.id) === String(route.params.id) ? nodeStore.currentNode : null)
+const supportedProtocols = computed(() => Array.isArray(node.value?.protocols) ? node.value.protocols : [])
+const supportedProtocolsDisplay = computed(() => (
+  supportedProtocols.value.length
+    ? supportedProtocols.value.map((protocol) => String(protocol).toUpperCase()).join(' / ')
+    : '未配置协议'
+))
+const parsedTags = computed(() => parseTags(node.value?.tags))
+const ipWhitelistEntries = computed(() => Array.isArray(node.value?.ip_whitelist) ? node.value.ip_whitelist : [])
+const hasNodeNotes = computed(() => Boolean(
+  node.value?.description ||
+  node.value?.remarks ||
+  ipWhitelistEntries.value.length
+))
+const detailColumns = computed(() => (isMobile.value ? 1 : 2))
+const tokenDialogWidth = computed(() => (isMobile.value ? 'calc(100vw - 24px)' : '500px'))
+const trafficPeriodText = computed(() => {
+  const map = {
+    today: '今日',
+    week: '本周',
+    month: '本月'
+  }
+  return map[trafficPeriod.value] || '当前周期'
+})
+const cycleTrafficSummary = computed(() => formatNodeTrafficUsageSummary(node.value || {}))
+const cycleTrafficResetText = computed(() => formatNodeTrafficResetAt(node.value?.traffic_reset_at))
+const cycleTrafficStateText = computed(() => getNodeTrafficStateText(node.value || {}))
+const cycleTrafficHint = computed(() => {
+  if (!node.value) return ''
+  if (!hasNodeTrafficLimit(node.value)) {
+    return '下方今日 / 本周 / 本月显示的是自然时间聚合流量，当前节点未设置月流量上限。'
+  }
+  return `当前月周期累计 ${cycleTrafficSummary.value}，状态 ${cycleTrafficStateText.value}，下次重置 ${cycleTrafficResetText.value}。下方今日 / 本周 / 本月显示的是自然时间聚合流量。`
+})
+const topUsersEmptyDescription = computed(() => {
+  const totalTraffic = Number(trafficStats.value.upload || 0) + Number(trafficStats.value.download || 0)
+  if (totalTraffic > 0) {
+    return `当前所选${trafficPeriodText.value}存在流量，但暂无可归属到具体用户的流量记录`
+  }
+  return `当前所选${trafficPeriodText.value}暂无流量记录`
+})
+const trafficDiagnosticStatusText = computed(() => getNodeTrafficDiagnosticStatusText(
+  trafficDiagnostic.value?.diagnostic_status
+))
+const trafficDiagnosticStatusType = computed(() => getNodeTrafficDiagnosticStatusType(
+  trafficDiagnostic.value?.diagnostic_status
+))
+const trafficDiagnosticHasMismatch = computed(() => hasNodeTrafficDiagnosticConfigMismatch(
+  trafficDiagnostic.value
+))
+const trafficDiagnosticItems = computed(() => {
+  const traffic = trafficDiagnostic.value?.traffic || {}
+  const attemptedPaths = Array.isArray(traffic.candidate_config_paths)
+    ? traffic.candidate_config_paths.join(' / ')
+    : ''
+
+  return [
+    { label: '配置路径', value: traffic.configured_config_path || '-' },
+    { label: '命中路径', value: traffic.resolved_config_path || '-' },
+    { label: '尝试路径', value: attemptedPaths || '-' },
+    { label: 'API 端口', value: traffic.api_port || '-' },
+    { label: '最近采集', value: formatTime(traffic.last_collection_at) },
+    { label: '最近成功', value: formatTime(traffic.last_success_at) },
+    { label: '最近错误', value: traffic.last_error || '-' },
+    { label: '错误时间', value: formatTime(traffic.last_error_at) },
+    { label: '最近记录数', value: traffic.last_record_count ?? 0 }
+  ]
+})
+const currentUsersLimitDisplay = computed(() => formatUsersLimitDisplay(
+  node.value?.current_users,
+  node.value?.max_users
+))
+const overviewCards = computed(() => {
+  if (!node.value) return []
+
+  return [
+    {
+      key: 'address',
+      label: '节点地址',
+      value: node.value.address || '-',
+      valueClass: 'overview-address',
+      meta: `Agent 端口 ${node.value.port} · ${node.value.region || '未设置地区'}`,
+      primary: true
+    },
+    {
+      key: 'status',
+      label: '连接与同步',
+      tags: [
+        { label: getStatusText(node.value.status), type: getStatusType(node.value.status) },
+        { label: getSyncStatusText(node.value.sync_status), type: getSyncStatusType(node.value.sync_status), effect: 'plain' }
+      ],
+      meta: `最后在线 ${formatTime(node.value.last_seen_at)}`
+    },
+    {
+      key: 'users',
+      label: '用户负载',
+      value: currentUsersLimitDisplay.value,
+      meta: `权重 ${node.value.weight} · 优先级 ${node.value.priority || 0}`
+    },
+    {
+      key: 'traffic',
+      label: `${trafficPeriodText.value}流量`,
+      value: formatBytes(trafficStats.value.upload + trafficStats.value.download),
+      meta: `上行 ${formatBytes(trafficStats.value.upload)} · 下行 ${formatBytes(trafficStats.value.download)}`
+    },
+    {
+      key: 'core',
+      label: 'Xray 内核',
+      value: node.value.xray_running ? '运行中' : '已停止',
+      meta: formatCoreVersion(node.value.xray_version)
+    },
+    {
+      key: 'access',
+      label: '接入策略',
+      value: node.value.tls_enabled ? 'TLS 已启用' : '未启用 TLS',
+      meta: supportedProtocolsDisplay.value
+    }
+  ]
+})
+const basicInfoItems = computed(() => {
+  if (!node.value) return []
+
+  return [
+    { label: 'ID', value: node.value.id },
+    { label: '名称', value: node.value.name },
+    { label: '地址', value: node.value.address },
+    { label: '接入域名', value: node.value.access_domain || '沿用节点地址' },
+    { label: 'Agent 端口', value: node.value.port },
+    { label: '地区', value: node.value.region || '-' },
+    { label: '权重', value: node.value.weight },
+    { label: '最大用户数', value: node.value.max_users || '无限制' },
+    { label: '当前用户数', value: node.value.current_users },
+    { label: '延迟', value: node.value.latency > 0 ? `${node.value.latency}ms` : node.value.latency < 0 ? '探测失败' : '未测得', valueClass: getLatencyClass(node.value.latency) },
+    {
+      label: '同步状态',
+      value: getSyncStatusText(node.value.sync_status),
+      type: 'tag',
+      tagType: getSyncStatusType(node.value.sync_status)
+    },
+    { label: '最后在线', value: formatTime(node.value.last_seen_at) },
+    { label: '最后同步', value: formatTime(node.value.synced_at) },
+    { label: '创建时间', value: formatTime(node.value.created_at) },
+    { label: '更新时间', value: formatTime(node.value.updated_at) }
+  ]
+})
+const trafficSummaryCards = computed(() => [
+  { key: 'upload', label: '上传流量', value: formatBytes(trafficStats.value.upload) },
+  { key: 'download', label: '下载流量', value: formatBytes(trafficStats.value.download) },
+  { key: 'total', label: '总流量', value: formatBytes(trafficStats.value.upload + trafficStats.value.download) }
+])
+
+const formatBytes = (bytes) => {
+  if (!bytes) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let i = 0
+  while (bytes >= 1024 && i < units.length - 1) {
+    bytes /= 1024
+    i++
+  }
+  return `${bytes.toFixed(2)} ${units[i]}`
+}
+
+const formatLimitDisplay = (bytes) => (Number(bytes) > 0 ? formatBytes(Number(bytes)) : '无限制')
+
+const formatSpeedLimitDisplay = (bytes) => (Number(bytes) > 0 ? `${formatBytes(Number(bytes))}/s` : '无限制')
+
+const normalizeTrafficStats = (response) => {
+  const stats = response?.stats || response?.data?.stats || response?.data || response || {}
+  return {
+    upload: Number(stats.upload) || 0,
+    download: Number(stats.download) || 0
+  }
+}
+
+const normalizeTopUsers = (response) => {
+  const rows = response?.top_users || response?.data?.top_users || response?.users || response?.data?.users || []
+  if (!Array.isArray(rows)) return []
+
+  return rows.map((row) => ({
+    user_id: row.user_id,
+    username: row.username || '',
+    upload: Number(row.upload) || 0,
+    download: Number(row.download) || 0
+  }))
+}
+
+const fillTopUsernames = async (rows) => {
+  const userIds = [...new Set(
+    rows
+      .filter((row) => row.user_id && !row.username)
+      .map((row) => row.user_id)
+  )]
+
+  if (!userIds.length) {
+    return rows.map((row) => ({
+      ...row,
+      username: row.username || `用户 #${row.user_id}`
+    }))
+  }
+
+  const usernames = new Map()
+  await Promise.all(userIds.map(async (userId) => {
+    try {
+      const user = await usersApi.get(userId)
+      usernames.set(userId, user?.username || `用户 #${userId}`)
+    } catch {
+      usernames.set(userId, `用户 #${userId}`)
+    }
+  }))
+
+  return rows.map((row) => ({
+    ...row,
+    username: row.username || usernames.get(row.user_id) || `用户 #${row.user_id}`
+  }))
+}
+
+const startOfCurrentWeek = (value) => {
+  const date = new Date(value)
+  const weekday = date.getDay() || 7
+  date.setDate(date.getDate() - (weekday - 1))
+  date.setHours(0, 0, 0, 0)
+  return date
+}
+
+const getTimeRange = () => {
+  const now = new Date()
+  let start
+  if (trafficPeriod.value === 'today') {
+    start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  } else if (trafficPeriod.value === 'week') {
+    start = startOfCurrentWeek(now)
+  } else {
+    start = new Date(now.getFullYear(), now.getMonth(), 1)
+  }
+  return { start: start.toISOString(), end: now.toISOString() }
+}
+
+const clearTraffic = () => {
+  trafficStats.value = { upload: 0, download: 0 }
+  topUsers.value = []
+}
+
+const fetchTraffic = async (nodeId, range, isCurrent) => {
+  try {
+    const res = await nodeStore.getNodeTraffic(nodeId, range)
+    if (isCurrent()) trafficStats.value = normalizeTrafficStats(res)
+  } catch (e) {
+    if (!isCurrent()) return
+    console.error('获取流量统计失败:', e)
+    trafficStats.value = { upload: 0, download: 0 }
+  }
+}
+
+const fetchTopUsers = async (nodeId, range, isCurrent) => {
+  try {
+    const res = await nodeStore.getTopUsers(nodeId, { ...range, limit: 10 })
+    if (!isCurrent()) return
+    const users = await fillTopUsernames(normalizeTopUsers(res))
+    if (isCurrent()) topUsers.value = users
+  } catch (e) {
+    if (!isCurrent()) return
+    console.error('获取 Top 用户失败:', e)
+    topUsers.value = []
+  }
+}
+
+const refreshTraffic = async () => {
+  const nodeId = node.value?.id
+  if (!nodeId) return
+  const period = trafficPeriod.value
+  const request = ++trafficRequest
+  const isCurrent = () => request === trafficRequest && node.value?.id === nodeId && trafficPeriod.value === period
+  const range = getTimeRange()
+  await Promise.all([fetchTraffic(nodeId, range, isCurrent), fetchTopUsers(nodeId, range, isCurrent)])
+}
+
+const changeTrafficPeriod = () => {
+  clearTraffic()
+  return refreshTraffic()
+}
+
+const fetchTrafficDiagnostic = async (refresh = false) => {
+  const nodeId = node.value?.id
+  if (!nodeId || trafficDiagnosticLoading.value) return
+  const request = ++diagnosticRequest
+  const isCurrent = () => request === diagnosticRequest && node.value?.id === nodeId
+  trafficDiagnosticLoading.value = true
+  trafficDiagnostic.value = null
+  trafficDiagnosticError.value = ''
+  try {
+    // Poll only while the backend's bounded background probe is pending.
+    for (let attempt = 0; attempt <= 12 && isCurrent(); attempt++) {
+      const res = await nodeStore.getTrafficDiagnostic(nodeId, refresh && attempt === 0)
+      if (!isCurrent()) return
+      const diagnostic = normalizeNodeTrafficDiagnostic(res)
+      if (diagnostic.diagnostic_status !== 'pending') {
+        trafficDiagnostic.value = diagnostic
+        return
+      }
+      if (attempt < 12) await new Promise(resolve => setTimeout(resolve, 1000))
+    }
+    if (isCurrent()) trafficDiagnosticError.value = '等待诊断结果超时，请刷新诊断后重试'
+  } catch (e) {
+    if (!isCurrent()) return
+    trafficDiagnosticError.value = e?.message || '获取流量诊断失败，请重试'
+  } finally {
+    if (isCurrent()) trafficDiagnosticLoading.value = false
+  }
+}
+
+const fetchNodeGroups = async (nodeId, isCurrent) => {
+  try {
+    const res = await nodeGroupsApi.list({ limit: 500 })
+    if (!isCurrent()) return
+    const allGroups = res?.groups || res || []
+    const currentGroupIds = new Set(
+      (node.value?.group_ids || []).map((gid) => Number(gid))
+    )
+    nodeGroups.value = allGroups.filter((g) =>
+      currentGroupIds.has(Number(g.id)) || g.nodes?.some((n) => Number(n.id) === Number(nodeId))
+    )
+  } catch (e) {
+    if (!isCurrent()) return
+    console.error('获取分组失败:', e)
+    nodeGroups.value = []
+  }
+}
+
+const refreshData = async () => {
+  const routeId = route.params.id
+  if (!routeId) return
+  const request = ++refreshRequest
+  const isCurrent = () => request === refreshRequest && route.params.id === routeId
+  loading.value = true
+  try {
+    await nodeStore.fetchNode(routeId)
+  } catch (e) {
+    if (isCurrent()) ElMessage.error(e.message || '获取节点详情失败')
+    return
+  } finally {
+    if (isCurrent()) loading.value = false
+  }
+
+  if (!isCurrent() || !node.value) return
+  await Promise.all([refreshTraffic(), fetchNodeGroups(node.value.id, isCurrent), fetchTrafficDiagnostic()])
+}
+
+const goBack = () => {
+  router.push('/admin/nodes')
+}
+
+const openOperationsPage = () => {
+  if (!node.value?.id) return
+  router.push(`/admin/nodes/${node.value.id}/operations`)
+}
+
+const editNode = () => {
+  if (!node.value) return
+  router.push(`/admin/nodes/${node.value.id}/edit`)
+}
+
+const deleteNode = async () => {
+  const target = node.value
+  if (!target) return
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除节点 "${target.name}" 吗？该节点及其代理将被删除，用户优先迁移到其他可用节点；无可用节点时解除分配，保留用户账号。`,
+      '删除确认',
+      { type: 'warning' }
+    )
+  } catch {
+    return
+  }
+  try {
+    if (node.value?.id !== target.id) return
+    await nodeStore.deleteNode(target.id)
+    ElMessage.success('删除成功')
+    if (String(route.params.id) === String(target.id)) router.push('/admin/nodes')
+  } catch (e) {
+    ElMessage.error(e.message || '删除失败')
+  }
+}
+
+watch(
+  () => route.params.id,
+  async (nodeId) => {
+    refreshRequest++
+    trafficRequest++
+    diagnosticRequest++
+    closeTokenDialog()
+    clearTraffic()
+    nodeGroups.value = []
+    trafficDiagnostic.value = null
+    trafficDiagnosticLoading.value = false
+    trafficDiagnosticError.value = ''
+    if (nodeId) await refreshData()
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => { diagnosticRequest++ })
+</script>
+
+<style scoped>
+.node-detail-page {
+  padding: 20px;
+}
+
+.node-detail-page .page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.page-title {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.node-detail-page .overview-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.node-detail-page .overview-card {
+  display: flex;
+  min-height: 124px;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--el-fill-color-light) 0%, var(--el-bg-color) 100%);
+}
+
+.node-detail-page .overview-card-primary {
+  grid-column: span 2;
+  background: linear-gradient(140deg, var(--el-color-primary-light-9) 0%, var(--el-bg-color) 100%);
+}
+
+.node-detail-page .overview-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  letter-spacing: 0.04em;
+}
+
+.node-detail-page .overview-value {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--el-text-color-primary);
+}
+
+.node-detail-page .overview-address {
+  font-size: 20px;
+  word-break: break-word;
+}
+
+.node-detail-page .overview-meta {
+  margin-top: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--el-text-color-secondary);
+  word-break: break-word;
+}
+
+.node-detail-page .overview-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  gap: 20px;
+  align-items: start;
+}
+
+.detail-main,
+.detail-side {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.node-detail-page .info-card {
+  margin-bottom: 0;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.traffic-diagnostic {
+  display: grid;
+  gap: 12px;
+}
+
+.traffic-diagnostic__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.traffic-diagnostic__message {
+  color: var(--el-text-color-regular);
+  line-height: 1.6;
+}
+
+.traffic-diagnostic__alert {
+  margin-bottom: 4px;
+}
+
+.tags-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.tags-label {
+  color: var(--el-text-color-secondary);
+  margin-right: 12px;
+}
+
+.detail-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.detail-panel {
+  padding: 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  background: var(--el-fill-color-light);
+}
+
+.detail-panel-label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.detail-panel-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.detail-panel-content-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+}
+
+.detail-inline-text {
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.notes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.note-panel {
+  min-height: 118px;
+  padding: 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  background: var(--el-fill-color-light);
+}
+
+.note-panel-wide {
+  grid-column: 1 / -1;
+}
+
+.note-text {
+  color: var(--el-text-color-primary);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tag-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.traffic-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.traffic-cycle-note {
+  grid-column: 1 / -1;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-regular);
+  line-height: 1.7;
+  font-size: 13px;
+}
+
+.traffic-stat {
+  min-width: 0;
+  text-align: center;
+  padding: 18px 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 14px;
+  background: var(--el-bg-color);
+}
+
+.traffic-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--el-color-primary);
+}
+
+.traffic-label {
+  font-size: 14px;
+  color: var(--el-text-color-secondary);
+  margin-top: 8px;
+}
+
+.status-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.status-item-top {
+  align-items: flex-start;
+}
+
+.status-item:last-child {
+  border-bottom: none;
+}
+
+.status-label {
+  color: var(--el-text-color-secondary);
+}
+
+.load-progress {
+  width: 120px;
+}
+
+.runtime-pill-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.runtime-pill {
+  display: flex;
+  min-height: 98px;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  background: var(--el-fill-color-light);
+}
+
+.runtime-pill-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.runtime-pill small {
+  color: var(--el-text-color-secondary);
+  line-height: 1.4;
+}
+
+.metric-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.metric-row {
+  padding: 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  background: var(--el-bg-color);
+}
+
+.metric-row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.metric-row-header strong {
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+}
+
+.metric-row-meta {
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.runtime-footer {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.runtime-footer-item {
+  display: flex;
+  min-height: 74px;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--el-fill-color-light);
+}
+
+.runtime-footer-item strong {
+  color: var(--el-text-color-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.table-shell {
+  overflow-x: auto;
+}
+
+.table-shell :deep(.el-table) {
+  min-width: 560px;
+}
+
+.groups-list {
+  padding: 10px 0;
+}
+
+.quick-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.operation-handoff {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.operation-handoff__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.operation-handoff__body {
+  display: flex;
+  align-items: center;
+  min-height: 132px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-primary);
+  line-height: 1.7;
+}
+
+.operation-handoff__actions {
+  gap: 14px;
+}
+
+.operation-handoff__actions :deep(.el-button) {
+  width: 100%;
+  min-height: 50px;
+  margin-left: 0;
+}
+
+.core-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.core-tip {
+  margin-top: 12px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.core-version {
+  max-width: 60%;
+  color: var(--el-text-color-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: right;
+  word-break: break-word;
+}
+
+.optimization-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.optimization-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  padding: 16px 0;
+}
+
+.optimization-select {
+  width: 180px;
+}
+
+.optimization-state-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.optimization-state-item {
+  display: flex;
+  min-height: 84px;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
+  background: var(--el-fill-color-light);
+}
+
+.optimization-state-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.network-endpoint {
+  max-width: 62%;
+  color: var(--el-text-color-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: right;
+  word-break: break-word;
+}
+
+.network-endpoint-user {
+  color: var(--el-text-color-secondary);
+}
+
+.optimization-log {
+  max-height: 220px;
+  margin: 16px 0 0;
+  padding: 12px;
+  overflow: auto;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #dbeafe;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.network-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.network-dialog-form {
+  margin-top: 4px;
+}
+
+.quick-actions :deep(.el-button) {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 10px;
+  margin-left: 0;
+}
+
+.latency-good { color: var(--el-color-success); }
+.latency-medium { color: var(--el-color-warning); }
+.latency-bad { color: var(--el-color-danger); }
+
+.token-dialog-content {
+  padding: 10px 0;
+}
+
+.token-info {
+  display: flex;
+  margin-bottom: 16px;
+}
+
+.token-label {
+  width: 100px;
+  color: var(--el-text-color-secondary);
+}
+
+.token-value {
+  flex: 1;
+}
+
+.token-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: monospace;
+}
+
+.token-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.new-token-alert {
+  margin-top: 20px;
+}
+
+.new-token-text {
+  font-family: monospace;
+  word-break: break-all;
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
+}
+
+
+.recovery-events {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recovery-event {
+  padding: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-fill-color-blank);
+}
+
+.recovery-event-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.recovery-time {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.recovery-reason {
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+
+.recovery-command {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-color-primary);
+  margin-bottom: 6px;
+}
+
+.recovery-meta {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  word-break: break-word;
+}
+
+@media (max-width: 1440px) {
+  .detail-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1180px) {
+  .detail-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .node-detail-page .overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .node-detail-page .overview-card-primary {
+    grid-column: span 1;
+  }
+}
+
+@media (max-width: 768px) {
+  .node-detail-page {
+    padding: 12px;
+  }
+
+  .node-detail-page .page-header,
+  .node-detail-page .overview-grid,
+  .traffic-stat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .node-detail-page .page-header,
+  .header-left,
+  .header-actions,
+  .status-item,
+  .token-info,
+  .token-actions,
+  .recovery-event-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .header-actions,
+  .token-actions,
+  .core-actions {
+    width: 100%;
+  }
+
+  .header-actions .el-button,
+  .token-actions .el-button,
+  .core-actions .el-button {
+    width: 100%;
+  }
+
+  .load-progress,
+  .core-version,
+  .network-endpoint,
+  .optimization-select {
+    width: 100%;
+    max-width: none;
+    text-align: left;
+  }
+
+  .optimization-options,
+  .optimization-state-grid,
+  .runtime-pill-grid,
+  .runtime-footer,
+  .detail-panel-grid,
+  .notes-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .operation-handoff {
+    gap: 16px;
+  }
+
+  .operation-handoff__body {
+    min-height: 0;
+  }
+
+  .token-label {
+    width: auto;
+  }
+
+  .token-text {
+    width: 100%;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .traffic-stat {
+    padding: 14px 12px;
+  }
+}
+</style>

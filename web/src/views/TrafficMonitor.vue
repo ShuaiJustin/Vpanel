@@ -1,0 +1,774 @@
+<template>
+  <div class="traffic-monitor">
+    
+    <AdminStickyChrome>
+      <div class="page-header">
+            <div class="page-heading">
+              <h1 class="page-title">
+                流量监控
+              </h1>
+              <p class="page-subtitle">
+                查看最近 5 分钟节点流量和历史流量趋势
+              </p>
+            </div>
+            <div class="page-actions">
+              <el-select
+                v-model="historyPeriod"
+                size="small"
+                style="width: 120px"
+                @change="refreshData"
+              >
+                <el-option
+                  label="今日"
+                  value="today"
+                />
+                <el-option
+                  label="本周"
+                  value="week"
+                />
+                <el-option
+                  label="本月"
+                  value="month"
+                />
+              </el-select>
+              <el-button
+                type="primary"
+                @click="refreshData"
+              >
+                刷新数据
+              </el-button>
+            </div>
+          </div>
+    </AdminStickyChrome>
+    <div class="admin-page-body">
+
+    <el-card class="box-card">
+      <template #header>
+        <div class="card-header">
+          <span>流量概览</span>
+          <span class="toolbar-summary">历史时间点 {{ trafficData.length }} 条</span>
+        </div>
+      </template>
+      
+      <div class="charts-container">
+        <el-card class="chart-card">
+          <template #header>
+            <div class="chart-header">
+              最近 {{ realtimeWindowLabel }}
+            </div>
+          </template>
+          <div class="chart-shell">
+            <div
+              ref="realtimeChartRef"
+              class="chart"
+              :class="{ 'chart--muted': !hasRealtimeChartData }"
+            />
+            <el-empty
+              v-if="!hasRealtimeChartData"
+              class="chart-empty"
+              description="最近 5 分钟暂无节点流量"
+              :image-size="54"
+            />
+          </div>
+        </el-card>
+        
+        <el-card class="chart-card">
+          <template #header>
+            <div class="chart-header">
+              历史流量统计
+            </div>
+          </template>
+          <div class="chart-shell">
+            <div
+              ref="historyChartRef"
+              class="chart"
+              :class="{ 'chart--muted': !hasHistoryChartData }"
+            />
+            <el-empty
+              v-if="!hasHistoryChartData"
+              class="chart-empty"
+              description="当前周期暂无历史流量"
+              :image-size="54"
+            />
+          </div>
+        </el-card>
+      </div>
+      
+      <div
+        v-if="!isMobile"
+        class="table-shell"
+      >
+        <el-table
+          v-loading="loading"
+          :data="trafficData"
+          style="width: 100%"
+        >
+          <el-table-column
+            prop="timestamp"
+            label="时间"
+            width="180"
+          >
+            <template #default="{ row }">
+              {{ formatHistoryTableDate(row.timestamp) }}
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="inbound"
+            label="上行流量"
+            width="150"
+          >
+            <template #default="{ row }">
+              {{ formatTraffic(row.inbound) }}
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="outbound"
+            label="下行流量"
+            width="150"
+          >
+            <template #default="{ row }">
+              {{ formatTraffic(row.outbound) }}
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="total"
+            label="总流量"
+            width="150"
+          >
+            <template #default="{ row }">
+              {{ formatTraffic(row.total) }}
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="上行占比"
+            width="120"
+          >
+            <template #default="{ row }">
+              {{ formatPercentage(row.upPercentage) }}
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="下行占比"
+            width="120"
+          >
+            <template #default="{ row }">
+              {{ formatPercentage(row.downPercentage) }}
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+
+      <div
+        v-else
+        v-loading="loading"
+        class="traffic-mobile-list"
+      >
+        <el-empty
+          v-if="!loading && !trafficData.length"
+          description="暂无历史流量"
+          :image-size="64"
+        />
+        <article
+          v-for="row in trafficData"
+          :key="row.timestamp"
+          class="traffic-mobile-card"
+        >
+          <div class="mobile-card__header">
+            <span class="mobile-card__time">{{ formatHistoryTableDate(row.timestamp) }}</span>
+            <span class="mobile-card__total">{{ formatTraffic(row.total) }}</span>
+          </div>
+          <div class="mobile-traffic-grid">
+            <div class="mobile-traffic-item">
+              <span class="mobile-traffic-label">上行流量</span>
+              <strong>{{ formatTraffic(row.inbound) }}</strong>
+              <span>{{ formatPercentage(row.upPercentage) }}</span>
+            </div>
+            <div class="mobile-traffic-item">
+              <span class="mobile-traffic-label">下行流量</span>
+              <strong>{{ formatTraffic(row.outbound) }}</strong>
+              <span>{{ formatPercentage(row.downPercentage) }}</span>
+            </div>
+          </div>
+        </article>
+      </div>
+    </el-card>
+    </div>
+</div>
+</template>
+
+<script setup>
+import AdminStickyChrome from '@/components/AdminStickyChrome.vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
+import * as echarts from 'echarts/core'
+import { BarChart, LineChart } from 'echarts/charts'
+import { GridComponent, LegendComponent, TitleComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+
+import { ElMessage } from 'element-plus'
+import { nodesApi, statsApi } from '@/api'
+import { useViewport } from '@/composables/useViewport'
+
+echarts.use([
+  TitleComponent,
+  TooltipComponent,
+  LegendComponent,
+  GridComponent,
+  BarChart,
+  LineChart,
+  CanvasRenderer,
+])
+
+const { isMobile } = useViewport()
+
+// 图表引用
+const realtimeChartRef = ref(null)
+const historyChartRef = ref(null)
+let realtimeChart = null
+let historyChart = null
+
+// 数据
+const loading = ref(false)
+const trafficData = ref([])
+const realtimeNodeTraffic = ref([])
+const realtimeWindow = ref('5m')
+const realtimeTimestamp = ref('')
+const historyPeriod = ref('week')
+
+const realtimeWindowLabel = computed(() => {
+  if (!realtimeTimestamp.value) {
+    return '5 分钟'
+  }
+  return realtimeWindow.value || '5m'
+})
+
+const hasRealtimeChartData = computed(() =>
+  realtimeNodeTraffic.value.some(item => Number(item.total || 0) > 0)
+)
+
+const hasHistoryChartData = computed(() =>
+  trafficData.value.some(item => Number(item.total || 0) > 0)
+)
+
+const unwrapApiData = (response) => {
+  if (response && response.code === 200 && response.data !== undefined) {
+    return response.data
+  }
+  return response
+}
+
+const mapRealtimeRows = (response) => {
+  const rows = Array.isArray(response?.traffic_by_node) ? response.traffic_by_node : []
+  return rows
+    .map((item) => ({
+      nodeId: item.node_id,
+      label: `节点 ${item.node_id}`,
+      inbound: item.upload || 0,
+      outbound: item.download || 0,
+      total: item.total || 0
+    }))
+    .sort((a, b) => a.nodeId - b.nodeId)
+}
+
+const mapHistoryRows = (response) => {
+  const timeline = Array.isArray(response?.timeline) ? response.timeline : []
+  return [...timeline]
+    .map((item) => {
+      const inbound = item.upload || 0
+      const outbound = item.download || 0
+      const total = inbound + outbound
+      return {
+        timestamp: item.time,
+        inbound,
+        outbound,
+        total,
+        upPercentage: total > 0 ? inbound / total : 0,
+        downPercentage: total > 0 ? outbound / total : 0
+      }
+    })
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+}
+
+const getChartLayoutOptions = (legendCount = 2) => {
+  const mobile = isMobile.value
+
+  return {
+    grid: {
+      top: mobile ? (legendCount > 2 ? 52 : 44) : 48,
+      right: mobile ? 8 : 18,
+      bottom: mobile ? 8 : 16,
+      left: mobile ? 8 : 14,
+      containLabel: true
+    },
+    legend: {
+      top: mobile ? 2 : 4,
+      left: 'center',
+      itemWidth: mobile ? 16 : 22,
+      itemHeight: mobile ? 10 : 12,
+      itemGap: mobile ? 12 : 20,
+      textStyle: {
+        fontSize: mobile ? 11 : 12,
+        color: '#606266'
+      }
+    },
+    textStyle: {
+      color: '#606266'
+    }
+  }
+}
+
+const getAxisLabelOptions = () => ({
+  fontSize: isMobile.value ? 11 : 12,
+  color: '#606266',
+  hideOverlap: true
+})
+
+const getRealtimeChartOption = () => {
+  const realtimeData = realtimeNodeTraffic.value
+  const layout = getChartLayoutOptions(2)
+
+  return {
+    ...layout,
+    tooltip: {
+      trigger: 'axis',
+      confine: true
+    },
+    legend: {
+      ...layout.legend,
+      data: ['上行流量', '下行流量']
+    },
+    xAxis: {
+      type: 'category',
+      data: realtimeData.map(item => item.label),
+      axisLabel: getAxisLabelOptions()
+    },
+    yAxis: {
+      type: 'value',
+      name: isMobile.value ? '' : '流量 (MB)',
+      nameGap: 18,
+      nameTextStyle: {
+        color: '#606266',
+        fontSize: 12
+      },
+      axisLabel: getAxisLabelOptions()
+    },
+    series: [
+      {
+        name: '上行流量',
+        type: 'bar',
+        barMaxWidth: isMobile.value ? 14 : 22,
+        data: realtimeData.map(item => Number((item.inbound / 1024 / 1024).toFixed(2)))
+      },
+      {
+        name: '下行流量',
+        type: 'bar',
+        barMaxWidth: isMobile.value ? 14 : 22,
+        data: realtimeData.map(item => Number((item.outbound / 1024 / 1024).toFixed(2)))
+      }
+    ]
+  }
+}
+
+const getHistoryChartOption = () => {
+  const historyData = [...trafficData.value].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+  const layout = getChartLayoutOptions(3)
+
+  return {
+    ...layout,
+    tooltip: {
+      trigger: 'axis',
+      confine: true
+    },
+    legend: {
+      ...layout.legend,
+      data: ['上行流量', '下行流量', '总流量']
+    },
+    xAxis: {
+      type: 'category',
+      data: historyData.map(item => formatDate(item.timestamp, historyPeriod.value === 'today' ? 'HH:mm' : 'MM-DD')),
+      axisLabel: getAxisLabelOptions()
+    },
+    yAxis: {
+      type: 'value',
+      name: isMobile.value ? '' : '流量 (GB)',
+      nameGap: 18,
+      nameTextStyle: {
+        color: '#606266',
+        fontSize: 12
+      },
+      axisLabel: getAxisLabelOptions()
+    },
+    series: [
+      {
+        name: '上行流量',
+        type: 'bar',
+        barMaxWidth: isMobile.value ? 14 : 22,
+        data: historyData.map(item => Number((item.inbound / 1024 / 1024 / 1024).toFixed(2)))
+      },
+      {
+        name: '下行流量',
+        type: 'bar',
+        barMaxWidth: isMobile.value ? 14 : 22,
+        data: historyData.map(item => Number((item.outbound / 1024 / 1024 / 1024).toFixed(2)))
+      },
+      {
+        name: '总流量',
+        type: 'line',
+        data: historyData.map(item => Number((item.total / 1024 / 1024 / 1024).toFixed(2)))
+      }
+    ]
+  }
+}
+
+// 初始化图表
+const initCharts = () => {
+  realtimeChart = echarts.init(realtimeChartRef.value)
+  realtimeChart.setOption(getRealtimeChartOption(), true)
+
+  historyChart = echarts.init(historyChartRef.value)
+  historyChart.setOption(getHistoryChartOption(), true)
+}
+
+// 更新图表数据
+const updateCharts = () => {
+  if (!realtimeChart || !historyChart) {
+    return
+  }
+
+  realtimeChart.setOption(getRealtimeChartOption(), true)
+  historyChart.setOption(getHistoryChartOption(), true)
+}
+
+// 刷新数据
+const refreshData = async () => {
+  loading.value = true
+  try {
+    const [realtimeResult, historyResult] = await Promise.allSettled([
+      nodesApi.getRealTimeStats(),
+      statsApi.getDetailedStats({ period: historyPeriod.value })
+    ])
+
+    if (realtimeResult.status === 'fulfilled') {
+      const realtimeData = unwrapApiData(realtimeResult.value)
+      realtimeWindow.value = realtimeData?.window || '5m'
+      realtimeTimestamp.value = realtimeData?.timestamp || ''
+      realtimeNodeTraffic.value = mapRealtimeRows(realtimeData)
+    } else {
+      console.error('获取实时流量数据失败:', realtimeResult.reason)
+    }
+
+    if (historyResult.status === 'fulfilled') {
+      const historyData = unwrapApiData(historyResult.value)
+      trafficData.value = mapHistoryRows(historyData)
+    } else {
+      console.error('获取历史流量数据失败:', historyResult.reason)
+    }
+
+    if (realtimeResult.status === 'rejected' && historyResult.status === 'rejected') {
+      ElMessage.error('获取流量数据失败')
+    }
+
+    updateCharts()
+  } catch (error) {
+    console.error('获取流量数据失败:', error)
+    ElMessage.error('获取流量数据失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 格式化流量数据
+const formatTraffic = (bytes) => {
+  if (!bytes) return '0 B'
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB'
+  if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(2) + ' MB'
+  return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB'
+}
+
+const formatPercentage = (value) => `${Math.round((value || 0) * 100)}%`
+
+const formatHistoryTableDate = (date) => {
+  if (historyPeriod.value === 'today') {
+    return formatDate(date)
+  }
+  return formatDate(date, 'YYYY-MM-DD')
+}
+
+// 格式化日期
+const formatDate = (date, format = 'YYYY-MM-DD HH:mm:ss') => {
+  const d = new Date(date)
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const hours = String(d.getHours()).padStart(2, '0')
+  const minutes = String(d.getMinutes()).padStart(2, '0')
+  const seconds = String(d.getSeconds()).padStart(2, '0')
+  
+  return format
+    .replace('YYYY', year)
+    .replace('MM', month)
+    .replace('DD', day)
+    .replace('HH', hours)
+    .replace('mm', minutes)
+    .replace('ss', seconds)
+}
+
+// 窗口大小变化时重新调整图表大小
+const handleResize = () => {
+  realtimeChart?.resize()
+  historyChart?.resize()
+}
+
+watch(isMobile, () => {
+  updateCharts()
+  requestAnimationFrame(() => {
+    realtimeChart?.resize()
+    historyChart?.resize()
+  })
+})
+
+onMounted(() => {
+  // 初始化图表
+  initCharts()
+  
+  // 加载初始数据
+  refreshData()
+  
+  // 监听窗口大小变化
+  window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  // 移除事件监听
+  window.removeEventListener('resize', handleResize)
+  
+  // 销毁图表实例
+  realtimeChart?.dispose()
+  historyChart?.dispose()
+})
+</script>
+
+<style scoped>
+.traffic-monitor {
+  padding: 20px;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.page-heading {
+  min-width: 0;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 32px;
+  line-height: 1.1;
+  color: var(--color-text-primary);
+}
+
+.page-subtitle {
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+}
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toolbar-summary {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.charts-container {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.chart-card {
+  flex: 1;
+  min-width: 300px;
+}
+
+.chart-header {
+  font-weight: bold;
+}
+
+.chart-shell {
+  position: relative;
+}
+
+.chart {
+  height: 300px;
+  margin-top: 10px;
+}
+
+.chart--muted {
+  opacity: 0.28;
+}
+
+.chart-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.95));
+}
+
+.table-shell {
+  overflow-x: auto;
+}
+
+.table-shell :deep(.el-table) {
+  min-width: 880px;
+}
+
+.traffic-mobile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.traffic-mobile-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--color-border, #dcdfe6);
+  border-radius: 8px;
+  background: var(--color-bg-card, #ffffff);
+}
+
+.mobile-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mobile-card__time {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.mobile-card__total {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.mobile-traffic-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobile-traffic-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--color-border-light, #ebeef5);
+  border-radius: 8px;
+  background: var(--color-bg-soft, #f8fafc);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.mobile-traffic-item strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text-primary);
+  font-size: 14px;
+}
+
+.mobile-traffic-label {
+  color: var(--color-text-secondary);
+}
+
+@media (max-width: 768px) {
+  .traffic-monitor {
+    padding: 12px;
+  }
+
+  .page-header,
+  .page-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-title {
+    font-size: 28px;
+  }
+
+  .page-actions :deep(.el-select),
+  .page-actions :deep(.el-button) {
+    width: 100%;
+  }
+
+  .charts-container {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .chart-card {
+    flex: none;
+    min-width: 0;
+    width: 100%;
+  }
+
+  :deep(.chart-card .el-card__header) {
+    padding: 14px 16px;
+  }
+
+  :deep(.chart-card .el-card__body) {
+    padding: 12px 10px 10px;
+  }
+
+  .chart {
+    height: 240px;
+    min-width: 0;
+    margin-top: 0;
+  }
+
+  .mobile-traffic-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style> 

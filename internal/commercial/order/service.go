@@ -1,0 +1,607 @@
+// Package order provides order management functionality.
+package order
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
+
+	"gorm.io/gorm"
+
+	"v/internal/commercial/coupon"
+	trialsvc "v/internal/commercial/trial"
+	"v/internal/database/repository"
+	"v/internal/logger"
+)
+
+// Common errors
+var (
+	ErrOrderNotFound     = errors.New("order not found")
+	ErrOrderExpired      = errors.New("order has expired")
+	ErrOrderAlreadyPaid  = errors.New("order is already paid")
+	ErrOrderCannotCancel = errors.New("order cannot be cancelled")
+	ErrInvalidOrder      = errors.New("invalid order data")
+	ErrPlanNotFound      = errors.New("plan not found")
+	ErrPlanInactive      = errors.New("plan is not active")
+)
+
+// Order status constants
+const (
+	StatusPending   = "pending"
+	StatusPaid      = "paid"
+	StatusCompleted = "completed"
+	StatusCancelled = "cancelled"
+	StatusRefunded  = "refunded"
+)
+
+// Order represents an order.
+type Order struct {
+	ID                 int64      `json:"id"`
+	OrderNo            string     `json:"order_no"`
+	UserID             int64      `json:"user_id"`
+	PlanID             int64      `json:"plan_id"`
+	PlanName           string     `json:"plan_name"`
+	CouponID           *int64     `json:"coupon_id"`
+	OriginalAmount     int64      `json:"original_amount"`
+	DiscountAmount     int64      `json:"discount_amount"`
+	BalanceUsed        int64      `json:"balance_used"`
+	PayAmount          int64      `json:"pay_amount"`
+	Status             string     `json:"status"`
+	PaymentMethod      string     `json:"payment_method"`
+	PaymentNo          string     `json:"payment_no"`
+	PaidAt             *time.Time `json:"paid_at"`
+	ExpiredAt          time.Time  `json:"expired_at"`
+	Notes              string     `json:"notes"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+	FulfillmentPending bool       `json:"fulfillment_pending"`
+}
+
+// CreateOrderRequest represents a request to create an order.
+type CreateOrderRequest struct {
+	UserID     int64  `json:"user_id"`
+	PlanID     int64  `json:"plan_id"`
+	CouponCode string `json:"coupon_code"`
+}
+
+// OrderFilter defines filter options for listing orders.
+type OrderFilter struct {
+	UserID        *int64
+	Search        string
+	Status        string
+	PaymentMethod string
+	StartDate     *time.Time
+	EndDate       *time.Time
+	MinAmount     *int64
+	MaxAmount     *int64
+}
+
+// Config holds order service configuration.
+type Config struct {
+	OrderExpiration time.Duration // Default: 30 minutes
+}
+
+// DefaultConfig returns default configuration.
+func DefaultConfig() *Config {
+	return &Config{
+		OrderExpiration: 30 * time.Minute,
+	}
+}
+
+// Service provides order management operations.
+type Service struct {
+	orderRepo        repository.OrderRepository
+	planRepo         repository.PlanRepository
+	userRepo         repository.UserRepository
+	trialRepo        trialMarker
+	afterPlanApplied func(ctx context.Context, userID int64) error
+	onOrderPaid      func(ctx context.Context, ord *Order) error
+	refundBalance    func(ctx context.Context, userID int64, amount int64, orderID *int64, description string) error
+	logger           logger.Logger
+	config           *Config
+}
+
+type trialMarker interface {
+	MarkConverted(ctx context.Context, userID int64) error
+}
+
+// NewService creates a new order service.
+func NewService(
+	orderRepo repository.OrderRepository,
+	planRepo repository.PlanRepository,
+	log logger.Logger,
+	config *Config,
+) *Service {
+	if config == nil {
+		config = DefaultConfig()
+	}
+	return &Service{
+		orderRepo: orderRepo,
+		planRepo:  planRepo,
+		logger:    log,
+		config:    config,
+	}
+}
+
+// WithUserRepository enables plan activation on successful payment.
+func (s *Service) WithUserRepository(userRepo repository.UserRepository) *Service {
+	s.userRepo = userRepo
+	return s
+}
+
+// WithTrialMarker marks active trials as converted when a paid plan is applied.
+func (s *Service) WithTrialMarker(trialRepo trialMarker) *Service {
+	s.trialRepo = trialRepo
+	return s
+}
+
+// WithAfterPlanAppliedHook runs best-effort post-processing after a paid plan is applied.
+func (s *Service) WithAfterPlanAppliedHook(hook func(ctx context.Context, userID int64) error) *Service {
+	s.afterPlanApplied = hook
+	return s
+}
+
+// WithOrderPaidHook runs best-effort post-processing once an order's fulfillment syncs.
+func (s *Service) WithOrderPaidHook(hook func(ctx context.Context, ord *Order) error) *Service {
+	s.onOrderPaid = hook
+	return s
+}
+
+// WithBalanceRefunder injects a callback that refunds a user's balance. The
+// order service calls it on Cancel/expire when the order consumed balance
+// (balance_used > 0) so cancelled purchases don't silently forfeit wallet
+// funds. The callback should be idempotent-safe at the caller's discretion.
+func (s *Service) WithBalanceRefunder(fn func(ctx context.Context, userID int64, amount int64, orderID *int64, description string) error) *Service {
+	s.refundBalance = fn
+	return s
+}
+
+// GenerateOrderNo generates a unique order number using database constraint.
+// Format: ORD-YYYYMMDD-XXXX where XXXX is a random hex string.
+func (s *Service) GenerateOrderNo() string {
+	// Generate random bytes
+	bytes := make([]byte, 4)
+	if _, err := rand.Read(bytes); err != nil {
+		// Fallback to timestamp-based generation if random fails
+		s.logger.Warn("Failed to generate random bytes for order number", logger.Err(err))
+		return fmt.Sprintf("ORD-%s-%d", time.Now().Format("20060102"), time.Now().UnixNano()%100000000)
+	}
+	randomPart := hex.EncodeToString(bytes)
+
+	// Format: ORD-20260114-XXXXXXXX
+	orderNo := fmt.Sprintf("ORD-%s-%s",
+		time.Now().Format("20060102"),
+		randomPart[:8])
+
+	return orderNo
+}
+
+// Create creates a new order.
+func (s *Service) Create(ctx context.Context, req *CreateOrderRequest) (*Order, error) {
+	if req.UserID <= 0 {
+		return nil, fmt.Errorf("%w: user ID is required", ErrInvalidOrder)
+	}
+	if req.PlanID <= 0 {
+		return nil, fmt.Errorf("%w: plan ID is required", ErrInvalidOrder)
+	}
+	// Get plan
+	plan, err := s.planRepo.GetByID(ctx, req.PlanID)
+	if err != nil {
+		return nil, ErrPlanNotFound
+	}
+	if !plan.IsActive {
+		return nil, ErrPlanInactive
+	}
+
+	// Generate order number
+	orderNo := s.GenerateOrderNo()
+
+	// Calculate amounts
+	originalAmount := plan.Price
+	snapshot, err := json.Marshal(plan)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create order
+	repoOrder := &repository.Order{
+		OrderNo:        orderNo,
+		UserID:         req.UserID,
+		PlanID:         req.PlanID,
+		PlanSnapshot:   string(snapshot),
+		OriginalAmount: originalAmount,
+		PayAmount:      originalAmount,
+		Status:         StatusPending,
+		ExpiredAt:      time.Now().Add(s.config.OrderExpiration),
+	}
+
+	code := coupon.NormalizeCode(req.CouponCode)
+	if code == "" {
+		err = s.orderRepo.Create(ctx, repoOrder)
+	} else {
+		err = s.createWithCoupon(ctx, repoOrder, code)
+	}
+	if err != nil {
+		s.logger.Error("Failed to create order", logger.Err(err))
+		return nil, err
+	}
+
+	return s.toOrder(repoOrder), nil
+}
+
+func (s *Service) createWithCoupon(ctx context.Context, order *repository.Order, code string) error {
+	if order.OriginalAmount <= 0 || len(code) > 32 {
+		return coupon.ErrInvalidCoupon
+	}
+	repo, ok := s.orderRepo.(repository.CouponOrderRepository)
+	if !ok {
+		return errors.New("coupon order repository is required")
+	}
+	err := repo.CreateWithCoupon(ctx, order, code, func(coupons repository.CouponRepository, record *repository.Coupon) (int64, error) {
+		return coupon.ValidateReservation(ctx, coupons, record, order.UserID, order.PlanID, order.OriginalAmount)
+	})
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return coupon.ErrCouponNotFound
+	}
+	return err
+}
+
+// ReleaseExpiredCouponOrders frees reservations for expired orders that never
+// started an external payment.
+func (s *Service) ReleaseExpiredCouponOrders(ctx context.Context) error {
+	if repo, ok := s.orderRepo.(repository.CouponOrderRepository); ok {
+		return repo.ReleaseExpiredCouponOrders(ctx)
+	}
+	return nil
+}
+
+// CancelExpiredOrders cancels expired pending orders without coupons.
+func (s *Service) CancelExpiredOrders(ctx context.Context) error {
+	_, err := s.orderRepo.CancelExpired(ctx)
+	return err
+}
+
+// GetByID retrieves an order by ID.
+func (s *Service) GetByID(ctx context.Context, id int64) (*Order, error) {
+	repoOrder, err := s.orderRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, ErrOrderNotFound
+	}
+	return s.toOrder(repoOrder), nil
+}
+
+// GetByOrderNo retrieves an order by order number.
+func (s *Service) GetByOrderNo(ctx context.Context, orderNo string) (*Order, error) {
+	repoOrder, err := s.orderRepo.GetByOrderNo(ctx, orderNo)
+	if err != nil {
+		return nil, ErrOrderNotFound
+	}
+	return s.toOrder(repoOrder), nil
+}
+
+// ListByUser lists orders for a user.
+func (s *Service) ListByUser(ctx context.Context, userID int64, page, pageSize int) ([]*Order, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+
+	offset := (page - 1) * pageSize
+	repoOrders, total, err := s.orderRepo.ListByUser(ctx, userID, pageSize, offset)
+	if err != nil {
+		s.logger.Error("Failed to list orders", logger.Err(err))
+		return nil, 0, err
+	}
+
+	orders := make([]*Order, len(repoOrders))
+	for i, ro := range repoOrders {
+		orders[i] = s.toOrder(ro)
+	}
+
+	return orders, total, nil
+}
+
+// List lists all orders with filter.
+func (s *Service) List(ctx context.Context, filter OrderFilter, page, pageSize int) ([]*Order, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+
+	offset := (page - 1) * pageSize
+	repoFilter := repository.OrderFilter{
+		UserID:        filter.UserID,
+		Search:        filter.Search,
+		Status:        filter.Status,
+		PaymentMethod: filter.PaymentMethod,
+		StartDate:     filter.StartDate,
+		EndDate:       filter.EndDate,
+		MinAmount:     filter.MinAmount,
+		MaxAmount:     filter.MaxAmount,
+	}
+	repoOrders, total, err := s.orderRepo.List(ctx, repoFilter, pageSize, offset)
+	if err != nil {
+		s.logger.Error("Failed to list orders", logger.Err(err))
+		return nil, 0, err
+	}
+
+	orders := make([]*Order, len(repoOrders))
+	for i, ro := range repoOrders {
+		orders[i] = s.toOrder(ro)
+	}
+
+	return orders, total, nil
+}
+
+// Cancel cancels a pending order and refunds any balance that was consumed
+// during checkout. Without the balance refund, a canceled order with
+// balance_used > 0 would silently eat the user's wallet funds.
+func (s *Service) Cancel(ctx context.Context, id int64) error {
+	order, err := s.orderRepo.GetByID(ctx, id)
+	if err != nil {
+		return ErrOrderNotFound
+	}
+
+	if order.Status != StatusPending {
+		return ErrOrderCannotCancel
+	}
+
+	if err := s.orderRepo.UpdateStatus(ctx, id, StatusCancelled); err != nil {
+		if errors.Is(err, repository.ErrCommercialState) {
+			return ErrOrderCannotCancel
+		}
+		s.logger.Error("Failed to cancel order", logger.Err(err), logger.F("id", id))
+		return err
+	}
+
+	s.refundCancelledBalance(ctx, order, "cancel")
+	return nil
+}
+
+// refundCancelledBalance credits back any balance the order had reserved. Best
+// effort: failures are logged but do not undo the cancellation — the order is
+// still cancelled, the user retains their plan state, and admin can reconcile.
+func (s *Service) refundCancelledBalance(ctx context.Context, ord *repository.Order, reason string) {
+	if s == nil || ord == nil || ord.BalanceUsed <= 0 {
+		return
+	}
+	if s.refundBalance == nil {
+		s.logger.Warn("Order cancelled with balance_used but no refunder wired",
+			logger.F("order_id", ord.ID),
+			logger.F("order_no", ord.OrderNo),
+			logger.F("balance_used", ord.BalanceUsed),
+			logger.F("reason", reason))
+		return
+	}
+
+	orderID := ord.ID
+	description := fmt.Sprintf("Refund for cancelled order %s (%s)", ord.OrderNo, reason)
+	if err := s.refundBalance(ctx, ord.UserID, ord.BalanceUsed, &orderID, description); err != nil {
+		s.logger.Error("Failed to refund balance for cancelled order",
+			logger.Err(err),
+			logger.F("order_id", ord.ID),
+			logger.F("order_no", ord.OrderNo),
+			logger.F("user_id", ord.UserID),
+			logger.F("balance_used", ord.BalanceUsed),
+			logger.F("reason", reason))
+	}
+}
+
+// MarkPaid marks an order as paid.
+// Replays return the existing payment and retry pending runtime work without
+// applying the plan duration or debiting the wallet a second time.
+func (s *Service) MarkPaid(ctx context.Context, orderNo string, paymentNo string) error {
+	return s.Pay(ctx, orderNo, paymentNo, "", false)
+}
+
+// Pay commits payment, optional wallet debit, and plan activation atomically.
+// External runtime work is persisted as pending and can be retried safely.
+func (s *Service) Pay(ctx context.Context, orderNo, paymentNo, method string, useBalance bool) error {
+	return s.pay(ctx, orderNo, paymentNo, method, useBalance, time.Time{})
+}
+
+// PayFromGateway uses the timestamp from a verified gateway notification to
+// check the payment deadline. Entitlement starts when it is applied.
+func (s *Service) PayFromGateway(ctx context.Context, orderNo, paymentNo, method string, paidAt time.Time) error {
+	return s.pay(ctx, orderNo, paymentNo, method, false, paidAt)
+}
+
+func (s *Service) pay(ctx context.Context, orderNo, paymentNo, method string, useBalance bool, verifiedPaidAt time.Time) error {
+	repo, ok := s.orderRepo.(repository.AtomicOrderRepository)
+	if !ok {
+		return errors.New("atomic order repository is required")
+	}
+	ord, err := repo.PayAndApplyPlan(ctx, orderNo, paymentNo, method, useBalance, s.userRepo != nil, verifiedPaidAt)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrOrderNotFound
+	}
+	if errors.Is(err, repository.ErrCommercialState) {
+		return ErrOrderAlreadyPaid
+	}
+	if errors.Is(err, repository.ErrCommercialExpired) {
+		return ErrOrderExpired
+	}
+	if err != nil {
+		return err
+	}
+	return s.syncFulfillment(ctx, ord)
+}
+
+func (s *Service) syncFulfillment(ctx context.Context, ord *repository.Order) error {
+	if !ord.FulfillmentPending {
+		return nil
+	}
+	if s.trialRepo != nil {
+		if err := s.trialRepo.MarkConverted(ctx, ord.UserID); err != nil && !errors.Is(err, trialsvc.ErrTrialNotFound) {
+			return err
+		}
+	}
+	if s.afterPlanApplied != nil {
+		if err := s.afterPlanApplied(ctx, ord.UserID); err != nil {
+			return err
+		}
+	}
+	if s.onOrderPaid != nil {
+		if err := s.onOrderPaid(ctx, s.toOrder(ord)); err != nil {
+			s.logger.Warn("order paid post-processing failed", logger.Err(err), logger.F("order_id", ord.ID))
+		}
+	}
+	return s.orderRepo.(repository.AtomicOrderRepository).MarkFulfillmentSynced(ctx, ord.ID)
+}
+
+func (s *Service) RetryPendingFulfillments(ctx context.Context) error {
+	repo, ok := s.orderRepo.(repository.AtomicOrderRepository)
+	if !ok {
+		return errors.New("atomic order repository is required")
+	}
+	orders, err := repo.ListPendingFulfillments(ctx, 100)
+	if err != nil {
+		return err
+	}
+	var failures []error
+	for _, ord := range orders {
+		if err := s.syncFulfillment(ctx, ord); err != nil {
+			failures = append(failures, fmt.Errorf("order %d: %w", ord.ID, err))
+		}
+	}
+	return errors.Join(failures...)
+}
+
+// Complete marks an order as completed.
+func (s *Service) Complete(ctx context.Context, id int64) error {
+	order, err := s.orderRepo.GetByID(ctx, id)
+	if err != nil {
+		return ErrOrderNotFound
+	}
+
+	if order.Status != StatusPaid {
+		return fmt.Errorf("order must be paid before completing")
+	}
+
+	if err := s.orderRepo.UpdateStatus(ctx, id, StatusCompleted); err != nil {
+		s.logger.Error("Failed to complete order", logger.Err(err), logger.F("id", id))
+		return err
+	}
+
+	return nil
+}
+
+// UpdateStatus updates the status of an order.
+func (s *Service) UpdateStatus(ctx context.Context, id int64, status string) error {
+	// Validate status transition
+	order, err := s.orderRepo.GetByID(ctx, id)
+	if err != nil {
+		return ErrOrderNotFound
+	}
+
+	if !s.isValidStatusTransition(order.Status, status) {
+		return fmt.Errorf("invalid status transition from %s to %s", order.Status, status)
+	}
+	if status == StatusPaid {
+		return s.Pay(ctx, order.OrderNo, fmt.Sprintf("ADMIN-%d", id), "manual", false)
+	}
+	if status == StatusCancelled {
+		return s.Cancel(ctx, id)
+	}
+	if status == StatusRefunded {
+		return errors.New("use the refund endpoint to refund an order")
+	}
+
+	if err := s.orderRepo.UpdateStatus(ctx, id, status); err != nil {
+		s.logger.Error("Failed to update order status", logger.Err(err), logger.F("id", id), logger.F("status", status))
+		return err
+	}
+
+	return nil
+}
+
+// isValidStatusTransition checks if a status transition is valid.
+// Valid transitions:
+// - pending -> paid, cancelled
+// - paid -> completed, refunded
+// - completed -> refunded
+func (s *Service) isValidStatusTransition(from, to string) bool {
+	validTransitions := map[string][]string{
+		StatusPending:   {StatusPaid, StatusCancelled},
+		StatusPaid:      {StatusCompleted, StatusRefunded},
+		StatusCompleted: {StatusRefunded},
+		StatusCancelled: {},
+		StatusRefunded:  {},
+	}
+
+	allowed, ok := validTransitions[from]
+	if !ok {
+		return false
+	}
+
+	for _, s := range allowed {
+		if s == to {
+			return true
+		}
+	}
+	return false
+}
+
+// GetRevenueByDateRange returns total revenue for a date range.
+func (s *Service) GetRevenueByDateRange(ctx context.Context, start, end time.Time) (int64, error) {
+	return s.orderRepo.GetRevenueByDateRange(ctx, start, end)
+}
+
+// GetOrderCountByDateRange returns order count for a date range.
+func (s *Service) GetOrderCountByDateRange(ctx context.Context, start, end time.Time) (int64, error) {
+	return s.orderRepo.GetOrderCountByDateRange(ctx, start, end)
+}
+
+// GetOrderCount returns total order count.
+func (s *Service) GetOrderCount(ctx context.Context) (int64, error) {
+	return s.orderRepo.Count(ctx)
+}
+
+// GetOrderCountByStatus returns order count by status.
+func (s *Service) GetOrderCountByStatus(ctx context.Context, status string) (int64, error) {
+	return s.orderRepo.CountByStatus(ctx, status)
+}
+
+// toOrder converts a repository order to a service order.
+func (s *Service) toOrder(ro *repository.Order) *Order {
+	return &Order{
+		ID:                 ro.ID,
+		OrderNo:            ro.OrderNo,
+		UserID:             ro.UserID,
+		PlanID:             ro.PlanID,
+		PlanName:           planName(ro),
+		CouponID:           ro.CouponID,
+		OriginalAmount:     ro.OriginalAmount,
+		DiscountAmount:     ro.DiscountAmount,
+		BalanceUsed:        ro.BalanceUsed,
+		PayAmount:          ro.PayAmount,
+		Status:             ro.Status,
+		PaymentMethod:      ro.PaymentMethod,
+		PaymentNo:          ro.PaymentNo,
+		PaidAt:             ro.PaidAt,
+		ExpiredAt:          ro.ExpiredAt,
+		Notes:              ro.Notes,
+		CreatedAt:          ro.CreatedAt,
+		UpdatedAt:          ro.UpdatedAt,
+		FulfillmentPending: ro.FulfillmentPending,
+	}
+}
+
+func planName(ro *repository.Order) string {
+	if plan, err := ro.PurchasedPlan(); err == nil && plan != nil {
+		return plan.Name
+	}
+	if ro.Plan == nil {
+		return ""
+	}
+
+	return ro.Plan.Name
+}

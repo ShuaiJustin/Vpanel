@@ -1,0 +1,28 @@
+[Unit]
+Description=V Panel Node Agent
+Documentation=https://github.com/your-repo/V
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/vpanel-agent
+ExecStart=/opt/vpanel-agent/vpanel-agent -config /opt/vpanel-agent/configs/agent.yaml
+Restart=always
+RestartSec=10s
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/vpanel-agent /etc/xray /var/backups/xray -/usr/local/bin /opt/vpanel-agent
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target

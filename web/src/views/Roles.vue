@@ -1,0 +1,444 @@
+<template>
+  <div class="roles-page">
+    
+    <AdminStickyChrome>
+      <div class="page-header">
+            <div class="page-heading">
+              <h1 class="page-title">
+                角色管理
+              </h1>
+              <p class="page-subtitle">
+                整理角色权限、系统角色和用户归属关系
+              </p>
+            </div>
+            <div class="page-actions">
+              <el-button
+                type="primary"
+                :disabled="!canManageRoles"
+                @click="showCreateDialog"
+              >
+                <el-icon><Plus /></el-icon>
+                新建角色
+              </el-button>
+            </div>
+          </div>
+
+          <div class="overview-strip">
+            <div class="overview-card">
+              <span class="overview-label">角色总数</span>
+              <strong class="overview-value">{{ roles.length }}</strong>
+            </div>
+            <div class="overview-card">
+              <span class="overview-label">系统角色</span>
+              <strong class="overview-value is-warning">{{ systemRoleCount }}</strong>
+            </div>
+            <div class="overview-card">
+              <span class="overview-label">自定义角色</span>
+              <strong class="overview-value is-primary">{{ customRoleCount }}</strong>
+            </div>
+            <div class="overview-card">
+              <span class="overview-label">角色关联用户</span>
+              <strong class="overview-value is-success">{{ assignedUserCount }}</strong>
+            </div>
+          </div>
+    </AdminStickyChrome>
+    <div class="admin-page-body">
+
+    <el-card>
+      <template #header>
+        <div class="card-header">
+          <span>角色列表</span>
+          <span class="toolbar-summary">共 {{ roles.length }} 个角色</span>
+        </div>
+      </template>
+
+      <div class="table-shell">
+        <el-table
+          v-loading="loading"
+          :data="roles"
+          style="width: 100%"
+        >
+          <el-table-column
+            prop="id"
+            label="ID"
+            width="80"
+          />
+          <el-table-column
+            prop="name"
+            label="角色名称"
+            width="150"
+          >
+            <template #default="{ row }">
+              <el-tag :type="row.is_system ? 'danger' : 'primary'">
+                {{ row.name }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="description"
+            label="描述"
+            min-width="200"
+          />
+          <el-table-column
+            prop="permissions"
+            label="权限"
+            min-width="250"
+          >
+            <template #default="{ row }">
+              <div class="permissions-list">
+                <el-tag
+                  v-for="perm in row.permissions"
+                  :key="perm"
+                  size="small"
+                  type="info"
+                >
+                  {{ getPermissionName(perm) }}
+                </el-tag>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="user_count"
+            label="用户数"
+            width="100"
+          />
+          <el-table-column
+            label="类型"
+            width="100"
+          >
+            <template #default="{ row }">
+              <el-tag
+                :type="row.is_system ? 'warning' : 'success'"
+                size="small"
+              >
+                {{ row.is_system ? '系统角色' : '自定义' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="操作"
+            width="180"
+            fixed="right"
+          >
+            <template #default="{ row }">
+              <el-button
+                type="primary"
+                size="small"
+                :disabled="row.is_system || !canManageRoles"
+                @click="editRole(row)"
+              >
+                编辑
+              </el-button>
+              <el-button
+                type="danger"
+                size="small"
+                :disabled="row.is_system || !canManageRoles"
+                @click="deleteRole(row)"
+              >
+                删除
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </el-card>
+
+    <!-- 创建/编辑角色对话框 -->
+    <el-dialog 
+      v-model="dialogVisible" 
+      :title="isEdit ? '编辑角色' : '新建角色'"
+      :width="dialogWidth"
+      class="role-dialog"
+    >
+      <el-form
+        ref="formRef"
+        :model="roleForm"
+        :rules="rules"
+        :label-width="formLabelWidth"
+        class="role-form"
+      >
+        <el-form-item
+          label="角色名称"
+          prop="name"
+        >
+          <el-input
+            v-model="roleForm.name"
+            placeholder="请输入角色名称"
+          />
+        </el-form-item>
+        <el-form-item
+          label="描述"
+          prop="description"
+        >
+          <el-input 
+            v-model="roleForm.description" 
+            type="textarea" 
+            :rows="3"
+            placeholder="请输入角色描述" 
+          />
+        </el-form-item>
+        <el-form-item
+          label="权限"
+          prop="permissions"
+        >
+          <el-checkbox-group v-model="roleForm.permissions">
+            <el-checkbox 
+              v-for="perm in allPermissions" 
+              :key="perm.key" 
+              :label="perm.key"
+            >
+              {{ perm.name }} - {{ perm.description }}
+            </el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="submitting"
+          @click="submitForm"
+        >
+          {{ isEdit ? '保存' : '创建' }}
+        </el-button>
+      </template>
+    </el-dialog>
+    </div>
+</div>
+</template>
+
+<script setup>
+import AdminStickyChrome from '@/components/AdminStickyChrome.vue'
+import { computed, onMounted, ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
+import { roles as rolesApi } from '@/api/index'
+import { useUserStore } from '@/stores/user'
+import { useViewport } from '@/composables/useViewport'
+
+const loading = ref(false)
+const submitting = ref(false)
+const roles = ref([])
+const allPermissions = ref([])
+const dialogVisible = ref(false)
+const isEdit = ref(false)
+const editingId = ref(null)
+const formRef = ref(null)
+const { isMobile } = useViewport()
+const userStore = useUserStore()
+
+const roleForm = ref({
+  name: '',
+  description: '',
+  permissions: []
+})
+
+const rules = {
+  name: [
+    { required: true, message: '请输入角色名称', trigger: 'blur' },
+    { min: 2, max: 50, message: '长度在 2 到 50 个字符', trigger: 'blur' }
+  ]
+}
+
+const systemRoleCount = computed(() => roles.value.filter((role) => role.is_system).length)
+const customRoleCount = computed(() => roles.value.filter((role) => !role.is_system).length)
+const assignedUserCount = computed(() =>
+  roles.value.reduce((sum, role) => sum + Number(role.user_count || 0), 0)
+)
+const currentPermissions = computed(() => Array.isArray(userStore.user?.permissions) ? userStore.user.permissions : [])
+const canManageRoles = computed(() => currentPermissions.value.includes('*') || currentPermissions.value.includes('role:write'))
+const dialogWidth = computed(() => (isMobile.value ? 'calc(100vw - 24px)' : '600px'))
+const formLabelWidth = computed(() => (isMobile.value ? '84px' : '100px'))
+
+// 获取权限显示名称
+const getPermissionName = (key) => {
+  const perm = allPermissions.value.find(p => p.key === key)
+  return perm ? perm.name : key
+}
+
+// 加载角色列表
+const loadRoles = async () => {
+  loading.value = true
+  try {
+    const response = await rolesApi.getRoles()
+    if (response.code === 200) {
+      roles.value = response.data || []
+    }
+  } catch (error) {
+    console.error('加载角色列表失败:', error)
+    ElMessage.error('加载角色列表失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 加载权限列表
+const loadPermissions = async () => {
+  try {
+    const response = await rolesApi.getPermissions()
+    if (response.code === 200) {
+      allPermissions.value = response.data || []
+    }
+  } catch (error) {
+    console.error('加载权限列表失败:', error)
+    ElMessage.error('加载权限列表失败')
+  }
+}
+
+// 显示创建对话框
+const showCreateDialog = () => {
+  if (!canManageRoles.value) return
+  isEdit.value = false
+  editingId.value = null
+  roleForm.value = {
+    name: '',
+    description: '',
+    permissions: []
+  }
+  dialogVisible.value = true
+}
+
+// 编辑角色
+const editRole = (row) => {
+  if (!canManageRoles.value) return
+  isEdit.value = true
+  editingId.value = row.id
+  roleForm.value = {
+    name: row.name,
+    description: row.description,
+    permissions: [...row.permissions]
+  }
+  dialogVisible.value = true
+}
+
+// 删除角色
+const deleteRole = async (row) => {
+  if (!canManageRoles.value) return
+  try {
+    const reassignHint = row.user_count > 0
+      ? `删除后会把这 ${row.user_count} 个用户自动改回默认 "user" 角色。`
+      : '删除后将不可恢复。'
+
+    await ElMessageBox.confirm(
+      `确定要删除角色 "${row.name}" 吗？${reassignHint}`,
+      '确认删除',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    
+    const response = await rolesApi.deleteRole(row.id)
+    if (response.code === 200) {
+      const reassignedUsers = Number(response.data?.reassigned_users || 0)
+      ElMessage.success(
+        reassignedUsers > 0
+          ? `删除成功，已将 ${reassignedUsers} 个用户重新分配到默认角色`
+          : '删除成功'
+      )
+      loadRoles()
+    } else {
+      ElMessage.error(response.message || '删除失败')
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除角色失败:', error)
+      ElMessage.error('删除角色失败')
+    }
+  }
+}
+
+// 提交表单
+const submitForm = async () => {
+  if (!canManageRoles.value) return
+  if (!formRef.value) return
+  
+  await formRef.value.validate(async (valid) => {
+    if (!valid) return
+    
+    submitting.value = true
+    try {
+      let response
+      if (isEdit.value) {
+        response = await rolesApi.updateRole(editingId.value, roleForm.value)
+      } else {
+        response = await rolesApi.createRole(roleForm.value)
+      }
+      
+      if (response.code === 200 || response.code === 201) {
+        ElMessage.success(isEdit.value ? '保存成功' : '创建成功')
+        dialogVisible.value = false
+        loadRoles()
+      } else {
+        ElMessage.error(response.message || '操作失败')
+      }
+    } catch (error) {
+      console.error('操作失败:', error)
+      ElMessage.error('操作失败')
+    } finally {
+      submitting.value = false
+    }
+  })
+}
+
+onMounted(() => {
+  loadRoles()
+  loadPermissions()
+})
+</script>
+
+<style scoped>
+.roles-page {
+  padding: 20px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.permissions-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.table-shell {
+  overflow-x: auto;
+}
+
+.table-shell :deep(.el-table) {
+  min-width: 860px;
+}
+
+.el-checkbox {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.role-form :deep(.el-checkbox) {
+  align-items: flex-start;
+  margin-right: 0;
+}
+
+.role-form :deep(.el-checkbox__label) {
+  white-space: normal;
+  line-height: 1.6;
+}
+
+@media (max-width: 768px) {
+  .roles-page {
+    padding: 12px;
+  }
+
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}
+</style>

@@ -1,0 +1,1285 @@
+<template>
+  <div class="admin-subscriptions-page">
+    
+    <AdminStickyChrome>
+      <div class="page-header">
+            <div class="page-heading">
+              <div class="title">
+                订阅管理
+              </div>
+              <div class="page-subtitle">
+                统一查看订阅凭据、访问活跃度和最后使用记录
+              </div>
+            </div>
+            <el-button
+              type="primary"
+              class="refresh-btn"
+              @click="fetchSubscriptions"
+            >
+              <el-icon class="el-icon--left">
+                <RefreshRight />
+              </el-icon> 刷新列表
+            </el-button>
+          </div>
+
+          <div class="overview-strip">
+            <div class="overview-card">
+              <span class="overview-label">当前匹配</span>
+              <strong class="overview-value">{{ total }}</strong>
+            </div>
+            <div class="overview-card">
+              <span class="overview-label">当前页已访问</span>
+              <strong class="overview-value is-success">{{ visitedCount }}</strong>
+            </div>
+            <div class="overview-card">
+              <span class="overview-label">当前页未访问</span>
+              <strong class="overview-value is-muted">{{ neverVisitedCount }}</strong>
+            </div>
+            <div class="overview-card">
+              <span class="overview-label">当前页近 7 天活跃</span>
+              <strong class="overview-value is-primary">{{ recentActiveCount }}</strong>
+            </div>
+          </div>
+
+          <div class="toolbar-card">
+            <div class="toolbar-filters">
+              <el-input
+                v-model="filters.keyword"
+                clearable
+                class="toolbar-search"
+                placeholder="搜索用户ID、用户名、短码、IP或令牌"
+              >
+                <template #prefix>
+                  <el-icon><Search /></el-icon>
+                </template>
+              </el-input>
+              <el-select
+                v-model="filters.accessRange"
+                clearable
+                placeholder="访问次数"
+              >
+                <el-option
+                  label="从未访问"
+                  value="0"
+                />
+                <el-option
+                  label="1-10 次"
+                  value="1-10"
+                />
+                <el-option
+                  label="11-100 次"
+                  value="11-100"
+                />
+                <el-option
+                  label="100 次以上"
+                  value="100+"
+                />
+              </el-select>
+              <el-select
+                v-model="filters.activity"
+                clearable
+                placeholder="活跃状态"
+              >
+                <el-option
+                  label="从未访问"
+                  value="never"
+                />
+                <el-option
+                  label="近 7 天活跃"
+                  value="recent"
+                />
+                <el-option
+                  label="30 天未访问"
+                  value="stale"
+                />
+              </el-select>
+              <el-select
+                v-model="sortKey"
+                placeholder="排序方式"
+              >
+                <el-option
+                  label="最近访问优先"
+                  value="recent_access"
+                />
+                <el-option
+                  label="访问次数优先"
+                  value="access_desc"
+                />
+                <el-option
+                  label="创建时间优先"
+                  value="created_desc"
+                />
+                <el-option
+                  label="用户 ID 优先"
+                  value="user_desc"
+                />
+              </el-select>
+              <el-button @click="resetFilters">
+                重置
+              </el-button>
+              <el-button @click="fetchSubscriptions">
+                刷新
+              </el-button>
+            </div>
+            <div class="toolbar-summary">
+              总记录 {{ total }} 条，当前页 {{ subscriptions.length }} 条
+            </div>
+          </div>
+    </AdminStickyChrome>
+    <div class="admin-page-body">
+
+    <el-table
+      v-if="!isMobile"
+      v-loading="loading"
+      :data="subscriptions"
+      border
+      stripe
+      class="subscriptions-table"
+      row-key="id"
+      :empty-text="subscriptions.length ? '当前页暂无数据' : (hasActiveFilters ? '暂无匹配的订阅' : '暂无订阅记录')"
+    >
+      <el-table-column
+        label="订阅对象"
+        min-width="230"
+      >
+        <template #default="{ row }">
+          <div class="user-cell">
+            <div class="user-cell__header">
+              <span
+                class="user-name"
+                :title="row.username_display"
+              >{{ row.username_display }}</span>
+              <span :class="['activity-pill', row.activity_class]">
+                {{ row.activity_label }}
+              </span>
+            </div>
+            <div class="user-cell__meta">
+              <span>用户ID：{{ row.user_id }}</span>
+              <span>订阅ID：{{ row.id }}</span>
+              <span>创建：{{ row.created_at_display }}</span>
+            </div>
+            <div class="user-cell__hint">
+              {{ row.activity_hint }}
+            </div>
+          </div>
+        </template>
+      </el-table-column>
+
+      <el-table-column
+        label="订阅凭据"
+        min-width="290"
+      >
+        <template #default="{ row }">
+          <div class="credential-cell">
+            <div class="credential-item">
+              <span class="credential-label">令牌</span>
+              <div class="credential-main">
+                <span
+                  class="credential-value"
+                  :title="row.token"
+                >{{ maskToken(row.token) }}</span>
+                <el-button
+                  text
+                  class="copy-token-btn"
+                  @click="copyToken(row.token)"
+                >
+                  <el-icon><DocumentCopy /></el-icon>
+                </el-button>
+              </div>
+            </div>
+            <div class="credential-item">
+              <span class="credential-label">短码</span>
+              <div class="credential-main">
+                <span
+                  class="credential-value"
+                  :title="row.short_code || '未设置'"
+                >
+                  {{ row.short_code || '未设置' }}
+                </span>
+                <el-button
+                  text
+                  class="copy-token-btn"
+                  :disabled="!row.short_code"
+                  @click="copyShortCode(row.short_code)"
+                >
+                  <el-icon><DocumentCopy /></el-icon>
+                </el-button>
+              </div>
+            </div>
+          </div>
+        </template>
+      </el-table-column>
+
+      <el-table-column
+        label="访问情况"
+        min-width="220"
+      >
+        <template #default="{ row }">
+          <div class="detail-cell">
+            <div class="detail-item">
+              <span class="detail-label">访问次数</span>
+              <span :class="['access-badge', row.activity_class]">
+                {{ row.access_count }}
+              </span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">最后访问</span>
+              <span class="detail-value">{{ row.last_access_display }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">最后 IP</span>
+              <span class="detail-value">{{ row.last_ip || '-' }}</span>
+            </div>
+          </div>
+        </template>
+      </el-table-column>
+
+      <el-table-column
+        label="操作"
+        width="126"
+        align="right"
+        fixed="right"
+      >
+        <template #default="{ row }">
+          <div class="operation-btns">
+            <el-button
+              size="small"
+              class="row-action row-action--warning"
+              @click="handleResetStats(row)"
+            >
+              重置
+            </el-button>
+            <el-button
+              size="small"
+              class="row-action row-action--danger"
+              @click="handleRevoke(row)"
+            >
+              撤销
+            </el-button>
+          </div>
+        </template>
+      </el-table-column>
+    </el-table>
+
+    <div
+      v-else
+      v-loading="loading"
+      class="subscription-mobile-list"
+    >
+      <el-empty
+        v-if="!loading && !subscriptions.length"
+        :description="hasActiveFilters ? '暂无匹配的订阅' : '暂无订阅记录'"
+      />
+      <article
+        v-for="row in subscriptions"
+        :key="row.id"
+        class="subscription-mobile-card"
+      >
+        <div class="mobile-card__header">
+          <div class="mobile-card__identity">
+            <span
+              class="mobile-card__name"
+              :title="row.username_display"
+            >{{ row.username_display }}</span>
+            <span class="mobile-card__meta">用户ID：{{ row.user_id }} · 订阅ID：{{ row.id }}</span>
+          </div>
+          <span :class="['activity-pill', row.activity_class]">
+            {{ row.activity_label }}
+          </span>
+        </div>
+
+        <div class="mobile-card__hint">
+          {{ row.activity_hint }}
+        </div>
+
+        <div class="mobile-credential-group">
+          <div class="credential-item">
+            <span class="credential-label">令牌</span>
+            <div class="credential-main">
+              <span
+                class="credential-value"
+                :title="row.token"
+              >{{ maskToken(row.token) }}</span>
+              <el-button
+                text
+                class="copy-token-btn"
+                @click="copyToken(row.token)"
+              >
+                <el-icon><DocumentCopy /></el-icon>
+              </el-button>
+            </div>
+          </div>
+          <div class="credential-item">
+            <span class="credential-label">短码</span>
+            <div class="credential-main">
+              <span
+                class="credential-value"
+                :title="row.short_code || '未设置'"
+              >{{ row.short_code || '未设置' }}</span>
+              <el-button
+                text
+                class="copy-token-btn"
+                :disabled="!row.short_code"
+                @click="copyShortCode(row.short_code)"
+              >
+                <el-icon><DocumentCopy /></el-icon>
+              </el-button>
+            </div>
+          </div>
+        </div>
+
+        <div class="mobile-detail-grid">
+          <div class="mobile-detail-item">
+            <span class="detail-label">访问次数</span>
+            <span :class="['access-badge', row.activity_class]">
+              {{ row.access_count }}
+            </span>
+          </div>
+          <div class="mobile-detail-item">
+            <span class="detail-label">创建时间</span>
+            <span class="detail-value">{{ row.created_at_display }}</span>
+          </div>
+          <div class="mobile-detail-item">
+            <span class="detail-label">最后访问</span>
+            <span class="detail-value">{{ row.last_access_display }}</span>
+          </div>
+          <div class="mobile-detail-item">
+            <span class="detail-label">最后 IP</span>
+            <span class="detail-value">{{ row.last_ip || '-' }}</span>
+          </div>
+        </div>
+
+        <div class="mobile-card__actions operation-btns">
+          <el-button
+            size="small"
+            class="row-action row-action--warning"
+            @click="handleResetStats(row)"
+          >
+            重置
+          </el-button>
+          <el-button
+            size="small"
+            class="row-action row-action--danger"
+            @click="handleRevoke(row)"
+          >
+            撤销
+          </el-button>
+        </div>
+      </article>
+    </div>
+
+    <div class="pagination-container">
+      <el-pagination
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :page-sizes="[10, 20, 50, 100]"
+        :layout="isMobile ? 'prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
+        :total="total"
+        :pager-count="isMobile ? 5 : 7"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+      />
+    </div>
+    </div>
+</div>
+</template>
+
+<script setup>
+import AdminStickyChrome from '@/components/AdminStickyChrome.vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { DocumentCopy, RefreshRight, Search } from '@element-plus/icons-vue'
+import { subscriptionApi } from '@/api/index'
+import { useViewport } from '@/composables/useViewport'
+import { debounce } from '@/utils/debounce'
+import { extractErrorMessage } from '@/utils/entitlement'
+
+const route = useRoute()
+const { isMobile } = useViewport()
+
+const subscriptions = ref([])
+const loading = ref(false)
+const currentPage = ref(1)
+const pageSize = ref(10)
+const total = ref(0)
+const sortKey = ref('recent_access')
+const filters = reactive({
+  keyword: '',
+  accessRange: '',
+  activity: ''
+})
+
+const unwrapPayload = (response) => response?.data ?? response ?? {}
+const normalizeString = (value) => typeof value === 'string' ? value.trim() : ''
+
+const toTimestamp = (value) => {
+  const normalized = normalizeString(value)
+  if (!normalized) return 0
+
+  const timestamp = new Date(normalized).getTime()
+  return Number.isFinite(timestamp) ? timestamp : 0
+}
+
+const formatDate = (dateStr) => {
+  const timestamp = toTimestamp(dateStr)
+  if (!timestamp) return '-'
+
+  const date = new Date(timestamp)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+const isWithinDays = (dateStr, days) => {
+  const timestamp = toTimestamp(dateStr)
+  if (!timestamp) return false
+  return (Date.now() - timestamp) <= days * 24 * 60 * 60 * 1000
+}
+
+const getActivityProfile = (row = {}) => {
+  const accessCount = Number(row.access_count || 0)
+  const lastAccessAt = row.last_access_at
+
+  if (!accessCount) {
+    return { label: '未访问', className: 'dormant' }
+  }
+
+  if (accessCount >= 100) {
+    return { label: '高频使用', className: 'intense' }
+  }
+
+  if (isWithinDays(lastAccessAt, 7)) {
+    return { label: '近期活跃', className: 'active' }
+  }
+
+  return { label: '已使用', className: 'steady' }
+}
+
+const getActivityHint = (row = {}) => {
+  const accessCount = Number(row.access_count || 0)
+
+  if (!accessCount) {
+    return '尚未拉取过订阅'
+  }
+
+  if (isWithinDays(row.last_access_at, 7)) {
+    return '最近 7 天内有访问记录'
+  }
+
+  if (isWithinDays(row.last_access_at, 30)) {
+    return '最近 30 天内访问过'
+  }
+
+  return '超过 30 天未访问'
+}
+
+const normalizeSubscription = (item = {}) => {
+  const accessCount = Number(item.access_count || 0)
+  const lastAccessAt = normalizeString(item.last_access_at)
+  const profile = getActivityProfile({
+    access_count: accessCount,
+    last_access_at: lastAccessAt
+  })
+
+  return {
+    ...item,
+    user_id: item.user_id,
+    username_display: normalizeString(item.username) || `用户 #${item.user_id ?? '-'}`,
+    token: normalizeString(item.token),
+    short_code: normalizeString(item.short_code),
+    access_count: Number.isFinite(accessCount) ? accessCount : 0,
+    last_ip: normalizeString(item.last_ip),
+    created_at: normalizeString(item.created_at),
+    last_access_at: lastAccessAt,
+    created_at_display: formatDate(item.created_at),
+    last_access_display: formatDate(lastAccessAt),
+    activity_label: profile.label,
+    activity_class: profile.className,
+    activity_hint: getActivityHint({
+      access_count: accessCount,
+      last_access_at: lastAccessAt
+    })
+  }
+}
+
+const visitedCount = computed(() => subscriptions.value.filter((item) => item.access_count > 0).length)
+const neverVisitedCount = computed(() => subscriptions.value.filter((item) => item.access_count === 0).length)
+const recentActiveCount = computed(() => subscriptions.value.filter((item) => isWithinDays(item.last_access_at, 7)).length)
+const hasActiveFilters = computed(() => Boolean(
+  normalizeString(filters.keyword) || filters.accessRange || filters.activity || sortKey.value !== 'recent_access'
+))
+
+const resetFilters = () => {
+  filters.keyword = ''
+  filters.accessRange = ''
+  filters.activity = ''
+  sortKey.value = 'recent_access'
+  currentPage.value = 1
+  fetchSubscriptions()
+}
+
+const handleSizeChange = (value) => {
+  pageSize.value = value
+  currentPage.value = 1
+  fetchSubscriptions()
+}
+
+const handleCurrentChange = (value) => {
+  currentPage.value = value
+  fetchSubscriptions()
+}
+
+const debouncedFetchSubscriptions = debounce(() => {
+  currentPage.value = 1
+  fetchSubscriptions()
+}, 300)
+
+const copyValue = async (value, label) => {
+  const text = normalizeString(value)
+
+  if (!text) {
+    ElMessage.warning(`${label}为空`)
+    return
+  }
+
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success(`${label}已复制到剪贴板`)
+  } catch (error) {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textarea)
+    ElMessage.success(`${label}已复制到剪贴板`)
+  }
+}
+
+const copyToken = async (token) => {
+  await copyValue(token, '令牌')
+}
+
+const copyShortCode = async (shortCode) => {
+  await copyValue(shortCode, '短码')
+}
+
+const fetchSubscriptions = async () => {
+  loading.value = true
+
+  try {
+    const query = {
+      page: currentPage.value,
+      page_size: pageSize.value,
+      keyword: normalizeString(filters.keyword) || undefined,
+      activity: filters.activity || undefined,
+      sort: sortKey.value || undefined
+    }
+
+    if (filters.accessRange === '0') {
+      query.max_access_count = 0
+    } else if (filters.accessRange === '1-10') {
+      query.min_access_count = 1
+      query.max_access_count = 10
+    } else if (filters.accessRange === '11-100') {
+      query.min_access_count = 11
+      query.max_access_count = 100
+    } else if (filters.accessRange === '100+') {
+      query.min_access_count = 101
+    }
+
+    const response = await subscriptionApi.admin.list(query)
+    const payload = unwrapPayload(response)
+    const list = Array.isArray(payload) ? payload : (payload?.subscriptions || [])
+
+    subscriptions.value = Array.isArray(list)
+      ? list.map((item) => normalizeSubscription(item))
+      : []
+    total.value = Number(Array.isArray(payload) ? subscriptions.value.length : (payload?.total || 0))
+  } catch (error) {
+    console.error('获取订阅列表失败:', error)
+    ElMessage.error(extractErrorMessage(error) || '获取订阅列表失败')
+    subscriptions.value = []
+    total.value = 0
+  } finally {
+    loading.value = false
+  }
+}
+
+const handleResetStats = async (row) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要重置用户 "${row.username_display}" 的订阅访问统计吗？`,
+      '确认重置',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    await subscriptionApi.admin.resetStats(row.user_id)
+    ElMessage.success('访问统计已重置')
+    await fetchSubscriptions()
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      console.error('重置统计失败:', error)
+      ElMessage.error(extractErrorMessage(error) || '重置统计失败')
+    }
+  }
+}
+
+const handleRevoke = async (row) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要撤销用户 "${row.username_display}" 的订阅吗？撤销后用户需要重新获取订阅链接。`,
+      '确认撤销',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    await subscriptionApi.admin.revoke(row.user_id)
+    ElMessage.success('订阅已撤销')
+    await fetchSubscriptions()
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      console.error('撤销订阅失败:', error)
+      ElMessage.error(extractErrorMessage(error) || '撤销订阅失败')
+    }
+  }
+}
+
+const maskToken = (token) => {
+  const normalized = normalizeString(token)
+  if (!normalized) return '-'
+  if (normalized.length <= 8) return normalized
+  return `${normalized.substring(0, 6)}...${normalized.substring(normalized.length - 6)}`
+}
+
+watch(() => route.query.user_id, (value) => {
+  filters.keyword = normalizeString(value)
+}, { immediate: true })
+
+watch(() => filters.keyword, () => {
+  debouncedFetchSubscriptions()
+})
+
+watch(() => [filters.accessRange, filters.activity, sortKey.value], () => {
+  currentPage.value = 1
+  fetchSubscriptions()
+})
+
+onMounted(() => {
+  fetchSubscriptions()
+})
+
+onUnmounted(() => {
+  debouncedFetchSubscriptions.cancel?.()
+})
+</script>
+
+<style scoped>
+.admin-subscriptions-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  color: var(--admin-text);
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  background:
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent 32%),
+    linear-gradient(135deg, var(--admin-surface-strong) 0%, var(--admin-surface-soft) 100%);
+  border-radius: 16px;
+  box-shadow: var(--admin-shadow-soft);
+  border: 1px solid var(--admin-border);
+}
+
+.page-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--admin-title);
+  letter-spacing: 0.02em;
+}
+
+.page-subtitle {
+  font-size: 13px;
+  color: var(--admin-text-muted);
+}
+
+.refresh-btn {
+  font-size: 13px;
+  padding: 10px 18px;
+}
+
+.overview-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.overview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--admin-surface-strong) 0%, var(--admin-surface) 100%);
+  border: 1px solid var(--admin-border);
+  box-shadow: var(--admin-shadow-soft);
+}
+
+.overview-label {
+  font-size: 12px;
+  color: var(--admin-text-muted);
+}
+
+.overview-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--admin-title);
+}
+
+.overview-value.is-success {
+  color: var(--color-success);
+}
+
+.overview-value.is-muted {
+  color: var(--admin-text-muted);
+}
+
+.overview-value.is-primary {
+  color: var(--admin-primary);
+}
+
+.toolbar-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--admin-surface-strong) 0%, var(--admin-surface) 100%);
+  border: 1px solid var(--admin-border);
+  box-shadow: var(--admin-shadow-soft);
+}
+
+.toolbar-filters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.toolbar-search {
+  width: 320px;
+}
+
+.toolbar-filters .el-select {
+  width: 150px;
+}
+
+.toolbar-summary {
+  font-size: 12px;
+  color: var(--admin-text-muted);
+}
+
+:deep(.subscriptions-table.el-table) {
+  width: 100%;
+  table-layout: auto;
+  background: linear-gradient(180deg, var(--admin-surface-strong) 0%, var(--admin-surface) 100%);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: var(--admin-shadow);
+  font-size: 13px;
+  color: var(--admin-text);
+}
+
+:deep(.subscriptions-table.el-table--border) {
+  border: 1px solid var(--admin-border);
+}
+
+:deep(.subscriptions-table::before),
+:deep(.subscriptions-table .el-table__inner-wrapper::before) {
+  background-color: var(--admin-border);
+}
+
+:deep(.subscriptions-table .el-table__inner-wrapper),
+:deep(.subscriptions-table .el-table__header-wrapper),
+:deep(.subscriptions-table .el-table__body-wrapper),
+:deep(.subscriptions-table .el-table__fixed),
+:deep(.subscriptions-table .el-table__fixed-right),
+:deep(.subscriptions-table .el-table__fixed-right-patch) {
+  background: var(--admin-surface-strong);
+}
+
+:deep(.subscriptions-table .el-table__header th) {
+  background: var(--admin-surface-soft);
+  font-weight: 600;
+  color: var(--admin-text-muted);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  border-bottom-color: var(--admin-border);
+}
+
+:deep(.subscriptions-table .el-table__cell) {
+  vertical-align: top;
+  border-right-color: var(--admin-border);
+}
+
+:deep(.subscriptions-table .el-table__body td) {
+  color: var(--admin-text);
+  background: transparent;
+  border-bottom-color: var(--admin-border);
+}
+
+:deep(.subscriptions-table .cell) {
+  padding: 12px 12px;
+  line-height: 1.4;
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:deep(.subscriptions-table .el-table__body tr:hover > td) {
+  background-color: var(--admin-primary-soft);
+}
+
+:deep(.subscriptions-table.el-table--striped .el-table__body tr.el-table__row--striped > td) {
+  background-color: rgba(148, 163, 184, 0.08);
+}
+
+:deep(.subscriptions-table .el-table__body tr.el-table__row--striped:hover > td),
+:deep(.subscriptions-table .el-table__body tr.hover-row > td) {
+  background-color: var(--admin-primary-soft);
+}
+
+:deep(.subscriptions-table .el-table__fixed::before),
+:deep(.subscriptions-table .el-table__fixed-right::before) {
+  background-color: var(--admin-border);
+}
+
+.subscription-mobile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.subscription-mobile-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--admin-surface-strong) 0%, var(--admin-surface) 100%);
+  box-shadow: var(--admin-shadow-soft);
+}
+
+.mobile-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mobile-card__identity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mobile-card__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--admin-title);
+}
+
+.mobile-card__meta {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--admin-text-muted);
+}
+
+.mobile-card__hint {
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--admin-border);
+  background: var(--admin-surface-soft);
+  color: var(--admin-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.mobile-credential-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mobile-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobile-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: var(--admin-surface-soft);
+}
+
+.mobile-detail-item .detail-value {
+  text-align: left;
+}
+
+.mobile-card__actions {
+  justify-content: stretch;
+}
+
+.mobile-card__actions .el-button {
+  flex: 1;
+}
+
+.user-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.user-cell__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.user-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--admin-title);
+}
+
+.user-cell__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 12px;
+  color: var(--admin-text-muted);
+}
+
+.user-cell__hint {
+  font-size: 12px;
+  color: var(--admin-text-muted);
+  background: var(--admin-surface-soft);
+  border: 1px solid var(--admin-border);
+  border-radius: 10px;
+  padding: 6px 10px;
+}
+
+.activity-pill,
+.access-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.activity-pill.dormant,
+.access-badge.dormant {
+  color: var(--admin-text-muted);
+  background: rgba(148, 163, 184, 0.16);
+}
+
+.activity-pill.steady,
+.access-badge.steady {
+  color: var(--color-primary);
+  background: rgba(64, 158, 255, 0.18);
+}
+
+.activity-pill.active,
+.access-badge.active {
+  color: var(--color-success);
+  background: rgba(103, 194, 58, 0.18);
+}
+
+.activity-pill.intense,
+.access-badge.intense {
+  color: var(--color-warning);
+  background: rgba(230, 162, 60, 0.2);
+}
+
+.credential-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.credential-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.credential-label {
+  flex-shrink: 0;
+  width: 28px;
+  font-size: 12px;
+  color: var(--admin-text-muted);
+}
+
+.credential-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  padding: 5px 8px;
+  border-radius: 10px;
+  background: var(--admin-surface-soft);
+  border: 1px solid var(--admin-border);
+}
+
+.credential-value {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  color: var(--admin-text);
+}
+
+:deep(.copy-token-btn.el-button) {
+  margin: 0;
+  padding: 0;
+  min-width: 24px;
+  height: 24px;
+  color: var(--admin-primary);
+}
+
+.detail-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detail-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.detail-label {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--admin-text-muted);
+}
+
+.detail-value {
+  text-align: right;
+  font-size: 13px;
+  color: var(--admin-text);
+  word-break: break-word;
+}
+
+.operation-btns {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 4px;
+  width: 100%;
+}
+
+.operation-btns .el-button {
+  margin: 0 !important;
+}
+
+:deep(.operation-btns .el-button) {
+  min-width: 0;
+  height: 30px;
+  padding: 0 9px !important;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+:deep(.operation-btns .row-action.el-button) {
+  border: 1px solid var(--admin-border);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+:deep(.operation-btns .row-action--warning.el-button) {
+  color: var(--color-warning);
+  background: var(--admin-warning-soft);
+  border-color: rgba(245, 158, 11, 0.28);
+}
+
+:deep(.operation-btns .row-action--danger.el-button) {
+  color: var(--color-danger);
+  background: var(--admin-danger-soft);
+  border-color: rgba(239, 68, 68, 0.28);
+}
+
+:deep(.operation-btns .row-action.el-button:hover) {
+  opacity: 0.92;
+}
+
+.pagination-container {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+:deep(.el-pagination) {
+  padding: 10px 0;
+  font-weight: normal;
+}
+
+:deep(.el-pagination button) {
+  min-width: 30px;
+  height: 30px;
+}
+
+:deep(.el-pagination .el-select .el-input) {
+  width: 104px;
+}
+
+@media (max-width: 1280px) {
+  .overview-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .toolbar-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .user-cell__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 16px;
+  }
+
+  .overview-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .overview-card {
+    padding: 12px;
+    border-radius: 8px;
+  }
+
+  .overview-value {
+    font-size: 20px;
+  }
+
+  .toolbar-card {
+    padding: 14px;
+    border-radius: 8px;
+  }
+
+  .toolbar-search,
+  .toolbar-filters,
+  .toolbar-filters .el-select,
+  .toolbar-filters .el-button {
+    width: 100%;
+  }
+
+  .toolbar-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toolbar-summary {
+    text-align: center;
+  }
+
+  .credential-item {
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .credential-label {
+    width: 38px;
+    padding-top: 7px;
+  }
+
+  .credential-main {
+    min-height: 36px;
+    padding: 6px 8px;
+  }
+
+  .mobile-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .operation-btns {
+    justify-content: flex-start;
+  }
+
+  :deep(.operation-btns .el-button) {
+    height: 34px;
+  }
+
+  .pagination-container {
+    justify-content: center;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  :deep(.el-pagination) {
+    max-width: 100%;
+    white-space: nowrap;
+  }
+}
+</style>

@@ -1,0 +1,287 @@
+package node
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/glebarez/sqlite"
+	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
+
+	"v/internal/database/repository"
+	"v/internal/logger"
+	pkgerrors "v/pkg/errors"
+)
+
+func setupNodeServiceDeleteTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
+	})
+	if err != nil {
+		t.Fatalf("failed to open test database: %v", err)
+	}
+
+	if err := db.AutoMigrate(
+		&repository.User{},
+		&repository.Node{},
+		&repository.Proxy{},
+		&repository.UserNodeAssignment{},
+		&repository.Trial{},
+	); err != nil {
+		t.Fatalf("failed to migrate test schema: %v", err)
+	}
+
+	return db
+}
+
+func TestServiceDelete_RemovesNodeBoundProxies(t *testing.T) {
+	db := setupNodeServiceDeleteTestDB(t)
+	ctx := context.Background()
+
+	nodeRepo := repository.NewNodeRepository(db)
+	assignmentRepo := repository.NewUserNodeAssignmentRepository(db)
+	proxyRepo := repository.NewProxyRepository(db)
+	service := NewService(nodeRepo, assignmentRepo, proxyRepo, logger.NewNopLogger())
+
+	deletedNode := &repository.Node{
+		Name:    "delete-me-node",
+		Address: "delete-me.example.com",
+		Token:   "delete-me-token",
+		Status:  repository.NodeStatusOnline,
+	}
+	if err := db.Create(deletedNode).Error; err != nil {
+		t.Fatalf("failed to create deleted node: %v", err)
+	}
+
+	targetNode := &repository.Node{
+		Name:    "target-node",
+		Address: "target.example.com",
+		Token:   "target-token",
+		Status:  repository.NodeStatusOnline,
+	}
+	if err := db.Create(targetNode).Error; err != nil {
+		t.Fatalf("failed to create target node: %v", err)
+	}
+
+	user := &repository.User{
+		Username:     "delete-node-user",
+		PasswordHash: "hashed-password",
+		Enabled:      true,
+	}
+	if err := db.Create(user).Error; err != nil {
+		t.Fatalf("failed to create test user: %v", err)
+	}
+
+	if err := assignmentRepo.Assign(ctx, user.ID, deletedNode.ID); err != nil {
+		t.Fatalf("failed to assign user to deleted node: %v", err)
+	}
+
+	deletedNodeRef := deletedNode.ID
+	targetNodeRef := targetNode.ID
+	fixtures := []*repository.Proxy{
+		{
+			UserID:   0,
+			NodeID:   &deletedNodeRef,
+			Name:     "shared-on-deleted-node",
+			Protocol: "vmess",
+			Port:     22001,
+			Host:     "127.0.0.1",
+			Enabled:  true,
+		},
+		{
+			UserID:   user.ID,
+			NodeID:   &deletedNodeRef,
+			Name:     "user-on-deleted-node",
+			Protocol: "vmess",
+			Port:     22002,
+			Host:     "127.0.0.1",
+			Enabled:  true,
+		},
+		{
+			UserID:   user.ID,
+			NodeID:   &deletedNodeRef,
+			Name:     "disabled-on-deleted-node",
+			Protocol: "vmess",
+			Port:     22003,
+			Host:     "127.0.0.1",
+			Enabled:  false,
+		},
+		{
+			UserID:   0,
+			NodeID:   &targetNodeRef,
+			Name:     "shared-on-target-node",
+			Protocol: "vmess",
+			Port:     22004,
+			Host:     "127.0.0.1",
+			Enabled:  true,
+		},
+	}
+	for _, proxyModel := range fixtures {
+		if err := db.Create(proxyModel).Error; err != nil {
+			t.Fatalf("failed to create proxy fixture %q: %v", proxyModel.Name, err)
+		}
+	}
+
+	if err := service.Delete(ctx, deletedNode.ID); err != nil {
+		t.Fatalf("expected node delete to succeed, got %v", err)
+	}
+
+	_, err := nodeRepo.GetByID(ctx, deletedNode.ID)
+	if !pkgerrors.IsNotFound(err) {
+		t.Fatalf("expected deleted node to be gone, got %v", err)
+	}
+
+	assignment, err := assignmentRepo.GetByUserID(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("failed to reload assignment: %v", err)
+	}
+	if assignment == nil || assignment.NodeID != targetNode.ID {
+		t.Fatalf("expected reassignment to node %d, got %+v", targetNode.ID, assignment)
+	}
+
+	var remaining []*repository.Proxy
+	if err := db.Order("id asc").Find(&remaining).Error; err != nil {
+		t.Fatalf("failed to load remaining proxies: %v", err)
+	}
+	if len(remaining) != 1 {
+		t.Fatalf("expected exactly one proxy to remain, got %d", len(remaining))
+	}
+	if remaining[0].NodeID == nil || *remaining[0].NodeID != targetNode.ID {
+		t.Fatalf("expected remaining proxy to stay on node %d, got %+v", targetNode.ID, remaining[0].NodeID)
+	}
+	if remaining[0].Name != "shared-on-target-node" {
+		t.Fatalf("expected target-node proxy to remain, got %q", remaining[0].Name)
+	}
+}
+
+func TestServiceUpdateSSHConfigPersistsFields(t *testing.T) {
+	t.Setenv("V_JWT_SECRET", "test-only-ssh-encryption-key-32-bytes")
+	db := setupNodeServiceDeleteTestDB(t)
+	ctx := context.Background()
+
+	nodeRepo := repository.NewNodeRepository(db)
+	assignmentRepo := repository.NewUserNodeAssignmentRepository(db)
+	proxyRepo := repository.NewProxyRepository(db)
+	service := NewService(nodeRepo, assignmentRepo, proxyRepo, logger.NewNopLogger())
+
+	nodeModel := &repository.Node{
+		Name:    "ssh-node",
+		Address: "198.51.100.10",
+		Token:   "ssh-node-token",
+		Status:  repository.NodeStatusOnline,
+	}
+	if err := db.Create(nodeModel).Error; err != nil {
+		t.Fatalf("failed to create node: %v", err)
+	}
+
+	keyPath := "/tmp/vpanel-node-test.key"
+	if _, err := service.UpdateSSHConfig(ctx, nodeModel.ID, "198.51.100.20", 2222, "admin", "secret-password", keyPath); err != nil {
+		t.Fatalf("expected UpdateSSHConfig to succeed, got %v", err)
+	}
+	nodeModel.Name = "renamed-node"
+	if err := nodeRepo.Update(ctx, nodeModel); err != nil {
+		t.Fatalf("failed to update other node fields from an older snapshot: %v", err)
+	}
+	oldKeyPath := ""
+	err := nodeRepo.UpdateSSHConfig(ctx, nodeModel.ID, map[string]any{"ssh_key_path": "/tmp/stale.key"}, &oldKeyPath)
+	if !pkgerrors.IsConflict(err) {
+		t.Fatalf("expected stale key replacement to conflict, got %v", err)
+	}
+
+	reloaded, err := service.GetByID(ctx, nodeModel.ID)
+	if err != nil {
+		t.Fatalf("failed to reload node: %v", err)
+	}
+
+	rawNode, err := nodeRepo.GetByID(ctx, nodeModel.ID)
+	if err != nil {
+		t.Fatalf("failed to reload raw node: %v", err)
+	}
+
+	if reloaded.SSHHost != "198.51.100.20" {
+		t.Fatalf("expected SSHHost to be persisted, got %q", reloaded.SSHHost)
+	}
+	if reloaded.SSHPort != 2222 {
+		t.Fatalf("expected SSHPort 2222, got %d", reloaded.SSHPort)
+	}
+	if reloaded.SSHUser != "admin" {
+		t.Fatalf("expected SSHUser admin, got %q", reloaded.SSHUser)
+	}
+	if reloaded.SSHPassword != "secret-password" {
+		t.Fatalf("expected SSHPassword to be persisted, got %q", reloaded.SSHPassword)
+	}
+	if reloaded.SSHKeyPath != keyPath {
+		t.Fatalf("expected SSHKeyPath to be persisted, got %q", reloaded.SSHKeyPath)
+	}
+	if rawNode.SSHPassword == "secret-password" {
+		t.Fatal("expected raw SSHPassword to be encrypted at rest")
+	}
+	if reloaded.Name != "renamed-node" {
+		t.Fatalf("expected other node fields to still be updatable, got %q", reloaded.Name)
+	}
+}
+
+func TestServiceDelete_NoAvailableNodes(t *testing.T) {
+	for _, status := range []string{repository.NodeStatusUnhealthy, repository.NodeStatusOffline, repository.NodeStatusOnline} {
+		for _, failDelete := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/rollback=%t", status, failDelete), func(t *testing.T) {
+				db := setupNodeServiceDeleteTestDB(t)
+				ctx := context.Background()
+				nodeRepo := repository.NewNodeRepository(db)
+				assignments := repository.NewUserNodeAssignmentRepository(db)
+				service := NewService(nodeRepo, assignments, repository.NewProxyRepository(db), logger.NewNopLogger())
+				n := &repository.Node{Name: "unavailable", Address: "192.0.2.1", Token: "unavailable-token", Status: status}
+				user := &repository.User{Username: "preserved-user", PasswordHash: "hash", Enabled: true}
+				for _, model := range []any{n, user} {
+					if err := db.Create(model).Error; err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := assignments.Assign(ctx, user.ID, n.ID); err != nil {
+					t.Fatal(err)
+				}
+				proxy := &repository.Proxy{UserID: user.ID, NodeID: &n.ID, Name: "bound-proxy", Protocol: "vmess", Port: 22001, Host: "127.0.0.1", Enabled: true}
+				if err := db.Create(proxy).Error; err != nil {
+					t.Fatal(err)
+				}
+				if failDelete {
+					if err := db.Exec("CREATE TRIGGER reject_node_delete BEFORE DELETE ON nodes BEGIN SELECT RAISE(ABORT, 'forced node delete failure'); END").Error; err != nil {
+						t.Fatal(err)
+					}
+				}
+				err := service.Delete(ctx, n.ID)
+				if failDelete {
+					if err == nil || !strings.Contains(err.Error(), "forced node delete failure") {
+						t.Fatalf("expected node delete failure, got %v", err)
+					}
+				} else if err != nil {
+					t.Fatalf("expected delete without replacement to succeed, got %v", err)
+				}
+				expected := int64(0)
+				if failDelete {
+					expected = 1
+				}
+				for _, model := range []any{&repository.Node{}, &repository.UserNodeAssignment{}, &repository.Proxy{}} {
+					var count int64
+					if err := db.Model(model).Count(&count).Error; err != nil {
+						t.Fatal(err)
+					}
+					if count != expected {
+						t.Fatalf("%T count = %d, want %d", model, count, expected)
+					}
+				}
+				var count int64
+				if err := db.Model(&repository.User{}).Where("id = ?", user.ID).Count(&count).Error; err != nil {
+					t.Fatal(err)
+				}
+				if count != 1 {
+					t.Fatal("node deletion must preserve user account")
+				}
+			})
+		}
+	}
+}

@@ -1,0 +1,139 @@
+# ==================== IDE 和编辑器 ====================
+.idea/
+.vscode/
+.kiro/
+.claude/
+.playwright-cli/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swp
+*.swo
+*~
+
+# ==================== 依赖 ====================
+node_modules/
+vendor/
+web/node_modules/
+
+# ==================== 编译产物 ====================
+# Go 编译产物
+*.exe
+*.dll
+*.so
+*.dylib
+*.out
+/v
+/vpanel
+/vpanel-agent
+/agent
+v-panel
+build/
+dist/
+bin/
+cmd/*/bin/
+
+# ==================== 日志 ====================
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==================== 环境配置 ====================
+.env
+.env.local
+.env.*.local
+configs/config.yaml
+!configs/config.yaml.example
+
+# ==================== 系统文件 ====================
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
+.cache/
+
+# ==================== 数据库 ====================
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+*.db-journal
+*.db-shm
+*.db-wal
+
+# ==================== 备份文件 ====================
+*.backup
+*.bak
+*.backup_before_fix
+*.old
+backups/
+.reports/
+
+# ==================== 证书和密钥 ====================
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# ==================== 测试 ====================
+coverage/
+*.test
+*.cover
+.nyc_output/
+test-results/
+playwright-report/
+
+# ==================== 本地构建产物 ====================
+/vpanel.static
+
+# ==================== 临时文档（开发过程文档） ====================
+Docs/*-fix*.md
+Docs/*-summary*.md
+Docs/dev-notes*.md
+Docs/immediate-*.md
+Docs/deep-check*.md
+Docs/error-fix*.md
+Docs/fix-completed.md
+Docs/task-completed*.md
+Docs/troubleshooting-guide.md
+Docs/frontend-debug-guide.md
+Docs/quick-fix-reference.md
+Docs/stats-fix-quick-reference.md
+Docs/stats-loading-fix.md
+Docs/ip-restriction-*.md
+Docs/macos-*.md
+Docs/portal-admin-integration-test.md
+Docs/puppeteer-testing.md
+Docs/routing-changes.md
+Docs/admin-redirect.md
+Docs/api-database-fix.md
+Docs/database-migration-guide.md
+Docs/database-recommendation.md
+Docs/用户通知*.md
+Docs/解决方案*.md
+Docs/FINAL-FIX-SUMMARY.md
+Docs/STATS-FIX-README.md
+
+# 保留重要文档
+!Docs/README.md
+!Docs/OPERATIONS-GUIDE.md
+!Docs/SCRIPTS-GUIDE.md
+!Docs/KNOWN-ISSUES.md
+!Docs/quick-start-xray.md
+!Docs/remote-deploy-guide.md
+!Docs/xray-config-guide.md
+!Docs/NODE-AGENT-GUIDE.md
+!Docs/FEATURES-COMPLETED.md
+!Docs/FINAL-REVIEW-REPORT.md
+!Docs/REVIEW-CHECKLIST.md
+!Docs/IMPROVEMENTS-SUMMARY.md
+!Docs/SESSION-COMPLETE.md
+
+# ==================== 其他 ====================
+# 空文件夹占位符
+!.gitkeep 

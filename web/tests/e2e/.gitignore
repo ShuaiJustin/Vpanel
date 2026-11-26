@@ -1,0 +1,15 @@
+# Puppeteer E2E 测试生成的文件
+
+# 截图
+screenshots/
+
+# 视频
+videos/
+
+# 环境变量
+.env
+
+# 测试报告
+coverage/
+test-results/
+*.log

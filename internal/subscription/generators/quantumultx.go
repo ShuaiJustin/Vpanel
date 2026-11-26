@@ -1,0 +1,172 @@
+// Package generators provides subscription format generators for various clients.
+package generators
+
+import (
+	"fmt"
+	"net"
+	"strconv"
+	"strings"
+
+	"v/internal/database/repository"
+	proxylib "v/internal/proxy"
+)
+
+// QuantumultXGenerator generates subscription content in Quantumult X format.
+type QuantumultXGenerator struct{}
+
+// NewQuantumultXGenerator creates a new Quantumult X format generator.
+func NewQuantumultXGenerator() *QuantumultXGenerator {
+	return &QuantumultXGenerator{}
+}
+
+// Generate creates subscription content in Quantumult X format.
+func (g *QuantumultXGenerator) Generate(proxies []*repository.Proxy, options *GeneratorOptions) ([]byte, error) {
+	if options == nil {
+		options = DefaultOptions()
+	}
+
+	var lines []string
+
+	for _, info := range ExtractProxyInfos(proxies) {
+		var line string
+		var err error
+
+		switch normalizeProtocolName(info.Protocol) {
+		case ProtocolVMess:
+			line, err = g.generateVMessLine(info)
+		case ProtocolTrojan:
+			line, err = g.generateTrojanLine(info)
+		case ProtocolShadowsocks, ProtocolSS:
+			line, err = g.generateShadowsocksLine(info)
+		default:
+			continue // Quantumult X doesn't support VLESS natively
+		}
+
+		if err != nil {
+			continue
+		}
+
+		lines = append(lines, line)
+	}
+
+	return []byte(strings.Join(lines, "\n")), nil
+}
+
+// ContentType returns the MIME type for Quantumult X format.
+func (g *QuantumultXGenerator) ContentType() string {
+	return "text/plain; charset=utf-8"
+}
+
+// FileExtension returns the file extension for Quantumult X format.
+func (g *QuantumultXGenerator) FileExtension() string {
+	return "conf"
+}
+
+// SupportsProtocol checks if Quantumult X format supports a specific protocol.
+func (g *QuantumultXGenerator) SupportsProtocol(protocol string) bool {
+	switch normalizeProtocolName(protocol) {
+	case ProtocolVMess, ProtocolTrojan, ProtocolShadowsocks, ProtocolSS:
+		return true
+	default:
+		return false
+	}
+}
+
+// generateVMessLine generates a Quantumult X VMess proxy line.
+func (g *QuantumultXGenerator) generateVMessLine(info *ProxyInfo) (string, error) {
+	uuid := GetSettingString(info.Settings, "uuid", "")
+	cipher := proxylib.ResolveVMessCipher(info.Settings)
+
+	// Quantumult X VMess format:
+	// vmess=server:port, method=security, password=uuid, tag=name
+	parts := []string{
+		"vmess=" + net.JoinHostPort(info.Server, strconv.Itoa(info.Port)),
+		fmt.Sprintf("method=%s", cipher),
+		fmt.Sprintf("password=%s", uuid),
+	}
+
+	// TLS settings
+	if proxylib.HasTLSSettings(info.Settings) {
+		parts = append(parts, "obfs=over-tls")
+		if sni := proxylib.ResolveSNI(info.Settings); sni != "" {
+			parts = append(parts, fmt.Sprintf("obfs-host=%s", sni))
+		}
+		if proxylib.ResolveTLSSkipVerify(info.Settings) {
+			parts = append(parts, "tls-verification=false")
+		}
+	}
+
+	// WebSocket settings
+	network := GetSettingString(info.Settings, "network", "tcp")
+	if network == "ws" {
+		if !proxylib.HasTLSSettings(info.Settings) {
+			parts = append(parts, "obfs=ws")
+		} else {
+			parts = append(parts, "obfs=wss")
+		}
+		if path := GetSettingString(info.Settings, "path", ""); path != "" {
+			parts = append(parts, fmt.Sprintf("obfs-uri=%s", path))
+		}
+		if host := GetSettingString(info.Settings, "host", ""); host != "" {
+			parts = append(parts, fmt.Sprintf("obfs-host=%s", host))
+		}
+	}
+
+	// Tag (name)
+	parts = append(parts, fmt.Sprintf("tag=%s", info.Name))
+
+	return strings.Join(parts, ", "), nil
+}
+
+// generateTrojanLine generates a Quantumult X Trojan proxy line.
+func (g *QuantumultXGenerator) generateTrojanLine(info *ProxyInfo) (string, error) {
+	password := GetSettingString(info.Settings, "password", "")
+
+	// Quantumult X Trojan format:
+	// trojan=server:port, password=xxx, tag=name
+	parts := []string{
+		"trojan=" + net.JoinHostPort(info.Server, strconv.Itoa(info.Port)),
+		fmt.Sprintf("password=%s", password),
+	}
+
+	// TLS settings
+	parts = append(parts, "over-tls=true")
+
+	if sni := GetSettingString(info.Settings, "sni", ""); sni != "" {
+		parts = append(parts, fmt.Sprintf("tls-host=%s", sni))
+	}
+
+	if skipVerify := GetSettingBool(info.Settings, "skipCertVerify", false); skipVerify {
+		parts = append(parts, "tls-verification=false")
+	}
+
+	// Tag (name)
+	parts = append(parts, fmt.Sprintf("tag=%s", info.Name))
+
+	return strings.Join(parts, ", "), nil
+}
+
+// generateShadowsocksLine generates a Quantumult X Shadowsocks proxy line.
+func (g *QuantumultXGenerator) generateShadowsocksLine(info *ProxyInfo) (string, error) {
+	method := GetSettingString(info.Settings, "method", "aes-256-gcm")
+	password := GetSettingString(info.Settings, "password", "")
+
+	// Quantumult X Shadowsocks format expects the raw password; base64 encoding
+	// would make the client authenticate with the wrong bytes.
+	// shadowsocks=server:port, method=xxx, password=xxx, tag=name
+	parts := []string{
+		"shadowsocks=" + net.JoinHostPort(info.Server, strconv.Itoa(info.Port)),
+		fmt.Sprintf("method=%s", method),
+		fmt.Sprintf("password=%s", password),
+	}
+
+	// UDP relay
+	if udp := GetSettingBool(info.Settings, "udp", true); udp {
+		parts = append(parts, "udp-relay=true")
+	}
+
+	// Tag (name)
+	parts = append(parts, fmt.Sprintf("tag=%s", info.Name))
+
+	return strings.Join(parts, ", "), nil
+}

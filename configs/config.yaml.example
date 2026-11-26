@@ -1,0 +1,108 @@
+# V Panel Configuration File
+# Copy this file to config.yaml and modify as needed
+# Environment variables with V_ prefix will override these values
+
+# Server configuration
+server:
+  # Host to bind to (0.0.0.0 for all interfaces)
+  host: "0.0.0.0"
+  # Port to listen on
+  port: 8080
+  # Public URL for this panel (REQUIRED for remote agent deployment)
+  # ⚠️ 重要：远程部署 Agent 时必须配置为公网可访问的地址
+  # ❌ 错误：http://localhost:8080 或 http://127.0.0.1:8080
+  # ✅ 正确：http://YOUR_PUBLIC_IP:8080 或 https://panel.yourdomain.com
+  # 示例：
+  #   - 公网 IP: "http://123.45.67.89:8080"
+  #   - 域名: "https://panel.example.com"
+  #   - 内网 IP (仅限内网部署): "http://192.168.1.100:8080"
+  public_url: ""  # 留空将导致远程部署失败
+  # Subscription clients suggested update interval (hours)
+  # 对应订阅响应头: Profile-Update-Interval
+  subscription_update_interval: 24
+  # Read timeout for HTTP requests
+  read_timeout: "30s"
+  # Write timeout for HTTP responses
+  write_timeout: "10m"
+
+# Database configuration
+database:
+  # Path to SQLite database file
+  path: "./data/v.db"
+  # Maximum number of open connections
+  max_open_conns: 10
+  # Maximum number of idle connections
+  max_idle_conns: 5
+  # Maximum connection lifetime
+  conn_max_lifetime: "1h"
+
+# Authentication configuration
+auth:
+  # JWT secret key (REQUIRED - change this in production!)
+  jwt_secret: "change-me-in-production"
+  # Token expiry duration
+  token_expiry: "24h"
+  # Default admin username
+  admin_username: "admin"
+  # Default admin password (change this after first login!)
+  admin_password: "admin123"
+
+# Payment configuration
+payment:
+  alipay:
+    # Enable Alipay payment gateway
+    enabled: false
+    # Alipay application ID
+    app_id: ""
+    # Merchant RSA private key (PEM)
+    private_key: ""
+    # Alipay RSA public key (PEM)
+    alipay_public_key: ""
+    # Optional callback URL override
+    notify_url: ""
+    # Optional browser return URL override
+    return_url: ""
+    # Use Alipay sandbox
+    is_sandbox: false
+  wechat:
+    # Enable WeChat Pay gateway
+    enabled: false
+    # WeChat application ID
+    app_id: ""
+    # WeChat merchant ID
+    mch_id: ""
+    # WeChat API key
+    api_key: ""
+    # Optional callback URL override
+    notify_url: ""
+    # Use WeChat sandbox
+    is_sandbox: false
+
+# Xray configuration
+xray:
+  # Path to Xray binary directory
+  bin_path: "./xray/bin"
+  # Path to Xray configuration file
+  config_path: "./xray/config.json"
+  # Xray version to use
+  version: "latest"
+
+# Logging configuration
+log:
+  # Log level: debug, info, warn, error, fatal
+  level: "info"
+  # Log format: json, text
+  format: "json"
+  # Log output: stdout, stderr, or file path
+  output: "stdout"
+
+# Certificate management configuration
+certificate:
+  # Certificate storage path
+  storage_path: "./data/certificates"
+  # Enable automatic certificate renewal
+  auto_renew_enabled: true
+  # Check interval for certificate expiration (default: 24h)
+  check_interval: "24h"
+  # Renew threshold in days (renew when certificate expires within this many days)
+  renew_threshold: 30

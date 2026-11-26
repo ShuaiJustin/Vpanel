@@ -1,0 +1,46 @@
+# V Panel Node Agent Configuration
+
+# Node identification
+node:
+  # Node name (optional, will use hostname if not set)
+  name: "node-1"
+  # Authentication token (required, obtained from Panel)
+  token: "your-node-token-here"
+
+# Panel Server connection
+panel:
+  # Panel Server URL
+  url: "http://YOUR_PANEL_HOST:13212"
+  # Skip TLS certificate verification (not recommended for production)
+  tls_skip_verify: false
+  # Connection timeout
+  connect_timeout: 10s
+  # Initial reconnect interval
+  reconnect_interval: 5s
+  # Maximum reconnect delay (exponential backoff cap)
+  max_reconnect_delay: 5m
+
+# Xray configuration
+xray:
+  # Path to Xray binary
+  binary_path: "xray"
+  # Path to Xray configuration file
+  config_path: "/usr/local/etc/xray/config.json"
+  # Directory for configuration backups
+  backup_dir: "/tmp/xray-backups"
+
+# Health check endpoint
+health:
+  # Host to bind health server
+  host: "0.0.0.0"
+  # Port for health check endpoint (Agent 监听端口)
+  port: 18443
+
+# Logging configuration
+log:
+  # Log level: debug, info, warn, error
+  level: "info"
+  # Log format: json, text
+  format: "json"
+  # Log output: stdout, stderr, or file path
+  output: "stdout"

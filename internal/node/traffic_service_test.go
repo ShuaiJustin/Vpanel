@@ -1,0 +1,981 @@
+package node
+
+import (
+	"context"
+	"reflect"
+	"sort"
+	"testing"
+	"time"
+
+	"github.com/glebarez/sqlite"
+	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
+
+	"v/internal/database/repository"
+	"v/internal/logger"
+	apperrors "v/pkg/errors"
+)
+
+func setupTrafficServiceTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
+	})
+	if err != nil {
+		t.Fatalf("failed to open test database: %v", err)
+	}
+
+	if err := db.AutoMigrate(
+		&repository.User{},
+		&repository.Node{},
+		&repository.Proxy{},
+		&repository.Traffic{},
+		&repository.NodeTraffic{},
+		&repository.Trial{},
+		&repository.CommercialPlan{},
+		&repository.Order{},
+	); err != nil {
+		t.Fatalf("failed to migrate test tables: %v", err)
+	}
+
+	return db
+}
+
+func TestTrafficService_RecordTrafficBatchUpdatesActiveTrialTraffic(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+	now := time.Now()
+	nodeID := int64(7)
+
+	service := NewTrafficService(
+		db,
+		repository.NewNodeTrafficRepository(db),
+		repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db),
+		repository.NewUserRepository(db),
+		repository.NewNodeRepository(db),
+		nil,
+		logger.NewNopLogger(),
+	)
+
+	if err := db.Create(&repository.Node{
+		ID:      nodeID,
+		Name:    "node-1",
+		Address: "127.0.0.1",
+		Status:  repository.NodeStatusOnline,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed node: %v", err)
+	}
+
+	users := []*repository.User{
+		{ID: 1, Username: "active-trial", PasswordHash: "x"},
+		{ID: 2, Username: "expired-trial", PasswordHash: "x"},
+		{ID: 3, Username: "converted-trial", PasswordHash: "x"},
+	}
+	for _, user := range users {
+		if err := db.Create(user).Error; err != nil {
+			t.Fatalf("failed to seed user %d: %v", user.ID, err)
+		}
+	}
+
+	proxies := []*repository.Proxy{
+		{ID: 11, UserID: 1, NodeID: &nodeID, Name: "p1", Protocol: "vmess", Port: 20001, Host: "127.0.0.1", Enabled: true},
+		{ID: 12, UserID: 2, NodeID: &nodeID, Name: "p2", Protocol: "vmess", Port: 20002, Host: "127.0.0.1", Enabled: true},
+		{ID: 13, UserID: 3, NodeID: &nodeID, Name: "p3", Protocol: "vmess", Port: 20003, Host: "127.0.0.1", Enabled: true},
+	}
+	for _, proxy := range proxies {
+		if err := db.Create(proxy).Error; err != nil {
+			t.Fatalf("failed to seed proxy %d: %v", proxy.ID, err)
+		}
+	}
+
+	trials := []*repository.Trial{
+		{ID: 21, UserID: 1, Status: "active", StartAt: now.Add(-time.Hour), ExpireAt: now.Add(time.Hour), TrafficUsed: 1000},
+		{ID: 22, UserID: 2, Status: "active", StartAt: now.Add(-2 * time.Hour), ExpireAt: now.Add(-time.Minute), TrafficUsed: 2000},
+		{ID: 23, UserID: 3, Status: "converted", StartAt: now.Add(-2 * time.Hour), ExpireAt: now.Add(time.Hour), TrafficUsed: 3000},
+	}
+	for _, trial := range trials {
+		if err := db.Create(trial).Error; err != nil {
+			t.Fatalf("failed to seed trial %d: %v", trial.ID, err)
+		}
+	}
+
+	records := []*TrafficRecord{
+		{NodeID: nodeID, UserID: 1, ProxyID: &proxies[0].ID, Upload: 100, Download: 50},
+		{NodeID: nodeID, UserID: 2, ProxyID: &proxies[1].ID, Upload: 20, Download: 30},
+		{NodeID: nodeID, UserID: 3, ProxyID: &proxies[2].ID, Upload: 5, Download: 6},
+	}
+
+	if err := service.RecordTrafficBatch(ctx, records); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	var activeUser repository.User
+	if err := db.First(&activeUser, 1).Error; err != nil {
+		t.Fatalf("failed to load active trial user: %v", err)
+	}
+	if activeUser.TrafficUsed != 150 {
+		t.Fatalf("expected active trial user traffic_used 150, got %d", activeUser.TrafficUsed)
+	}
+
+	var activeTrial repository.Trial
+	if err := db.First(&activeTrial, 21).Error; err != nil {
+		t.Fatalf("failed to load active trial: %v", err)
+	}
+	if activeTrial.TrafficUsed != 1150 {
+		t.Fatalf("expected active trial traffic_used 1150, got %d", activeTrial.TrafficUsed)
+	}
+
+	var expiredTrial repository.Trial
+	if err := db.First(&expiredTrial, 22).Error; err != nil {
+		t.Fatalf("failed to load expired trial: %v", err)
+	}
+	if expiredTrial.TrafficUsed != 2000 {
+		t.Fatalf("expected expired trial traffic_used to stay 2000, got %d", expiredTrial.TrafficUsed)
+	}
+
+	var convertedTrial repository.Trial
+	if err := db.First(&convertedTrial, 23).Error; err != nil {
+		t.Fatalf("failed to load converted trial: %v", err)
+	}
+	if convertedTrial.TrafficUsed != 3000 {
+		t.Fatalf("expected converted trial traffic_used to stay 3000, got %d", convertedTrial.TrafficUsed)
+	}
+
+	var trafficCount int64
+	if err := db.Model(&repository.Traffic{}).Count(&trafficCount).Error; err != nil {
+		t.Fatalf("failed to count traffic records: %v", err)
+	}
+	if trafficCount != 3 {
+		t.Fatalf("expected 3 traffic records, got %d", trafficCount)
+	}
+
+	var nodeTrafficCount int64
+	if err := db.Model(&repository.NodeTraffic{}).Count(&nodeTrafficCount).Error; err != nil {
+		t.Fatalf("failed to count node traffic records: %v", err)
+	}
+	if nodeTrafficCount != 3 {
+		t.Fatalf("expected 3 node traffic records, got %d", nodeTrafficCount)
+	}
+}
+
+func TestTrafficService_RecordTrafficBatchTriggersAccessRevokedHook(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+	nodeID1 := int64(7)
+	nodeID2 := int64(8)
+
+	service := NewTrafficService(
+		db,
+		repository.NewNodeTrafficRepository(db),
+		repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db),
+		repository.NewUserRepository(db),
+		repository.NewNodeRepository(db),
+		nil,
+		logger.NewNopLogger(),
+	)
+
+	userRepo := repository.NewUserRepository(db)
+	service.WithUserAccessCheck(func(ctx context.Context, userID int64) error {
+		user, err := userRepo.GetByID(ctx, userID)
+		if err != nil {
+			return err
+		}
+		if user.IsTrafficExceeded() {
+			return apperrors.NewForbiddenError("traffic limit exceeded")
+		}
+		return nil
+	})
+
+	var (
+		hookUserID  int64
+		hookNodeIDs []int64
+		hookReason  string
+		hookCalls   int
+	)
+	service.WithAccessRevokedHook(func(ctx context.Context, userID int64, nodeIDs []int64, reason string) {
+		hookCalls++
+		hookUserID = userID
+		hookNodeIDs = append([]int64(nil), nodeIDs...)
+		hookReason = reason
+	})
+
+	for _, nodeData := range []*repository.Node{
+		{ID: nodeID1, Name: "node-1", Address: "127.0.0.1", Token: "node-token-1", Status: repository.NodeStatusOnline},
+		{ID: nodeID2, Name: "node-2", Address: "127.0.0.2", Token: "node-token-2", Status: repository.NodeStatusOnline},
+	} {
+		if err := db.Create(nodeData).Error; err != nil {
+			t.Fatalf("failed to seed node %d: %v", nodeData.ID, err)
+		}
+	}
+
+	user := &repository.User{ID: 1, Username: "threshold-user", PasswordHash: "x", TrafficLimit: 100, TrafficUsed: 95}
+	if err := db.Create(user).Error; err != nil {
+		t.Fatalf("failed to seed user: %v", err)
+	}
+
+	for _, proxy := range []*repository.Proxy{
+		{ID: 11, UserID: 1, NodeID: &nodeID1, Name: "p1", Protocol: "vmess", Port: 20001, Host: "127.0.0.1", Enabled: true},
+		{ID: 12, UserID: 1, NodeID: &nodeID2, Name: "p2", Protocol: "vmess", Port: 20002, Host: "127.0.0.1", Enabled: true},
+	} {
+		if err := db.Create(proxy).Error; err != nil {
+			t.Fatalf("failed to seed proxy %d: %v", proxy.ID, err)
+		}
+	}
+
+	records := []*TrafficRecord{{NodeID: nodeID1, UserID: 1, Upload: 3, Download: 4}}
+	if err := service.RecordTrafficBatch(ctx, records); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if hookCalls != 1 {
+		t.Fatalf("expected hook to be called once, got %d", hookCalls)
+	}
+	if hookUserID != 1 {
+		t.Fatalf("expected hook user id 1, got %d", hookUserID)
+	}
+	sort.Slice(hookNodeIDs, func(i, j int) bool { return hookNodeIDs[i] < hookNodeIDs[j] })
+	if !reflect.DeepEqual(hookNodeIDs, []int64{nodeID1, nodeID2}) {
+		t.Fatalf("expected hook node ids [%d %d], got %v", nodeID1, nodeID2, hookNodeIDs)
+	}
+	if hookReason != "traffic limit exceeded" {
+		t.Fatalf("expected hook reason 'traffic limit exceeded', got %q", hookReason)
+	}
+
+	var updated repository.User
+	if err := db.First(&updated, user.ID).Error; err != nil {
+		t.Fatalf("failed to load updated user: %v", err)
+	}
+	if updated.TrafficUsed != 102 {
+		t.Fatalf("expected updated traffic_used 102, got %d", updated.TrafficUsed)
+	}
+}
+
+func TestTrafficService_RecordTrafficBatchMarksNodeUnhealthyWhenLimitExceeded(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+	nodeID := int64(7)
+
+	service := NewTrafficService(
+		db,
+		repository.NewNodeTrafficRepository(db),
+		repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db),
+		repository.NewUserRepository(db),
+		repository.NewNodeRepository(db),
+		nil,
+		logger.NewNopLogger(),
+	)
+
+	var (
+		hookNodeID int64
+		hookReason string
+		hookCalls  int
+	)
+	service.WithNodeTrafficLimitExceededHook(func(ctx context.Context, nodeID int64, reason string) {
+		hookCalls++
+		hookNodeID = nodeID
+		hookReason = reason
+	})
+
+	limit := int64(100)
+	if err := db.Create(&repository.Node{
+		ID:           nodeID,
+		Name:         "quota-node",
+		Address:      "127.0.0.1",
+		Status:       repository.NodeStatusOnline,
+		TrafficTotal: 95,
+		TrafficLimit: limit,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed node: %v", err)
+	}
+
+	if err := db.Create(&repository.User{ID: 1, Username: "quota-user", PasswordHash: "x"}).Error; err != nil {
+		t.Fatalf("failed to seed user: %v", err)
+	}
+
+	records := []*TrafficRecord{{NodeID: nodeID, UserID: 1, Upload: 3, Download: 4}}
+	if err := service.RecordTrafficBatch(ctx, records); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	var updated repository.Node
+	if err := db.First(&updated, nodeID).Error; err != nil {
+		t.Fatalf("failed to load updated node: %v", err)
+	}
+	if updated.TrafficTotal != 102 {
+		t.Fatalf("expected traffic total 102, got %d", updated.TrafficTotal)
+	}
+	if updated.Status != repository.NodeStatusUnhealthy {
+		t.Fatalf("expected node unhealthy, got %s", updated.Status)
+	}
+	if hookCalls != 1 {
+		t.Fatalf("expected hook to be called once, got %d", hookCalls)
+	}
+	if hookNodeID != nodeID {
+		t.Fatalf("expected hook node id %d, got %d", nodeID, hookNodeID)
+	}
+	if hookReason != "node traffic limit exceeded" {
+		t.Fatalf("expected hook reason node traffic limit exceeded, got %q", hookReason)
+	}
+}
+
+func TestTrafficService_RecordTrafficBatchPersistsGlobalTrafficWithoutProxyID(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+	nodeID := int64(51)
+
+	service := NewTrafficService(
+		db,
+		repository.NewNodeTrafficRepository(db),
+		repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db),
+		repository.NewUserRepository(db),
+		repository.NewNodeRepository(db),
+		nil,
+		logger.NewNopLogger(),
+	)
+
+	if err := db.Create(&repository.Node{
+		ID:      nodeID,
+		Name:    "global-traffic-node",
+		Address: "127.0.0.1",
+		Status:  repository.NodeStatusOnline,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed node: %v", err)
+	}
+	if err := db.Create(&repository.User{ID: 1, Username: "global-traffic-user", PasswordHash: "x"}).Error; err != nil {
+		t.Fatalf("failed to seed user: %v", err)
+	}
+
+	if err := service.RecordTrafficBatch(ctx, []*TrafficRecord{{NodeID: nodeID, UserID: 1, Upload: 128, Download: 256}}); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	trafficRepo := repository.NewTrafficRepository(db)
+	upload, download, err := trafficRepo.GetTotalTraffic(context.Background())
+	if err != nil {
+		t.Fatalf("failed to get total traffic: %v", err)
+	}
+	if upload != 128 || download != 256 {
+		t.Fatalf("expected global traffic 128/256, got %d/%d", upload, download)
+	}
+
+	userStats, err := trafficRepo.GetTrafficByUser(
+		ctx,
+		time.Now().Add(-time.Hour),
+		time.Now().Add(time.Hour),
+		10,
+	)
+	if err != nil {
+		t.Fatalf("failed to get user traffic stats: %v", err)
+	}
+	if len(userStats) != 1 {
+		t.Fatalf("expected 1 user traffic row, got %d", len(userStats))
+	}
+	if userStats[0].ProxyCount != 0 {
+		t.Fatalf("expected proxy count 0, got %d", userStats[0].ProxyCount)
+	}
+}
+
+func TestTrafficService_RecordTrafficBatchAggregatesDuplicateRecords(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+	nodeID := int64(52)
+	proxyID := int64(19)
+
+	service := NewTrafficService(
+		db,
+		repository.NewNodeTrafficRepository(db),
+		repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db),
+		repository.NewUserRepository(db),
+		repository.NewNodeRepository(db),
+		nil,
+		logger.NewNopLogger(),
+	)
+
+	if err := db.Create(&repository.Node{ID: nodeID, Name: "aggregate-node", Address: "127.0.0.1", Status: repository.NodeStatusOnline}).Error; err != nil {
+		t.Fatalf("failed to seed node: %v", err)
+	}
+	if err := db.Create(&repository.User{ID: 1, Username: "aggregate-user", PasswordHash: "x"}).Error; err != nil {
+		t.Fatalf("failed to seed user: %v", err)
+	}
+
+	records := []*TrafficRecord{
+		{NodeID: nodeID, UserID: 1, ProxyID: &proxyID, Upload: 100, Download: 20},
+		{NodeID: nodeID, UserID: 1, ProxyID: &proxyID, Upload: 50, Download: 10},
+	}
+	if err := service.RecordTrafficBatch(ctx, records); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	var nodeTrafficRows int64
+	if err := db.Model(&repository.NodeTraffic{}).Count(&nodeTrafficRows).Error; err != nil {
+		t.Fatalf("failed to count node traffic rows: %v", err)
+	}
+	if nodeTrafficRows != 1 {
+		t.Fatalf("expected 1 aggregated node traffic row, got %d", nodeTrafficRows)
+	}
+
+	var globalTrafficRows int64
+	if err := db.Model(&repository.Traffic{}).Count(&globalTrafficRows).Error; err != nil {
+		t.Fatalf("failed to count traffic rows: %v", err)
+	}
+	if globalTrafficRows != 1 {
+		t.Fatalf("expected 1 aggregated global traffic row, got %d", globalTrafficRows)
+	}
+
+	userRepo := repository.NewUserRepository(db)
+	updatedUser, err := userRepo.GetByID(ctx, 1)
+	if err != nil {
+		t.Fatalf("failed to load updated user: %v", err)
+	}
+	if updatedUser.TrafficUsed != 180 {
+		t.Fatalf("expected traffic_used 180, got %d", updatedUser.TrafficUsed)
+	}
+
+	nodeRepo := repository.NewNodeRepository(db)
+	updatedNode, err := nodeRepo.GetByID(ctx, nodeID)
+	if err != nil {
+		t.Fatalf("failed to load updated node: %v", err)
+	}
+	if updatedNode.TrafficTotal != 180 {
+		t.Fatalf("expected traffic_total 180, got %d", updatedNode.TrafficTotal)
+	}
+}
+
+func TestTrafficService_RecordTrafficBatchCountsSharedProxyTrafficOnlyForNodeTotals(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+	nodeID := int64(53)
+	proxyID := int64(20)
+
+	service := NewTrafficService(
+		db,
+		repository.NewNodeTrafficRepository(db),
+		repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db),
+		repository.NewUserRepository(db),
+		repository.NewNodeRepository(db),
+		nil,
+		logger.NewNopLogger(),
+	)
+
+	if err := db.Create(&repository.Node{ID: nodeID, Name: "shared-node", Address: "127.0.0.1", Status: repository.NodeStatusOnline}).Error; err != nil {
+		t.Fatalf("failed to seed node: %v", err)
+	}
+
+	records := []*TrafficRecord{{NodeID: nodeID, UserID: 0, ProxyID: &proxyID, Upload: 90, Download: 30}}
+	if err := service.RecordTrafficBatch(ctx, records); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	var nodeTrafficRows int64
+	if err := db.Model(&repository.NodeTraffic{}).Count(&nodeTrafficRows).Error; err != nil {
+		t.Fatalf("failed to count node traffic rows: %v", err)
+	}
+	if nodeTrafficRows != 1 {
+		t.Fatalf("expected shared traffic to be persisted in node_traffic, got %d rows", nodeTrafficRows)
+	}
+
+	var globalTrafficRows int64
+	if err := db.Model(&repository.Traffic{}).Count(&globalTrafficRows).Error; err != nil {
+		t.Fatalf("failed to count global traffic rows: %v", err)
+	}
+	if globalTrafficRows != 1 {
+		t.Fatalf("expected shared traffic to be persisted in global traffic table once, got %d rows", globalTrafficRows)
+	}
+
+	nodeRepo := repository.NewNodeRepository(db)
+	updatedNode, err := nodeRepo.GetByID(ctx, nodeID)
+	if err != nil {
+		t.Fatalf("failed to load updated node: %v", err)
+	}
+	if updatedNode.TrafficTotal != 120 {
+		t.Fatalf("expected node traffic_total 120, got %d", updatedNode.TrafficTotal)
+	}
+
+	topUsers, err := service.GetTopUsersByTraffic(ctx, nodeID, time.Now().Add(-time.Hour), time.Now().Add(time.Hour), 10)
+	if err != nil {
+		t.Fatalf("failed to get top users by traffic: %v", err)
+	}
+	if len(topUsers) != 0 {
+		t.Fatalf("expected shared proxy traffic to be excluded from top users, got %+v", topUsers)
+	}
+
+	trafficRepo := repository.NewTrafficRepository(db)
+	upload, download, err := trafficRepo.GetTotalTraffic(context.Background())
+	if err != nil {
+		t.Fatalf("failed to get global traffic totals: %v", err)
+	}
+	if upload != 90 || download != 30 {
+		t.Fatalf("expected shared traffic to be counted in global totals, got %d/%d", upload, download)
+	}
+}
+
+func TestTrafficService_GetTrafficByNodeIncludesSharedProxyTraffic(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+	nodeID := int64(54)
+
+	service := NewTrafficService(
+		db,
+		repository.NewNodeTrafficRepository(db),
+		repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db),
+		repository.NewUserRepository(db),
+		repository.NewNodeRepository(db),
+		nil,
+		logger.NewNopLogger(),
+	)
+
+	if err := db.Create(&repository.Node{ID: nodeID, Name: "node-total", Address: "127.0.0.1", Status: repository.NodeStatusOnline}).Error; err != nil {
+		t.Fatalf("failed to seed node: %v", err)
+	}
+	if err := db.Create(&repository.User{ID: 1, Username: "regular-user", PasswordHash: "x"}).Error; err != nil {
+		t.Fatalf("failed to seed user: %v", err)
+	}
+
+	records := []*TrafficRecord{
+		{NodeID: nodeID, UserID: 1, Upload: 10, Download: 20},
+		{NodeID: nodeID, UserID: 0, Upload: 90, Download: 30},
+	}
+	if err := service.RecordTrafficBatch(ctx, records); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	stats, err := service.GetTrafficByNode(ctx, nodeID, time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("failed to get traffic by node: %v", err)
+	}
+	if stats.Upload != 100 || stats.Download != 50 || stats.Total != 150 {
+		t.Fatalf("expected shared traffic to be included in node totals, got %+v", stats)
+	}
+}
+
+func TestTrafficService_GetTopUsersByTrafficIncludesUsername(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+	nodeID := int64(55)
+
+	service := NewTrafficService(
+		db,
+		repository.NewNodeTrafficRepository(db),
+		repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db),
+		repository.NewUserRepository(db),
+		repository.NewNodeRepository(db),
+		nil,
+		logger.NewNopLogger(),
+	)
+
+	if err := db.Create(&repository.Node{ID: nodeID, Name: "top-user-node", Address: "127.0.0.1", Status: repository.NodeStatusOnline}).Error; err != nil {
+		t.Fatalf("failed to seed node: %v", err)
+	}
+	for _, user := range []*repository.User{
+		{ID: 1, Username: "alpha", PasswordHash: "x"},
+		{ID: 2, Username: "beta", PasswordHash: "x"},
+	} {
+		if err := db.Create(user).Error; err != nil {
+			t.Fatalf("failed to seed user %d: %v", user.ID, err)
+		}
+	}
+
+	records := []*TrafficRecord{
+		{NodeID: nodeID, UserID: 1, Upload: 100, Download: 50},
+		{NodeID: nodeID, UserID: 1, Upload: 10, Download: 5},
+		{NodeID: nodeID, UserID: 2, Upload: 20, Download: 10},
+	}
+	if err := service.RecordTrafficBatch(ctx, records); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	topUsers, err := service.GetTopUsersByTraffic(ctx, nodeID, time.Now().Add(-time.Hour), time.Now().Add(time.Hour), 10)
+	if err != nil {
+		t.Fatalf("failed to get top users by traffic: %v", err)
+	}
+	if len(topUsers) != 2 {
+		t.Fatalf("expected 2 users, got %d", len(topUsers))
+	}
+	if topUsers[0].UserID != 1 || topUsers[0].Username != "alpha" {
+		t.Fatalf("expected top user alpha, got %+v", topUsers[0])
+	}
+	if topUsers[0].Total != 165 {
+		t.Fatalf("expected aggregated total 165, got %d", topUsers[0].Total)
+	}
+	if topUsers[1].UserID != 2 || topUsers[1].Username != "beta" {
+		t.Fatalf("expected second user beta, got %+v", topUsers[1])
+	}
+}
+
+func TestTrafficService_ProcessMonthlyTrafficResets_InitializesMissingResetAt(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+	now := time.Date(2026, 3, 26, 12, 0, 0, 0, time.UTC)
+	nodeID := int64(31)
+
+	service := NewTrafficService(
+		db,
+		repository.NewNodeTrafficRepository(db),
+		repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db),
+		repository.NewUserRepository(db),
+		repository.NewNodeRepository(db),
+		nil,
+		logger.NewNopLogger(),
+	)
+
+	if err := db.Create(&repository.Node{
+		ID:           nodeID,
+		Name:         "cycle-anchor-node",
+		Address:      "127.0.0.1",
+		Status:       repository.NodeStatusOnline,
+		TrafficUp:    100,
+		TrafficDown:  200,
+		TrafficTotal: 300,
+		TrafficLimit: 1000,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed node: %v", err)
+	}
+
+	resetNodeIDs, err := service.ProcessMonthlyTrafficResets(ctx, now)
+	if err != nil {
+		t.Fatalf("ProcessMonthlyTrafficResets returned error: %v", err)
+	}
+	if len(resetNodeIDs) != 0 {
+		t.Fatalf("expected no reset node ids, got %v", resetNodeIDs)
+	}
+
+	var updated repository.Node
+	if err := db.First(&updated, nodeID).Error; err != nil {
+		t.Fatalf("failed to load updated node: %v", err)
+	}
+	if updated.TrafficResetAt == nil {
+		t.Fatalf("expected traffic_reset_at to be initialized")
+	}
+	if !updated.TrafficResetAt.Equal(now) {
+		t.Fatalf("expected traffic_reset_at %v, got %v", now, updated.TrafficResetAt)
+	}
+	if updated.TrafficUp != 100 || updated.TrafficDown != 200 || updated.TrafficTotal != 300 {
+		t.Fatalf("expected traffic counters to remain unchanged, got up=%d down=%d total=%d", updated.TrafficUp, updated.TrafficDown, updated.TrafficTotal)
+	}
+}
+
+func TestTrafficService_CleanupOldRecordsDeletesNodeAndGlobalTraffic(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+
+	service := NewTrafficService(
+		db,
+		repository.NewNodeTrafficRepository(db),
+		repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db),
+		repository.NewUserRepository(db),
+		repository.NewNodeRepository(db),
+		nil,
+		logger.NewNopLogger(),
+	)
+
+	oldRecordedAt := time.Now().Add(-40 * 24 * time.Hour)
+	newRecordedAt := time.Now().Add(-2 * time.Hour)
+	for _, record := range []*repository.NodeTraffic{
+		{NodeID: 1, UserID: 1, Upload: 10, Download: 20, RecordedAt: oldRecordedAt},
+		{NodeID: 1, UserID: 1, Upload: 30, Download: 40, RecordedAt: newRecordedAt},
+	} {
+		if err := db.Create(record).Error; err != nil {
+			t.Fatalf("failed to seed node traffic: %v", err)
+		}
+	}
+	for _, record := range []*repository.Traffic{
+		{UserID: 1, ProxyID: 1, Upload: 10, Download: 20, RecordedAt: oldRecordedAt},
+		{UserID: 1, ProxyID: 1, Upload: 30, Download: 40, RecordedAt: newRecordedAt},
+	} {
+		if err := db.Create(record).Error; err != nil {
+			t.Fatalf("failed to seed traffic: %v", err)
+		}
+	}
+
+	deleted, err := service.CleanupOldRecords(ctx, 30*24*time.Hour)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if deleted != 2 {
+		t.Fatalf("expected 2 deleted traffic rows, got %d", deleted)
+	}
+
+	var nodeTrafficRemaining int64
+	if err := db.Model(&repository.NodeTraffic{}).Count(&nodeTrafficRemaining).Error; err != nil {
+		t.Fatalf("failed to count node traffic rows: %v", err)
+	}
+	if nodeTrafficRemaining != 1 {
+		t.Fatalf("expected 1 remaining node traffic row, got %d", nodeTrafficRemaining)
+	}
+
+	var trafficRemaining int64
+	if err := db.Model(&repository.Traffic{}).Count(&trafficRemaining).Error; err != nil {
+		t.Fatalf("failed to count traffic rows: %v", err)
+	}
+	if trafficRemaining != 1 {
+		t.Fatalf("expected 1 remaining traffic row, got %d", trafficRemaining)
+	}
+}
+
+func TestTrafficService_ProcessMonthlyTrafficResets_ResetsDueNode(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+	now := time.Date(2026, 3, 26, 12, 0, 0, 0, time.UTC)
+	nodeID := int64(32)
+	oldResetAt := now.AddDate(0, -1, -1)
+
+	service := NewTrafficService(
+		db,
+		repository.NewNodeTrafficRepository(db),
+		repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db),
+		repository.NewUserRepository(db),
+		repository.NewNodeRepository(db),
+		nil,
+		logger.NewNopLogger(),
+	)
+
+	if err := db.Create(&repository.Node{
+		ID:             nodeID,
+		Name:           "due-reset-node",
+		Address:        "127.0.0.1",
+		Status:         repository.NodeStatusUnhealthy,
+		TrafficUp:      400,
+		TrafficDown:    500,
+		TrafficTotal:   900,
+		TrafficLimit:   1000,
+		TrafficResetAt: &oldResetAt,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed node: %v", err)
+	}
+
+	resetNodeIDs, err := service.ProcessMonthlyTrafficResets(ctx, now)
+	if err != nil {
+		t.Fatalf("ProcessMonthlyTrafficResets returned error: %v", err)
+	}
+	if !reflect.DeepEqual(resetNodeIDs, []int64{nodeID}) {
+		t.Fatalf("expected reset node ids [%d], got %v", nodeID, resetNodeIDs)
+	}
+
+	var updated repository.Node
+	if err := db.First(&updated, nodeID).Error; err != nil {
+		t.Fatalf("failed to load updated node: %v", err)
+	}
+	if updated.TrafficUp != 0 || updated.TrafficDown != 0 || updated.TrafficTotal != 0 {
+		t.Fatalf("expected traffic counters to be reset, got up=%d down=%d total=%d", updated.TrafficUp, updated.TrafficDown, updated.TrafficTotal)
+	}
+	if updated.TrafficResetAt == nil {
+		t.Fatalf("expected traffic_reset_at to remain set")
+	}
+	expectedResetAt := time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)
+	if !updated.TrafficResetAt.Equal(expectedResetAt) {
+		t.Fatalf("expected traffic_reset_at %v, got %v", expectedResetAt, updated.TrafficResetAt)
+	}
+}
+
+func TestTrafficService_ProcessMonthlyTrafficResets_ClampsEndOfMonthAnchors(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+	now := time.Date(2026, 2, 28, 12, 0, 0, 0, time.UTC)
+	nodeID := int64(33)
+	anchor := time.Date(2026, 1, 31, 10, 15, 0, 0, time.UTC)
+
+	service := NewTrafficService(
+		db,
+		repository.NewNodeTrafficRepository(db),
+		repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db),
+		repository.NewUserRepository(db),
+		repository.NewNodeRepository(db),
+		nil,
+		logger.NewNopLogger(),
+	)
+
+	if err := db.Create(&repository.Node{
+		ID:             nodeID,
+		Name:           "month-end-node",
+		Address:        "127.0.0.1",
+		Status:         repository.NodeStatusOnline,
+		TrafficUp:      10,
+		TrafficDown:    20,
+		TrafficTotal:   30,
+		TrafficLimit:   100,
+		TrafficResetAt: &anchor,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed node: %v", err)
+	}
+
+	resetNodeIDs, err := service.ProcessMonthlyTrafficResets(ctx, now)
+	if err != nil {
+		t.Fatalf("ProcessMonthlyTrafficResets returned error: %v", err)
+	}
+	if !reflect.DeepEqual(resetNodeIDs, []int64{nodeID}) {
+		t.Fatalf("expected reset node ids [%d], got %v", nodeID, resetNodeIDs)
+	}
+
+	var updated repository.Node
+	if err := db.First(&updated, nodeID).Error; err != nil {
+		t.Fatalf("failed to load updated node: %v", err)
+	}
+	expectedResetAt := time.Date(2026, 2, 28, 10, 15, 0, 0, time.UTC)
+	if updated.TrafficResetAt == nil || !updated.TrafficResetAt.Equal(expectedResetAt) {
+		t.Fatalf("expected clamped traffic_reset_at %v, got %v", expectedResetAt, updated.TrafficResetAt)
+	}
+}
+
+func TestTrafficService_ProcessMonthlyTrafficResets_ResetsUserQuotaToCurrentMonth(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+	now := time.Date(2026, 3, 26, 12, 0, 0, 0, time.UTC)
+	oldAnchor := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	currentAnchor := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	expires := now.AddDate(0, 1, 0)
+	plan := &repository.CommercialPlan{
+		Name: "Annual monthly quota", Duration: 365, Price: 1000,
+		TrafficLimit: 1000, PlanType: repository.PlanTypeYearly,
+		ResetCycle: repository.ResetCycleMonthly, IsActive: true,
+	}
+	if err := db.Create(plan).Error; err != nil {
+		t.Fatalf("failed to seed plan: %v", err)
+	}
+	active := &repository.User{ID: 41, Username: "monthly-active", PasswordHash: "x", Enabled: true,
+		TrafficLimit: 1000, TrafficUsed: 900, CurrentPlanID: plan.ID, ExpiresAt: &expires, TrafficResetAt: &oldAnchor}
+	legacy := &repository.User{ID: 42, Username: "monthly-legacy", PasswordHash: "x", Enabled: true,
+		TrafficLimit: 1000, TrafficUsed: 800, ExpiresAt: &expires, TrafficResetAt: &oldAnchor}
+	notDue := &repository.User{ID: 43, Username: "monthly-not-due", PasswordHash: "x", Enabled: true,
+		TrafficLimit: 1000, TrafficUsed: 7, CurrentPlanID: plan.ID, ExpiresAt: &expires, TrafficResetAt: &currentAnchor}
+	expiredAt := now.Add(-time.Hour)
+	expired := &repository.User{ID: 44, Username: "monthly-expired", PasswordHash: "x", Enabled: true,
+		TrafficLimit: 1000, TrafficUsed: 99, CurrentPlanID: plan.ID, ExpiresAt: &expiredAt, TrafficResetAt: &oldAnchor}
+	for _, user := range []*repository.User{active, legacy, notDue, expired} {
+		if err := db.Create(user).Error; err != nil {
+			t.Fatalf("failed to seed user %d: %v", user.ID, err)
+		}
+	}
+	paidAt := now.Add(-24 * time.Hour)
+	if err := db.Create(&repository.Order{OrderNo: "ORD-legacy-monthly", UserID: legacy.ID, PlanID: plan.ID,
+		OriginalAmount: plan.Price, PayAmount: plan.Price, Status: repository.OrderStatusPaid,
+		PaidAt: &paidAt, CreatedAt: paidAt, ExpiredAt: now.Add(time.Hour)}).Error; err != nil {
+		t.Fatalf("failed to seed legacy order: %v", err)
+	}
+	for _, record := range []*repository.Traffic{
+		{UserID: active.ID, Upload: 20, Download: 10, RecordedAt: now},
+		{UserID: active.ID, Upload: 100, Download: 0, RecordedAt: oldAnchor.Add(24 * time.Hour)},
+		{UserID: legacy.ID, Upload: 5, Download: 7, RecordedAt: now},
+	} {
+		if err := db.Create(record).Error; err != nil {
+			t.Fatalf("failed to seed traffic: %v", err)
+		}
+	}
+
+	service := NewTrafficService(db, repository.NewNodeTrafficRepository(db), repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db), repository.NewUserRepository(db), repository.NewNodeRepository(db), nil, logger.NewNopLogger())
+	if _, err := service.ProcessMonthlyTrafficResets(ctx, now); err != nil {
+		t.Fatalf("ProcessMonthlyTrafficResets returned error: %v", err)
+	}
+
+	var updatedActive, updatedLegacy, updatedNotDue, updatedExpired repository.User
+	for _, item := range []struct {
+		id   int64
+		user *repository.User
+	}{
+		{active.ID, &updatedActive}, {legacy.ID, &updatedLegacy},
+		{notDue.ID, &updatedNotDue}, {expired.ID, &updatedExpired},
+	} {
+		if err := db.First(item.user, item.id).Error; err != nil {
+			t.Fatalf("failed to load user %d: %v", item.id, err)
+		}
+	}
+	if updatedActive.TrafficUsed != 30 || updatedLegacy.TrafficUsed != 12 {
+		t.Fatalf("expected current-month usage to be preserved, active=%d legacy=%d", updatedActive.TrafficUsed, updatedLegacy.TrafficUsed)
+	}
+	if updatedActive.TrafficResetAt == nil || !updatedActive.TrafficResetAt.Equal(currentAnchor) || updatedLegacy.TrafficResetAt == nil || !updatedLegacy.TrafficResetAt.Equal(currentAnchor) {
+		t.Fatalf("expected reset anchors to advance to %v", currentAnchor)
+	}
+	if updatedNotDue.TrafficUsed != 7 || updatedExpired.TrafficUsed != 99 {
+		t.Fatalf("unexpected reset of not-due/expired users: %d/%d", updatedNotDue.TrafficUsed, updatedExpired.TrafficUsed)
+	}
+}
+
+func TestAddOneCalendarMonthClamped_DoesNotSkipShortMonths(t *testing.T) {
+	anchor := time.Date(2026, 1, 31, 10, 15, 0, 0, time.UTC)
+	clamped := addOneCalendarMonthClamped(anchor)
+
+	expected := time.Date(2026, 2, 28, 10, 15, 0, 0, time.UTC)
+	if !clamped.Equal(expected) {
+		t.Fatalf("expected %v, got %v", expected, clamped)
+	}
+}
+
+// The panel timezone can change (the live DB holds both +00:00 and +08:00 rows).
+// The month boundary must compare instants, and a user whose exhausted quota is
+// refilled must be reported so their nodes admit them again.
+func TestTrafficService_MonthlyUserResetComparesInstantsAndReportsRestoredUsers(t *testing.T) {
+	db := setupTrafficServiceTestDB(t)
+	ctx := context.Background()
+	shanghai := time.FixedZone("CST", 8*3600)
+	now := time.Date(2026, 3, 26, 12, 0, 0, 0, shanghai)
+	oldAnchor := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	expires := now.AddDate(0, 1, 0)
+	plan := &repository.CommercialPlan{Name: "Monthly", Duration: 30, Price: 1000, TrafficLimit: 1000,
+		PlanType: repository.PlanTypeMonthly, ResetCycle: repository.ResetCycleMonthly, IsActive: true}
+	if err := db.Create(plan).Error; err != nil {
+		t.Fatalf("failed to seed plan: %v", err)
+	}
+	for _, user := range []*repository.User{
+		{ID: 51, Username: "exhausted", PasswordHash: "x", Enabled: true, TrafficLimit: 1000, TrafficUsed: 1000, CurrentPlanID: plan.ID, ExpiresAt: &expires, TrafficResetAt: &oldAnchor},
+		{ID: 52, Username: "within-quota", PasswordHash: "x", Enabled: true, TrafficLimit: 1000, TrafficUsed: 400, CurrentPlanID: plan.ID, ExpiresAt: &expires, TrafficResetAt: &oldAnchor},
+	} {
+		if err := db.Create(user).Error; err != nil {
+			t.Fatalf("failed to seed user %d: %v", user.ID, err)
+		}
+	}
+	for _, record := range []*repository.Traffic{
+		// 04:00 on March 1st panel time, written while the panel still ran in UTC.
+		{UserID: 51, Upload: 30, Download: 12, RecordedAt: time.Date(2026, 2, 28, 20, 0, 0, 0, time.UTC)},
+		// 23:00 on February 28th panel time: last month.
+		{UserID: 51, Upload: 500, Download: 0, RecordedAt: time.Date(2026, 2, 28, 15, 0, 0, 0, time.UTC)},
+	} {
+		if err := db.Create(record).Error; err != nil {
+			t.Fatalf("failed to seed traffic: %v", err)
+		}
+	}
+
+	var restored []int64
+	service := NewTrafficService(db, repository.NewNodeTrafficRepository(db), repository.NewTrafficRepository(db),
+		repository.NewProxyRepository(db), repository.NewUserRepository(db), repository.NewNodeRepository(db), nil, logger.NewNopLogger()).
+		WithAccessRestoredHook(func(_ context.Context, userID int64) { restored = append(restored, userID) })
+	if _, err := service.ProcessMonthlyUserTrafficResets(ctx, now); err != nil {
+		t.Fatalf("ProcessMonthlyUserTrafficResets returned error: %v", err)
+	}
+
+	var exhausted repository.User
+	if err := db.First(&exhausted, 51).Error; err != nil {
+		t.Fatalf("failed to load user: %v", err)
+	}
+	if exhausted.TrafficUsed != 42 {
+		t.Fatalf("traffic_used = %d, want 42 (only this month's traffic, whatever offset it was stored with)", exhausted.TrafficUsed)
+	}
+	if len(restored) != 1 || restored[0] != 51 {
+		t.Fatalf("restored users = %v, want [51]", restored)
+	}
+}
+
+func TestTrafficService_DeletedUserTrafficRevokesNodeAccess(t *testing.T) {
+	var revoked []int64
+	service := (&TrafficService{logger: logger.NewNopLogger()}).
+		WithUserAccessCheck(func(context.Context, int64) error { return apperrors.NewNotFoundError("user", int64(9)) }).
+		WithAccessRevokedHook(func(_ context.Context, _ int64, nodeIDs []int64, _ string) { revoked = append(revoked, nodeIDs...) })
+
+	service.notifyRevokedUsers(context.Background(), map[int64]map[int64]struct{}{9: {3: {}}}, map[int64]int64{9: 1024})
+
+	if len(revoked) != 1 || revoked[0] != 3 {
+		t.Fatalf("revoked nodes = %v, want [3]: a deleted account that still moves traffic must be removed from the node", revoked)
+	}
+}

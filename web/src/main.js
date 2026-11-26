@@ -1,0 +1,160 @@
+import { createApp } from 'vue'
+import { createPinia } from 'pinia'
+import {
+  ElAlert,
+  ElAvatar,
+  ElBadge,
+  ElButton,
+  ElButtonGroup,
+  ElCard,
+  ElCheckbox,
+  ElCheckboxGroup,
+  ElCol,
+  ElCollapse,
+  ElCollapseItem,
+  ElDatePicker,
+  ElDescriptions,
+  ElDescriptionsItem,
+  ElDialog,
+  ElDivider,
+  ElDrawer,
+  ElDropdown,
+  ElDropdownItem,
+  ElDropdownMenu,
+  ElEmpty,
+  ElForm,
+  ElFormItem,
+  ElIcon,
+  ElInput,
+  ElInputNumber,
+  ElLink,
+  ElLoading,
+  ElMenu,
+  ElMenuItem,
+  ElOption,
+  ElPagination,
+  ElPopover,
+  ElProgress,
+  ElRadio,
+  ElRadioButton,
+  ElRadioGroup,
+  ElRow,
+  ElSelect,
+  ElSkeleton,
+  ElSlider,
+  ElStep,
+  ElSteps,
+  ElSubMenu,
+  ElSwitch,
+  ElTabPane,
+  ElTable,
+  ElTableColumn,
+  ElTabs,
+  ElTag,
+  ElTimeline,
+  ElTimelineItem,
+  ElTooltip,
+  ElTransfer,
+  ElUpload,
+} from 'element-plus'
+// On-demand Element Plus styles (base + dark variables + used components only).
+// DO NOT import 'element-plus/dist/index.css' here; run `npm run scan:ep` to
+// keep this list aligned with the components actually used in the app.
+import './element-plus-styles'
+import App from './App.vue'
+import './assets/styles/main.css'
+import './assets/styles/base.scss'
+import './styles/theme.css'
+import './styles/responsive.css'
+import './styles/admin-ui.css'
+import './styles/dark-mode-fixes.css'
+import router from './router'
+import { initializeViewportScaling } from './composables/useViewport'
+
+// Cross-OS country flag emoji rendering (Windows Segoe UI Emoji lacks flags).
+// Loaded as a regular stylesheet so it's allowed under CSP default-src 'self';
+// uses a space-free font name so quoting can't be stripped by minifiers.
+import './styles/flag-emoji.css'
+
+// 导入事件源客户端
+import xrayEventSource from './utils/eventSourceClient'
+
+// 导入全局错误处理器
+import { installGlobalErrorHandler } from './utils/globalErrorHandler'
+
+initializeViewportScaling()
+
+// 创建Vue实例和状态管理
+const app = createApp(App)
+const pinia = createPinia()
+const elementPlusPlugins = [
+  ElAlert,
+  ElAvatar,
+  ElBadge,
+  ElButton,
+  ElButtonGroup,
+  ElCard,
+  ElCheckbox,
+  ElCheckboxGroup,
+  ElCol,
+  ElCollapse,
+  ElCollapseItem,
+  ElDatePicker,
+  ElDescriptions,
+  ElDescriptionsItem,
+  ElDialog,
+  ElDivider,
+  ElDrawer,
+  ElDropdown,
+  ElDropdownItem,
+  ElDropdownMenu,
+  ElEmpty,
+  ElForm,
+  ElFormItem,
+  ElIcon,
+  ElInput,
+  ElInputNumber,
+  ElLink,
+  ElLoading,
+  ElMenu,
+  ElMenuItem,
+  ElOption,
+  ElPagination,
+  ElPopover,
+  ElProgress,
+  ElRadio,
+  ElRadioButton,
+  ElRadioGroup,
+  ElRow,
+  ElSelect,
+  ElSkeleton,
+  ElSlider,
+  ElStep,
+  ElSteps,
+  ElSubMenu,
+  ElSwitch,
+  ElTabPane,
+  ElTable,
+  ElTableColumn,
+  ElTabs,
+  ElTag,
+  ElTimeline,
+  ElTimelineItem,
+  ElTooltip,
+  ElTransfer,
+  ElUpload,
+]
+
+// 安装全局错误处理器
+installGlobalErrorHandler(app)
+
+// 使用插件
+app.use(router)
+app.use(pinia)
+elementPlusPlugins.forEach((plugin) => app.use(plugin))
+
+// 初始化SSE连接监听Xray版本事件
+xrayEventSource.init()
+
+// 挂载应用
+app.mount('#app') 

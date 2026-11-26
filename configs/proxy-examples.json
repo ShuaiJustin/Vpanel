@@ -1,0 +1,85 @@
+{
+  "examples": {
+    "vless": {
+      "protocol": "vless",
+      "port": 443,
+      "settings": {
+        "uuid": "your-uuid-here",
+        "network": "tcp",
+        "security": "tls",
+        "server_name": "example.com",
+        "cert_file": "/path/to/cert.pem",
+        "key_file": "/path/to/key.pem",
+        "alpn": ["h2", "http/1.1"]
+      }
+    },
+    "vless_ws": {
+      "protocol": "vless",
+      "port": 443,
+      "settings": {
+        "uuid": "your-uuid-here",
+        "network": "ws",
+        "security": "tls",
+        "server_name": "example.com",
+        "ws_settings": {
+          "path": "/ws",
+          "headers": {
+            "Host": "example.com"
+          }
+        }
+      }
+    },
+    "vmess": {
+      "protocol": "vmess",
+      "port": 10086,
+      "settings": {
+        "uuid": "your-uuid-here",
+        "alter_id": 0,
+        "network": "tcp",
+        "security": "none"
+      }
+    },
+    "vmess_ws_tls": {
+      "protocol": "vmess",
+      "port": 443,
+      "settings": {
+        "uuid": "your-uuid-here",
+        "alter_id": 0,
+        "network": "ws",
+        "security": "tls",
+        "server_name": "example.com",
+        "ws_settings": {
+          "path": "/vmess"
+        }
+      }
+    },
+    "trojan": {
+      "protocol": "trojan",
+      "port": 443,
+      "settings": {
+        "password": "your-password-here",
+        "network": "tcp",
+        "security": "tls",
+        "server_name": "example.com",
+        "cert_file": "/path/to/cert.pem",
+        "key_file": "/path/to/key.pem"
+      }
+    },
+    "shadowsocks": {
+      "protocol": "shadowsocks",
+      "port": 8388,
+      "settings": {
+        "method": "aes-256-gcm",
+        "password": "your-password-here"
+      }
+    }
+  },
+  "notes": {
+    "uuid": "Generate UUIDs using: uuidgen (Linux/Mac) or online tools",
+    "passwords": "Use strong random passwords for Trojan and Shadowsocks",
+    "certificates": "For TLS, you need valid SSL certificates. Use Let's Encrypt or self-signed certs",
+    "ports": "Ensure ports are not already in use and are allowed through firewall",
+    "network_types": "Supported: tcp, ws (WebSocket), http, quic, grpc",
+    "security_types": "Supported: none, tls"
+  }
+}

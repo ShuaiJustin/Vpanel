@@ -1,0 +1,2383 @@
+<template>
+  <div class="node-operations-page">
+    
+    <AdminStickyChrome>
+      <div class="page-header">
+            <div class="header-left">
+              <el-button
+                link
+                @click="goBack"
+              >
+                <el-icon><ArrowLeft /></el-icon>
+                返回运维列表
+              </el-button>
+              <div class="header-copy">
+                <h1 class="page-title">
+                  {{ node?.name || '节点运维' }}
+                </h1>
+                <p class="page-subtitle">
+                  统一处理内核管理、网络优化和操作记录
+                </p>
+              </div>
+              <el-tag
+                v-if="node"
+                :type="getStatusType(node.status)"
+                size="large"
+              >
+                {{ getStatusText(node.status) }}
+              </el-tag>
+            </div>
+            <div class="header-actions">
+              <el-button @click="refreshData">
+                <el-icon><Refresh /></el-icon>
+                刷新
+              </el-button>
+              <el-button @click="goToDetail">
+                查看详情
+              </el-button>
+              <el-button
+                type="primary"
+                @click="editNode"
+              >
+                编辑节点
+              </el-button>
+            </div>
+          </div>
+    </AdminStickyChrome>
+    <div class="admin-page-body">
+
+    <div
+      v-if="node"
+      class="summary-grid"
+    >
+      <div
+        v-for="card in summaryCards"
+        :key="card.key"
+        :class="['summary-card', { 'summary-card-primary': card.primary }]"
+      >
+        <span class="summary-label">{{ card.label }}</span>
+        <strong :class="['summary-value', card.valueClass]">{{ card.value }}</strong>
+        <small
+          class="summary-meta"
+          :title="card.metaTitle"
+        >
+          {{ card.meta }}
+        </small>
+      </div>
+    </div>
+
+    <div class="workspace-toolbar">
+      <div class="workspace-toolbar__copy">
+        <div class="workspace-toolbar__title">
+          运维工作区
+        </div>
+        <div class="workspace-toolbar__description">
+          {{ activeWorkspaceDescription }}
+        </div>
+      </div>
+      <el-radio-group
+        v-model="activeWorkspace"
+        size="small"
+        class="workspace-toolbar__switcher"
+      >
+        <el-radio-button
+          v-for="workspace in workspaceOptions"
+          :key="workspace.value"
+          :label="workspace.value"
+        >
+          {{ workspace.label }}
+        </el-radio-button>
+      </el-radio-group>
+    </div>
+
+    <el-row
+      v-loading="loading"
+      :gutter="isMobile ? 12 : 20"
+    >
+      <el-col :span="24">
+        <el-card
+          v-if="activeWorkspace === 'core'"
+          shadow="never"
+          class="info-card"
+        >
+          <template #header>
+            <PageSectionHeader
+              title="内核管理"
+              subtitle="Xray 进程控制、状态刷新与配置同步"
+            />
+          </template>
+          <div class="status-item">
+            <span class="status-label">内核类型</span>
+            <el-tag size="small">
+              Xray
+            </el-tag>
+          </div>
+          <div class="status-item">
+            <span class="status-label">运行状态</span>
+            <el-tag
+              :type="node?.xray_running ? 'success' : 'danger'"
+              size="small"
+            >
+              {{ node?.xray_running ? '运行中' : '已停止' }}
+            </el-tag>
+          </div>
+          <div class="status-item status-item-top">
+            <span class="status-label">当前版本</span>
+            <div class="core-version">
+              {{ formatCoreVersion(node?.xray_version) }}
+            </div>
+          </div>
+          <div class="status-item">
+            <span class="status-label">最后心跳</span>
+            <span>{{ formatTime(node?.last_seen_at) }}</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">同步状态</span>
+            <el-tag
+              :type="getSyncStatusType(node?.sync_status)"
+              size="small"
+            >
+              {{ getSyncStatusText(node?.sync_status) }}
+            </el-tag>
+          </div>
+          <div class="core-actions">
+            <el-button
+              plain
+              @click="refreshData"
+            >
+              刷新状态
+            </el-button>
+            <el-button
+              v-if="!node?.xray_running"
+              type="success"
+              :loading="coreActionLoading === 'start'"
+              @click="startCore"
+            >
+              启动内核
+            </el-button>
+            <el-button
+              v-else
+              type="warning"
+              :loading="coreActionLoading === 'restart'"
+              @click="restartCore"
+            >
+              重启内核
+            </el-button>
+            <el-button
+              type="primary"
+              :loading="syncing"
+              @click="syncConfig"
+            >
+              同步配置
+            </el-button>
+          </div>
+          <div v-if="coreControlEvent" class="core-tip" role="status">
+            <strong>{{ getRecoveryCommandText(coreControlEvent.command_type) }}</strong>
+            {{ { success: '已完成', failed: '执行失败' }[coreControlEvent.status] || getRecoveryStatusText(coreControlEvent.status) }}
+            {{ coreControlEvent.message || coreControlEvent.reason }}
+          </div>
+
+          <el-divider class="core-divider" />
+
+          <div class="core-version-panel">
+            <div class="core-version-header">
+              <div class="core-version-title">
+                版本切换
+              </div>
+              <div class="core-version-subtitle">
+                从 Xray 官方 Release 下载并替换节点二进制，留空则升级到最新版。
+                <span
+                  v-if="availableVersionsCachedAt"
+                  class="core-version-sub-meta"
+                >
+                  版本列表缓存于 {{ formatTime(availableVersionsCachedAt) }}
+                </span>
+              </div>
+            </div>
+            <div class="core-version-controls">
+              <el-select
+                v-model="targetCoreVersion"
+                class="core-version-select"
+                placeholder="选择版本（留空=最新）"
+                filterable
+                allow-create
+                default-first-option
+                clearable
+                :loading="availableVersionsLoading"
+              >
+                <el-option
+                  v-for="item in availableVersions"
+                  :key="item.version"
+                  :label="item.version"
+                  :value="item.version"
+                >
+                  <span>v{{ item.version }}</span>
+                  <span
+                    v-if="node?.xray_version && normalizeVersion(node.xray_version) === item.version"
+                    class="core-version-current-tag"
+                  >当前</span>
+                </el-option>
+              </el-select>
+              <el-button
+                :loading="availableVersionsLoading"
+                @click="loadAvailableVersions(true)"
+              >
+                从 GitHub 同步
+              </el-button>
+              <el-button
+                type="primary"
+                :loading="coreActionLoading === 'install'"
+                :disabled="coreVersionPending || agentUpdatePending"
+                @click="installCoreVersion"
+              >
+                {{ targetCoreVersion ? '切换版本' : '升级到最新' }}
+              </el-button>
+            </div>
+            <div v-if="availableVersionsError" class="core-tip" role="status">
+              <el-tag type="warning" size="small">版本列表</el-tag>
+              {{ availableVersionsError }}
+            </div>
+            <div v-if="coreVersionEvent" class="core-tip" role="status">
+              <el-tag :type="getRecoveryStatusType(coreVersionEvent.status)" size="small">
+                {{ { success: '已切换', failed: '切换失败' }[coreVersionEvent.status] || getRecoveryStatusText(coreVersionEvent.status) }}
+              </el-tag>
+              {{ coreVersionEvent.message || coreVersionEvent.reason }}
+            </div>
+          </div>
+          <div class="core-tip">
+            节点命令会进入队列，并在节点下一次心跳时执行。
+          </div>
+          <el-divider class="core-divider" />
+          <div class="status-item">
+            <span class="status-label">Agent 版本</span>
+            <span>{{ node?.agent_version || '等待节点回报' }}</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">面板发布版本</span>
+            <span>{{ node?.agent_release || '暂无' }}</span>
+          </div>
+          <el-button
+            :disabled="!node?.agent_release || agentUpdatePending || coreVersionPending"
+            :loading="coreActionLoading === 'agent-update'"
+            @click="updateNodeAgent"
+          >
+            更新 Agent
+          </el-button>
+          <div v-if="agentUpdateEvent" class="core-tip" role="status">
+            <el-tag :type="getRecoveryStatusType(agentUpdateEvent.status)" size="small">
+              {{ { success: '已更新', failed: '更新失败' }[agentUpdateEvent.status] || getRecoveryStatusText(agentUpdateEvent.status) }}
+            </el-tag>
+            {{ agentUpdateEvent.message || agentUpdateEvent.reason }}
+          </div>
+        </el-card>
+
+        <el-card
+          v-if="activeWorkspace === 'network'"
+          shadow="never"
+          class="info-card"
+        >
+          <template #header>
+            <PageSectionHeader
+              title="网络优化"
+              subtitle="管理 Linux 网络栈与 Xray Sockopt 优化项"
+            >
+              <el-tag
+                size="small"
+                type="warning"
+              >
+                BBR / fq / TFO
+              </el-tag>
+            </PageSectionHeader>
+          </template>
+          <div class="profile-grid">
+            <div class="profile-card">
+              <div class="profile-card__header">
+                <div>
+                  <div class="profile-card__title">
+                    推荐配置
+                  </div>
+                  <div class="profile-card__meta">
+                    面向大多数 Linux VPS 的默认优化组合
+                  </div>
+                </div>
+                <el-button
+                  size="small"
+                  @click="loadRecommendedOptimization"
+                >
+                  载入推荐
+                </el-button>
+              </div>
+              <div class="profile-card__tags">
+                <el-tag
+                  v-for="tag in recommendedOptimizationTags"
+                  :key="`recommended-${tag}`"
+                  size="small"
+                  effect="plain"
+                >
+                  {{ tag }}
+                </el-tag>
+              </div>
+            </div>
+            <div class="profile-card">
+              <div class="profile-card__header">
+                <div>
+                  <div class="profile-card__title">
+                    已保存配置
+                  </div>
+                  <div class="profile-card__meta">
+                    当前节点上次落库的网络优化策略
+                  </div>
+                </div>
+                <el-button
+                  size="small"
+                  :disabled="!hasSavedOptimizationSettings"
+                  @click="loadSavedOptimization"
+                >
+                  载入已保存
+                </el-button>
+              </div>
+              <div
+                v-if="savedOptimizationTags.length"
+                class="profile-card__tags"
+              >
+                <el-tag
+                  v-for="tag in savedOptimizationTags"
+                  :key="`saved-${tag}`"
+                  size="small"
+                  effect="plain"
+                  type="success"
+                >
+                  {{ tag }}
+                </el-tag>
+              </div>
+              <div
+                v-else
+                class="profile-card__empty"
+              >
+                该节点暂未保存专属优化配置。
+              </div>
+            </div>
+          </div>
+          <div class="optimization-tags">
+            <el-tag
+              v-for="tag in activeOptimizationTags"
+              :key="tag"
+              size="small"
+              effect="plain"
+            >
+              {{ tag }}
+            </el-tag>
+          </div>
+          <div class="status-item status-item-top">
+            <span class="status-label">SSH 目标</span>
+            <div class="network-endpoint">
+              {{ sshEndpoint }}
+            </div>
+          </div>
+          <div class="optimization-options">
+            <div class="optimization-option-row">
+              <el-checkbox
+                v-model="networkOptimizationForm.enable_bbr"
+                :disabled="isBbrUnavailable"
+              >
+                启用 BBR
+              </el-checkbox>
+              <span
+                class="optimization-option-status"
+                :class="`is-${optimizationOptionStatus.bbr.tone}`"
+              >
+                {{ optimizationOptionStatus.bbr.text }}
+              </span>
+            </div>
+            <div class="optimization-option-row">
+              <el-checkbox v-model="networkOptimizationForm.enable_fq">
+                启用 fq 队列
+              </el-checkbox>
+              <span
+                class="optimization-option-status"
+                :class="`is-${optimizationOptionStatus.fq.tone}`"
+              >
+                {{ optimizationOptionStatus.fq.text }}
+              </span>
+            </div>
+            <div class="optimization-option-row">
+              <el-checkbox v-model="networkOptimizationForm.enable_tcp_fastopen">
+                启用 TCP Fast Open
+              </el-checkbox>
+              <span
+                class="optimization-option-status"
+                :class="`is-${optimizationOptionStatus.tfo.tone}`"
+              >
+                {{ optimizationOptionStatus.tfo.text }}
+              </span>
+            </div>
+            <div class="optimization-option-row">
+              <el-checkbox v-model="networkOptimizationForm.enable_xray_sockopt">
+                同步 Xray Sockopt
+              </el-checkbox>
+              <span
+                class="optimization-option-status"
+                :class="`is-${optimizationOptionStatus.sockopt.tone}`"
+              >
+                {{ optimizationOptionStatus.sockopt.text }}
+              </span>
+            </div>
+            <div class="optimization-option-row">
+              <el-checkbox
+                v-model="networkOptimizationForm.xray_tcp_fastopen"
+                :disabled="!networkOptimizationForm.enable_xray_sockopt"
+              >
+                Xray 开启 TCP Fast Open
+              </el-checkbox>
+              <span
+                class="optimization-option-status"
+                :class="`is-${optimizationOptionStatus.xrayTfo.tone}`"
+              >
+                {{ optimizationOptionStatus.xrayTfo.text }}
+              </span>
+            </div>
+          </div>
+          <div class="status-item">
+            <span class="status-label">Xray TCP 拥塞控制</span>
+            <div class="optimization-congestion">
+              <el-select
+                v-model="networkOptimizationForm.xray_tcp_congestion"
+                class="optimization-select"
+                :disabled="!networkOptimizationForm.enable_xray_sockopt"
+              >
+                <el-option
+                  v-for="option in congestionControlOptions"
+                  :key="`cc-${option.value || 'none'}`"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+              <span
+                class="optimization-option-status"
+                :class="`is-${optimizationOptionStatus.congestion.tone}`"
+              >
+                {{ optimizationOptionStatus.congestion.text }}
+              </span>
+            </div>
+          </div>
+          <div
+            v-if="networkOptimizationState"
+            class="optimization-state-grid"
+          >
+            <div
+              v-for="item in optimizationStateItems"
+              :key="item.label"
+              class="optimization-state-item"
+            >
+              <span class="optimization-state-label">{{ item.label }}</span>
+              <strong>{{ item.value }}</strong>
+            </div>
+          </div>
+          <el-alert
+            v-if="networkOptimizationError"
+            type="error"
+            :closable="false"
+            show-icon
+            class="optimization-error"
+          >
+            <template #title>
+              {{ networkOptimizationError.title }}
+            </template>
+            <template #default>
+              <div class="optimization-error__message">
+                {{ networkOptimizationError.message }}
+              </div>
+            </template>
+          </el-alert>
+          <el-empty
+            v-if="!networkOptimizationState && !networkOptimizationError"
+            :description="networkEmptyDescription"
+            :image-size="56"
+          />
+          <div
+            v-if="networkOptimizationState?.available_congestion_controls?.length"
+            class="core-tip"
+          >
+            可用拥塞控制：{{ networkOptimizationState.available_congestion_controls.join(', ') }}
+          </div>
+          <div
+            v-if="networkOptimizationState?.xray_config_path"
+            class="core-tip"
+          >
+            Xray 配置：{{ networkOptimizationState.xray_config_path }}
+          </div>
+          <div class="core-actions">
+            <el-button @click="networkOptimizationDialogVisible = true">
+              {{ hasSavedSSHCredentials ? 'SSH 设置' : '配置 SSH' }}
+            </el-button>
+            <el-tag
+              v-if="hasSavedSSHCredentials"
+              size="small"
+              type="success"
+              effect="plain"
+              class="ssh-credential-chip"
+            >
+              已保存凭据
+            </el-tag>
+            <el-button
+              :loading="networkOptimizationAction === 'inspect'"
+              @click="inspectNetworkOptimization"
+            >
+              {{ hasSavedSSHCredentials ? '使用已保存凭据检测' : '检测' }}
+            </el-button>
+            <el-button
+              type="primary"
+              :loading="networkOptimizationAction === 'apply'"
+              @click="applyNetworkOptimization"
+            >
+              应用优化
+            </el-button>
+            <el-button
+              type="danger"
+              plain
+              :loading="networkOptimizationAction === 'rollback'"
+              @click="rollbackNetworkOptimization"
+            >
+              回滚
+            </el-button>
+          </div>
+          <div class="core-tip">
+            系统层修改会立即通过 SSH 生效，Xray Sockopt 会加入配置同步队列。
+            <template v-if="hasSavedSSHCredentials">
+              已保存 SSH 凭据，检测/应用/回滚都会自动复用，无需重复输入密码。
+            </template>
+            <template v-else-if="sshForm.password || sshForm.private_key">
+              当前会话已填写凭据；建议点「配置 SSH」保存，下次不用重填。
+            </template>
+            <template v-else>
+              还没有可用 SSH 凭据，请先点「配置 SSH」保存密码或私钥（一次即可）。
+            </template>
+          </div>
+          <el-collapse
+            v-if="networkOptimizationLogs"
+            v-model="networkLogPanels"
+            class="operation-collapse"
+          >
+            <el-collapse-item
+              name="network-log"
+              title="执行日志"
+            >
+              <pre class="optimization-log">{{ networkOptimizationLogs }}</pre>
+            </el-collapse-item>
+          </el-collapse>
+        </el-card>
+
+        <el-card
+          v-if="activeWorkspace === 'events'"
+          shadow="never"
+          class="info-card"
+        >
+          <template #header>
+            <PageSectionHeader
+              title="操作记录"
+              subtitle="最近的恢复、同步和节点调度记录"
+            />
+          </template>
+          <el-alert
+            v-if="node?.operation_history_unavailable"
+            title="历史操作记录未能完整恢复"
+            description="请查看面板服务日志并修复存储问题，恢复后再提交新的节点操作。"
+            type="warning"
+            :closable="false"
+            show-icon
+          />
+          <div
+            v-if="recentRecoveryEvents.length"
+            class="recovery-events"
+          >
+            <el-timeline class="operations-timeline">
+              <el-timeline-item
+                v-for="event in recentRecoveryEvents"
+                :key="event.command_id"
+                :timestamp="formatTime(event.updated_at || event.created_at)"
+                :color="getRecoveryStatusColor(event.status)"
+                placement="top"
+              >
+                <div class="timeline-card">
+                  <div class="recovery-event-header">
+                    <el-tag
+                      :type="getRecoveryStatusType(event.status)"
+                      size="small"
+                    >
+                      {{ getRecoveryStatusText(event.status) }}
+                    </el-tag>
+                  </div>
+                  <div class="recovery-command">
+                    {{ getRecoveryCommandText(event.command_type) }}
+                  </div>
+                  <div class="recovery-reason">
+                    {{ event.reason || '未提供原因' }}
+                  </div>
+                  <div class="recovery-meta">
+                    来源：{{ getRecoverySourceText(event.source) }}
+                    <span v-if="event.message"> · {{ event.message }}</span>
+                  </div>
+                </div>
+              </el-timeline-item>
+            </el-timeline>
+          </div>
+          <el-empty
+            v-else-if="!node?.operation_history_unavailable"
+            description="暂无操作记录"
+            :image-size="60"
+          />
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-dialog
+      v-model="networkOptimizationDialogVisible"
+      title="SSH 连接配置"
+      class="network-ssh-dialog"
+      :width="networkDialogWidth"
+    >
+      <div class="network-dialog-content">
+        <el-alert
+          :type="hasSavedSSHCredentials ? 'success' : 'info'"
+          :closable="false"
+          show-icon
+        >
+          <template #title>
+            <template v-if="hasSavedSSHCredentials">
+              已保存 SSH 凭据，无需重复输入。可直接检测，或仅修改主机/端口/用户名。
+            </template>
+            <template v-else>
+              网络优化会通过 SSH 修改节点 `sysctl`。请使用 root/sudo 账户，并保存密码或私钥（一次即可）。
+            </template>
+          </template>
+        </el-alert>
+        <div
+          v-if="hasSavedSSHCredentials"
+          class="network-credential-summary"
+        >
+          <el-tag
+            v-if="networkOptimizationMeta.ssh_defaults?.has_saved_password"
+            size="small"
+            type="success"
+            effect="plain"
+          >
+            已保存 SSH 密码
+          </el-tag>
+          <el-tag
+            v-if="networkOptimizationMeta.ssh_defaults?.has_saved_private_key"
+            size="small"
+            type="success"
+            effect="plain"
+          >
+            已保存 SSH 私钥
+          </el-tag>
+          <span>默认复用已保存凭据，不用每次重填。</span>
+        </div>
+        <el-form
+          :label-position="isMobile ? 'top' : 'right'"
+          :label-width="isMobile ? 'auto' : '110px'"
+          class="network-dialog-form"
+        >
+          <el-form-item label="SSH 主机">
+            <el-input
+              v-model="sshForm.host"
+              placeholder="默认使用节点地址"
+            />
+          </el-form-item>
+          <el-form-item label="SSH 端口">
+            <el-input-number
+              v-model="sshForm.port"
+              :min="1"
+              :max="65535"
+              controls-position="right"
+            />
+          </el-form-item>
+          <el-form-item label="SSH 用户名">
+            <el-input
+              v-model="sshForm.username"
+              placeholder="root"
+            />
+          </el-form-item>
+          <template v-if="!hasSavedSSHCredentials">
+            <el-form-item label="SSH 密码">
+              <el-input
+                v-model="sshForm.password"
+                type="password"
+                show-password
+                placeholder="请输入 SSH 密码"
+              />
+            </el-form-item>
+            <el-form-item label="SSH 私钥">
+              <el-input
+                v-model="sshForm.private_key"
+                type="textarea"
+                :rows="7"
+                placeholder="也可粘贴 SSH 私钥内容"
+              />
+            </el-form-item>
+          </template>
+          <el-collapse
+            v-else
+            v-model="sshCredentialPanels"
+            class="network-credential-collapse"
+          >
+            <el-collapse-item
+              name="replace-credential"
+              title="更换密码或私钥（可选，一般不用填）"
+            >
+              <el-form-item label="SSH 密码">
+                <el-input
+                  v-model="sshForm.password"
+                  type="password"
+                  show-password
+                  placeholder="仅在更换密码时填写"
+                />
+              </el-form-item>
+              <el-form-item label="SSH 私钥">
+                <el-input
+                  v-model="sshForm.private_key"
+                  type="textarea"
+                  :rows="6"
+                  placeholder="仅在更换私钥时粘贴"
+                />
+              </el-form-item>
+            </el-collapse-item>
+          </el-collapse>
+        </el-form>
+      </div>
+      <template #footer>
+        <div class="network-dialog-footer">
+          <el-button @click="networkOptimizationDialogVisible = false">
+            关闭
+          </el-button>
+          <el-button
+            :loading="savingSSHConfig"
+            @click="saveSSHConfig()"
+          >
+            {{ hasSavedSSHCredentials ? '仅保存连接信息' : '保存 SSH 配置' }}
+          </el-button>
+          <el-button
+            v-if="hasSavedSSHCredentials"
+            type="primary"
+            :loading="networkOptimizationAction === 'inspect' || savingSSHConfig"
+            @click="useSavedSSHAndInspect"
+          >
+            使用已保存凭据并检测
+          </el-button>
+          <el-button
+            v-else
+            type="primary"
+            :loading="savingSSHConfig"
+            @click="saveSSHConfig({ inspectAfter: true })"
+          >
+            保存并检测
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+    </div>
+</div>
+</template>
+
+<script setup>
+import AdminStickyChrome from '@/components/AdminStickyChrome.vue'
+import { computed, onMounted, onScopeDispose, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
+import PageSectionHeader from '@/components/PageSectionHeader.vue'
+import { nodesApi } from '@/api'
+import {
+  formatCoreVersion,
+  formatCoreVersionCompact,
+  formatNodeEndpoint,
+  formatNodeTime as formatTime,
+  formatUsersLimitDisplay,
+  getNodeStatusText as getStatusText,
+  getNodeStatusType as getStatusType,
+  getNodeSyncStatusText as getSyncStatusText,
+  getNodeSyncStatusType as getSyncStatusType,
+  getRecoveryCommandText,
+  getRecoverySourceText,
+  getRecoveryStatusColor,
+  getRecoveryStatusText,
+  getRecoveryStatusType
+} from '@/composables/useNodePresentation'
+import { getTCPFastOpenStatus } from '@/composables/useNodePresentation'
+import { useViewport } from '@/composables/useViewport'
+import { useNodeStore } from '@/stores/node'
+import { extractErrorMessage } from '@/utils/entitlement'
+
+const route = useRoute()
+const router = useRouter()
+const nodeStore = useNodeStore()
+const { isMobile } = useViewport()
+
+const loading = ref(false)
+const syncing = ref(false)
+const coreActionLoading = ref('')
+const targetCoreVersion = ref('')
+const availableVersions = ref([])
+const availableVersionsLoading = ref(false)
+const availableVersionsCachedAt = ref('')
+const availableVersionsError = ref('')
+const activeWorkspace = ref('core')
+const networkOptimizationDialogVisible = ref(false)
+const networkOptimizationAction = ref('')
+const networkAutoInspectedNodeId = ref(null)
+const sshCredentialPanels = ref([])
+const networkLogPanels = ref([])
+const networkOptimizationLogs = ref('')
+const networkOptimizationState = ref(null)
+const networkOptimizationError = ref(null)
+const savingSSHConfig = ref(false)
+const networkOptimizationMeta = ref({
+  has_saved_settings: false,
+  saved_settings: {},
+  recommended_settings: {
+    enable_bbr: true,
+    enable_fq: true,
+    enable_tcp_fastopen: true,
+    enable_xray_sockopt: true,
+    xray_tcp_fastopen: true,
+    xray_tcp_congestion: 'bbr'
+  },
+  ssh_defaults: {
+    host: '',
+    port: 22,
+    username: 'root',
+    has_saved_password: false,
+    has_saved_private_key: false
+  },
+  backup_path: ''
+})
+
+const sshForm = reactive({
+  host: '',
+  port: 0,
+  username: 'root',
+  password: '',
+  private_key: ''
+})
+
+const networkOptimizationForm = reactive({
+  enable_bbr: true,
+  enable_fq: true,
+  enable_tcp_fastopen: true,
+  enable_xray_sockopt: true,
+  xray_tcp_fastopen: true,
+  xray_tcp_congestion: 'bbr'
+})
+
+const node = computed(() => String(nodeStore.currentNode?.id) === String(route.params.id) ? nodeStore.currentNode : null)
+let routeRevision = 0
+let nodeRequest = 0
+let profileRequest = 0
+
+onScopeDispose(() => { routeRevision++ })
+
+const trackNode = (nodeId) => {
+  const revision = routeRevision
+  return () => revision === routeRevision && node.value?.id === nodeId
+}
+const recentRecoveryEvents = computed(() => Array.isArray(node.value?.recent_recovery_events) ? node.value.recent_recovery_events : [])
+const submittedCoreVersionEvent = ref(null)
+const coreVersionEvent = computed(() => {
+  const submitted = submittedCoreVersionEvent.value
+  const latest = recentRecoveryEvents.value.find(event => event.command_type === 'xray_install_version')
+  if (submitted && submitted.nodeID === node.value?.id && submitted.status === 'queued' &&
+      !recentRecoveryEvents.value.some(event => event.command_id === submitted.command_id)) {
+    return submitted
+  }
+  return latest || (submitted?.nodeID === node.value?.id ? submitted : null)
+})
+const coreVersionPending = computed(() => ['queued', 'dispatched'].includes(coreVersionEvent.value?.status))
+const agentUpdateEvent = computed(() => recentRecoveryEvents.value.find(event => event.command_type === 'agent_update'))
+const agentUpdatePending = computed(() => ['queued', 'dispatched'].includes(agentUpdateEvent.value?.status))
+const coreControlEvent = computed(() => recentRecoveryEvents.value.find(event =>
+  ['xray_start', 'xray_restart', 'config_sync'].includes(event.command_type) && event.source === 'admin'
+))
+const coreControlPending = computed(() => ['queued', 'dispatched'].includes(coreControlEvent.value?.status))
+const workspaceOptions = Object.freeze([
+  { value: 'core', label: '内核管理' },
+  { value: 'network', label: '网络优化' },
+  { value: 'events', label: '操作记录' }
+])
+const networkDialogWidth = computed(() => (isMobile.value ? 'calc(100vw - 24px)' : '720px'))
+const activeWorkspaceDescription = computed(() => {
+  const descriptions = {
+    core: '集中处理 Xray 状态、进程控制与配置同步，避免在详情页分散操作。',
+    network: '先在这里整理草稿，再决定检测、应用或回滚网络优化策略。',
+    events: '查看节点最近的恢复、同步和自动调度记录，便于回溯变更。'
+  }
+  return descriptions[activeWorkspace.value] || descriptions.core
+})
+const currentUsersLimitDisplay = computed(() => formatUsersLimitDisplay(
+  node.value?.current_users,
+  node.value?.max_users
+))
+const loadPercentage = computed(() => {
+  if (!node.value?.max_users) return 0
+  return Math.round((node.value.current_users / node.value.max_users) * 100)
+})
+const summaryCards = computed(() => {
+  if (!node.value) return []
+
+  return [
+    {
+      key: 'address',
+      label: '节点地址',
+      value: node.value.address || '-',
+      valueClass: 'summary-value-address',
+      meta: `Agent 端口 ${node.value.port} · ${node.value.region || '未设置地区'}`,
+      metaTitle: '',
+      primary: true
+    },
+    {
+      key: 'core',
+      label: '内核状态',
+      value: node.value.xray_running ? '运行中' : '已停止',
+      valueClass: '',
+      meta: formatCoreVersionCompact(node.value.xray_version),
+      metaTitle: formatCoreVersion(node.value.xray_version)
+    },
+    {
+      key: 'sync',
+      label: '同步状态',
+      value: getSyncStatusText(node.value.sync_status),
+      valueClass: '',
+      meta: `最后同步 ${formatTime(node.value.synced_at)}`,
+      metaTitle: ''
+    },
+    {
+      key: 'users',
+      label: '用户负载',
+      value: currentUsersLimitDisplay.value,
+      valueClass: '',
+      meta: `负载 ${loadPercentage.value}%`,
+      metaTitle: ''
+    }
+  ]
+})
+const hasSavedSSHCredentials = computed(() => Boolean(
+  networkOptimizationMeta.value?.ssh_defaults?.has_saved_password ||
+  networkOptimizationMeta.value?.ssh_defaults?.has_saved_private_key
+))
+const networkEmptyDescription = computed(() => {
+  if (networkOptimizationAction.value === 'inspect') {
+    return '正在检测远端网络优化状态...'
+  }
+  if (!hasSavedSSHCredentials.value && !sshForm.password && !sshForm.private_key) {
+    return '尚未配置 SSH 凭据，请先点「配置 SSH」保存一次'
+  }
+  return '凭据已就绪，可点「使用已保存凭据检测」查看远端状态'
+})
+const sshEndpoint = computed(() => {
+  const host = sshForm.host || networkOptimizationMeta.value?.ssh_defaults?.host || node.value?.address || '-'
+  const port = sshForm.port || networkOptimizationMeta.value?.ssh_defaults?.port || 22
+  const username = sshForm.username || networkOptimizationMeta.value?.ssh_defaults?.username || 'root'
+  return `${formatNodeEndpoint(host, port)} / ${username}`
+})
+
+const buildOptimizationTags = (settings) => {
+  const source = settings || {}
+  const tags = []
+  if (source.enable_bbr) tags.push('BBR')
+  if (source.enable_fq) tags.push('fq')
+  if (source.enable_tcp_fastopen) tags.push('TCP Fast Open')
+  if (source.enable_xray_sockopt) tags.push('Xray Sockopt')
+  if (source.enable_xray_sockopt && source.xray_tcp_congestion) {
+    tags.push(`Xray ${source.xray_tcp_congestion}`)
+  }
+  return tags
+}
+
+const activeOptimizationTags = computed(() => {
+  const tags = buildOptimizationTags(networkOptimizationForm)
+  return tags.length ? tags : ['未启用优化项']
+})
+
+const recommendedOptimizationTags = computed(() => {
+  const tags = buildOptimizationTags(networkOptimizationMeta.value?.recommended_settings)
+  return tags.length ? tags : ['未提供推荐配置']
+})
+
+const savedOptimizationTags = computed(() => buildOptimizationTags(networkOptimizationMeta.value?.saved_settings))
+const hasSavedOptimizationSettings = computed(() => Boolean(
+  networkOptimizationMeta.value?.has_saved_settings &&
+  savedOptimizationTags.value.length
+))
+const optimizationStateItems = computed(() => {
+  if (!networkOptimizationState.value) return []
+
+  return [
+    { label: '内核', value: networkOptimizationState.value.kernel_version || '-' },
+    { label: '当前拥塞', value: networkOptimizationState.value.current_congestion_control || '-' },
+    { label: '默认队列', value: networkOptimizationState.value.default_qdisc || '-' },
+    { label: 'TCP Fast Open', value: networkOptimizationState.value.tcp_fastopen || '-' },
+    { label: 'BBR 可用', value: networkOptimizationState.value.bbr_available ? '是' : '否' },
+    { label: '备份状态', value: networkOptimizationState.value.backup_exists ? '已创建' : '未创建' }
+  ]
+})
+
+const isBbrUnavailable = computed(() => (
+  Boolean(networkOptimizationState.value) && !networkOptimizationState.value.bbr_available
+))
+
+const congestionControlOptions = computed(() => {
+  const available = (networkOptimizationState.value?.available_congestion_controls || [])
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter(Boolean)
+  const values = available.length ? [...available] : ['bbr', 'cubic']
+  const current = String(networkOptimizationForm.xray_tcp_congestion || '').trim().toLowerCase()
+  if (current && !values.includes(current)) {
+    values.unshift(current)
+  }
+  const unique = []
+  for (const value of values) {
+    if (!unique.includes(value)) unique.push(value)
+  }
+  return [
+    { label: '不设置', value: '' },
+    ...unique.map((value) => ({ label: value, value }))
+  ]
+})
+
+const pendingInspectStatus = computed(() => {
+  if (networkOptimizationAction.value === 'inspect') {
+    return { text: '检测中...', tone: 'muted' }
+  }
+  if (!canAutoInspectNetwork()) {
+    return { text: '需配置 SSH', tone: 'warn' }
+  }
+  return { text: '未检测', tone: 'muted' }
+})
+
+const buildOptionStatus = (desired, actualOn, actualLabel, unavailableText = '') => {
+  if (!networkOptimizationState.value) {
+    return pendingInspectStatus.value
+  }
+  if (unavailableText) {
+    return { text: unavailableText, tone: 'warn' }
+  }
+  if (desired && actualOn) {
+    return { text: `已生效 · ${actualLabel}`, tone: 'ok' }
+  }
+  if (desired && !actualOn) {
+    return { text: `未生效 · 当前 ${actualLabel}`, tone: 'warn' }
+  }
+  if (!desired && actualOn) {
+    return { text: `将关闭 · 当前 ${actualLabel}`, tone: 'warn' }
+  }
+  return { text: `保持 · 当前 ${actualLabel}`, tone: 'muted' }
+}
+
+const optimizationOptionStatus = computed(() => {
+  const state = networkOptimizationState.value
+  const currentCC = state?.current_congestion_control || '-'
+  const bbrOn = /^bbr/i.test(String(currentCC))
+  const fqOn = Boolean(state?.fq_enabled) || state?.default_qdisc === 'fq'
+  const tfoStatus = getTCPFastOpenStatus(state?.tcp_fastopen)
+  const desiredCongestion = String(networkOptimizationForm.xray_tcp_congestion || '').trim().toLowerCase()
+
+  return {
+    bbr: buildOptionStatus(
+      networkOptimizationForm.enable_bbr,
+      bbrOn,
+      currentCC,
+      isBbrUnavailable.value ? '内核不可用，已禁用' : ''
+    ),
+    fq: buildOptionStatus(networkOptimizationForm.enable_fq, fqOn, state?.default_qdisc || '-'),
+    tfo: buildOptionStatus(networkOptimizationForm.enable_tcp_fastopen, tfoStatus.enabled, tfoStatus.label),
+    sockopt: state
+      ? {
+          text: networkOptimizationForm.enable_xray_sockopt
+            ? (state.xray_config_exists ? '应用后经配置同步生效' : '未找到 Xray 配置，仅系统层可应用')
+            : '不同步 Xray',
+          tone: networkOptimizationForm.enable_xray_sockopt && !state.xray_config_exists ? 'warn' : 'muted'
+        }
+      : pendingInspectStatus.value,
+    xrayTfo: state
+      ? {
+          text: networkOptimizationForm.enable_xray_sockopt
+            ? (networkOptimizationForm.xray_tcp_fastopen ? '配置同步后写入 sockopt' : '不写入 Xray TFO')
+            : '需先启用 Xray Sockopt',
+          tone: 'muted'
+        }
+      : pendingInspectStatus.value,
+    congestion: state
+      ? (
+          !networkOptimizationForm.enable_xray_sockopt
+            ? { text: '需先启用 Xray Sockopt', tone: 'muted' }
+            : !desiredCongestion
+              ? { text: `不设置 · 系统当前 ${currentCC}`, tone: 'muted' }
+              : { text: `待同步验证 · 目标 ${desiredCongestion}，系统当前 ${currentCC}`, tone: 'muted' }
+        )
+      : pendingInspectStatus.value
+  }
+})
+
+const applyNetworkOptimizationForm = (settings) => {
+  const source = settings || networkOptimizationMeta.value?.recommended_settings || {}
+  networkOptimizationForm.enable_bbr = source.enable_bbr ?? true
+  networkOptimizationForm.enable_fq = source.enable_fq ?? true
+  networkOptimizationForm.enable_tcp_fastopen = source.enable_tcp_fastopen ?? true
+  networkOptimizationForm.enable_xray_sockopt = source.enable_xray_sockopt ?? true
+  networkOptimizationForm.xray_tcp_fastopen = source.xray_tcp_fastopen ?? true
+  networkOptimizationForm.xray_tcp_congestion = source.xray_tcp_congestion ?? 'bbr'
+}
+
+const updateNetworkLogs = (logs) => {
+  networkOptimizationLogs.value = logs || ''
+  networkLogPanels.value = networkOptimizationLogs.value ? ['network-log'] : []
+}
+
+const clearNetworkOptimizationError = () => {
+  networkOptimizationError.value = null
+}
+
+const setNetworkOptimizationError = (title, error, fallbackMessage) => {
+  networkOptimizationState.value = null
+  networkOptimizationError.value = {
+    title,
+    message: extractErrorMessage(error) || fallbackMessage
+  }
+}
+
+const loadRecommendedOptimization = () => {
+  applyNetworkOptimizationForm(networkOptimizationMeta.value?.recommended_settings)
+  ElMessage.success('已载入推荐优化配置')
+}
+
+const loadSavedOptimization = () => {
+  if (!hasSavedOptimizationSettings.value) {
+    ElMessage.warning('当前节点暂无已保存优化配置')
+    return
+  }
+  applyNetworkOptimizationForm(networkOptimizationMeta.value?.saved_settings)
+  ElMessage.success('已载入已保存优化配置')
+}
+
+const ensureSSHDefaults = (force = false) => {
+  const defaults = networkOptimizationMeta.value?.ssh_defaults || {}
+  if (force || !sshForm.host) {
+    sshForm.host = defaults.host || node.value?.address || ''
+  }
+  if (force || !sshForm.port) {
+    sshForm.port = defaults.port || 22
+  }
+  if (force || !sshForm.username) {
+    sshForm.username = defaults.username || 'root'
+  }
+}
+
+const fetchNode = async ({ quiet = false } = {}) => {
+  const nodeId = route.params.id
+  if (!nodeId) return false
+  const revision = routeRevision
+  const request = ++nodeRequest
+  const isCurrent = () => revision === routeRevision && request === nodeRequest && route.params.id === nodeId
+  if (!quiet) loading.value = true
+  try {
+    await nodeStore.fetchNode(nodeId)
+    return isCurrent() && Boolean(node.value)
+  } catch (error) {
+    if (isCurrent() && !quiet) ElMessage.error(extractErrorMessage(error) || '获取节点运维信息失败')
+    return false
+  } finally {
+    if (isCurrent()) loading.value = false
+  }
+}
+
+const fetchNetworkOptimizationProfile = async ({ refreshSSHOnly = false } = {}) => {
+  const nodeId = node.value?.id
+  if (!nodeId) return
+  const isCurrentNode = trackNode(nodeId)
+  const request = ++profileRequest
+  const isCurrent = () => isCurrentNode() && request === profileRequest
+
+  try {
+    const response = await nodesApi.getNetworkOptimizationProfile(nodeId)
+    if (!isCurrent()) return
+    networkOptimizationMeta.value = {
+      ...networkOptimizationMeta.value,
+      ...response
+    }
+    ensureSSHDefaults(refreshSSHOnly)
+    if (networkOptimizationError.value?.title === '读取配置失败') clearNetworkOptimizationError()
+    if (!refreshSSHOnly) {
+      applyNetworkOptimizationForm(response?.has_saved_settings ? response.saved_settings : response?.recommended_settings)
+      if (activeWorkspace.value === 'network') await maybeAutoInspectNetwork()
+    }
+  } catch (error) {
+    if (isCurrent()) {
+      setNetworkOptimizationError('读取配置失败', error, '获取网络优化配置失败')
+    }
+  }
+}
+
+const refreshData = async () => {
+  if (await fetchNode()) await fetchNetworkOptimizationProfile()
+}
+
+const goBack = () => {
+  router.push('/admin/node-operations')
+}
+
+const goToDetail = () => {
+  if (!node.value) return
+  router.push(`/admin/nodes/${node.value.id}`)
+}
+
+const editNode = () => {
+  if (!node.value) return
+  router.push(`/admin/nodes/${node.value.id}/edit`)
+}
+
+const syncConfig = async () => {
+  const nodeId = node.value?.id
+  if (!nodeId || syncing.value || coreActionLoading.value) return
+  const isCurrent = trackNode(nodeId)
+  syncing.value = true
+  try {
+    const response = await nodeStore.syncNodeCoreConfig(nodeId)
+    if (!isCurrent()) return
+    ElMessage.success(response.message || '配置同步已加入队列')
+    await fetchNode()
+  } catch (error) {
+    if (isCurrent()) ElMessage.error(extractErrorMessage(error) || '同步失败')
+  } finally {
+    if (isCurrent()) syncing.value = false
+  }
+}
+
+const startCore = async () => {
+  const nodeId = node.value?.id
+  if (!nodeId || coreActionLoading.value || syncing.value) return
+  const isCurrent = trackNode(nodeId)
+  coreActionLoading.value = 'start'
+  try {
+    const response = await nodeStore.startNodeCore(nodeId)
+    if (!isCurrent()) return
+    ElMessage.success(response.message || '启动命令已加入队列')
+    await fetchNode()
+  } catch (error) {
+    if (isCurrent()) ElMessage.error(extractErrorMessage(error) || '启动节点内核失败')
+  } finally {
+    if (isCurrent()) coreActionLoading.value = ''
+  }
+}
+
+const restartCore = async () => {
+  const target = node.value
+  if (!target || coreActionLoading.value || syncing.value) return
+
+  const isCurrent = trackNode(target.id)
+  coreActionLoading.value = 'restart'
+  try {
+    await ElMessageBox.confirm(
+      `确定要重启节点 "${target.name}" 的 Xray 内核吗？`,
+      '重启确认',
+      { type: 'warning' }
+    )
+  } catch {
+    if (isCurrent()) coreActionLoading.value = ''
+    return
+  }
+
+  try {
+    if (!isCurrent()) return
+    const response = await nodeStore.restartNodeCore(target.id)
+    if (!isCurrent()) return
+    ElMessage.success(response.message || '重启命令已加入队列')
+    await fetchNode()
+  } catch (error) {
+    if (isCurrent()) ElMessage.error(extractErrorMessage(error) || '重启节点内核失败')
+  } finally {
+    if (isCurrent()) coreActionLoading.value = ''
+  }
+}
+
+const installCoreVersion = async () => {
+  const target = node.value
+  if (!target || coreActionLoading.value || syncing.value || coreVersionPending.value || agentUpdatePending.value) return
+
+  const rawVersion = (targetCoreVersion.value || '').trim().replace(/^v(?=\d)/i, '')
+  if (rawVersion && !/^[0-9][0-9A-Za-z.-]*$/.test(rawVersion)) {
+    ElMessage.warning('版本号格式无效，请使用如 1.8.4 的格式')
+    return
+  }
+
+  const label = rawVersion ? `切换到 Xray v${rawVersion}` : '升级 Xray 到最新版本'
+  const isCurrent = trackNode(target.id)
+  coreActionLoading.value = 'install'
+  try {
+    await ElMessageBox.confirm(
+      `${label}？节点将在下次心跳时下载新版本并自动重启。`,
+      '版本切换确认',
+      { type: 'warning' }
+    )
+  } catch {
+    if (isCurrent()) coreActionLoading.value = ''
+    return
+  }
+
+  try {
+    if (!isCurrent()) return
+    const response = await nodeStore.installNodeCoreVersion(target.id, rawVersion)
+    if (!isCurrent()) return
+    if (response.command_id) {
+      submittedCoreVersionEvent.value = { nodeID: target.id, command_id: response.command_id, status: 'queued', message: response.message }
+    }
+    ElMessage.success(response.message || '版本切换命令已加入队列')
+    await fetchNode()
+  } catch (error) {
+    if (isCurrent()) ElMessage.error(extractErrorMessage(error) || '切换内核版本失败')
+  } finally {
+    if (isCurrent()) coreActionLoading.value = ''
+  }
+}
+
+const updateNodeAgent = async () => {
+  const target = node.value
+  if (!target?.agent_release || coreActionLoading.value || agentUpdatePending.value || coreVersionPending.value) return
+  const isCurrent = trackNode(target.id)
+  coreActionLoading.value = 'agent-update'
+  try {
+    await ElMessageBox.confirm(
+      `将「${target.name}」的 Agent 更新为 ${target.agent_release}？更新后 Agent 会重新连接面板。`,
+      '更新 Agent',
+      { type: 'warning' }
+    )
+  } catch {
+    if (isCurrent()) coreActionLoading.value = ''
+    return
+  }
+  try {
+    if (!isCurrent()) return
+    const response = await nodesApi.updateAgent(target.id)
+    if (!isCurrent()) return
+    ElMessage.success(response.message || 'Agent 更新已加入队列')
+    await fetchNode()
+  } catch (error) {
+    if (isCurrent()) ElMessage.error(extractErrorMessage(error) || '提交 Agent 更新失败')
+  } finally {
+    if (isCurrent()) coreActionLoading.value = ''
+  }
+}
+
+function normalizeVersion(raw) {
+  return String(raw || '').trim().replace(/^Xray\s+/i, '').replace(/^v(?=\d)/i, '').split(/\s+/)[0]
+}
+
+const loadAvailableVersions = async (refresh = false) => {
+  if (availableVersionsLoading.value) return
+  availableVersionsLoading.value = true
+  availableVersionsError.value = ''
+  try {
+    const resp = await nodeStore.listAvailableCoreVersions(refresh)
+    availableVersions.value = Array.isArray(resp?.versions) ? resp.versions : []
+    availableVersionsCachedAt.value = resp?.cached_at || ''
+    if (refresh && resp?.cached) {
+      ElMessage.warning('GitHub 版本列表暂时无法刷新，已显示缓存')
+    } else if (refresh) {
+      ElMessage.success(`已获取 ${availableVersions.value.length} 个可用版本`)
+    }
+  } catch (error) {
+    const message = error?.status === 502 && !error?.requestId
+      ? '版本列表服务暂不可用，请重试或直接输入版本号'
+      : extractErrorMessage(error) || '获取可用版本失败，请重试或直接输入版本号'
+    availableVersionsError.value = message
+  } finally {
+    availableVersionsLoading.value = false
+  }
+}
+
+const getNetworkOptimizationSSHPayload = () => ({
+  host: sshForm.host,
+  port: sshForm.port,
+  username: sshForm.username,
+  password: sshForm.password,
+  private_key: sshForm.private_key
+})
+
+const saveSSHConfig = async ({ inspectAfter = false } = {}) => {
+  const nodeId = node.value?.id
+  if (!nodeId || savingSSHConfig.value || networkOptimizationAction.value) return false
+
+  if (!sshForm.host || !sshForm.username) {
+    ElMessage.warning('请先填写 SSH 主机和用户名')
+    return false
+  }
+  if (!Number.isInteger(sshForm.port) || sshForm.port < 1 || sshForm.port > 65535) {
+    ElMessage.warning('SSH 端口必须在 1-65535 之间')
+    return false
+  }
+  if (!sshForm.password && !sshForm.private_key && !hasSavedSSHCredentials.value) {
+    ElMessage.warning('首次保存 SSH 配置时请输入密码或私钥')
+    return false
+  }
+
+  const isCurrent = trackNode(nodeId)
+  savingSSHConfig.value = true
+  try {
+    clearNetworkOptimizationError()
+    const ssh = {
+      host: sshForm.host,
+      port: sshForm.port,
+      username: sshForm.username
+    }
+    if (sshForm.password) {
+      ssh.password = sshForm.password
+    }
+    if (sshForm.private_key) {
+      ssh.private_key = sshForm.private_key
+    }
+
+    await nodesApi.saveSSHMetadata(nodeId, ssh)
+    if (!isCurrent()) return false
+    const defaults = networkOptimizationMeta.value.ssh_defaults || {}
+    networkOptimizationMeta.value.ssh_defaults = {
+      ...defaults,
+      host: ssh.host,
+      port: ssh.port,
+      username: ssh.username,
+      has_saved_password: Boolean(ssh.password || defaults.has_saved_password),
+      has_saved_private_key: Boolean(ssh.private_key || defaults.has_saved_private_key)
+    }
+    sshForm.password = ''
+    sshForm.private_key = ''
+    sshCredentialPanels.value = []
+    ElMessage.success('SSH 配置已保存，后续检测/应用将自动复用凭据')
+    networkOptimizationDialogVisible.value = false
+    await fetchNode()
+    if (!isCurrent()) return false
+    await fetchNetworkOptimizationProfile({ refreshSSHOnly: true })
+    if (!isCurrent()) return false
+    networkAutoInspectedNodeId.value = null
+  } catch (error) {
+    if (isCurrent()) {
+      ElMessage.error(extractErrorMessage(error) || '保存 SSH 配置失败')
+    }
+    return false
+  } finally {
+    if (isCurrent()) savingSSHConfig.value = false
+  }
+  if (!isCurrent()) return false
+  if (inspectAfter) await inspectNetworkOptimization()
+  return true
+}
+
+const useSavedSSHAndInspect = async () => {
+  if (!validateNetworkOptimizationSSH()) return
+  await saveSSHConfig({ inspectAfter: true })
+}
+
+const validateNetworkOptimizationSSH = () => {
+  if (!sshForm.host || !sshForm.username) {
+    clearNetworkOptimizationError()
+    ElMessage.warning('请先填写 SSH 主机和用户名')
+    networkOptimizationDialogVisible.value = true
+    return false
+  }
+
+  if (!sshForm.port || sshForm.port < 1 || sshForm.port > 65535) {
+    clearNetworkOptimizationError()
+    ElMessage.warning('SSH 端口必须在 1-65535 之间')
+    networkOptimizationDialogVisible.value = true
+    return false
+  }
+
+  if (!sshForm.password && !sshForm.private_key && !hasSavedSSHCredentials.value) {
+    clearNetworkOptimizationError()
+    ElMessage.warning('请提供 SSH 密码或私钥')
+    networkOptimizationDialogVisible.value = true
+    return false
+  }
+
+  return true
+}
+
+const alignFormWithInspectedCapabilities = () => {
+  const state = networkOptimizationState.value
+  if (!state) return
+
+  if (!state.bbr_available && networkOptimizationForm.enable_bbr) {
+    networkOptimizationForm.enable_bbr = false
+  }
+}
+
+const canAutoInspectNetwork = () => {
+  if (!node.value) return false
+  ensureSSHDefaults()
+  if (!sshForm.host || !sshForm.username) return false
+  if (!sshForm.port || sshForm.port < 1 || sshForm.port > 65535) return false
+  return Boolean(sshForm.password || sshForm.private_key || hasSavedSSHCredentials.value)
+}
+
+const inspectNetworkOptimization = async ({ silent = false } = {}) => {
+  const nodeId = node.value?.id
+  if (!nodeId || networkOptimizationAction.value || savingSSHConfig.value) return
+  if (!silent && !validateNetworkOptimizationSSH()) return
+  if (silent && !canAutoInspectNetwork()) return
+
+  const isCurrent = trackNode(nodeId)
+  networkOptimizationAction.value = 'inspect'
+  try {
+    clearNetworkOptimizationError()
+    const response = await nodesApi.inspectNetworkOptimization(nodeId, {
+      ssh: getNetworkOptimizationSSHPayload()
+    })
+    if (!isCurrent()) return
+    networkOptimizationState.value = response?.state || null
+    networkAutoInspectedNodeId.value = nodeId
+    updateNetworkLogs(response?.logs)
+    if (response?.saved_settings) {
+      networkOptimizationMeta.value.saved_settings = response.saved_settings
+    }
+    alignFormWithInspectedCapabilities()
+    if (!silent) {
+      ElMessage.success('节点网络状态检测完成')
+    }
+  } catch (error) {
+    if (!isCurrent()) return
+    updateNetworkLogs(error?.logs || error?.response?.data?.logs)
+    const message = extractErrorMessage(error) || '检测节点网络优化状态失败'
+    if (silent) {
+      // Keep page usable; surface one soft error so "未检测" is explainable.
+      setNetworkOptimizationError('自动检测失败', error, message)
+      networkAutoInspectedNodeId.value = node.value?.id
+    } else {
+      setNetworkOptimizationError('检测失败', error, message)
+      ElMessage.error(message)
+    }
+  } finally {
+    if (isCurrent()) networkOptimizationAction.value = ''
+  }
+}
+
+const maybeAutoInspectNetwork = async () => {
+  if (activeWorkspace.value !== 'network') return
+  if (!canAutoInspectNetwork()) return
+  if (networkOptimizationAction.value) return
+  if (networkAutoInspectedNodeId.value === node.value?.id) {
+    return
+  }
+  await inspectNetworkOptimization({ silent: true })
+}
+
+const notifyOptimizationResult = (response, fallback) => {
+  const message = response?.message || fallback
+  if (response?.sync_queued === false) {
+    ElMessage.warning(`${message}。本次未添加 Xray 配置同步任务，请在「内核管理」中确认同步状态。`)
+  } else {
+    ElMessage.success(message)
+  }
+}
+
+const applyNetworkOptimization = async () => {
+  const target = node.value
+  if (!target || networkOptimizationAction.value || savingSSHConfig.value || !validateNetworkOptimizationSSH()) return
+
+  const isCurrent = trackNode(target.id)
+  networkOptimizationAction.value = 'apply'
+  try {
+    await ElMessageBox.confirm(
+      `确定要为节点 "${target.name}" 应用网络优化吗？这会修改节点 sysctl，并触发一次 Xray 配置同步。`,
+      '应用网络优化',
+      { type: 'warning' }
+    )
+  } catch {
+    if (isCurrent()) networkOptimizationAction.value = ''
+    return
+  }
+
+  try {
+    if (!isCurrent()) return
+    clearNetworkOptimizationError()
+    const response = await nodesApi.applyNetworkOptimization(target.id, {
+      ssh: getNetworkOptimizationSSHPayload(),
+      settings: { ...networkOptimizationForm }
+    })
+    if (!isCurrent()) return
+    networkOptimizationState.value = response?.result?.state || null
+    updateNetworkLogs(response?.result?.log)
+    networkOptimizationMeta.value.has_saved_settings = true
+    if (response?.saved_settings) {
+      networkOptimizationMeta.value.saved_settings = response.saved_settings
+      applyNetworkOptimizationForm(response.saved_settings)
+    } else {
+      networkOptimizationMeta.value.saved_settings = { ...networkOptimizationForm }
+    }
+    alignFormWithInspectedCapabilities()
+    notifyOptimizationResult(response, '节点网络优化已应用')
+    await refreshData()
+  } catch (error) {
+    if (!isCurrent()) return
+    const result = error?.response?.data?.result
+    updateNetworkLogs(result?.log || error?.logs || error?.response?.data?.logs)
+    const message = extractErrorMessage(error) || '应用节点网络优化失败'
+    setNetworkOptimizationError('应用失败', error, message)
+    if (result?.state) networkOptimizationState.value = result.state
+    ElMessage.error(message)
+  } finally {
+    if (isCurrent()) networkOptimizationAction.value = ''
+  }
+}
+
+const rollbackNetworkOptimization = async () => {
+  const target = node.value
+  if (!target || networkOptimizationAction.value || savingSSHConfig.value || !validateNetworkOptimizationSSH()) return
+
+  const isCurrent = trackNode(target.id)
+  networkOptimizationAction.value = 'rollback'
+  try {
+    await ElMessageBox.confirm(
+      `确定要回滚节点 "${target.name}" 的网络优化吗？这会恢复原始 sysctl，并清除节点上的 Xray 优化设置。`,
+      '回滚网络优化',
+      { type: 'warning' }
+    )
+  } catch {
+    if (isCurrent()) networkOptimizationAction.value = ''
+    return
+  }
+
+  try {
+    if (!isCurrent()) return
+    clearNetworkOptimizationError()
+    const response = await nodesApi.rollbackNetworkOptimization(target.id, {
+      ssh: getNetworkOptimizationSSHPayload()
+    })
+    if (!isCurrent()) return
+    networkOptimizationState.value = response?.result?.state || null
+    updateNetworkLogs(response?.result?.log)
+    networkOptimizationMeta.value.has_saved_settings = false
+    networkOptimizationMeta.value.saved_settings = {}
+    applyNetworkOptimizationForm(networkOptimizationMeta.value.recommended_settings)
+    notifyOptimizationResult(response, '节点网络优化已回滚')
+    await refreshData()
+  } catch (error) {
+    if (!isCurrent()) return
+    const result = error?.response?.data?.result
+    updateNetworkLogs(result?.log || error?.logs || error?.response?.data?.logs)
+    const message = extractErrorMessage(error) || '回滚节点网络优化失败'
+    setNetworkOptimizationError('回滚失败', error, message)
+    if (result?.state) networkOptimizationState.value = result.state
+    ElMessage.error(message)
+  } finally {
+    if (isCurrent()) networkOptimizationAction.value = ''
+  }
+}
+
+onMounted(async () => {
+  await refreshData()
+  loadAvailableVersions(false)
+})
+
+watch(
+  () => route.params.id,
+  async (newId, oldId) => {
+    if (newId === oldId) return
+    routeRevision++
+    loading.value = false
+    syncing.value = false
+    coreActionLoading.value = ''
+    networkOptimizationAction.value = ''
+    savingSSHConfig.value = false
+    sshCredentialPanels.value = []
+    networkLogPanels.value = []
+    activeWorkspace.value = 'core'
+    networkOptimizationDialogVisible.value = false
+    targetCoreVersion.value = ''
+    submittedCoreVersionEvent.value = null
+    updateNetworkLogs('')
+    networkOptimizationState.value = null
+    networkAutoInspectedNodeId.value = null
+    clearNetworkOptimizationError()
+    networkOptimizationMeta.value.has_saved_settings = false
+    networkOptimizationMeta.value.saved_settings = {}
+    networkOptimizationMeta.value.ssh_defaults = {}
+    networkOptimizationMeta.value.backup_path = ''
+    sshForm.host = ''
+    sshForm.port = 0
+    sshForm.username = 'root'
+    sshForm.password = ''
+    sshForm.private_key = ''
+    applyNetworkOptimizationForm(networkOptimizationMeta.value.recommended_settings)
+    if (newId) await refreshData()
+  }
+)
+
+const commandPending = computed(() => coreVersionPending.value || agentUpdatePending.value || coreControlPending.value)
+
+watch([commandPending, () => node.value?.id], ([pending, nodeID], _, onCleanup) => {
+  if (!pending || !nodeID) return
+  let cancelled = false
+  let timer
+  onCleanup(() => {
+    cancelled = true
+    clearTimeout(timer)
+  })
+  const refresh = async () => {
+    if (loading.value) {
+      timer = setTimeout(refresh, 3000)
+      return
+    }
+    const loaded = await fetchNode({ quiet: true })
+    if (cancelled) return
+    const submitted = submittedCoreVersionEvent.value
+    if (loaded && submitted && !recentRecoveryEvents.value.some(event => event.command_id === submitted.command_id)) {
+      submittedCoreVersionEvent.value = { ...submitted, status: 'expired', message: '面板已无此任务记录，请核对当前版本后重试' }
+    }
+    if (commandPending.value) timer = setTimeout(refresh, 3000)
+  }
+  timer = setTimeout(refresh, 3000)
+})
+
+watch(activeWorkspace, async (value) => {
+  if (value === 'network') {
+    await maybeAutoInspectNetwork()
+  }
+})
+</script>
+
+<style scoped>
+.node-operations-page {
+  padding: 20px;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.header-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.page-subtitle {
+  margin: 0;
+  color: var(--el-text-color-secondary);
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.node-operations-page .summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.workspace-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding: 16px 18px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 16px;
+  background: var(--el-bg-color);
+}
+
+.workspace-toolbar__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.workspace-toolbar__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.workspace-toolbar__description {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+}
+
+.workspace-toolbar__switcher {
+  flex-shrink: 0;
+}
+
+.summary-card {
+  display: flex;
+  min-height: 100px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 16px;
+  background: var(--el-bg-color);
+}
+
+.summary-card-primary {
+  background: linear-gradient(140deg, var(--el-color-primary-light-9) 0%, var(--el-bg-color) 100%);
+}
+
+.summary-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.summary-value {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--el-text-color-primary);
+}
+
+.summary-value-address {
+  word-break: break-word;
+}
+
+.summary-meta {
+  margin-top: auto;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.info-card {
+  margin-bottom: 18px;
+}
+
+.status-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.status-item:last-child {
+  border-bottom: none;
+}
+
+.status-item-top {
+  align-items: flex-start;
+}
+
+.status-label {
+  color: var(--el-text-color-secondary);
+}
+
+.core-version,
+.network-endpoint {
+  max-width: 62%;
+  color: var(--el-text-color-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: right;
+  word-break: break-word;
+}
+
+.core-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.core-divider {
+  margin: 18px 0 12px;
+}
+
+.core-version-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.core-version-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.core-version-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.core-version-subtitle {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+}
+
+.core-version-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.core-version-select {
+  flex: 1 1 280px;
+  min-width: 220px;
+}
+
+.core-version-sub-meta {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+}
+
+.core-version-current-tag {
+  float: right;
+  margin-left: 12px;
+  color: var(--el-color-success);
+  font-size: 12px;
+}
+
+.core-tip {
+  margin-top: 12px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.profile-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  background: var(--el-fill-color-light);
+}
+
+.profile-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.profile-card__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.profile-card__meta {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--el-text-color-secondary);
+}
+
+.profile-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.profile-card__empty {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+}
+
+.optimization-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.optimization-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  padding: 16px 0;
+}
+
+.optimization-option-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+}
+
+.optimization-option-status {
+  flex-shrink: 0;
+  max-width: 58%;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: right;
+  color: var(--el-text-color-secondary);
+  word-break: break-word;
+}
+
+.optimization-option-status.is-ok {
+  color: var(--el-color-success);
+}
+
+.optimization-option-status.is-warn {
+  color: var(--el-color-warning);
+}
+
+.optimization-option-status.is-muted {
+  color: var(--el-text-color-secondary);
+}
+
+.optimization-congestion {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  max-width: 72%;
+}
+
+.optimization-select {
+  width: 180px;
+}
+
+.optimization-state-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.optimization-state-item {
+  display: flex;
+  min-height: 84px;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
+  background: var(--el-fill-color-light);
+}
+
+.optimization-state-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.optimization-error {
+  margin-top: 16px;
+}
+
+.optimization-error__message {
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.optimization-log {
+  max-height: 220px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #dbeafe;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.operation-collapse {
+  margin-top: 16px;
+}
+
+.operation-collapse :deep(.el-collapse-item__header) {
+  font-weight: 600;
+}
+
+.recovery-events {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.operations-timeline {
+  padding-top: 4px;
+}
+
+.recovery-event-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.timeline-card {
+  padding: 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  background: var(--el-fill-color-light);
+}
+
+.recovery-command {
+  margin-top: 10px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-color-primary);
+}
+
+.recovery-reason {
+  margin-bottom: 6px;
+  color: var(--el-text-color-primary);
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.recovery-meta {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.network-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.network-dialog-form {
+  margin-top: 4px;
+}
+
+.network-dialog-form :deep(.el-form-item__content),
+.network-dialog-form :deep(.el-input),
+.network-dialog-form :deep(.el-input-number),
+.network-dialog-form :deep(.el-textarea) {
+  width: 100%;
+  min-width: 0;
+}
+
+.network-dialog-form :deep(.el-input-number .el-input__wrapper) {
+  width: 100%;
+}
+
+.network-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+:global(.network-ssh-dialog) {
+  max-width: calc(100vw - 24px);
+}
+
+:global(.network-ssh-dialog .el-dialog__body) {
+  overflow-x: hidden;
+}
+
+@media (max-width: 1280px) {
+  .node-operations-page .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .node-operations-page {
+    padding: 12px;
+  }
+
+  .page-header,
+  .header-left,
+  .header-actions,
+  .workspace-toolbar,
+  .status-item,
+  .recovery-event-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .node-operations-page .summary-grid,
+  .workspace-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
+
+  .header-actions :deep(.el-button) {
+    width: 100%;
+  }
+
+  .core-version,
+  .network-endpoint,
+  .optimization-select {
+    width: 100%;
+    max-width: none;
+    text-align: left;
+  }
+
+  .optimization-options,
+  .optimization-state-grid,
+  .profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .optimization-option-row,
+  .optimization-congestion {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .optimization-option-status,
+  .optimization-congestion {
+    max-width: 100%;
+    text-align: left;
+  }
+
+  .workspace-toolbar__switcher {
+    width: 100%;
+  }
+
+  .workspace-toolbar__switcher :deep(.el-radio-button),
+  .workspace-toolbar__switcher :deep(.el-radio-button__inner) {
+    width: 100%;
+  }
+
+  :global(.network-ssh-dialog) {
+    width: calc(100vw - 24px) !important;
+    max-width: 520px;
+  }
+
+  :global(.network-ssh-dialog .el-dialog__header) {
+    padding: 20px 20px 12px;
+  }
+
+  :global(.network-ssh-dialog .el-dialog__title) {
+    font-size: 20px;
+    line-height: 1.35;
+  }
+
+  :global(.network-ssh-dialog .el-dialog__body) {
+    max-height: calc(100svh - 190px);
+    padding: 12px 20px 16px;
+    overflow-y: auto;
+  }
+
+  :global(.network-ssh-dialog .el-dialog__footer) {
+    padding: 0 20px 20px;
+  }
+
+  .network-dialog-content {
+    gap: 14px;
+  }
+
+  .network-dialog-form {
+    margin-top: 0;
+  }
+
+  .network-dialog-form :deep(.el-form-item) {
+    margin-bottom: 16px;
+  }
+
+  .network-dialog-form :deep(.el-form-item__label) {
+    width: 100% !important;
+    padding-bottom: 6px;
+    line-height: 1.35;
+    text-align: left;
+  }
+
+  .network-dialog-form :deep(.el-input-number) {
+    display: block;
+  }
+
+  .network-dialog-form :deep(.el-input-number .el-input__inner) {
+    text-align: left;
+  }
+
+  .network-dialog-footer {
+    width: 100%;
+    flex-direction: column-reverse;
+    gap: 10px;
+  }
+
+  .network-dialog-footer :deep(.el-button) {
+    width: 100%;
+    margin: 0;
+  }
+}
+
+.ssh-credential-chip {
+  align-self: center;
+}
+
+.network-credential-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--el-color-success-light-9);
+  color: var(--el-text-color-regular);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.network-credential-collapse {
+  width: 100%;
+  margin-top: 4px;
+  border: none;
+}
+
+.network-credential-collapse :deep(.el-collapse-item__header) {
+  height: auto;
+  min-height: 40px;
+  line-height: 1.5;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  background: transparent;
+}
+
+.network-credential-collapse :deep(.el-collapse-item__wrap) {
+  background: transparent;
+}
+
+.network-dialog-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+</style>

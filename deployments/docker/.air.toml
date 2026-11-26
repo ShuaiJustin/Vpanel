@@ -1,0 +1,23 @@
+root = "."
+tmp_dir = "tmp/air"
+
+[build]
+cmd = "go build -o ./tmp/air/vpanel-dev ./cmd/v/main.go"
+bin = "./tmp/air/vpanel-dev -config ./configs/config.yaml"
+full_bin = ""
+include_ext = ["go", "yaml", "yml", "json"]
+exclude_dir = ["web", "node_modules", ".git", "tmp", "data", "logs", "xray", "dist", "test-results"]
+exclude_file = []
+exclude_regex = []
+follow_symlink = false
+delay = 800
+stop_on_error = true
+send_interrupt = true
+kill_delay = "3s"
+
+[log]
+time = true
+
+[screen]
+clear_on_rebuild = false
+keep_scroll = true

@@ -1,0 +1,75 @@
+/* Base SCSS Styles */
+
+/* 基本重置 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* 全局样式 */
+html {
+  font-size: clamp(13px, calc(12px + 0.2vw), 16px);
+}
+
+body {
+  font-family: 'Arial', sans-serif;
+  font-size: calc(14px * var(--vp-scale, 1));
+  line-height: 1.5;
+  color: var(--color-text-primary, #333);
+  background-color: var(--color-bg-page, #f5f5f5);
+}
+
+/* 通用容器 */
+.container {
+  width: 100%;
+  max-width: min(1200px, calc(100% - (var(--vp-safe-gutter, 16px) * 2)));
+  margin: 0 auto;
+  padding: 0 var(--vp-safe-gutter, 16px);
+}
+
+/* 链接样式 */
+a {
+  color: #409eff;
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+a:hover {
+  color: #66b1ff;
+}
+
+html.dark a {
+  color: #79bbff;
+}
+
+html.dark a:hover {
+  color: #a6d2ff;
+}
+
+/* macOS 显示模式兼容性修复 */
+/* 强制硬件加速，修复 SVG 渲染问题 */
+svg {
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+/* 修复高分辨率显示下的渲染问题 */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  svg {
+    shape-rendering: geometricPrecision;
+  }
+  
+  canvas {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+  }
+}
+
+/* 修复深色模式下的对比度 */
+html.dark {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+} 
